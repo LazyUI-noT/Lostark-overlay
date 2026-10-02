@@ -1,0 +1,16 @@
+{
+  "source": "4k_21_9_screenshot_bard.png",
+  "slot": "band",
+  "hud": 100,
+  "rect": [
+    1150,
+    1650,
+    500,
+    240
+  ],
+  "width": 500,
+  "height": 240,
+  "pts": [
+    0.0
+  ]
+}

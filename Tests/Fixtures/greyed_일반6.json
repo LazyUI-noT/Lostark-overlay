@@ -1,0 +1,9 @@
+{
+  "source": "greyed out.png",
+  "slot": "일반6",
+  "hud": 110,
+  "rect": [732, 1021, 50, 49],
+  "width": 50,
+  "height": 49,
+  "pts": [0.0]
+}

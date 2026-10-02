@@ -1,0 +1,16 @@
+{
+  "source": "1440p_hud100_120buff.png",
+  "slot": "buffs",
+  "hud": 100,
+  "rect": [
+    1990,
+    1360,
+    240,
+    85
+  ],
+  "width": 240,
+  "height": 85,
+  "pts": [
+    0.0
+  ]
+}

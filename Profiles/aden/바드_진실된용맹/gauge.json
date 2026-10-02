@@ -1,0 +1,8 @@
+{
+  "origin": [930, 979],
+  "units": "continuous",
+  "order": { "kind": "piecewise", "angleDeg": 90 },
+  "filling": ["#826919", "#AF9123", "#D7B932", "#F5E16E"],
+  "slack": 3,
+  "tolerance": 40
+}

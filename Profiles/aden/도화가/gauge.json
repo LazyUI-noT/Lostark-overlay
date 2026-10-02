@@ -1,0 +1,7 @@
+{
+  "origin": [898, 1024],
+  "units": "continuous",
+  "order": { "kind": "rings", "startDeg": 265, "clockwise": true },
+  "filling": ["#3C64B4", "#6464B4", "#3C3CB4", "#6464DC", "#8C8CDC", "#B4B4FF", "#B4DCFF", "#DCDCFF"],
+  "tolerance": 40
+}

@@ -1,0 +1,9 @@
+{
+  "source": "4k_screenshot_bard.jpg",
+  "slot": "emblem",
+  "hud": 100,
+  "rect": [1833, 1945, 175, 196],
+  "width": 175,
+  "height": 196,
+  "pts": [0.0]
+}

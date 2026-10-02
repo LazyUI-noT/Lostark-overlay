@@ -1,0 +1,16 @@
+{
+  "source": "110percent.png",
+  "slot": "band",
+  "hud": 110,
+  "rect": [
+    400,
+    900,
+    360,
+    180
+  ],
+  "width": 360,
+  "height": 180,
+  "pts": [
+    0.0
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "source": "main focus.png",
+  "slot": "emblem",
+  "hud": 110,
+  "rect": [
+    904,
+    922,
+    112,
+    158
+  ],
+  "width": 112,
+  "height": 158,
+  "pts": [
+    0.0
+  ]
+}

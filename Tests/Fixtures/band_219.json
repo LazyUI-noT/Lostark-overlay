@@ -1,0 +1,16 @@
+{
+  "source": "forced_219.png",
+  "slot": "band",
+  "hud": 110,
+  "rect": [
+    400,
+    810,
+    360,
+    135
+  ],
+  "width": 360,
+  "height": 135,
+  "pts": [
+    0.0
+  ]
+}

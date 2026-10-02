@@ -1,0 +1,9 @@
+{
+  "source": "bardbug_103.mp4",
+  "slot": "band",
+  "hud": 100,
+  "rect": [400, 880, 360, 200],
+  "width": 360,
+  "height": 200,
+  "pts": [1.0, 10.0, 20.0]
+}

@@ -1,0 +1,16 @@
+{
+  "source": "silenced.png",
+  "slot": "frame",
+  "hud": 110,
+  "rect": [
+    505,
+    982,
+    75,
+    73
+  ],
+  "width": 75,
+  "height": 73,
+  "pts": [
+    0.0
+  ]
+}

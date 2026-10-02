@@ -1,0 +1,9 @@
+{
+  "source": "bard bug.mp4 frames 60, 300, 480, 700 (1.0, 5.0, 8.0, 11.7 s): the 절실한구원 gauge with 4 px around it",
+  "slot": "gauge",
+  "hud": 110,
+  "rect": [921, 975, 77, 74],
+  "width": 77,
+  "height": 74,
+  "pts": [1.0, 5.0, 8.0, 11.7]
+}

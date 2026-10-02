@@ -1,0 +1,29 @@
+<Window x:Class="GaugeOverlay.App.UI.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GaugeOverlay.App.UI"
+        Title="GaugeOverlay" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight" UseLayoutRounding="True">
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Room for the "편집 중" / "미리보기" label; transparent (and click-through) otherwise. -->
+            <RowDefinition Height="20" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <!-- Never wider than the overlay: the label is trimmed (full text in its tooltip) so it doesn't widen the window. -->
+        <Border x:Name="EditLabel" Grid.Row="0" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                MaxWidth="{Binding ActualWidth, ElementName=Renderer}"
+                Margin="4,0,0,1" Padding="6,1,6,2" CornerRadius="2" Background="#E60C0D10">
+            <TextBlock x:Name="EditLabelText" Foreground="White" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </Border>
+        <ui:OverlayRenderer x:Name="Renderer" Grid.Row="1" />
+        <Grid x:Name="EditChrome" Grid.Row="1" Visibility="Collapsed" Margin="7">
+            <!-- Near-transparent fill makes the whole footprint draggable. -->
+            <Rectangle Stroke="#D9FFFFFF" StrokeThickness="1" StrokeDashArray="4 3" Fill="#01000000" />
+            <Rectangle x:Name="ScaleHandle" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                       Margin="0,0,-3,-3" Fill="White" Stroke="#0C0D10" StrokeThickness="1" Cursor="SizeNWSE" />
+        </Grid>
+    </Grid>
+</Window>

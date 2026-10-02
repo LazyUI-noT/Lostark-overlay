@@ -1,0 +1,16 @@
+{
+  "source": "해방자empty.png",
+  "slot": "gauge",
+  "hud": 110,
+  "rect": [
+    924,
+    964,
+    71,
+    75
+  ],
+  "width": 71,
+  "height": 75,
+  "pts": [
+    0.0
+  ]
+}

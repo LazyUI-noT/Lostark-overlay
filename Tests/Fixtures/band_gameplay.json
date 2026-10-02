@@ -1,0 +1,16 @@
+{
+  "source": "gameplay.mp4",
+  "slot": "band",
+  "hud": 100,
+  "rect": [
+    400,
+    900,
+    360,
+    180
+  ],
+  "width": 360,
+  "height": 180,
+  "pts": [
+    9.00108889
+  ]
+}

@@ -1,0 +1,14 @@
+<Window x:Class="GaugeOverlay.App.UI.JoinDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="파티 참가" Width="440" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" ThemeMode="System" ShowInTaskbar="True">
+    <StackPanel Margin="20">
+        <TextBlock Text="호스트에게 받은 토큰을 붙여 넣으세요." Margin="0,0,0,8" />
+        <TextBox x:Name="TokenBox" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="참가" IsDefault="True" MinWidth="88" Margin="0,0,8,0" Click="OnJoin" />
+            <Button Content="취소" IsCancel="True" MinWidth="88" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -1,0 +1,16 @@
+{
+  "source": "live test.mp4",
+  "slot": "label",
+  "hud": 110,
+  "rect": [
+    495,
+    940,
+    95,
+    45
+  ],
+  "width": 95,
+  "height": 45,
+  "pts": [
+    5.20261111
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "source": "greyed out.png",
+  "slot": "초각스",
+  "hud": 110,
+  "rect": [592, 992, 54, 54],
+  "width": 54,
+  "height": 54,
+  "pts": [0.0]
+}

@@ -1,0 +1,16 @@
+{
+  "source": "silenced.png",
+  "slot": "아덴1",
+  "hud": 110,
+  "rect": [
+    865,
+    964,
+    46,
+    55
+  ],
+  "width": 46,
+  "height": 55,
+  "pts": [
+    0.0
+  ]
+}

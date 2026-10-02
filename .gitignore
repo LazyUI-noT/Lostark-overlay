@@ -1,0 +1,13 @@
+# build output
+bin/
+obj/
+publish/
+*.user
+.vs/
+
+# source screenshots and videos stay local; the tests use small crops cut from them (Tests/Fixtures)
+reference/
+# Claude Code: the project's own rules are tracked; local settings and the ECC plugin's rule copies are not
+.claude/*
+!.claude/rules/
+.claude/rules/ecc/

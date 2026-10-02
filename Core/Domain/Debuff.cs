@@ -1,0 +1,49 @@
+namespace GaugeOverlay.Core.Domain;
+
+/// <summary>The raid whose debuffs are read (PLAN §4 디버프); each has its own icons. 없음: the debuff row isn't read.</summary>
+public enum Raid { 없음, 모르둠 }
+
+/// <summary>모르둠 (G3)'s debuffs: the blue and red sigils (your side, permanent), the lightning (urgent, timed) and the
+/// swap (timed: you and everyone near you change to the other colour).</summary>
+public enum DebuffKind { 파랑, 빨강, 번개, 교체 }
+
+/// <summary>A debuff icon found in the debuff row, with its timer when one could be read.</summary>
+public sealed record DebuffReading(DebuffKind Kind, double? Seconds);
+
+/// <summary>One debuff as last seen: <see cref="SeenAt"/>, and when its timer runs out (null: none read).</summary>
+public sealed record DebuffMark(TimeSpan SeenAt, TimeSpan? EndsAt)
+{
+    /// <summary>Whole seconds left, rounded down as the game shows them; null with no timer.</summary>
+    public int? Seconds(TimeSpan now) => EndsAt is { } end ? (int)Math.Max(0, (end - now).TotalSeconds) : null;
+}
+
+/// <summary>What the debuff window draws: your debuffs (null = not on you) and the boss's red and blue counts.</summary>
+public sealed record DebuffStatus(DebuffMark? Blue, DebuffMark? Red, DebuffMark? Lightning, DebuffMark? Swap, int? BossRed, int? BossBlue,
+    TimeSpan BossSeenAt = default)
+{
+    public static readonly DebuffStatus None = new(null, null, null, null, null, null);
+
+    /// <summary>Your colour: the sigil seen last.</summary>
+    public DebuffKind? Colour => (Blue, Red) switch
+    {
+        ({ } b, { } r) => b.SeenAt >= r.SeenAt ? DebuffKind.파랑 : DebuffKind.빨강,
+        ({ }, null) => DebuffKind.파랑,
+        (null, { }) => DebuffKind.빨강,
+        _ => null,
+    };
+}
+
+/// <summary>Who to take along into a swap so the boss's counts end up even (the user's rule: half of the total each).</summary>
+public static class DebuffAdvice
+{
+    /// <summary>The colour and number of teammates to bring. You flip, and so does everyone you bring: with d = your
+    /// colour's count less half the total, bring d − 1 of your own colour when d ≥ 1, else 1 − d of the other.
+    /// (0 of your colour: go alone.) Null when a count is unknown.</summary>
+    public static (DebuffKind Colour, int Count)? Bring(DebuffKind mine, int? red, int? blue)
+    {
+        if (red is not { } r || blue is not { } b || mine is not (DebuffKind.빨강 or DebuffKind.파랑)) return null;
+        int own = mine == DebuffKind.빨강 ? r : b, d = own - (r + b) / 2;
+        var other = mine == DebuffKind.빨강 ? DebuffKind.파랑 : DebuffKind.빨강;
+        return d >= 1 ? (mine, d - 1) : (other, 1 - d);
+    }
+}

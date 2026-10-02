@@ -1,0 +1,16 @@
+{
+  "source": "4k_21_9_screenshot_bard.png",
+  "slot": "probe",
+  "hud": 100,
+  "rect": [
+    192,
+    0,
+    2,
+    2160
+  ],
+  "width": 2,
+  "height": 2160,
+  "pts": [
+    0.0
+  ]
+}

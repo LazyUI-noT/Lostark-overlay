@@ -1,0 +1,12 @@
+{
+  "origin": [
+    913,
+    966
+  ],
+  "units": "continuous",
+  "order": {
+    "kind": "linear",
+    "angleDeg": 90
+  },
+  "tolerance": 40
+}

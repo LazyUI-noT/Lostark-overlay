@@ -1,0 +1,16 @@
+{
+  "source": "mordum debuff2.png",
+  "slot": "stacks",
+  "hud": 110,
+  "rect": [
+    50,
+    128,
+    200,
+    22
+  ],
+  "width": 200,
+  "height": 22,
+  "pts": [
+    0.0
+  ]
+}

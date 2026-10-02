@@ -1,0 +1,51 @@
+{
+  "_note": "직업군 → 클래스 → 직업각인. 직업각인마다 adenGauge: null = 추적 안 함(나중에 추가), true = 기본 막대, 객체 = { \"splits\": [0–1 구분선 위치], \"glow\": { \"when\": \"sections\" (다 찬 구간마다 빛남) 또는 \"slotReady\" (slot이 준비되고 게이지가 minGauge 이상일 때 빛남), \"slot\": 슬롯 ID, \"minGauge\": 0–1 }, \"ramp\": [다 찬 구간이 1, 2, …개일 때 채움 전체의 색 단계: 1 약, 2 중, 3 강; 목록보다 많이 차면 마지막 단계], \"spend\": { \"slots\": [게이지를 쓰는 스킬 칸], \"max\": n } (그 스킬 키를 누르면 다 찬 구간을 아래부터 최대 n개 뺀 값을 기다리고, 1초 안에 두 번 연속 그 값 근처로 읽히면 바로 반영; 바드 절실한구원 3, 진실된용맹 2; 스킬마다 n이 다르면 이런 객체의 목록, 도화가: Z 2, C 1) 또는 { \"slots\": [...], \"amount\": 0–1 } (게이지를 그만큼 뺌; 워로드 전투태세 0.5, 발키리 Z 0.8), \"colors\": { \"full\": 다 찬 구간 색, \"filling\": 채우는 중인 구간 색 } (\"#RRGGBB\"; 바드: 파랑·금색, 색이 바뀔 때 부드럽게 넘어감; 없으면 게이지 채움 색) } (사용자가 게이지 탭에서 바꾸기 전의 기본값). adenSlots: 아덴스킬 슬롯 위치 ID (아덴1 = 엠블럼 왼쪽, 아덴2 = 오른쪽; 키 설정과 무관, 미정이면 빈 배열). id: 클래스 번호(1–255, 파티 전송). role: 서포터 또는 딜러 (없으면 딜러), 파티원 색을 역할별로 칠할 때 씀. adenRects: 아덴1/아덴2를 다른 자리에 그리는 클래스의 위치 { 아덴1: [x, y, w, h] } (1920×1080, HUD 110% 기준 픽셀, 예: 발키리의 둥근 Z·C). 직업각인 안의 role·adenSlots는 클래스 값을 덮어씀 (파티원에게는 클래스 번호만 가므로 파티원 역할은 클래스 값). adenDark: 아덴스킬이 자원이 모자라면 사용 불가로 표시(사례 2). 사용 가능 표시는 클래스마다 다름: true = 아이콘이 어두워짐(발키리, 바드), \"label\" = 키 글자가 흰색이면 사용 가능, 회색이면 불가(워로드 전투태세만, 보라색 테두리도 생김). 한 번 정한 번호는 바꾸지 않음. 새 클래스는 직업군 안 아무 자리에 넣고 아직 안 쓴 번호를 줌.",
+  "워리어": {
+    "워로드":       { "id": 1, "adenSlots": ["아덴2"], "subclasses": { "고독한기사": { "adenGauge": true }, "전투태세": { "adenDark": "label", "adenGauge": { "splits": [0.5], "glow": { "when": "slotReady", "slot": "아덴2", "minGauge": 0.5 }, "spend": { "slots": ["아덴2"], "amount": 0.5 } } } } },
+    "홀리나이트":   { "id": 2, "role": "서포터", "adenSlots": [], "subclasses": { "심판자": { "adenGauge": null }, "축복의오라": { "adenGauge": null } } },
+    "버서커":       { "id": 3, "adenSlots": [], "subclasses": { "광기": { "adenGauge": null }, "광전사의비기": { "adenGauge": null } } },
+    "디스트로이어": { "id": 4, "sameSkills": true, "adenSlots": [], "subclasses": { "분노의망치": { "adenGauge": null }, "중력수련": { "adenGauge": null } } },
+    "가디언나이트": { "id": 5, "adenSlots": [], "subclasses": { "업화의계승자": { "adenGauge": null }, "드레드로어": { "adenGauge": null } } },
+    "발키리":       { "id": 6, "role": "서포터", "adenSlots": ["아덴1", "아덴2"], "adenRects": { "아덴1": [888, 1026, 40, 43], "아덴2": [992, 1026, 40, 43] }, "subclasses": {
+                      "빛의기사": { "role": "딜러", "adenDark": true, "adenGauge": { "glow": { "when": "slotReady", "slot": "아덴2", "minGauge": 1 }, "spend": { "slots": ["아덴1"], "amount": 0.8 } } },
+                      "해방자": { "role": "서포터", "adenDark": true, "adenGauge": { "glow": { "when": "slotReady", "slot": "아덴1", "minGauge": 0.8 }, "spend": { "slots": ["아덴1"], "amount": 0.8 } } } } },
+    "슬레이어":     { "id": 7, "adenSlots": [], "subclasses": { "포식자": { "adenGauge": null }, "처단자": { "adenGauge": null } } }
+  },
+  "무도가": {
+    "배틀마스터":   { "id": 8, "adenSlots": [], "subclasses": { "오의강화": { "adenGauge": null }, "초심": { "adenGauge": null } } },
+    "인파이터":     { "id": 9, "adenSlots": [], "subclasses": { "충격단련": { "adenGauge": null }, "극의:체술": { "adenGauge": null } } },
+    "기공사":       { "id": 10, "adenSlots": [], "subclasses": { "세맥타통": { "adenGauge": null }, "역천지체": { "adenGauge": null } } },
+    "창술사":       { "id": 11, "adenSlots": [], "subclasses": { "절정": { "adenGauge": null }, "절제": { "adenGauge": null } } },
+    "스트라이커":   { "id": 12, "adenSlots": [], "subclasses": { "일격필살": { "adenGauge": null }, "오의난무": { "adenGauge": null } } },
+    "브레이커":     { "id": 13, "adenSlots": [], "subclasses": { "권왕파천무": { "adenGauge": null }, "수라의길": { "adenGauge": null } } }
+  },
+  "헌터": {
+    "데빌헌터":     { "id": 14, "adenSlots": [], "subclasses": { "강화무기": { "adenGauge": null }, "핸드거너": { "adenGauge": null } } },
+    "블래스터":     { "id": 15, "adenSlots": [], "subclasses": { "포격강화": { "adenGauge": null }, "화력강화": { "adenGauge": null } } },
+    "호크아이":     { "id": 16, "adenSlots": [], "subclasses": { "두번째동료": { "adenGauge": null }, "죽음의습격": { "adenGauge": null } } },
+    "스카우터":     { "id": 17, "adenSlots": [], "subclasses": { "진화의유산": { "adenGauge": null }, "아르데타인의기술": { "adenGauge": null } } },
+    "건슬링어":     { "id": 18, "adenSlots": [], "subclasses": { "피스메이커": { "adenGauge": null }, "사냥의시간": { "adenGauge": null } } }
+  },
+  "마법사": {
+    "바드":         { "id": 19, "role": "서포터", "adenSlots": ["아덴1", "아덴2"], "subclasses": {
+                      "절실한구원": { "role": "서포터", "adenDark": true, "adenGauge": { "splits": [0.25, 0.5, 0.75], "glow": { "when": "sections" }, "ramp": [1, 2, 3], "spend": { "slots": ["아덴1", "아덴2"], "max": 3, "immediate": true, "freeRecast": 8 }, "colors": { "full": "#0A84E0", "filling": "#D7B932" } } },
+                      "진실된용맹": { "role": "딜러", "adenDark": true, "adenGauge": { "splits": [0.3333, 0.6667], "glow": { "when": "sections" }, "ramp": [2, 3], "spend": [{ "slots": ["아덴1"], "max": 2, "immediate": true, "freeRecast": 8 }, { "slots": ["아덴2"], "max": 2 }], "colors": { "full": "#0A84E0", "filling": "#D7B932" } } } } },
+    "서머너":       { "id": 20, "adenSlots": [], "subclasses": { "상급소환사": { "adenGauge": null }, "넘치는교감": { "adenGauge": null } } },
+    "아르카나":     { "id": 21, "adenSlots": [], "subclasses": { "황후의은총": { "adenGauge": null }, "황제의칙령": { "adenGauge": null } } },
+    "소서리스":     { "id": 22, "adenSlots": [], "subclasses": { "점화": { "adenGauge": null }, "환류": { "adenGauge": null } } }
+  },
+  "암살자": {
+    "블레이드":     { "id": 23, "adenSlots": [], "subclasses": { "잔재된기운": { "adenGauge": null }, "버스트": { "adenGauge": null } } },
+    "데모닉":       { "id": 24, "adenSlots": [], "subclasses": { "완벽한억제": { "adenGauge": null }, "멈출수없는충동": { "adenGauge": null } } },
+    "리퍼":         { "id": 25, "adenSlots": [], "subclasses": { "달의소리": { "adenGauge": null }, "갈증": { "adenGauge": null } } },
+    "소울이터":     { "id": 26, "adenSlots": [], "subclasses": { "만월의집행자": { "adenGauge": null }, "그믐의경계": { "adenGauge": null } } }
+  },
+  "스페셜리스트": {
+    "도화가":       { "id": 27, "role": "서포터", "adenSlots": ["아덴1", "아덴2"], "subclasses": {
+                      "만개": { "adenDark": true, "adenGauge": { "splits": [0.3333, 0.6667], "glow": { "when": "sections" }, "ramp": [2, 3], "spend": [{ "slots": ["아덴1"], "max": 2, "immediate": true }, { "slots": ["아덴2"], "max": 1, "immediate": true }], "colors": { "full": "#F5BE50", "filling": "#6464DC" } } },
+                      "회귀": { "adenDark": true, "adenGauge": { "splits": [0.3333, 0.6667], "glow": { "when": "sections" }, "ramp": [2, 3], "spend": [{ "slots": ["아덴1"], "max": 2, "immediate": true }, { "slots": ["아덴2"], "max": 1, "immediate": true }], "colors": { "full": "#F5BE50", "filling": "#6464DC" } } } } },
+    "기상술사":     { "id": 28, "adenSlots": [], "subclasses": { "질풍노도": { "adenGauge": null }, "이슬비": { "adenGauge": null } } },
+    "환수사":       { "id": 29, "adenSlots": [], "subclasses": { "야성": { "adenGauge": null }, "환수각성": { "adenGauge": null } } },
+    "차원술사":     { "id": 30, "adenSlots": [], "subclasses": { "시간술사": { "adenGauge": null }, "공간술사": { "adenGauge": null } } }
+  }
+}

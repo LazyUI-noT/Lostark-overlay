@@ -1,0 +1,16 @@
+{
+  "source": "절실한구원full.png",
+  "slot": "gauge",
+  "hud": 110,
+  "rect": [
+    925,
+    979,
+    69,
+    66
+  ],
+  "width": 69,
+  "height": 66,
+  "pts": [
+    0.0
+  ]
+}
