@@ -183,7 +183,7 @@ public sealed class PartySessionTests : IDisposable
         for (int i = 0; i < 20; i++)
         {
             var crypto = TokenHolder(host);
-            _wire.Enqueue((crypto.Seal(crypto.Group, (byte)MessageType.Hello, Protocol.Hello("x", crypto.PublicKey, App)), At(66, 50000 + i), HostAt));
+            _wire.Enqueue((crypto.Seal(crypto.Group, (byte)MessageType.Hello, SignedHello(host, crypto, "x")), At(66, 50000 + i), HostAt));
         }
         Deliver();
 
@@ -239,7 +239,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.True(Protocol.TryReadWelcome(rogue.Got.First(g => g.Type == MessageType.Welcome).Body, out var hostKey, out _));
 
         var ghost = TokenHolder(host);
-        _wire.Enqueue((ghost.Seal(ghost.Group, (byte)MessageType.Hello, Protocol.Hello("유령", ghost.PublicKey, App)), At(88), HostAt));
+        _wire.Enqueue((ghost.Seal(ghost.Group, (byte)MessageType.Hello, SignedHello(host, ghost, "유령")), At(88), HostAt));
         Deliver();
         foreach (var cookie in new[] { new byte[SessionCrypto.CookieSize], Array.Empty<byte>(), rogue.Cookie })
         {
@@ -409,17 +409,44 @@ public sealed class PartySessionTests : IDisposable
     }
 
     [Fact]
-    public void A_kicked_member_can_join_again_with_the_same_token()
+    public void Kicking_blocks_the_device_for_the_session_and_untrusts_it()
+    {
+        var host = Host(approve: true);
+        Join(host, "지현", At(3));
+        Approve(host);
+        var a = Join(host, "민수", At(2));
+        Approve(host);
+        Assert.Equal("참가 중 (3/4)", a.Status);
+        host.TakeChanges();
+
+        host.Kick("민수");
+        Deliver();
+        Assert.Equal([Fingerprint("민수")], host.TakeChanges().Admission.Untrusted);
+        Assert.Equal([(Fingerprint("민수"), "민수")], host.Blocked);
+
+        var again = Join(host, "민수", At(2, 40001));
+        Assert.True(again.Ended);
+        Assert.Contains("내보낸", again.TakeChanges().Notice);
+        Assert.Single(host.TakeChanges().Admission.Refused);
+    }
+
+    [Fact]
+    public void A_blocked_device_is_let_back_in_once_unblocked_and_a_new_session_forgets_blocks()
     {
         var host = Host();
-        Join(host, "민수", At(2));
         Join(host, "지현", At(3));
+        Join(host, "민수", At(2));
         host.Kick("민수");
         Deliver();
 
-        var again = Join(host, "민수", At(2, 40001));
+        host.Unblock(Fingerprint("민수"));
+        Assert.Empty(host.Blocked);
+        Assert.Equal("참가 중 (3/4)", Join(host, "민수", At(2, 40001)).Status);
 
-        Assert.Equal("참가 중 (3/4)", again.Status);
+        host.Kick("민수");
+        Deliver();
+        var next = Host();
+        Assert.Empty(next.Blocked);
     }
 
     [Fact]
@@ -434,6 +461,315 @@ public sealed class PartySessionTests : IDisposable
         Assert.False(host.Kick("호스트"));
         Deliver();
         Assert.Equal("민수,지현", Names(host));
+    }
+
+    // ── Join approval, trusted devices, rejoining (참가 요청 승인) ─────────────────────────
+
+    /// <summary>Approves the one joiner the host is asking about, and delivers.</summary>
+    void Approve(PartySession host)
+    {
+        Assert.True(host.Approve(host.TakeChanges().Admission.Asked.Single().Id));
+        Wait(PartySession.HelloEvery);
+    }
+
+    [Fact]
+    public void An_untrusted_joiner_waits_with_one_pending_per_hello_and_is_not_shown()
+    {
+        var host = Host(approve: true);
+        var a = Start(host, "민수", At(2));
+        Wait(TimeSpan.FromSeconds(5));   // past the 3 s join timeout: Pending keeps it waiting
+
+        var asked = host.TakeChanges().Admission.Asked.Single();
+        Assert.Equal(("민수", App, Fingerprint("민수")), (asked.Name, asked.App, asked.Device));
+        Assert.Equal("승인 기다리는 중…", a.Status);
+        Assert.Equal("", Names(host));
+        Assert.Equal("호스트 중 (1/4)", host.Status);
+        int hellos = _delivered.Count(p => p.From.Equals(At(2)) && p.Data[0] == (byte)MessageType.Hello);
+        int pendings = _delivered.Count(p => p.To.Equals(At(2)) && p.Data[0] == (byte)MessageType.Pending);
+        Assert.Equal(hellos, pendings);
+        Assert.Empty(host.TakeChanges().Admission.Asked);   // asked once, not per Hello
+    }
+
+    [Fact]
+    public void Approving_lets_the_joiner_in_and_trusts_the_device()
+    {
+        var host = Host(approve: true);
+        var a = Start(host, "민수", At(2));
+        Deliver();
+        Approve(host);
+
+        Assert.Equal("참가 중 (2/4)", a.Status);
+        Assert.Equal("민수", Names(host));
+        Assert.Equal([new TrustedDevice(Fingerprint("민수"), "민수")], host.TakeChanges().Admission.Trusted);
+    }
+
+    [Fact]
+    public void Declining_refuses_this_attempt_and_the_device_may_ask_again()
+    {
+        var host = Host(approve: true);
+        var a = Start(host, "민수", At(2));
+        Deliver();
+        Assert.True(host.Decline(host.TakeChanges().Admission.Asked.Single().Id));
+        Deliver();
+
+        Assert.True(a.Ended);
+        Assert.Contains("거절", a.TakeChanges().Notice);
+        Assert.False(a.CanRejoin);
+        var soon = Start(host, "민수", At(2, 40001));   // asking again at once: refused without a popup
+        Deliver();
+        Assert.True(soon.Ended);
+        Assert.Empty(host.TakeChanges().Admission.Asked);
+
+        Wait(PartySession.DeclineCooldown);
+        Start(host, "민수", At(2, 40002));
+        Deliver();
+        Assert.Single(host.TakeChanges().Admission.Asked);
+    }
+
+    /// <summary>New devices from many (spoofed) addresses can't keep the host buried in popups: three are open at most.</summary>
+    [Fact]
+    public void At_most_three_requests_are_open_at_once()
+    {
+        var host = Host(approve: true);
+        for (int i = 0; i < 5; i++) Start(host, $"x{i}", At(10 + i));
+        Deliver();
+        Assert.Equal(PartySession.MaxAsking, host.TakeChanges().Admission.Asked.Count);
+    }
+
+    /// <summary>The same device joining from elsewhere while its old connection still runs: the old one is told and
+    /// doesn't rejoin, so two copies can't keep pushing each other out.</summary>
+    [Fact]
+    public void A_replaced_connection_is_told_and_does_not_rejoin()
+    {
+        var host = Host();
+        Join(host, "지현", At(3));
+        var a = Join(host, "민수", At(2));
+        var b = Join(host, "민수", At(5));
+
+        Assert.True(a.Ended);
+        Assert.Contains("같은 기기", a.TakeChanges().Notice);
+        Assert.False(a.CanRejoin);
+        Assert.Equal("참가 중 (3/4)", b.Status);
+    }
+
+    [Fact]
+    public void An_unanswered_request_ends_after_30s_and_the_host_withdraws_it()
+    {
+        var host = Host(approve: true);
+        var a = Start(host, "민수", At(2));
+        Deliver();
+        var id = host.TakeChanges().Admission.Asked.Single().Id;
+
+        Wait(PartySession.ApprovalWait - TimeSpan.FromSeconds(1));
+        Assert.False(a.Ended);
+        Wait(TimeSpan.FromSeconds(2));
+        Assert.True(a.Ended);
+        Assert.Equal("호스트가 응답하지 않았습니다.", a.TakeChanges().Notice);
+
+        Wait(PartySession.JoinTimeout + Step);
+        Assert.Equal([id], host.TakeChanges().Admission.Withdrawn);
+        Assert.False(host.Approve(id));
+    }
+
+    [Fact]
+    public void A_trusted_device_joins_without_asking()
+    {
+        var host = Host(approve: true, Fingerprint("민수"));
+        var a = Join(host, "민수", At(2));
+        Assert.Equal("참가 중 (2/4)", a.Status);
+        Assert.Empty(host.TakeChanges().Admission.Asked);
+    }
+
+    [Fact]
+    public void Approval_off_lets_anyone_in_without_trusting()
+    {
+        var host = Host();
+        Assert.Equal("참가 중 (2/4)", Join(host, "민수", At(2)).Status);
+        var changes = host.TakeChanges().Admission;
+        Assert.Empty(changes.Asked);
+        Assert.Empty(changes.Trusted);
+    }
+
+    /// <summary>A token holder can put a trusted device's public key in its Hello, but can't sign for it: dropped.</summary>
+    [Fact]
+    public void A_token_holder_cannot_claim_a_trusted_device()
+    {
+        var host = Host(approve: true, Fingerprint("민수"));
+        var rogue = Rogue(host, At(66));
+        var hello = SignedHello(host, rogue.Crypto, "말로리");
+        DeviceOf("민수").PublicKey.CopyTo(hello, hello.Length - DeviceIdentity.KeySize - DeviceIdentity.SignatureSize);
+        Send(rogue, MessageType.Hello, hello, rogue.Crypto.Group);
+        Deliver();
+
+        Assert.DoesNotContain(_delivered, p => p.From.Equals(HostAt) && p.To.Equals(At(66)));
+        Assert.Empty(host.TakeChanges().Admission.Asked);
+    }
+
+    /// <summary>A trusted device's Hello copied by someone else (re-sealed under the group key) is welcomed, but the
+    /// pair key needs the device's session private key, so it is never confirmed, and the real member stays.</summary>
+    [Fact]
+    public void A_copied_trusted_hello_is_never_confirmed_and_does_not_replace_the_member()
+    {
+        var host = Host(approve: true, Fingerprint("민수"));
+        Join(host, "민수", At(2));
+        var packet = _delivered.First(p => p.From.Equals(At(2)) && p.Data[0] == (byte)MessageType.Hello);
+        var rogue = Rogue(host, At(66));
+        Assert.True(rogue.Crypto.Group.TryOpen(packet.Data, out _, out _, out var body));
+        Send(rogue, MessageType.Hello, body, rogue.Crypto.Group);
+        Wait(PartySession.JoinTimeout + Step);
+
+        Assert.Equal("민수", Names(host));
+        Assert.Equal("호스트 중 (2/4)", host.Status);
+    }
+
+    [Fact]
+    public void Pending_requests_are_held_to_two_per_address()
+    {
+        var host = Host(approve: true);
+        for (int i = 0; i < 5; i++)
+        {
+            var crypto = TokenHolder(host);
+            _wire.Enqueue((crypto.Seal(crypto.Group, (byte)MessageType.Hello, SignedHello(host, crypto, $"x{i}")), At(66, 50000 + i), HostAt));
+        }
+        Deliver();
+        Assert.Equal(2, host.TakeChanges().Admission.Asked.Count);
+    }
+
+    /// <summary>The same device joining again (after a drop) takes its old place and name instead of adding a second.</summary>
+    [Fact]
+    public void A_rejoining_device_replaces_its_stale_member()
+    {
+        var host = Host();
+        Join(host, "지현", At(3));
+        var a = Join(host, "민수", At(2));
+        Silence(At(2), a);
+
+        var back = Start(host, "민수", At(2, 40001), rejoin: true);
+        Deliver();
+        Assert.Equal("참가 중 (3/4)", back.Status);
+        Assert.Equal("민수,지현", Names(host));
+    }
+
+    /// <summary>In a full party, a member's rejoin arrives before the host has dropped its old entry: not "full".</summary>
+    [Fact]
+    public void A_rejoin_into_a_full_party_is_not_refused_as_full()
+    {
+        var host = Host();
+        Join(host, "지현", At(3));
+        Join(host, "철수", At(4));
+        var a = Join(host, "민수", At(2));
+        Assert.Equal("호스트 중 (4/4)", host.Status);
+        Silence(At(2), a);
+
+        var back = Start(host, "민수", At(2, 40001), rejoin: true);
+        Deliver();
+        Assert.Equal("참가 중 (4/4)", back.Status);
+    }
+
+    /// <summary>A settings refresh during the session (SetAdmission with the saved list) keeps what the host decided in
+    /// it: a device approved here stays trusted, a kicked one stays untrusted.</summary>
+    [Fact]
+    public void A_settings_refresh_keeps_this_sessions_approvals_and_kicks()
+    {
+        var host = Host(approve: true);
+        Start(host, "지현", At(3));
+        Deliver();
+        Approve(host);
+        var a = Start(host, "민수", At(2));
+        Deliver();
+        Approve(host);
+        host.SetAdmission(true, []);   // the saved list hasn't caught up yet
+        a.Leave();
+        Deliver();
+        Join(host, "민수", At(2, 40001));
+        Assert.Empty(host.TakeChanges().Admission.Asked);
+
+        host.Kick("민수");
+        Deliver();
+        host.Unblock(Fingerprint("민수"));
+        host.SetAdmission(true, [Fingerprint("민수")]);   // still listed: the untrust hasn't reached the settings yet
+        Start(host, "민수", At(2, 40002));
+        Deliver();
+        Assert.Single(host.TakeChanges().Admission.Asked);
+    }
+
+    [Fact]
+    public void Only_losing_the_host_allows_a_rejoin()
+    {
+        var host = Host();
+        var a = Join(host, "민수", At(2));
+        var b = Join(host, "지현", At(3));
+        var c = Join(host, "철수", At(4));
+        Silence(HostAt, host);
+        Wait(PartySession.DropAfter + Step);
+        Assert.True(a.CanRejoin);
+
+        var host2 = Host();
+        var d = Join(host2, "민수", At(5));
+        var e = Join(host2, "지현", At(6));
+        var f = Join(host2, "철수", At(7));
+        host2.Kick("민수");
+        e.Leave();
+        Deliver();
+        host2.Leave();
+        Deliver();
+        Assert.False(d.CanRejoin);   // kicked
+        Assert.False(e.CanRejoin);   // left
+        Assert.False(f.CanRejoin);   // host ended it
+        var old = Start(Host(), "영희", At(8), new Version(1, 0, 6));
+        Deliver();
+        Assert.True(old.Ended);
+        Assert.False(old.CanRejoin);   // another version
+    }
+
+    [Fact]
+    public void A_rejoin_keeps_trying_for_60s_then_gives_up()
+    {
+        var host = Host();
+        var token = host.Token!;
+        Silence(HostAt, host);
+        var a = Start(token, "민수", At(2), rejoin: true);
+
+        Assert.Equal("다시 연결 중…", a.Status);
+        Wait(PartySession.RejoinFor - TimeSpan.FromSeconds(1));
+        Assert.False(a.Ended);
+        Wait(TimeSpan.FromSeconds(2));
+        Assert.True(a.Ended);
+        Assert.Equal("호스트와 연결이 끊겼습니다.", a.TakeChanges().Notice);
+        Assert.False(a.CanRejoin);
+    }
+
+    [Fact]
+    public void Refusals_are_reported_once_per_joiner_per_reason_per_minute()
+    {
+        var host = Host();
+        Start(host, "영희", At(2), new Version(1, 0, 6));
+        Deliver();
+        Start(host, "영희", At(2, 40001), new Version(1, 0, 6));
+        Deliver();
+        var refused = host.TakeChanges().Admission.Refused.Single();
+        Assert.Contains("영희", refused);
+        Assert.Contains("v1.0.6", refused);
+
+        Wait(TimeSpan.FromSeconds(61));
+        Start(host, "영희", At(2, 40002), new Version(1, 0, 6));
+        Deliver();
+        Assert.Single(host.TakeChanges().Admission.Refused);
+    }
+
+    [Fact]
+    public void A_pending_from_anyone_but_the_tokens_host_is_ignored()
+    {
+        var host = Host(approve: true);
+        var rogue = Rogue(host, At(66));
+        Silence(HostAt, host);
+        var a = Start(host, "민수", At(2));
+        _wire.Enqueue((rogue.Crypto.Seal(rogue.Crypto.Group, (byte)MessageType.Pending, []), rogue.At, At(2)));
+        Deliver();
+
+        Assert.Equal("연결 중…", a.Status);
+        Wait(PartySession.JoinTimeout + Step);
+        Assert.True(a.Ended);
     }
 
     // ── Hostile or late packets ───────────────────────────────────────────────────────
@@ -519,17 +855,20 @@ public sealed class PartySessionTests : IDisposable
 
     static readonly Version App = new(1, 0, 7);
 
-    PartySession Host()
+    PartySession Host(bool approve = false, params string[] trusted)
     {
-        var s = PartySession.Host(HostAt, "호스트", _now, SendFrom(HostAt), App);
+        var s = PartySession.Host(HostAt, "호스트", _now, SendFrom(HostAt), App, approve, trusted);
         Listen(HostAt, s);
         return s;
     }
 
     /// <summary>Sends the Hello; nothing is delivered yet.</summary>
-    PartySession Start(PartySession host, string name, IPEndPoint at, Version? app = null)
+    PartySession Start(PartySession host, string name, IPEndPoint at, Version? app = null, bool rejoin = false) =>
+        Start(host.Token!, name, at, app, rejoin);
+
+    PartySession Start(string token, string name, IPEndPoint at, Version? app = null, bool rejoin = false)
     {
-        var s = PartySession.Join(host.Token!, name, _now, SendFrom(at), app ?? App)!;
+        var s = PartySession.Join(token, name, _now, SendFrom(at), app ?? App, DeviceOf(name), rejoin)!;
         Listen(at, s);
         return s;
     }
@@ -539,6 +878,24 @@ public sealed class PartySessionTests : IDisposable
         var s = Start(host, name, at);
         Deliver();
         return s;
+    }
+
+    /// <summary>Each name is one device, so joining again under a name is the same device.</summary>
+    DeviceIdentity DeviceOf(string name)
+    {
+        if (!_devices.TryGetValue(name, out var d)) _owned.Add(_devices[name] = d = DeviceIdentity.Create());
+        return d;
+    }
+    readonly Dictionary<string, DeviceIdentity> _devices = [];
+
+    string Fingerprint(string name) => DeviceIdentity.Fingerprint(DeviceOf(name).PublicKey);
+
+    /// <summary>A Hello as the real client signs it, for <paramref name="crypto"/>'s session key, as device <paramref name="device"/>.</summary>
+    byte[] SignedHello(PartySession host, SessionCrypto crypto, string name, string? device = null)
+    {
+        Assert.True(SessionCrypto.TryParseToken(host.Token!, out _, out var secret, out var pin));
+        CryptographicOperations.ZeroMemory(secret);
+        return Protocol.Hello(name, crypto.PublicKey, App, DeviceOf(device ?? name), pin, crypto.SenderId);
     }
 
     void Listen(IPEndPoint at, PartySession s)
@@ -613,7 +970,7 @@ public sealed class PartySessionTests : IDisposable
     RogueClient JoinRogue(PartySession host, IPEndPoint at)
     {
         var r = Rogue(host, at);
-        Send(r, MessageType.Hello, Protocol.Hello("말로리", r.Crypto.PublicKey, App), r.Crypto.Group);
+        Send(r, MessageType.Hello, SignedHello(host, r.Crypto, "말로리"), r.Crypto.Group);
         Deliver();
         Assert.True(Protocol.TryReadWelcome(r.Got.Single(g => g.Type == MessageType.Welcome).Body, out var hostKey, out r.Cookie));
         r.Pair = r.Crypto.Pair(hostKey, r.Cookie)!;

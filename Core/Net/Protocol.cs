@@ -4,7 +4,11 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Core.Net;
 
 /// <summary>Packet type byte (the first header byte, authenticated as AAD). 5 was Gauge (protocol 1).</summary>
-public enum MessageType : byte { Hello = 1, Welcome, Refuse, State, Heartbeat = 6, Bye, Roster, Look, LookAck }
+public enum MessageType : byte { Hello = 1, Welcome, Refuse, State, Heartbeat = 6, Bye, Roster, Look, LookAck, Pending }
+
+/// <summary>A joiner's Hello as read. <see cref="App"/> is 0.0.0 and <see cref="DeviceKey"/> and <see cref="Signature"/>
+/// are empty when an older Hello doesn't carry them.</summary>
+public sealed record HelloBody(byte Version, string Name, byte[] SessionKey, System.Version App, byte[] DeviceKey, byte[] Signature);
 
 /// <summary>Party message bodies (plaintext inside <see cref="SessionCrypto"/> packets). Little-endian, compact.
 /// State starts with the 8-byte id of the member it describes. The host relays a peer's State by re-encoding
@@ -19,31 +23,38 @@ public static class Protocol
     /// the gold frame (0x20) and whether the slot is a stack skill (0x10) travel in the phase byte. 7: Colors and
     /// ColorsAck (a member's own box colours, for 파티원 설정 따르기). 8: they became Look and LookAck, which add the box
     /// size and free layout (파티원 크기 받기, 파티원 배치 받기). 9: the Hello ends with the joiner's app version (major,
-    /// minor, patch), and the host refuses any other (<see cref="Membership.AppRefusal"/>).</summary>
-    public const byte Version = 9;
+    /// minor, patch), and the host refuses any other (<see cref="Membership.AppRefusal"/>). 10: the Hello adds the
+    /// joiner's device key and its signature (<see cref="DeviceIdentity"/>), and Pending says the host is deciding.</summary>
+    public const byte Version = 10;
     const int Estimated = 0x80, Stacked = 0x40, Gold = 0x20, StackSkill = 0x10, PhaseBits = 0x0F;
     const int MaxName = 16;
 
     // ── Hello / Welcome / Refuse / Roster / Heartbeat ───────────────────────────────────
 
-    public static byte[] Hello(string name, byte[] publicKey, System.Version app) => Write(w =>
+    /// <summary><c>[1B version][name][64B session key][3B app version][64B device key][64B signature]</c>; the signature
+    /// is <paramref name="device"/>'s over the packet's <paramref name="sender"/> id, the session key and the token's host
+    /// <paramref name="pin"/>.</summary>
+    public static byte[] Hello(string name, byte[] sessionKey, System.Version app, DeviceIdentity device, byte[] pin, ulong sender) => Write(w =>
     {
-        w.Write(Version); w.Write(Clip(name)); w.Write(publicKey);
+        w.Write(Version); w.Write(Clip(name)); w.Write(sessionKey);
         w.Write((byte)app.Major); w.Write((byte)app.Minor); w.Write((byte)Math.Max(app.Build, 0));
+        w.Write(device.PublicKey); w.Write(device.Sign(sender, sessionKey, pin));
     });
 
-    /// <summary>True once the version and name are read, so another version can still be refused by name;
-    /// <paramref name="publicKey"/> and <paramref name="app"/> (the joiner's app version, 0.0.0 if missing) are whatever
-    /// follows (the caller checks them).</summary>
-    public static bool TryReadHello(byte[] body, out byte version, out string name, out byte[] publicKey, out System.Version app)
+    /// <summary>True once the version and name are read, so another version can still be refused by name; whatever
+    /// follows is taken as far as it goes (the caller checks it).</summary>
+    public static bool TryReadHello(byte[] body, out HelloBody hello)
     {
-        (byte v, string n, byte[] k, System.Version a) r = (0, "", [], new(0, 0, 0));
+        var h = new HelloBody(0, "", [], new(0, 0, 0), [], []);
         bool ok = Read(body, b =>
         {
-            (r.v, r.n, r.k) = (b.ReadByte(), Clip(b.ReadString()), b.ReadBytes(SessionCrypto.PublicKeySize));
-            if (b.BaseStream.Length - b.BaseStream.Position >= 3) r.a = new(b.ReadByte(), b.ReadByte(), b.ReadByte());
+            h = h with { Version = b.ReadByte(), Name = Clip(b.ReadString()), SessionKey = b.ReadBytes(SessionCrypto.PublicKeySize) };
+            long left() => b.BaseStream.Length - b.BaseStream.Position;
+            if (left() >= 3) h = h with { App = new(b.ReadByte(), b.ReadByte(), b.ReadByte()) };
+            if (left() >= DeviceIdentity.KeySize + DeviceIdentity.SignatureSize)
+                h = h with { DeviceKey = b.ReadBytes(DeviceIdentity.KeySize), Signature = b.ReadBytes(DeviceIdentity.SignatureSize) };
         });
-        (version, name, publicKey, app) = r;
+        hello = h;
         return ok;
     }
 

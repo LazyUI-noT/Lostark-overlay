@@ -394,10 +394,19 @@ public sealed class HotkeySettings
     }
 }
 
+/// <summary>A device the host let in (참가 요청 승인): its <c>DeviceIdentity.Fingerprint</c> and the name it last used.</summary>
+public sealed record TrustedDevice(string Device, string Name);
+
 public sealed class PartySettings
 {
     public string DisplayName { get; set; } = "";
     public int HostPort { get; set; } = 47800;
+
+    /// <summary>참가 요청 승인: while hosting, ask before letting in a device that isn't trusted.</summary>
+    public bool ApproveJoins { get; set; } = true;
+    /// <summary>신뢰한 기기: devices approved once, let in without asking from then on (removed by 내보내기 or 삭제).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public List<TrustedDevice> TrustedDevices { get; set; } = [];
     public Dictionary<SlotGroup, bool> Send { get; set; } = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => true);
     public bool SendGauge { get; set; } = true;
 

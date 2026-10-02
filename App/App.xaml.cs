@@ -327,8 +327,9 @@ public partial class App : Application
 
         var engine = new Engine();
         var foreground = new ForegroundWatcher();
-        var party = new PartyService();
-        _owned.AddRange([party, foreground, engine]);
+        var device = DeviceKeyFile.Load(DeviceKeyFile.DefaultPath);
+        var party = new PartyService(device);
+        _owned.AddRange([party, device, foreground, engine]);
         _gameForeground = foreground.IsGameForeground;
         engine.GameForeground = _gameForeground;   // calibration pictures and 스킬바 맞추기 only while the game is in front
 
@@ -672,6 +673,7 @@ public partial class App : Application
         _settingsWindow.CopyTokenRequested += CopyTokenWithNotice;
         _settingsWindow.LookUpdateRequested += () => party.PublishLook(MyLook());
         _settingsWindow.KickRequested += name => _tray.Notify(party.Kick(name) ? $"{name}님을 내보냈습니다." : $"{name}님을 내보내지 못했습니다.");
+        WireAdmission(party, settings, () => Save(now: false));
 
         // Saving: debounced edits are flushed by a light timer; everything is flushed on exit.
         new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,

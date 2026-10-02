@@ -81,6 +81,17 @@ public partial class SettingsWindow : Window
         FillParty();
     }
 
+    /// <summary>Host: devices kicked this session (차단한 기기), each with 다시 허용.</summary>
+    public void SetPartyBlocked(IReadOnlyList<(string Device, string Name)> blocked)
+    {
+        _partyBlocked = blocked;
+        FillConnect();
+    }
+    IReadOnlyList<(string Device, string Name)> _partyBlocked = [];
+
+    /// <summary>다시 허용 was pressed for this device.</summary>
+    public event Action<string>? UnblockRequested;
+
     /// <summary>Shows the last fit result in 캐릭터·인식 → 스킬바 ("맞춤 완료: …" or the error).</summary>
     public void SetFitResult(string text)
     {

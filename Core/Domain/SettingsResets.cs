@@ -42,7 +42,9 @@ public static class SettingsResets
     public static void Party(Settings s)
     {
         var old = s.Party;
-        var p = s.Party = new() { DisplayName = old.DisplayName, Together = old.Together, Left = old.Left, Top = old.Top, PlateColor = old.PlateColor };
+        // 신뢰한 기기 is who may come in, not how the party looks: it stays (삭제 or 내보내기 removes a device).
+        var p = s.Party = new() { DisplayName = old.DisplayName, Together = old.Together, Left = old.Left, Top = old.Top, PlateColor = old.PlateColor,
+            TrustedDevices = old.TrustedDevices };
         for (int i = 0; i < Math.Min(old.ShowOthersBySlot.Count, p.ShowOthersBySlot.Count); i++)
             (p.ShowOthersBySlot[i].Left, p.ShowOthersBySlot[i].Top) = (old.ShowOthersBySlot[i].Left, old.ShowOthersBySlot[i].Top);
     }

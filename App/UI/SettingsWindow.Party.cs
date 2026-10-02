@@ -22,7 +22,7 @@ public partial class SettingsWindow
         var party = _s.Party;
         var p = Refill(_secConnect, "세션", "호스트 1명과 최대 3명이 참가할 수 있고, 토큰으로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
         bool inSession = _partyStatus is not null;
-        bool connecting = _partyStatus is "연결 중…";
+        bool connecting = _partyStatus is "연결 중…" or "승인 기다리는 중…" or "다시 연결 중…";
         p.Children.Add(Row("상태", Label(_partyStatus ?? "연결 안 됨")));
         var port = new TextBox { Text = party.HostPort.ToString(), Width = 90, IsEnabled = !inSession };
         var portWarn = new TextBlock { Text = "포트는 1–65535 사이의 숫자여야 합니다", Visibility = Visibility.Collapsed };
@@ -56,6 +56,8 @@ public partial class SettingsWindow
         }
         if (_partyNotice is { } notice) p.Children.Add(new TextBlock { Text = notice, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 8) });
 
+        AdmissionRows(p);
+
         p.Children.Add(Heading("내 정보"));
         var name = new TextBox { Text = PlayerName.Clip(party.DisplayName), Width = 180 };
         // Saved cut to the limit as typed; the box itself is cut only on leaving it, since rewriting its text during
@@ -65,6 +67,34 @@ public partial class SettingsWindow
         p.Children.Add(Row(Described("표시 이름", "한글 7자, 영문 14자까지. 파티원 화면에서 클래스 아이콘 아래에 보입니다."), name));
         p.Children.Add(ResetButton("파티 설정 되돌리기", "파티의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
             () => SettingsResets.Party(_s)));
+    }
+
+    /// <summary>참가 요청 승인, 신뢰한 기기 (삭제), and while hosting, 차단한 기기 (다시 허용).</summary>
+    void AdmissionRows(Panel p)
+    {
+        var party = _s.Party;
+        p.Children.Add(Heading("참가 요청"));
+        p.Children.Add(Check("참가 요청 승인", party.ApproveJoins, v => party.ApproveJoins = v, Changed));
+        p.Children.Add(Note("켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
+        if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰한 기기", Label("없음", 0.7)));
+        foreach (var trusted in party.TrustedDevices.ToList())
+        {
+            var remove = new Button { Content = "삭제", ToolTip = "이 기기가 다음에 참가할 때 다시 묻습니다." };
+            remove.Click += (_, _) =>
+            {
+                party.TrustedDevices.RemoveAll(t => t.Device == trusted.Device);
+                Changed();
+                Dispatcher.BeginInvoke(FillConnect);
+            };
+            p.Children.Add(Row("신뢰한 기기", Label($"{trusted.Name} ({trusted.Device[..8]})"), remove));
+        }
+        if (!_isHost) return;
+        foreach (var (device, name) in _partyBlocked)
+        {
+            var allow = new Button { Content = "다시 허용", ToolTip = "이 세션에 다시 참가할 수 있게 합니다." };
+            allow.Click += (_, _) => UnblockRequested?.Invoke(device);
+            p.Children.Add(Row("내보낸 기기", Label($"{name} ({device[..8]})"), allow));
+        }
     }
 
     /// <summary>파티원 모양: the class picked's 파티원 boxes, then what every member shows beside them.</summary>
@@ -107,7 +137,7 @@ public partial class SettingsWindow
             var cells = new List<UIElement> { Label(who ?? "(비어 있음)", 0.7) };
             if (_isHost && who is not null)
             {
-                var kick = new Button { Content = "내보내기", ToolTip = "이 파티원을 파티에서 내보냅니다. 같은 토큰으로 다시 참가할 수 있습니다." };
+                var kick = new Button { Content = "내보내기", ToolTip = "이 파티원을 내보냅니다. 이 세션에는 다시 참가할 수 없고(연결 → 다시 허용으로 풀 수 있음), 신뢰한 기기에서도 빠집니다." };
                 kick.Click += (_, _) => KickRequested?.Invoke(who);
                 cells.Add(kick);
             }

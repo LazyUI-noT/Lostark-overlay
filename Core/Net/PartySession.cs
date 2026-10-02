@@ -13,12 +13,12 @@ namespace GaugeOverlay.Core.Net;
 /// cookie that goes into the pair key → the joiner's first State or Heartbeat under its pair key, from the Hello's
 /// endpoint, confirms it. A member's packets are accepted only from that endpoint for the rest of the session. Until then the
 /// host sends exactly one reply per Hello and nothing else (no amplification), doesn't show the joiner, and doesn't
-/// count it toward <see cref="Membership.MaxMembers"/>.</para></summary>
-public sealed class PartySession : IDisposable
+/// count it toward <see cref="Membership.MaxMembers"/>. Who gets in (참가 요청 승인, 신뢰한 기기, 내보내기): PartySession.Admission.cs.</para></summary>
+public sealed partial class PartySession : IDisposable
 {
     public static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(2), DropAfter = TimeSpan.FromSeconds(6),
         HelloEvery = TimeSpan.FromMilliseconds(500), JoinTimeout = TimeSpan.FromSeconds(3), MinSendGap = TimeSpan.FromMilliseconds(50),
-        LookEvery = TimeSpan.FromSeconds(1);
+        LookEvery = TimeSpan.FromSeconds(1), ApprovalWait = TimeSpan.FromSeconds(30), RejoinFor = TimeSpan.FromSeconds(60);
 
     /// <summary>Joins in progress the host keeps, in all and per source address (two people behind one router can join
     /// at once). Further Hellos are ignored, so a token holder flooding them can't keep others out.</summary>
@@ -42,6 +42,10 @@ public sealed class PartySession : IDisposable
         /// <summary>Whose look (origin ids) were sent to this member and not yet acknowledged; resent until they are.</summary>
         public readonly HashSet<ulong> LookOwed = [];
         public TimeSpan LastLookIn = TimeSpan.MinValue;   // host only: when this member's last update was taken
+        /// <summary>Host only: the member's device (fingerprint) and, while joining, whether it may come in.</summary>
+        public string Device = "";
+        public Approval Ask;
+        public TimeSpan AskedAt;
     }
 
     readonly SessionCrypto _crypto;
@@ -50,6 +54,10 @@ public sealed class PartySession : IDisposable
     readonly Version _app;   // this app's version: sent in a Hello (peer), required of joiners (host)
     readonly IPEndPoint? _hostEndpoint;   // peer only
     readonly byte[] _hostPin = [];        // peer only
+    readonly DeviceIdentity? _device;     // peer only: signs the Hello (not owned)
+    readonly bool _rejoin;                // peer only: started after losing the host (RejoinFor, "다시 연결 중…")
+    TimeSpan? _pendingSince;              // peer only: the host is deciding (first Pending)
+    TimeSpan _lastNow;                    // the time of the last Tick or Receive, for calls made without one (Decline)
     readonly string? _token;              // host only
     readonly List<Member> _members = [];   // everyone in the session, self included, in join order
     readonly HashSet<ulong> _admitted = [];   // host only: every id admitted, departed and unconfirmed too
@@ -80,26 +88,35 @@ public sealed class PartySession : IDisposable
         _token = SessionCrypto.EncodeToken(publicEndpoint, crypto.Secret, SessionCrypto.Pin(crypto.PublicKey));
     }
 
-    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app, IPEndPoint host, byte[] hostPin)
+    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app, IPEndPoint host, byte[] hostPin,
+        DeviceIdentity device, bool rejoin)
         : this(crypto, name, now, send, app)
     {
-        (_hostEndpoint, _hostPin) = (host, hostPin);
+        (_hostEndpoint, _hostPin, _device, _rejoin) = (host, hostPin, device, rejoin);
     }
 
     /// <summary>Starts a new session with a fresh secret; <see cref="Token"/> carries <paramref name="publicEndpoint"/> (IPv4).
-    /// Only joiners on app version <paramref name="app"/> are let in.</summary>
-    public static PartySession Host(IPEndPoint publicEndpoint, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app) =>
-        new(SessionCrypto.CreateNew(), name, now, send, app, publicEndpoint);
+    /// Only joiners on app version <paramref name="app"/> are let in; with <paramref name="approveJoins"/>, a device not in
+    /// <paramref name="trusted"/> (fingerprints) waits for <see cref="Approve"/>.</summary>
+    public static PartySession Host(IPEndPoint publicEndpoint, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app,
+        bool approveJoins = false, IEnumerable<string>? trusted = null)
+    {
+        var s = new PartySession(SessionCrypto.CreateNew(), name, now, send, app, publicEndpoint);
+        s.SetAdmission(approveJoins, trusted ?? []);
+        return s;
+    }
 
-    /// <summary>Joins the session in <paramref name="token"/> (sends the first Hello, with app version <paramref name="app"/>);
-    /// null if the token isn't valid.</summary>
-    public static PartySession? Join(string token, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app)
+    /// <summary>Joins the session in <paramref name="token"/> (sends the first Hello, with app version <paramref name="app"/>,
+    /// signed by <paramref name="device"/>); null if the token isn't valid. A <paramref name="rejoin"/> (after losing the
+    /// host) keeps trying for <see cref="RejoinFor"/> instead of <see cref="JoinTimeout"/>.</summary>
+    public static PartySession? Join(string token, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app,
+        DeviceIdentity device, bool rejoin = false)
     {
         if (!SessionCrypto.TryParseToken(token, out var host, out var secret, out var pin)) return null;
         SessionCrypto crypto;
         try { crypto = new SessionCrypto(secret); }
         finally { CryptographicOperations.ZeroMemory(secret); }
-        var session = new PartySession(crypto, name, now, send, app, host, pin);
+        var session = new PartySession(crypto, name, now, send, app, host, pin, device, rejoin);
         session.SendHello(now);
         return session;
     }
@@ -119,7 +136,11 @@ public sealed class PartySession : IDisposable
     /// <summary>The session is over (left, refused, timed out or host lost); <see cref="TakeChanges"/> says why.</summary>
     public bool Ended { get; private set; }
 
-    /// <summary>"호스트 중 (3/4)", "참가 중 (2/4)", "연결 중…", or null once ended.</summary>
+    /// <summary>Peer: the session ended only because the host went silent, so joining again with the same token may work
+    /// (not after the host ended it, a kick, a refusal or <see cref="Leave"/>).</summary>
+    public bool CanRejoin { get; private set; }
+
+    /// <summary>"호스트 중 (3/4)", "참가 중 (2/4)", "연결 중…", "승인 기다리는 중…", "다시 연결 중…", or null once ended.</summary>
     public string? Status
     {
         get
@@ -128,6 +149,8 @@ public sealed class PartySession : IDisposable
             return Ended ? null
                 : _isHost ? $"호스트 중 ({n}/{Membership.MaxMembers})"
                 : _welcomed ? $"참가 중 ({n}/{Membership.MaxMembers})"
+                : _pendingSince is not null ? "승인 기다리는 중…"
+                : _rejoin ? "다시 연결 중…"
                 : "연결 중…";
         }
     }
@@ -135,11 +158,10 @@ public sealed class PartySession : IDisposable
     /// <summary>Other members as the overlay draws them.</summary>
     public IReadOnlyList<Player> Peers(TimeSpan now) => [.. Others().Select(m => new Player(m.Name, m.State ?? Snapshot.Empty(now), m.Look))];
 
-    /// <summary>What changed since the last call: <see cref="Peers"/>, <see cref="Status"/>, and a one-off message for
-    /// the user (refused, host lost…).</summary>
-    public (bool Peers, bool Status, string? Notice) TakeChanges()
+    /// <summary>What changed since the last call.</summary>
+    public PartyChanges TakeChanges()
     {
-        var changes = (_peersDirty, _statusDirty, _notice);
+        var changes = new PartyChanges(_peersDirty, _statusDirty, _notice, TakeAdmission());
         (_peersDirty, _statusDirty, _notice) = (false, false, null);
         return changes;
     }
@@ -172,11 +194,12 @@ public sealed class PartySession : IDisposable
     public const string Kicked = "호스트가 파티에서 내보냈습니다.";
 
     /// <summary>Host: 내보내기. Tells the member named <paramref name="name"/> and drops it; the others get the roster
-    /// without it (which also ends the member's session if the notice is lost). It may join again with the token.
-    /// False when not the host or nobody else has that name.</summary>
+    /// without it (which also ends the member's session if the notice is lost). Its device can't join again this session
+    /// (until <see cref="Unblock"/>) and is no longer trusted. False when not the host or nobody else has that name.</summary>
     public bool Kick(string name)
     {
         if (Ended || !_isHost || Others().FirstOrDefault(m => m.Name == name) is not { } m) return false;
+        Block(m);
         Send(m, MessageType.Refuse, Protocol.Refuse(Kicked));
         // Also the roster without it, which ends its session if the notice is lost; with both lost, its host timeout does.
         Send(m, MessageType.Roster, Protocol.Roster([.. _members.Where(x => x.Confirmed && x != m).Select(x => (x.Id, x.Name))]));
@@ -196,9 +219,13 @@ public sealed class PartySession : IDisposable
     public void Tick(TimeSpan now)
     {
         if (Ended) return;
+        _lastNow = now;
         if (!Welcomed)
         {
-            if (now - _joinStarted > JoinTimeout) End("호스트에 연결하지 못했습니다. 토큰이 맞는지, 호스트가 포트를 열었는지, 같은 버전인지 확인해 주세요.");
+            if (_pendingSince is { } asked ? now - asked > ApprovalWait : now - _joinStarted > (_rejoin ? RejoinFor : JoinTimeout))
+                End(_pendingSince is not null ? "호스트가 응답하지 않았습니다."
+                    : _rejoin ? HostLost
+                    : "호스트에 연결하지 못했습니다. 토큰이 맞는지, 호스트가 포트를 열었는지, 같은 버전인지 확인해 주세요.");
             else if (now - _lastHello >= HelloEvery) SendHello(now);
             return;
         }
@@ -215,7 +242,8 @@ public sealed class PartySession : IDisposable
         }
         if (_isHost)
         {
-            foreach (var m in _members.Where(m => m.Id != Id && now - m.LastHeard > (m.Confirmed ? DropAfter : JoinTimeout)).ToList())
+            foreach (var m in _members.Where(m => m.Id != Id && (now - m.LastHeard > (m.Confirmed ? DropAfter : JoinTimeout)
+                || m.Ask == Approval.Asking && now - m.AskedAt > ApprovalWait + JoinTimeout)).ToList())
             {
                 Remove(m);
                 if (Ended) return;
@@ -224,7 +252,8 @@ public sealed class PartySession : IDisposable
         }
         else if (now - HostMember.LastHeard > DropAfter)
         {
-            End("호스트와 연결이 끊겼습니다.");
+            End(HostLost);
+            CanRejoin = true;
             return;
         }
         if (now - _lastLookSent >= HelloEvery) ResendLook(now);
@@ -236,6 +265,7 @@ public sealed class PartySession : IDisposable
     public void Receive(byte[] data, IPEndPoint from, TimeSpan now)
     {
         if (Ended || !SessionCrypto.TryPeek(data, out var type, out var sender)) return;
+        _lastNow = now;
         if (_isHost) OnHostPacket((MessageType)type, sender, data, from, now);
         else OnPeerPacket((MessageType)type, sender, data, from, now);
     }
@@ -245,8 +275,8 @@ public sealed class PartySession : IDisposable
         var m = _members.Find(x => x.Id == sender);
         if (type == MessageType.Hello)
         {
-            if (_crypto.Group.TryOpen(data, out _, out _, out var hello) && Protocol.TryReadHello(hello, out var version, out var name, out var key, out var app))
-                OnHello(m, sender, version, name, key, app, from, now);
+            if (_crypto.Group.TryOpen(data, out _, out _, out var helloBody) && Protocol.TryReadHello(helloBody, out var hello))
+                OnHello(m, sender, hello, from, now);
             return;
         }
         // Only this member's pair key opens its packets: another token holder can't speak for it. And only from the
@@ -292,58 +322,6 @@ public sealed class PartySession : IDisposable
         }
     }
 
-    /// <summary>Host: exactly one reply (Welcome or Refuse) per Hello, or none; everything else waits for Confirm.</summary>
-    void OnHello(Member? m, ulong sender, byte version, string name, byte[] key, Version app, IPEndPoint from, TimeSpan now)
-    {
-        if (m is not null)
-        {
-            if (!m.Confirmed && from.Equals(m.Endpoint)) Welcome(m);   // a retry after a lost Welcome
-            return;
-        }
-        var pending = _members.Where(x => !x.Confirmed).ToList();
-        if (pending.Count >= MaxPending || pending.Count(x => x.Endpoint!.Address.Equals(from.Address)) >= MaxPendingPerAddress) return;
-        if ((Membership.Refusal([.. _members.Where(x => x.Confirmed).Select(x => x.Id)], sender, version, _admitted)
-             ?? Membership.AppRefusal(_app, app)) is { } reason)
-        {
-            _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Refuse, Protocol.Refuse(reason)), from);
-            return;
-        }
-        var cookie = RandomNumberGenerator.GetBytes(SessionCrypto.CookieSize);
-        if (_crypto.Pair(key, cookie) is not { } pair) return;
-        m = new Member(sender, UniqueName(name), from, pair, now, confirmed: false) { Cookie = cookie };
-        _members.Add(m);
-        _admitted.Add(sender);
-        Welcome(m);
-    }
-
-    void Welcome(Member m) => Send(m, MessageType.Welcome, Protocol.Welcome(_crypto.PublicKey, m.Cookie), _crypto.Group);
-
-    /// <summary>Host: the member proved its pair key from its Hello's endpoint; it now gets the roster, heartbeats
-    /// and everyone's State. False (and refused) if the party filled up while it was joining.</summary>
-    bool Confirm(Member m, TimeSpan now)
-    {
-        if (_members.Count(x => x.Confirmed) >= Membership.MaxMembers)
-        {
-            Send(m, MessageType.Refuse, Protocol.Refuse(Membership.Full));
-            Remove(m);
-            return false;
-        }
-        m.Confirmed = true;
-        _hadPeer = true;
-        _statusDirty = _peersDirty = true;
-        Broadcast(MessageType.Roster, RosterBody());
-        Send(m, MessageType.Heartbeat, Protocol.Heartbeat(now, reply: false));
-        foreach (var other in Others().Where(o => o != m)) SendRelayed(other, m, now);
-        foreach (var other in _members.Where(o => o != m && o.Confirmed && o.Look is not null))
-        {
-            m.LookOwed.Add(other.Id);
-            SendLook(m, other);
-        }
-        _stateDirty = _mine is not null;
-        Flush(now, force: true);
-        return true;
-    }
-
     void OnPeerPacket(MessageType type, ulong sender, byte[] data, IPEndPoint from, TimeSpan now)
     {
         if (!_welcomed)
@@ -353,6 +331,7 @@ public sealed class PartySession : IDisposable
             if (!from.Equals(_hostEndpoint) || !_crypto.Group.TryOpen(data, out _, out _, out var handshake)) return;
             if (type == MessageType.Welcome) OnWelcome(sender, handshake, now);
             else if (type == MessageType.Refuse) End(Protocol.ReadRefuse(handshake));
+            else if (type == MessageType.Pending && _pendingSince is null) (_pendingSince, _statusDirty) = (now, true);
             return;
         }
         var host = HostMember;
@@ -413,16 +392,20 @@ public sealed class PartySession : IDisposable
     Member HostMember => _members.First(m => m.Id == _hostId);
     Member Self => _members.First(m => m.Id == Id);
 
-    /// <summary>Host: drops a member (and its pair key, so nothing more is accepted from it).</summary>
-    void Remove(Member m)
+    /// <summary>Host: drops a member (and its pair key, so nothing more is accepted from it). <paramref name="replaced"/>:
+    /// the same device is coming back in its place, so an empty party doesn't end.</summary>
+    void Remove(Member m, bool replaced = false)
     {
         _members.Remove(m);
         m.Key?.Dispose();
+        if (m.Ask == Approval.Asking) _withdrawn.Add(m.Id);
         if (!m.Confirmed) return;   // nobody was told about it
         _statusDirty = _peersDirty = true;
-        if (_hadPeer && _members.Count(x => x.Confirmed) == 1) { End("파티원이 모두 나가서 파티를 끝냈습니다."); return; }
+        if (!replaced && _hadPeer && _members.Count(x => x.Confirmed) == 1) { End("파티원이 모두 나가서 파티를 끝냈습니다."); return; }
         Broadcast(MessageType.Roster, RosterBody());
     }
+
+    const string HostLost = "호스트와 연결이 끊겼습니다.";
 
     void End(string? notice)
     {
@@ -461,7 +444,7 @@ public sealed class PartySession : IDisposable
     void SendHello(TimeSpan now)
     {
         _lastHello = now;
-        _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Hello, Protocol.Hello(_myName, _crypto.PublicKey, _app)), _hostEndpoint!);
+        _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Hello, Protocol.Hello(_myName, _crypto.PublicKey, _app, _device!, _hostPin, Id)), _hostEndpoint!);
     }
 
     /// <summary>Host: relays a member's new State to the others, at most every <see cref="MinSendGap"/> per member, so a
@@ -530,11 +513,13 @@ public sealed class PartySession : IDisposable
 
     byte[] RosterBody() => Protocol.Roster([.. _members.Where(m => m.Confirmed).Select(m => (m.Id, m.Name))]);
 
-    string UniqueName(string name)
+    /// <summary>The name, numbered if someone else has it; a member on <paramref name="device"/> (about to be replaced by
+    /// this join) doesn't count.</summary>
+    string UniqueName(string name, string device)
     {
         name = string.IsNullOrWhiteSpace(name) ? $"파티원{_members.Count}" : name.Trim();
         var unique = name;
-        for (int i = 2; _members.Any(m => m.Name == unique); i++) unique = $"{name}{i}";
+        for (int i = 2; _members.Any(m => m.Name == unique && (device.Length == 0 || m.Device != device)); i++) unique = $"{name}{i}";
         return unique;
     }
 }

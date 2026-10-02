@@ -404,6 +404,25 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Join_approval_defaults_on_and_trusted_devices_round_trip_and_survive_a_party_reset()
+    {
+        var s = new Settings();
+        Assert.True(s.Party.ApproveJoins);
+        Assert.Empty(s.Party.TrustedDevices);
+        s.Party.ApproveJoins = false;
+        s.Party.TrustedDevices.Add(new TrustedDevice("00112233445566778899AABBCCDDEEFF", "민수"));
+        var store = new SettingsStore(FilePath);
+        store.Save(s);
+
+        var back = store.Load(out _);
+        Assert.False(back.Party.ApproveJoins);
+        Assert.Equal([new TrustedDevice("00112233445566778899AABBCCDDEEFF", "민수")], back.Party.TrustedDevices);
+        SettingsResets.Party(back);
+        Assert.True(back.Party.ApproveJoins);
+        Assert.Single(back.Party.TrustedDevices);
+    }
+
+    [Fact]
     public void Missing_properties_keep_defaults()
     {
         Directory.CreateDirectory(_dir);

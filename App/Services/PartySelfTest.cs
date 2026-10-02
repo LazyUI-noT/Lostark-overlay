@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Net;
 
 namespace GaugeOverlay.App.Services;
 
@@ -28,13 +29,17 @@ internal static class PartySelfTest
         public PartyService Service = null!;
         public volatile IReadOnlyList<Player> Peers = [];
         public readonly ConcurrentQueue<string> Notices = new();
+        public readonly ConcurrentQueue<AdmissionChanges> Admissions = new();
+        public readonly DeviceIdentity Device = DeviceIdentity.Create();
+        public string Fingerprint => DeviceIdentity.Fingerprint(Device.PublicKey);
         public TimeSpan EndsAt;   // of its fake 일반1 cooldown (one process, so one clock for every member)
 
         public void Attach()
         {
-            Service = new PartyService();
+            Service = new PartyService(Device);
             Service.PeersChanged += p => Peers = p;
             Service.Notice += Notices.Enqueue;
+            Service.Admission += Admissions.Enqueue;
         }
 
         public void Publish(int seconds)
@@ -124,14 +129,46 @@ internal static class PartySelfTest
             && host.Service.Status == "호스트 중 (3/4)" && peers[0].Service.Status == "참가 중 (3/4)", TimeSpan.FromSeconds(1));
         Result("leaving updates rosters", updated, $"{host.Service.Status}, {peers[0].Service.Status}");
 
-        // 내보내기: the kicked member's session ends with the notice; the same token lets them back in.
+        // 내보내기: the kicked member's session ends with the notice; the same token no longer lets that device in.
         bool kickedOk = host.Service.IsHost && !peers[0].Service.IsHost && host.Service.Kick("지현");
         bool kickedOut = kickedOk && await Wait(() => peers[1].Service.Status is null && host.Service.Status == "호스트 중 (2/4)"
             && host.Peers.All(p => p.Name != "지현"), TimeSpan.FromSeconds(1));
         Result("host kicks a member", kickedOut && peers[1].Notices.Any(t => t.Contains("내보냈")), string.Join(" | ", peers[1].Notices));
+        // Join completes when the session ends; its notice is raised just after, on the network thread.
+        bool refusedAgain = !await peers[1].Service.Join(token, peers[1].Name)
+            && await Wait(() => peers[1].Notices.Any(t => t.Contains("내보낸")), TimeSpan.FromSeconds(1));
+        bool listed = host.Service.Blocked.Any(b => b.Device == peers[1].Fingerprint);
+        bool told = await Wait(() => host.Admissions.Any(a => a.Refused.Any(r => r.Contains("지현"))), TimeSpan.FromSeconds(1));
+        Result("a kicked device is refused with the same token; the host is told", refusedAgain && listed && told,
+            $"refused {refusedAgain}, listed {listed}, told {told}");
+        host.Service.Unblock(peers[1].Fingerprint);
         bool rejoined = await peers[1].Service.Join(token, peers[1].Name)
             && await Wait(() => host.Service.Status == "호스트 중 (3/4)", TimeSpan.FromSeconds(1));
-        Result("a kicked member rejoins with the same token", rejoined, host.Service.Status ?? "");
+        Result("다시 허용 lets it back in", rejoined, host.Service.Status ?? "");
+
+        // 참가 요청 승인: an untrusted device waits for the host; once allowed it is trusted and rejoins without asking.
+        host.Service.SetAdmission(true, []);
+        var asking = peers[2].Service.Join(token, peers[2].Name);
+        bool asked = await Wait(() => host.Admissions.Any(a => a.Asked.Any(r => r.Name == "철수")), TimeSpan.FromSeconds(1))
+            && peers[2].Service.Status == "승인 기다리는 중…";
+        var request = host.Admissions.SelectMany(a => a.Asked).LastOrDefault(r => r.Name == "철수");
+        bool approved = asked && request is not null && host.Service.Approve(request.Id) && await asking
+            && host.Admissions.Any(a => a.Trusted.Any(t => t.Device == peers[2].Fingerprint));
+        Result("approval: asked, allowed, trusted", approved, peers[2].Service.Status ?? "");
+        peers[2].Service.Leave();
+        await Wait(() => host.Service.Status == "호스트 중 (3/4)", TimeSpan.FromSeconds(1));
+        host.Service.SetAdmission(true, [peers[2].Fingerprint]);
+        int askedBefore = host.Admissions.Sum(a => a.Asked.Count);
+        bool trustedBack = await peers[2].Service.Join(token, peers[2].Name) && host.Admissions.Sum(a => a.Asked.Count) == askedBefore;
+        Result("a trusted device joins without asking", trustedBack, peers[2].Service.Status ?? "");
+        peers[2].Service.Leave();
+        var declining = fifth.Service.Join(token, fifth.Name);
+        bool askedFifth = await Wait(() => host.Admissions.Any(a => a.Asked.Any(r => r.Name == "영희")), TimeSpan.FromSeconds(1));
+        var fifthRequest = host.Admissions.SelectMany(a => a.Asked).LastOrDefault(r => r.Name == "영희");
+        bool declined = askedFifth && fifthRequest is not null && host.Service.Decline(fifthRequest.Id) && !await declining
+            && await Wait(() => fifth.Notices.Any(t => t.Contains("거절")), TimeSpan.FromSeconds(1));
+        Result("approval: declined", declined, string.Join(" | ", fifth.Notices.TakeLast(1)));
+        host.Service.SetAdmission(false, []);
 
         // The handshake and a token holder's forged, flooded or replayed packets: Tests/PartySessionTests.
         host.Service.Leave();
@@ -160,7 +197,7 @@ internal static class PartySelfTest
         Result("concurrent Host + Join: Join refused, one clean session", clean && late.Service.Status is null,
             $"host {(hostedAfter ? "started" : "failed (no public IP)")}; {string.Join(" | ", late.Notices.TakeLast(2))}");
 
-        foreach (var n in everyone.Append(fifth).Append(late)) n.Service.Dispose();
+        foreach (var n in everyone.Append(fifth).Append(late)) { n.Service.Dispose(); n.Device.Dispose(); }
         log.Insert(0, all ? "ALL PASSED\n" : "SOME FAILED\n");
         return (all, log.ToString());
     }

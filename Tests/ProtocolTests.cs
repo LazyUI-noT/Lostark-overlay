@@ -142,11 +142,15 @@ public class ProtocolTests
     public void SmallMessagesRoundTrip()
     {
         byte[] key = [.. Enumerable.Range(1, SessionCrypto.PublicKeySize).Select(i => (byte)i)];
-        Assert.True(Protocol.TryReadHello(Protocol.Hello(new string('민', 20), key, new Version(1, 2, 3)), out var version, out var name, out var readKey, out var app));
-        Assert.Equal(Protocol.Version, version);
-        Assert.Equal(new Version(1, 2, 3), app);
-        Assert.Equal(16, name.Length);
-        Assert.Equal(key, readKey);
+        byte[] pin = [.. Enumerable.Range(7, SessionCrypto.PinSize).Select(i => (byte)i)];
+        using var device = DeviceIdentity.Create();
+        Assert.True(Protocol.TryReadHello(Protocol.Hello(new string('민', 20), key, new Version(1, 2, 3), device, pin, 42), out var hello));
+        Assert.Equal(Protocol.Version, hello.Version);
+        Assert.Equal(new Version(1, 2, 3), hello.App);
+        Assert.Equal(16, hello.Name.Length);
+        Assert.Equal(key, hello.SessionKey);
+        Assert.Equal(device.PublicKey, hello.DeviceKey);
+        Assert.True(DeviceIdentity.Verify(hello.DeviceKey, hello.Signature, 42, key, pin));
 
         byte[] cookie = [.. Enumerable.Range(100, SessionCrypto.CookieSize).Select(i => (byte)i)];
         Assert.True(Protocol.TryReadWelcome(Protocol.Welcome(key, cookie), out var hostKey, out var readCookie));
@@ -161,6 +165,19 @@ public class ProtocolTests
         Assert.Equal((T0, true), (stamp, reply));
 
         Assert.Equal("가득", Protocol.ReadRefuse(Protocol.Refuse("가득")));
+    }
+
+    /// <summary>An older Hello (no device key, maybe no app version) still reads its version and name, so the host can
+    /// refuse it by name.</summary>
+    [Fact]
+    public void An_older_hello_still_reads_version_and_name()
+    {
+        byte[] v9 = [9, 2, (byte)'m', (byte)'s', .. new byte[SessionCrypto.PublicKeySize], 1, 0, 8];
+        Assert.True(Protocol.TryReadHello(v9, out var hello));
+        Assert.Equal(((byte)9, "ms"), (hello.Version, hello.Name));
+        Assert.Equal(new Version(1, 0, 8), hello.App);
+        Assert.Empty(hello.DeviceKey);
+        Assert.Empty(hello.Signature);
     }
 
     [Fact]
