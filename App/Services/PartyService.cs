@@ -69,7 +69,7 @@ public sealed class PartyService : IDisposable
             catch (SocketException) { return Fail($"UDP 포트 {port}을(를) 열 수 없습니다. 다른 프로그램이 쓰고 있는지 확인해 주세요."); }
 
             Listen(udp);
-            Locked(() => Start(udp, PartySession.Host(new IPEndPoint(ip, port), name, Now, udp.Send)));
+            Locked(() => Start(udp, PartySession.Host(new IPEndPoint(ip, port), name, Now, udp.Send, Updater.Current)));
             return true;
         }
         finally { lock (_lock) _starting = false; }
@@ -91,7 +91,7 @@ public sealed class PartyService : IDisposable
             bool valid = false;
             Locked(() =>
             {
-                if (PartySession.Join(token, name, Now, udp.Send) is not { } session) return;
+                if (PartySession.Join(token, name, Now, udp.Send, Updater.Current) is not { } session) return;
                 valid = true;
                 Start(udp, session);
                 _joining = done;

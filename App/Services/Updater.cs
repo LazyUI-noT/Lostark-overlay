@@ -34,22 +34,22 @@ public sealed class Updater : IDisposable
     const bool LocalTest = false;
 #endif
 
-    /// <summary>The latest release if it's newer than this one; null for none, and for any failure (offline, a timeout,
-    /// 404 while the repo is private), which is never shown to the user.</summary>
-    public async Task<Release?> CheckAsync()
+    /// <summary>Whether the latest release could be read (false when offline, on a timeout, or a 404 while the repo is
+    /// private), and that release if it's newer than this one.</summary>
+    public async Task<(bool Checked, Release? Newer)> CheckAsync()
     {
         try
         {
             using var cts = new CancellationTokenSource(CheckTimeout);
             using var res = await _http.GetAsync(LatestUrl, cts.Token);
-            if (!res.IsSuccessStatusCode) return null;
+            if (!res.IsSuccessStatusCode) return (false, null);
             var release = UpdateCheck.Parse(await res.Content.ReadAsStringAsync(cts.Token), Prefix);
-            return release is not null && UpdateCheck.IsNewer(release.Version, Current) ? release : null;
+            return (true, release is not null && UpdateCheck.IsNewer(release.Version, Current) ? release : null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
             Trace.WriteLine($"[update] check failed: {ex.Message}");
-            return null;
+            return (false, null);
         }
     }
 

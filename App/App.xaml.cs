@@ -717,6 +717,15 @@ public partial class App : Application
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         };
+        _settingsWindow.CheckRequested += async () =>
+        {
+            try
+            {
+                var (ok, newer) = await updater.CheckAsync();
+                _settingsWindow.SetCheckResult(ok, newer);
+            }
+            catch (Exception ex) { Trace.WriteLine($"[update] check: {ex}"); _settingsWindow.SetCheckResult(false, null); }
+        };
         if (settings.Updates.Check) _ = CheckForUpdate();
         ShowWhatsNew();
 
@@ -737,7 +746,7 @@ public partial class App : Application
         {
             try
             {
-                if (await updater.CheckAsync() is not { } release) return;
+                if ((await updater.CheckAsync()).Newer is not { } release) return;
                 _settingsWindow.SetUpdate(release);
                 if (settings.Updates.Notified == release.Tag) return;   // told once per version
                 settings.Updates.Notified = release.Tag;

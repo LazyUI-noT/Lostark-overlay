@@ -47,6 +47,17 @@ public sealed class PartySessionTests : IDisposable
     }
 
     [Fact]
+    public void A_member_on_another_app_version_is_refused()
+    {
+        var host = Host();
+        var old = Start(host, "민수", At(2), new Version(1, 0, 6));
+        Deliver();
+        Assert.True(old.Ended);
+        Assert.Contains("내 버전 v1.0.6", old.TakeChanges().Notice);
+        Assert.Equal("호스트 중 (1/4)", host.Status);
+    }
+
+    [Fact]
     public void A_fifth_member_is_refused()
     {
         var host = Host();
@@ -172,7 +183,7 @@ public sealed class PartySessionTests : IDisposable
         for (int i = 0; i < 20; i++)
         {
             var crypto = TokenHolder(host);
-            _wire.Enqueue((crypto.Seal(crypto.Group, (byte)MessageType.Hello, Protocol.Hello("x", crypto.PublicKey)), At(66, 50000 + i), HostAt));
+            _wire.Enqueue((crypto.Seal(crypto.Group, (byte)MessageType.Hello, Protocol.Hello("x", crypto.PublicKey, App)), At(66, 50000 + i), HostAt));
         }
         Deliver();
 
@@ -228,7 +239,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.True(Protocol.TryReadWelcome(rogue.Got.First(g => g.Type == MessageType.Welcome).Body, out var hostKey, out _));
 
         var ghost = TokenHolder(host);
-        _wire.Enqueue((ghost.Seal(ghost.Group, (byte)MessageType.Hello, Protocol.Hello("유령", ghost.PublicKey)), At(88), HostAt));
+        _wire.Enqueue((ghost.Seal(ghost.Group, (byte)MessageType.Hello, Protocol.Hello("유령", ghost.PublicKey, App)), At(88), HostAt));
         Deliver();
         foreach (var cookie in new[] { new byte[SessionCrypto.CookieSize], Array.Empty<byte>(), rogue.Cookie })
         {
@@ -506,17 +517,19 @@ public sealed class PartySessionTests : IDisposable
         }
     }
 
+    static readonly Version App = new(1, 0, 7);
+
     PartySession Host()
     {
-        var s = PartySession.Host(HostAt, "호스트", _now, SendFrom(HostAt));
+        var s = PartySession.Host(HostAt, "호스트", _now, SendFrom(HostAt), App);
         Listen(HostAt, s);
         return s;
     }
 
     /// <summary>Sends the Hello; nothing is delivered yet.</summary>
-    PartySession Start(PartySession host, string name, IPEndPoint at)
+    PartySession Start(PartySession host, string name, IPEndPoint at, Version? app = null)
     {
-        var s = PartySession.Join(host.Token!, name, _now, SendFrom(at))!;
+        var s = PartySession.Join(host.Token!, name, _now, SendFrom(at), app ?? App)!;
         Listen(at, s);
         return s;
     }
@@ -600,7 +613,7 @@ public sealed class PartySessionTests : IDisposable
     RogueClient JoinRogue(PartySession host, IPEndPoint at)
     {
         var r = Rogue(host, at);
-        Send(r, MessageType.Hello, Protocol.Hello("말로리", r.Crypto.PublicKey), r.Crypto.Group);
+        Send(r, MessageType.Hello, Protocol.Hello("말로리", r.Crypto.PublicKey, App), r.Crypto.Group);
         Deliver();
         Assert.True(Protocol.TryReadWelcome(r.Got.Single(g => g.Type == MessageType.Welcome).Body, out var hostKey, out r.Cookie));
         r.Pair = r.Crypto.Pair(hostKey, r.Cookie)!;

@@ -47,6 +47,7 @@ public sealed class PartySession : IDisposable
     readonly SessionCrypto _crypto;
     readonly Action<byte[], IPEndPoint> _send;
     readonly bool _isHost;
+    readonly Version _app;   // this app's version: sent in a Hello (peer), required of joiners (host)
     readonly IPEndPoint? _hostEndpoint;   // peer only
     readonly byte[] _hostPin = [];        // peer only
     readonly string? _token;              // host only
@@ -64,39 +65,41 @@ public sealed class PartySession : IDisposable
     bool _peersDirty = true, _statusDirty = true;
     string? _notice;
 
-    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send)
+    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app)
     {
-        (_crypto, _myName, _send) = (crypto, name, send);
+        (_crypto, _myName, _send, _app) = (crypto, name, send, app);
         _members.Add(new Member(crypto.SenderId, name, null, null, now, confirmed: true));
         _admitted.Add(crypto.SenderId);
         (_lastHeartbeat, _joinStarted) = (now, now);
     }
 
-    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, IPEndPoint publicEndpoint)
-        : this(crypto, name, now, send)
+    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app, IPEndPoint publicEndpoint)
+        : this(crypto, name, now, send, app)
     {
         _isHost = true;
         _token = SessionCrypto.EncodeToken(publicEndpoint, crypto.Secret, SessionCrypto.Pin(crypto.PublicKey));
     }
 
-    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, IPEndPoint host, byte[] hostPin)
-        : this(crypto, name, now, send)
+    PartySession(SessionCrypto crypto, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app, IPEndPoint host, byte[] hostPin)
+        : this(crypto, name, now, send, app)
     {
         (_hostEndpoint, _hostPin) = (host, hostPin);
     }
 
-    /// <summary>Starts a new session with a fresh secret; <see cref="Token"/> carries <paramref name="publicEndpoint"/> (IPv4).</summary>
-    public static PartySession Host(IPEndPoint publicEndpoint, string name, TimeSpan now, Action<byte[], IPEndPoint> send) =>
-        new(SessionCrypto.CreateNew(), name, now, send, publicEndpoint);
+    /// <summary>Starts a new session with a fresh secret; <see cref="Token"/> carries <paramref name="publicEndpoint"/> (IPv4).
+    /// Only joiners on app version <paramref name="app"/> are let in.</summary>
+    public static PartySession Host(IPEndPoint publicEndpoint, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app) =>
+        new(SessionCrypto.CreateNew(), name, now, send, app, publicEndpoint);
 
-    /// <summary>Joins the session in <paramref name="token"/> (sends the first Hello); null if the token isn't valid.</summary>
-    public static PartySession? Join(string token, string name, TimeSpan now, Action<byte[], IPEndPoint> send)
+    /// <summary>Joins the session in <paramref name="token"/> (sends the first Hello, with app version <paramref name="app"/>);
+    /// null if the token isn't valid.</summary>
+    public static PartySession? Join(string token, string name, TimeSpan now, Action<byte[], IPEndPoint> send, Version app)
     {
         if (!SessionCrypto.TryParseToken(token, out var host, out var secret, out var pin)) return null;
         SessionCrypto crypto;
         try { crypto = new SessionCrypto(secret); }
         finally { CryptographicOperations.ZeroMemory(secret); }
-        var session = new PartySession(crypto, name, now, send, host, pin);
+        var session = new PartySession(crypto, name, now, send, app, host, pin);
         session.SendHello(now);
         return session;
     }
@@ -242,8 +245,8 @@ public sealed class PartySession : IDisposable
         var m = _members.Find(x => x.Id == sender);
         if (type == MessageType.Hello)
         {
-            if (_crypto.Group.TryOpen(data, out _, out _, out var hello) && Protocol.TryReadHello(hello, out var version, out var name, out var key))
-                OnHello(m, sender, version, name, key, from, now);
+            if (_crypto.Group.TryOpen(data, out _, out _, out var hello) && Protocol.TryReadHello(hello, out var version, out var name, out var key, out var app))
+                OnHello(m, sender, version, name, key, app, from, now);
             return;
         }
         // Only this member's pair key opens its packets: another token holder can't speak for it. And only from the
@@ -290,7 +293,7 @@ public sealed class PartySession : IDisposable
     }
 
     /// <summary>Host: exactly one reply (Welcome or Refuse) per Hello, or none; everything else waits for Confirm.</summary>
-    void OnHello(Member? m, ulong sender, byte version, string name, byte[] key, IPEndPoint from, TimeSpan now)
+    void OnHello(Member? m, ulong sender, byte version, string name, byte[] key, Version app, IPEndPoint from, TimeSpan now)
     {
         if (m is not null)
         {
@@ -299,7 +302,8 @@ public sealed class PartySession : IDisposable
         }
         var pending = _members.Where(x => !x.Confirmed).ToList();
         if (pending.Count >= MaxPending || pending.Count(x => x.Endpoint!.Address.Equals(from.Address)) >= MaxPendingPerAddress) return;
-        if (Membership.Refusal([.. _members.Where(x => x.Confirmed).Select(x => x.Id)], sender, version, _admitted) is { } reason)
+        if ((Membership.Refusal([.. _members.Where(x => x.Confirmed).Select(x => x.Id)], sender, version, _admitted)
+             ?? Membership.AppRefusal(_app, app)) is { } reason)
         {
             _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Refuse, Protocol.Refuse(reason)), from);
             return;
@@ -457,7 +461,7 @@ public sealed class PartySession : IDisposable
     void SendHello(TimeSpan now)
     {
         _lastHello = now;
-        _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Hello, Protocol.Hello(_myName, _crypto.PublicKey)), _hostEndpoint!);
+        _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Hello, Protocol.Hello(_myName, _crypto.PublicKey, _app)), _hostEndpoint!);
     }
 
     /// <summary>Host: relays a member's new State to the others, at most every <see cref="MinSendGap"/> per member, so a

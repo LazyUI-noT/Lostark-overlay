@@ -36,20 +36,24 @@ public partial class SettingsWindow
     Area _area = null!;
     bool _wide = true, _previewPinned;
 
-    // 업데이트 (bottom left, under 테마): shown while a newer release exists; pressing it is the user's go-ahead.
-    const string BaseTitle = "GaugeOverlay 설정";
-    readonly Button _update = new() { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 6, 0, 0), Visibility = Visibility.Collapsed };
+    // 업데이트 (bottom left, under 모두 기본값으로 되돌리기): 업데이트 확인 asks GitHub; once a newer release is known it
+    // becomes "vX 받기", and pressing that is the user's go-ahead to download and install.
+    static readonly string BaseTitle = $"GaugeOverlay v{Updater.Current.ToString(3)} 설정";
+    static readonly TimeSpan CheckMessageFor = TimeSpan.FromSeconds(3);
+    readonly Button _update = new() { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 6, 0, 0), Content = "업데이트 확인" };
     Release? _release;
 
-    /// <summary>The update button was pressed: download and install this release.</summary>
+    /// <summary>The update button was pressed with a newer release known: download and install it.</summary>
     public event Action<Release>? UpdateRequested;
+    /// <summary>업데이트 확인 was pressed; answer with <see cref="SetCheckResult"/>.</summary>
+    public event Action? CheckRequested;
 
-    /// <summary>A newer release (button shown, "(업데이트 있음)" in the title), or null for none.</summary>
+    /// <summary>A newer release ("vX 받기", "(업데이트 있음)" in the title), or null for none.</summary>
     public void SetUpdate(Release? release)
     {
         _release = release;
+        _checkMessage.Stop();
         Title = release is null ? BaseTitle : $"{BaseTitle} (업데이트 있음)";
-        _update.Visibility = release is null ? Visibility.Collapsed : Visibility.Visible;
         SetUpdateBusy(false);
     }
 
@@ -57,11 +61,26 @@ public partial class SettingsWindow
     public void SetUpdateBusy(bool busy)
     {
         _update.IsEnabled = !busy;
-        _update.Content = busy ? "업데이트 받는 중…" : $"{_release?.Tag}(으)로 업데이트";
+        _update.Content = busy ? "업데이트 받는 중…" : _release is { } r ? $"{r.Tag} 받기" : "업데이트 확인";
     }
+
+    /// <summary>The answer to 업데이트 확인: a newer release turns the button into "vX 받기"; otherwise it says 최신 버전입니다
+    /// (or 확인하지 못했습니다 when GitHub couldn't be read) for <see cref="CheckMessageFor"/>.</summary>
+    public void SetCheckResult(bool checkedOk, Release? newer)
+    {
+        if (newer is not null) { SetUpdate(newer); return; }
+        if (_release is not null) { SetUpdateBusy(false); return; }   // the start-up check found one meanwhile
+        _update.Content = checkedOk ? "최신 버전입니다" : "확인하지 못했습니다";
+        _checkMessage.Start();
+    }
+
+    // One timer for the check message, stopped by a new check or a found release so an old one can't reset the button.
+    readonly System.Windows.Threading.DispatcherTimer _checkMessage = new() { Interval = CheckMessageFor };
 
     void BuildShell()
     {
+        Title = BaseTitle;
+        _checkMessage.Tick += (_, _) => { _checkMessage.Stop(); SetUpdateBusy(false); };
         _areas =
         [
             new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬바를 맞춥니다.",
@@ -91,10 +110,15 @@ public partial class SettingsWindow
             "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬바 맞춤을 되돌립니다. "
             + "캐릭터, 오버레이 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
-        NavFoot.Children.Add(Label($"GaugeOverlay v{Updater.Current.ToString(3)}", 0.8));
-        NavFoot.Children.Add(Check("시작할 때 업데이트 확인", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
-        _update.Click += (_, _) => { if (_release is { } r) UpdateRequested?.Invoke(r); };
+        _update.Click += (_, _) =>
+        {
+            if (_release is { } r) { UpdateRequested?.Invoke(r); return; }
+            _checkMessage.Stop();
+            (_update.IsEnabled, _update.Content) = (false, "확인 중…");
+            CheckRequested?.Invoke();
+        };
         NavFoot.Children.Add(_update);
+        NavFoot.Children.Add(Check("시작할 때 업데이트 확인", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);

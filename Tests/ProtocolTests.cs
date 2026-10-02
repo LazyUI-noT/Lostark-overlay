@@ -142,8 +142,9 @@ public class ProtocolTests
     public void SmallMessagesRoundTrip()
     {
         byte[] key = [.. Enumerable.Range(1, SessionCrypto.PublicKeySize).Select(i => (byte)i)];
-        Assert.True(Protocol.TryReadHello(Protocol.Hello(new string('민', 20), key), out var version, out var name, out var readKey));
+        Assert.True(Protocol.TryReadHello(Protocol.Hello(new string('민', 20), key, new Version(1, 2, 3)), out var version, out var name, out var readKey, out var app));
         Assert.Equal(Protocol.Version, version);
+        Assert.Equal(new Version(1, 2, 3), app);
         Assert.Equal(16, name.Length);
         Assert.Equal(key, readKey);
 
@@ -231,6 +232,17 @@ public class ProtocolTests
         List<ulong> members = [0xAAAA_0000_1234];
         Assert.Contains("버전", Membership.Refusal(members, 7, (byte)(Protocol.Version + 1)));
         Assert.NotNull(Membership.Refusal(members, 0xBBBB_0000_1234, Protocol.Version));   // same low 4 bytes
+    }
+
+    [Fact]
+    public void Another_app_version_is_refused_naming_both_and_who_updates()
+    {
+        Assert.Null(Membership.AppRefusal(new Version(1, 0, 8), new Version(1, 0, 8, 0)));   // a 4th part doesn't count
+        var older = Membership.AppRefusal(new Version(1, 0, 8), new Version(1, 0, 7));
+        Assert.Contains("호스트 v1.0.8", older);
+        Assert.Contains("내 버전 v1.0.7", older);
+        Assert.Contains("업데이트 확인", older);
+        Assert.Contains("호스트가 업데이트", Membership.AppRefusal(new Version(1, 0, 7), new Version(1, 0, 8)));
     }
 
     [Fact]

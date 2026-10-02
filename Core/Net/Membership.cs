@@ -20,4 +20,16 @@ public static class Membership
             return "연결 식별자가 겹쳤습니다. 다시 참가해 주세요.";
         return null;
     }
+
+    /// <summary>Null when the joiner runs the host's app version (major.minor.patch), else the refusal text shown to the
+    /// joiner, naming both versions and who should update.</summary>
+    public static string? AppRefusal(Version host, Version joiner)
+    {
+        Version h = Short(host), j = Short(joiner);
+        if (h == j) return null;
+        var who = j < h ? "설정 → 업데이트 확인으로 업데이트한 뒤" : "호스트가 업데이트한 뒤";
+        return $"버전이 다릅니다 (호스트 v{h}, 내 버전 v{j}). {who} 다시 참가해 주세요.";
+    }
+
+    static Version Short(Version v) => new(v.Major, v.Minor, Math.Max(v.Build, 0));
 }

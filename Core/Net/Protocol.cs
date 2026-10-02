@@ -18,22 +18,32 @@ public static class Protocol
     /// Welcome the host's, and the token pins the host's). 6: the Welcome adds a per-join cookie to the pair key, and
     /// the gold frame (0x20) and whether the slot is a stack skill (0x10) travel in the phase byte. 7: Colors and
     /// ColorsAck (a member's own box colours, for 파티원 설정 따르기). 8: they became Look and LookAck, which add the box
-    /// size and free layout (파티원 크기 받기, 파티원 배치 받기).</summary>
-    public const byte Version = 8;
+    /// size and free layout (파티원 크기 받기, 파티원 배치 받기). 9: the Hello ends with the joiner's app version (major,
+    /// minor, patch), and the host refuses any other (<see cref="Membership.AppRefusal"/>).</summary>
+    public const byte Version = 9;
     const int Estimated = 0x80, Stacked = 0x40, Gold = 0x20, StackSkill = 0x10, PhaseBits = 0x0F;
     const int MaxName = 16;
 
     // ── Hello / Welcome / Refuse / Roster / Heartbeat ───────────────────────────────────
 
-    public static byte[] Hello(string name, byte[] publicKey) => Write(w => { w.Write(Version); w.Write(Clip(name)); w.Write(publicKey); });
+    public static byte[] Hello(string name, byte[] publicKey, System.Version app) => Write(w =>
+    {
+        w.Write(Version); w.Write(Clip(name)); w.Write(publicKey);
+        w.Write((byte)app.Major); w.Write((byte)app.Minor); w.Write((byte)Math.Max(app.Build, 0));
+    });
 
     /// <summary>True once the version and name are read, so another version can still be refused by name;
-    /// <paramref name="publicKey"/> is whatever follows (the caller checks it).</summary>
-    public static bool TryReadHello(byte[] body, out byte version, out string name, out byte[] publicKey)
+    /// <paramref name="publicKey"/> and <paramref name="app"/> (the joiner's app version, 0.0.0 if missing) are whatever
+    /// follows (the caller checks them).</summary>
+    public static bool TryReadHello(byte[] body, out byte version, out string name, out byte[] publicKey, out System.Version app)
     {
-        (byte v, string n, byte[] k) r = (0, "", []);
-        bool ok = Read(body, b => r = (b.ReadByte(), Clip(b.ReadString()), b.ReadBytes(SessionCrypto.PublicKeySize)));
-        (version, name, publicKey) = r;
+        (byte v, string n, byte[] k, System.Version a) r = (0, "", [], new(0, 0, 0));
+        bool ok = Read(body, b =>
+        {
+            (r.v, r.n, r.k) = (b.ReadByte(), Clip(b.ReadString()), b.ReadBytes(SessionCrypto.PublicKeySize));
+            if (b.BaseStream.Length - b.BaseStream.Position >= 3) r.a = new(b.ReadByte(), b.ReadByte(), b.ReadByte());
+        });
+        (version, name, publicKey, app) = r;
         return ok;
     }
 
