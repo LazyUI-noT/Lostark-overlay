@@ -555,7 +555,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             Color? dim = l.Look?.DimOf(slot, group) is { } d ? Parse(d) : null;
             DrawBox(dc, r, c, dim, s[slot], anim, now, ms, reduced, l, !l.Peer && fx.Shines(slot, group), !l.Peer && fx.Pulses(slot, group),
                 fx.PulseStyleOf(group), Parse(l.Look?.GlowOf(slot, group) ?? "#FFFFFF"), !l.Peer && fx.EndFlashes(slot, group), skillIcon,
-                !l.Peer && fx.Counts(slot, group));
+                !l.Peer && fx.Counts(slot, group), !l.Peer && fx.Holds(slot, group));
             // The key as bound in the 키 tab: on each of two 아덴 blocks (바드 Z and X/C), and on any box of yours picked in
             // 키 표시. A peer's keys aren't known.
             if (!l.Peer && (group == SlotGroup.아덴스킬 && s.AdenSlots.Length > 1 || fx.KeyLetters.Contains(slot)))
@@ -565,7 +565,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         dc.Pop();
     }
 
-    void DrawBox(DrawingContext dc, Rect r, Color c, Color? dim, SlotState st, BoxAnim a, TimeSpan now, double ms, bool reduced, PlayerLayout l, bool shines, bool pulses, ReadyGlowStyle glow, Color glowColor, bool endFlash, ImageSource? icon, bool counts)
+    void DrawBox(DrawingContext dc, Rect r, Color c, Color? dim, SlotState st, BoxAnim a, TimeSpan now, double ms, bool reduced, PlayerLayout l, bool shines, bool pulses, ReadyGlowStyle glow, Color glowColor, bool endFlash, ImageSource? icon, bool counts, bool holds)
     {
         bool peer = l.Peer;   // peer rows: no shine, no catch-up, no timer
         TimeSpan? rem = st.Remaining(now);
@@ -660,16 +660,17 @@ public sealed partial class OverlayRenderer : FrameworkElement
         }
         if (st.Gold) DrawGold(dc, r);
         if (st.Phase == SlotPhase.LongCooldown) timer = $"{st.Minutes}m";
-        if (timer is not null && Settings.Overlay.ShowTimer && !peer) DrawTimer(dc, r, timer);
+        // 사용 후 3초 유지: the seconds held before the use take the timer's place for HeldCount.Hold.
+        a.Held = counts && holds ? a.Held.Next(st) : default;
+        int? held = a.Held.Shown(now);
+        if (held is not null && _frozenAt is null) _moving = true;
+        if (held is { } h) DrawReadyCount(dc, r, h);
+        else if (timer is not null && Settings.Overlay.ShowTimer && !peer) DrawTimer(dc, r, timer);
         // 준비 후 경과 시간: where the timer would be, redrawn each frame until it holds at 29.
         if (counts && st is { Phase: SlotPhase.Ready, Estimated: false })
         {
             int? n = CooldownLook.ReadyCount(st, now);
-            if (n is { } count)
-            {
-                var fill = Parse(Settings.Overlay.ReadyCountColor);
-                DrawTimer(dc, r, count.ToString(CultureInfo.InvariantCulture), fill, Lightness(fill) < LightFill ? LightOutlinePen : OutlinePen);
-            }
+            if (n is { } count) DrawReadyCount(dc, r, count);
             if (n != CooldownLook.MaxReadyCount && _frozenAt is null) _moving = true;
         }
 
@@ -824,6 +825,13 @@ public sealed partial class OverlayRenderer : FrameworkElement
             dc.DrawRectangle(mark, null, new Rect(g.X + g.Width * split - bar.SplitThickness / 2, g.Y, bar.SplitThickness, g.Height));
     }
 
+    /// <summary>A 준비 후 경과 시간 number in the timer's place, in its own colour.</summary>
+    void DrawReadyCount(DrawingContext dc, Rect r, int count)
+    {
+        var fill = Parse(Settings.Overlay.ReadyCountColor);
+        DrawTimer(dc, r, count.ToString(CultureInfo.InvariantCulture), fill, Lightness(fill) < LightFill ? LightOutlinePen : OutlinePen);
+    }
+
     void DrawTimer(DrawingContext dc, Rect r, string text, Color? fill = null, Pen? outline = null) =>
         DrawOutlined(dc, r, text, Math.Min(Math.Round(Settings.Overlay.TimerFont / TimerFontStep) * TimerFontStep, MaxFontFor(r.Width, r.Height)), fill, outline);
 
@@ -947,6 +955,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         public bool WasCooling;
         public double ShineAt = -1, CatchStart = -1, CatchFrom, Drawn;   // ShineAt may lie ShineDelayMs ahead
         public TimeSpan? EndsAt, Total;
+        public HeldCount Held;
     }
 
     /// <summary>A 120 ms ease-out tween toward the latest target; the first target is taken without animating.</summary>

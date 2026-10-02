@@ -102,4 +102,58 @@ public sealed class GlowAndCountTests : IDisposable
         Assert.Null(CooldownLook.ReadyCount(ReadyAt(0) with { Phase = SlotPhase.Unavailable }, S(5)));
         Assert.Null(CooldownLook.ReadyCount(ReadyAt(0) with { Estimated = true }, S(5)));
     }
+
+    [Fact]
+    public void Holding_the_count_after_use_is_off_by_default_and_set_per_group_or_skill()
+    {
+        var m = new MineProfile();
+        Assert.False(m.Holds(SlotId.일반1, SlotGroup.일반스킬));
+        BoxOptions.SetHeldCount(m, SlotId.일반1, SlotGroup.일반스킬, true, onlyThis: false, []);
+        BoxOptions.SetHeldCount(m, SlotId.일반2, SlotGroup.일반스킬, false, onlyThis: true, []);
+        Assert.True(m.Holds(SlotId.일반1, SlotGroup.일반스킬));
+        Assert.False(m.Holds(SlotId.일반2, SlotGroup.일반스킬));
+    }
+
+    static SlotState CoolingAt(double t) => new(SlotId.일반1, SlotPhase.Cooldown, S(t + 10), S(10), false, S(t));
+
+    // Cooling, ready at `ready`, used at `used`: the held count as the renderer steps it frame by frame.
+    static HeldCount Used(double ready, double used) =>
+        new HeldCount().Next(CoolingAt(0)).Next(ReadyAt(ready)).Next(ReadyAt(ready)).Next(CoolingAt(used));
+
+    [Fact]
+    public void After_use_the_held_seconds_show_for_3_s()
+    {
+        var h = Used(ready: 10, used: 17.5);
+        Assert.Equal(7, h.Shown(S(17.5)));
+        Assert.Equal(7, h.Next(CoolingAt(17.5)).Shown(S(20.4)));
+        Assert.Null(h.Shown(S(20.5)));
+    }
+
+    [Fact]
+    public void The_held_count_is_capped_at_29_and_skipped_under_1_s()
+    {
+        Assert.Equal(29, Used(ready: 10, used: 60).Shown(S(60)));
+        Assert.Null(Used(ready: 10, used: 10.9).Shown(S(10.9)));
+    }
+
+    [Fact]
+    public void No_held_count_when_the_ready_period_was_not_read_from_its_start()
+    {
+        // Already ready when the overlay started (no cooldown seen before it).
+        Assert.Null(new HeldCount().Next(ReadyAt(0)).Next(CoolingAt(8)).Shown(S(8)));
+        // Ready only by estimate.
+        Assert.Null(new HeldCount().Next(CoolingAt(0)).Next(ReadyAt(10) with { Estimated = true }).Next(CoolingAt(18)).Shown(S(18)));
+        // Unread in between (loading screen).
+        Assert.Null(new HeldCount().Next(CoolingAt(0)).Next(ReadyAt(10)).Next(ReadyAt(10) with { Phase = SlotPhase.Unknown })
+            .Next(CoolingAt(18)).Shown(S(18)));
+        // A use and its cooldown missed while the overlay wasn't drawn: the next ready period started unseen.
+        Assert.Null(new HeldCount().Next(CoolingAt(0)).Next(ReadyAt(10)).Next(ReadyAt(30)).Next(CoolingAt(35)).Shown(S(35)));
+    }
+
+    [Fact]
+    public void The_held_count_stops_when_the_skill_is_ready_again()
+    {
+        var h = Used(ready: 10, used: 15).Next(ReadyAt(16));
+        Assert.Null(h.Shown(S(16)));
+    }
 }

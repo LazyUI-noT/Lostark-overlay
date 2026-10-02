@@ -122,6 +122,7 @@ public partial class SettingsWindow
         p.Children.Add(Row($"   빛나는 방식 ({g} 전체)", EnumCombo([(ReadyGlowStyle.Diagonal, "사선 띠"), (ReadyGlowStyle.Horizontal, "가로 띠"),
             (ReadyGlowStyle.Breathe, "숨쉬기"), (ReadyGlowStyle.Outline, "테두리")], fx.PulseStyleOf(g), v => Fx().PulseStyle[g] = v)));
         p.Children.Add(Check("준비 후 경과 시간 표시 (1~29초)", fx.Counts(slot, g), v => BoxOptions.SetReadyCount(Fx(), slot, g, v, only, aden), Changed));
+        p.Children.Add(Check("   사용 후 3초 동안 유지", fx.Holds(slot, g), v => BoxOptions.SetHeldCount(Fx(), slot, g, v, only, aden), Changed));
         p.Children.Add(Check("끝나기 직전 깜빡임 (0.9초 전부터)", fx.EndFlashes(slot, g), v => BoxOptions.SetEndFlash(Fx(), slot, g, v, only, aden), Changed));
         if (g != SlotGroup.아덴스킬)
         {

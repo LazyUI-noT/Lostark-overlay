@@ -32,9 +32,10 @@ public partial class App : Application
 
     static readonly TimeSpan UpdateHandover = TimeSpan.FromSeconds(30);
 
-    /// <summary>--build-gauge &lt;shots&gt; &lt;out&gt; [--region=x,y,w,h]: empty.png and full.png in &lt;shots&gt; (1920×1080,
-    /// HUD 110%) → gauge.json and mask.png in &lt;out&gt; (Profiles/aden/README.md). The search region, in reference pixels,
-    /// defaults to the emblem and 40 px around it.</summary>
+    /// <summary>--build-gauge &lt;shots&gt; &lt;out&gt; [--region=x,y,w,h]: empty.png and full.png in &lt;shots&gt; (screenshots of the
+    /// game at any resolution, HUD size or 21:9, resampled to the reference screen by <see cref="ReferenceShot"/>) → gauge.json,
+    /// mask.png, emblem_empty.png and emblem_full.png in &lt;out&gt; (Profiles/aden/README.md). The search region, in reference
+    /// pixels, defaults to the emblem and 40 px around it.</summary>
     static void BuildGauge(string[] args)
     {
         var paths = args.Where(a => !a.StartsWith("--")).ToArray();
@@ -45,11 +46,15 @@ public partial class App : Application
             var e = Geometry.RefEmblem;
             var region = args.FirstOrDefault(a => a.StartsWith("--region="))?[9..].Split(',').Select(int.Parse).ToArray() is [var x, var y, var w, var h]
                 ? new PixelRect(x, y, w, h) : new PixelRect(e.X - 40, e.Y - 40, e.Width + 80, e.Height + 40);
-            var (json, mask) = GaugeLoader.Build(Png.Load(Path.Combine(paths[0], "empty.png")), Png.Load(Path.Combine(paths[0], "full.png")), region);
+            var (empty, full, found) = ReferenceShot.Normalize(Png.Load(Path.Combine(paths[0], "empty.png")), Png.Load(Path.Combine(paths[0], "full.png")));
+            var (json, mask) = GaugeLoader.Build(empty, full, region);
             Directory.CreateDirectory(paths[1]);
             File.WriteAllText(Path.Combine(paths[1], GaugeLoader.JsonFile), json);
             Png.Save(Path.Combine(paths[1], GaugeLoader.MaskFile), mask);
-            message = $"{paths[1]}에 {GaugeLoader.JsonFile}, {GaugeLoader.MaskFile}을 만들었습니다 ({mask.Width}×{mask.Height}).\n\n{json}";
+            // The class's centre piece, empty and full, for telling another gauge class on screen (CharacterService.CheckClass).
+            Png.Save(Path.Combine(paths[1], "emblem_empty.png"), ReferenceShot.Emblem(empty));
+            Png.Save(Path.Combine(paths[1], "emblem_full.png"), ReferenceShot.Emblem(full));
+            message = $"{found}.\n{paths[1]}에 {GaugeLoader.JsonFile}, {GaugeLoader.MaskFile}({mask.Width}×{mask.Height}), emblem_empty.png, emblem_full.png를 만들었습니다.\n\n{json}";
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException or FormatException or OverflowException or NotSupportedException or UnauthorizedAccessException)
         {

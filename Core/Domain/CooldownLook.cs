@@ -32,9 +32,11 @@ public readonly record struct CooldownLook(double Base, bool Grey, double? Refil
     /// <summary>준비 후 경과 시간: whole seconds <paramref name="st"/> has been ready, from 1 and held at 29; null while it isn't
     /// ready and read (cooling, greyed, unreadable) and in its first second.</summary>
     public static int? ReadyCount(SlotState st, TimeSpan now) =>
-        st is { Phase: SlotPhase.Ready, Estimated: false } && (int)(now - st.ChangedAt).TotalSeconds is var n and >= 1
-            ? Math.Min(n, MaxReadyCount) : null;
+        st is { Phase: SlotPhase.Ready, Estimated: false } ? Seconds(now - st.ChangedAt) : null;
     public const int MaxReadyCount = 29;
+
+    /// <summary>Whole seconds of <paramref name="span"/>, from 1 and held at 29; null under 1 s.</summary>
+    internal static int? Seconds(TimeSpan span) => (int)span.TotalSeconds is var n and >= 1 ? Math.Min(n, MaxReadyCount) : null;
 
     /// <summary>The part of the box (<paramref name="x"/>, <paramref name="y"/>, <paramref name="w"/>, <paramref name="h"/>)
     /// filled at progress <paramref name="p"/> (clamped to 0..1), growing from <paramref name="from"/>.</summary>
@@ -49,4 +51,27 @@ public readonly record struct CooldownLook(double Base, bool Grey, double? Refil
             _ => (x + w * (1 - p), y, w * p, h),
         };
     }
+}
+
+/// <summary>사용 후 경과 시간 유지: how long a box was ready before the skill was used, shown for <see cref="Hold"/> after
+/// the use. Stepped once per frame with the box's state. Only a ready period read from its start (entered from a read
+/// cooldown, not estimated, not unread on the way) counts; becoming ready again ends it.</summary>
+/// <param name="Cooling">The last state was a read cooldown (or greyed), so a Ready after it starts a real ready period.</param>
+/// <param name="ReadySince">When the current, trusted ready period began.</param>
+/// <param name="Count">The seconds held before the last use (1–29), shown until <paramref name="Until"/>.</param>
+public readonly record struct HeldCount(bool Cooling = false, TimeSpan? ReadySince = null, int? Count = null, TimeSpan Until = default)
+{
+    public static readonly TimeSpan Hold = TimeSpan.FromSeconds(3);
+
+    public HeldCount Next(SlotState st) => st switch
+    {
+        // A ready period other than the one seen starting (its cooldown fell between frames not drawn) isn't trusted.
+        { Phase: SlotPhase.Ready, Estimated: false } => new(false, Cooling || ReadySince == st.ChangedAt ? st.ChangedAt : null),
+        { Phase: SlotPhase.Cooldown or SlotPhase.LongCooldown } when ReadySince is { } since =>
+            new(true, null, CooldownLook.Seconds(st.ChangedAt - since), st.ChangedAt + Hold),
+        { Phase: SlotPhase.Cooldown or SlotPhase.LongCooldown or SlotPhase.Unavailable, Estimated: false } => this with { Cooling = true, ReadySince = null },
+        _ => new(),
+    };
+
+    public int? Shown(TimeSpan now) => now < Until ? Count : null;
 }

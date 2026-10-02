@@ -161,7 +161,7 @@ public sealed class SettingsStoreTests : IDisposable
         File.WriteAllText(FilePath, """{ "Overlay": { "ShowShine": false } }""");
         var store = new SettingsStore(FilePath);
         var s = store.Load(out _);
-        Assert.False(Enum.GetValues<SlotGroup>().Any(Fx(s).Shines));
+        Assert.DoesNotContain(Enum.GetValues<SlotGroup>(), g => Fx(s).Shines(g));
 
         ClassProfiles.Edit(s, null).Mine.NoShine = [SlotGroup.일반스킬];
         store.Save(s);
@@ -235,7 +235,7 @@ public sealed class SettingsStoreTests : IDisposable
     [Fact]
     public void Icons_are_off_until_picked_per_group()
     {
-        Assert.False(Enum.GetValues<SlotGroup>().Any(new MineProfile().ShowsIcon));
+        Assert.DoesNotContain(Enum.GetValues<SlotGroup>(), g => new MineProfile().ShowsIcon(g));
         var store = new SettingsStore(FilePath);
         var s = new Settings();
         ClassProfiles.Edit(s, null).Mine.Icons = [SlotGroup.일반스킬, SlotGroup.각성기];
@@ -248,7 +248,7 @@ public sealed class SettingsStoreTests : IDisposable
     [Fact]
     public void Glow_while_ready_is_off_until_picked_per_group()
     {
-        Assert.False(Enum.GetValues<SlotGroup>().Any(new MineProfile().Pulses));
+        Assert.DoesNotContain(Enum.GetValues<SlotGroup>(), g => new MineProfile().Pulses(g));
         var store = new SettingsStore(FilePath);
         var s = new Settings();
         ClassProfiles.Edit(s, null).Mine.Pulse = [SlotGroup.아덴스킬, SlotGroup.초각스];

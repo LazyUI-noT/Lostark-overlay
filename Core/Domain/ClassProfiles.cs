@@ -82,6 +82,10 @@ public sealed class MineProfile : ClassProfile
     public HashSet<SlotGroup> ReadyCount { get; set; } = [];
     public Dictionary<SlotId, bool> SlotReadyCount { get; set; } = [];
     public bool Counts(SlotId slot, SlotGroup g) => SlotReadyCount.TryGetValue(slot, out var on) ? on : ReadyCount.Contains(g);
+    /// <summary>사용 후 3초 유지: groups whose count stays for 3 s after the skill is used (off by default; needs the count).</summary>
+    public HashSet<SlotGroup> HeldCount { get; set; } = [];
+    public Dictionary<SlotId, bool> SlotHeldCount { get; set; } = [];
+    public bool Holds(SlotId slot, SlotGroup g) => SlotHeldCount.TryGetValue(slot, out var on) ? on : HeldCount.Contains(g);
     /// <summary>아이콘으로 표시: groups whose boxes show the skill's own icon, copied from the skill bar.</summary>
     public HashSet<SlotGroup> Icons { get; set; } = [];
     public bool ShowsIcon(SlotGroup g) => Icons.Contains(g);
@@ -102,6 +106,7 @@ public sealed class MineProfile : ClassProfile
         (NoShine, Pulse, PulseStyle, PulseColor, Icons) = ([.. from.NoShine], [.. from.Pulse], new(from.PulseStyle), new(from.PulseColor), [.. from.Icons]);
         (SlotShine, SlotPulse, EndFlash, SlotEndFlash, KeyLetters) = (new(from.SlotShine), new(from.SlotPulse), [.. from.EndFlash], new(from.SlotEndFlash), [.. from.KeyLetters]);
         (CustomGlow, SlotPulseColors, ReadyCount, SlotReadyCount) = (from.CustomGlow, new(from.SlotPulseColors), [.. from.ReadyCount], new(from.SlotReadyCount));
+        (HeldCount, SlotHeldCount) = ([.. from.HeldCount], new(from.SlotHeldCount));
     }
 }
 

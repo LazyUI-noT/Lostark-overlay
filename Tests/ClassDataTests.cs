@@ -52,8 +52,8 @@ public class ClassDataTests
     public void Every_emblem_belongs_to_a_class()
     {
         var names = Classes.Select(c => c.Name).ToHashSet();
-        Assert.Empty(Directory.GetFiles(Path.Combine(Profiles, "emblems"), "*.png")
-            .Select(Path.GetFileNameWithoutExtension).Where(n => !names.Contains(n!)));
+        Assert.DoesNotContain(Directory.GetFiles(Path.Combine(Profiles, "emblems"), "*.png")
+            .Select(Path.GetFileNameWithoutExtension), n => !names.Contains(n!));
     }
 
     /// <summary>The default role, before the user's own way of telling each 직업각인 apart; drives the party's

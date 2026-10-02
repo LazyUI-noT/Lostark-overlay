@@ -9,7 +9,7 @@ public class PartySlotsTests
     static Player P(string name) => new(name, Snapshot.Empty(TimeSpan.Zero));
     static readonly Func<Player, bool> NoSupport = _ => false;
 
-    static string?[] Names(Player?[] slots) => [.. slots.Select(p => p?.Name)];
+    static List<string?> Names(Player?[] slots) => [.. slots.Select(p => p?.Name)];   // not an array: Assert.Equal's span overload rejects string?
 
     [Fact]
     public void Without_pins_members_fill_the_slots_in_join_order() =>
