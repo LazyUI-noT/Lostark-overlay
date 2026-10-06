@@ -38,6 +38,16 @@ public readonly record struct CooldownLook(double Base, bool Grey, double? Refil
     /// <summary>Whole seconds of <paramref name="span"/>, from 1 and held at 29; null under 1 s.</summary>
     internal static int? Seconds(TimeSpan span) => (int)span.TotalSeconds is var n and >= 1 ? Math.Min(n, MaxReadyCount) : null;
 
+    /// <summary>쿨타임 중 숨기기: a box set to hide is gone while a read cooldown runs (seconds left, or minutes), and
+    /// back when it is ready, its time is up, or the state is unsure (unread, estimated, greyed). A stack skill with a
+    /// use left stays, as does a box showing its held count (<paramref name="held"/>, 사용 후 3초 유지).</summary>
+    public static bool Hides(SlotState st, TimeSpan now, bool held) => !held && !st.Estimated && !st.Stacked && st.Phase switch
+    {
+        SlotPhase.Cooldown => st.Remaining(now) > TimeSpan.Zero,
+        SlotPhase.LongCooldown => true,
+        _ => false,
+    };
+
     /// <summary>The part of the box (<paramref name="x"/>, <paramref name="y"/>, <paramref name="w"/>, <paramref name="h"/>)
     /// filled at progress <paramref name="p"/> (clamped to 0..1), growing from <paramref name="from"/>.</summary>
     public static (double X, double Y, double W, double H) FillRect(double x, double y, double w, double h, double p, FillFrom from)

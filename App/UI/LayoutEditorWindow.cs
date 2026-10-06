@@ -106,7 +106,7 @@ public sealed partial class LayoutEditorWindow : Window
 
     OverlayRenderer Renderer(int peer, bool buffs)
     {
-        var r = new OverlayRenderer { Settings = _s, Peer = peer, BuffsOnly = buffs };
+        var r = new OverlayRenderer { Settings = _s, Peer = peer, BuffsOnly = buffs, ShowHidden = true };
         _world.Children.Add(r);
         return r;
     }

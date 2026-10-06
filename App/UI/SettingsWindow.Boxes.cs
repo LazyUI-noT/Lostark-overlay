@@ -124,6 +124,7 @@ public partial class SettingsWindow
         p.Children.Add(Check("준비 후 경과 시간 표시 (1~29초)", fx.Counts(slot, g), v => BoxOptions.SetReadyCount(Fx(), slot, g, v, only, aden), Changed));
         p.Children.Add(Check("   사용 후 3초 동안 유지", fx.Holds(slot, g), v => BoxOptions.SetHeldCount(Fx(), slot, g, v, only, aden), Changed));
         p.Children.Add(Check("끝나기 직전 깜빡임 (0.9초 전부터)", fx.EndFlashes(slot, g), v => BoxOptions.SetEndFlash(Fx(), slot, g, v, only, aden), Changed));
+        p.Children.Add(Check("쿨타임 중 숨기기 (준비되면 다시 표시)", fx.Hides(slot, g), v => BoxOptions.SetHideOnCooldown(Fx(), slot, g, v, only, aden), Changed));
         if (g != SlotGroup.아덴스킬)
         {
             p.Children.Add(Check($"아이콘으로 표시 ({g} 전체)", fx.ShowsIcon(g), v => { if (v) Fx().Icons.Add(g); else Fx().Icons.Remove(g); }, Changed));

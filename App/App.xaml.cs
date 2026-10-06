@@ -798,6 +798,14 @@ public partial class App : Application
             (fx.Pulse, fx.CustomGlow, fx.ReadyCount) = ([.. Enum.GetValues<SlotGroup>()], true, [SlotGroup.일반스킬, SlotGroup.초각스]);
             (fx.PulseColor[SlotGroup.일반스킬], fx.PulseColor[SlotGroup.초각스]) = ("#FFD400", "#00E5FF");
         }
+        if (args.Contains("--spread"))   // 각성기 placed apart, 일반스킬 hidden while cooling
+        {
+            var mine = ClassProfiles.Edit(settings, ClassProfiles.Template).Mine;
+            var cells = FreeLayout.Default(settings.Gauge.Thickness);
+            foreach (var part in new[] { Part.각성기, Part.변화 }) cells[part] = cells[part] with { X = cells[part].X - 160, Y = cells[part].Y - 120 };
+            mine.Layout = cells;
+            mine.HideOnCooldown.Add(SlotGroup.일반스킬);
+        }
         settings.Characters["워로드 · 고독한기사"] = new CharacterSettings
         {
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",

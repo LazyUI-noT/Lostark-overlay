@@ -28,6 +28,7 @@ public static class FreeLayout
     public const double SnapDistance = 6;    // DIP at size 1.0
     public const double MinSize = 8;
     public const double BuffHeight = 12;     // a buff bar's height at size 1.0
+    public const double PlatePad = 4;        // the plate's margin around its boxes (OverlayRenderer draws the same)
 
     /// <summary>The first buff bar's part; <see cref="BuffKind"/> k is <c>FirstBuff + k</c>.</summary>
     public const Part FirstBuff = Part.버프공증;
@@ -138,6 +139,35 @@ public static class FreeLayout
         if (snap) sized = SnapResize(sized, others, distance) with { H = part == Part.게이지 ? at.H : sized.H };
         return Resize(start, part, sized.W, sized.H, link);
     }
+
+    /// <summary>The plates around <paramref name="boxes"/>, each with the indexes of the boxes on it: a box's plate is
+    /// the box grown by <paramref name="pad"/>, and plates that would overlap become one (repeated until none do, so
+    /// boxes closer than two pads share a plate and no part is darkened twice).</summary>
+    public static List<(Cell Plate, List<int> Members)> Plates(IReadOnlyList<Cell> boxes, double pad)
+    {
+        var plates = boxes.Select((b, i) => (Plate: new Cell(b.X - pad, b.Y - pad, b.W + 2 * pad, b.H + 2 * pad), Members: new List<int> { i })).ToList();
+        for (bool merged = true; merged;)
+        {
+            merged = false;
+            for (int i = 0; i < plates.Count && !merged; i++)
+                for (int j = i + 1; j < plates.Count && !merged; j++)
+                {
+                    Cell a = plates[i].Plate, b = plates[j].Plate;
+                    if (!(a.X < b.Right && b.X < a.Right && a.Y < b.Bottom && b.Y < a.Bottom)) continue;
+                    double x = Math.Min(a.X, b.X), y = Math.Min(a.Y, b.Y);
+                    plates[i] = (new Cell(x, y, Math.Max(a.Right, b.Right) - x, Math.Max(a.Bottom, b.Bottom) - y),
+                        [.. plates[i].Members.Concat(plates[j].Members).Order()]);
+                    plates.RemoveAt(j);
+                    merged = true;
+                }
+        }
+        return plates;
+    }
+
+    /// <summary>The skill boxes and gauge of <paramref name="cells"/> (at size 1.0) stand on more than one plate: a
+    /// layout with skills placed apart. Buff bars don't count (party windows don't draw them).</summary>
+    public static bool Spread(IReadOnlyDictionary<Part, Cell> cells) =>
+        Plates([.. cells.Where(c => c.Key < FirstBuff).Select(c => c.Value)], PlatePad).Count > 1;
 
     static void Closer(double target, double from, ref double at, ref double best)
     {

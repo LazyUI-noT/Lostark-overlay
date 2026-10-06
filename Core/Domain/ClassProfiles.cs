@@ -98,6 +98,10 @@ public sealed class MineProfile : ClassProfile
     public Dictionary<SlotId, bool> SlotEndFlash { get; set; } = [];
     public bool EndFlashes(SlotGroup g) => EndFlash.Contains(g);
     public bool EndFlashes(SlotId slot, SlotGroup g) => SlotEndFlash.TryGetValue(slot, out var on) ? on : EndFlashes(g);
+    /// <summary>쿨타임 중 숨기기: groups whose boxes are gone while their skill cools (off by default).</summary>
+    public HashSet<SlotGroup> HideOnCooldown { get; set; } = [];
+    public Dictionary<SlotId, bool> SlotHideOnCooldown { get; set; } = [];
+    public bool Hides(SlotId slot, SlotGroup g) => SlotHideOnCooldown.TryGetValue(slot, out var on) ? on : HideOnCooldown.Contains(g);
     /// <summary>키 표시: boxes that show their key (from the 키 tab) in the top-left corner.</summary>
     public HashSet<SlotId> KeyLetters { get; set; } = [];
 
@@ -107,6 +111,7 @@ public sealed class MineProfile : ClassProfile
         (SlotShine, SlotPulse, EndFlash, SlotEndFlash, KeyLetters) = (new(from.SlotShine), new(from.SlotPulse), [.. from.EndFlash], new(from.SlotEndFlash), [.. from.KeyLetters]);
         (CustomGlow, SlotPulseColors, ReadyCount, SlotReadyCount) = (from.CustomGlow, new(from.SlotPulseColors), [.. from.ReadyCount], new(from.SlotReadyCount));
         (HeldCount, SlotHeldCount) = ([.. from.HeldCount], new(from.SlotHeldCount));
+        (HideOnCooldown, SlotHideOnCooldown) = ([.. from.HideOnCooldown], new(from.SlotHideOnCooldown));
     }
 }
 
@@ -266,7 +271,8 @@ public static class ClassProfiles
         } ?? (g == SlotGroup.일반스킬 ? s.Party.RoleColor.GetValueOrDefault(role) : null) ?? BuiltIn[g]);
         var (w, h) = m.UseMineSize ? (s.Overlay.Width, s.Overlay.Height) : (m.Width, m.Height);
         var layout = (IReadOnlyDictionary<Part, Cell>?)m.Layout;
-        bool size = s.Party.ReceiveSize && look is not null, cells = s.Party.ReceiveLayout && look?.Layout is not null;
+        bool size = s.Party.ReceiveSize && look is not null, cells = s.Party.ReceiveLayout && look?.Layout is { } sent
+            && !FreeLayout.Spread(sent);   // skills placed apart: drawn compact, as the class's own party layout
         if (size || cells) (layout, w, h) = Fit(layout, w, h, look!, size, cells, s.Gauge.Thickness);
         return new(display.Groups, display.HiddenSlots, display.Gauge, layout, colors, w, h);
     }

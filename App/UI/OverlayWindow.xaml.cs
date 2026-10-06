@@ -171,6 +171,7 @@ public partial class OverlayWindow : Window
 
     void Redraw()
     {
+        Renderer.ShowHidden = Sample;   // sample data: a box that hides on cooldown stays faint, to be seen and dragged
         if (Sample)
         {
             var (self, peers) = DemoSnapshots.Sample(Clock.Now(), _player?.Snapshot.AdenSlots);

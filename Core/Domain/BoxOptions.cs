@@ -27,6 +27,9 @@ public static class BoxOptions
     public static void SetHeldCount(MineProfile p, SlotId slot, SlotGroup g, bool on, bool onlyThis, IReadOnlyCollection<SlotId> adenSlots) =>
         Set(p.SlotHeldCount, v => { if (v) p.HeldCount.Add(g); else p.HeldCount.Remove(g); }, slot, g, on, onlyThis, adenSlots);
 
+    public static void SetHideOnCooldown(MineProfile p, SlotId slot, SlotGroup g, bool on, bool onlyThis, IReadOnlyCollection<SlotId> adenSlots) =>
+        Set(p.SlotHideOnCooldown, v => { if (v) p.HideOnCooldown.Add(g); else p.HideOnCooldown.Remove(g); }, slot, g, on, onlyThis, adenSlots);
+
     public static void SetKeyLetter(MineProfile p, SlotId slot, bool on)
     {
         if (on) p.KeyLetters.Add(slot); else p.KeyLetters.Remove(slot);

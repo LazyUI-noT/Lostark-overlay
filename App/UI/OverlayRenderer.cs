@@ -16,7 +16,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     // ── Design constants (DIPs at scale 1.0 unless noted) ────────────────────────────
     const double Box = FreeLayout.Box;     // skill box edge
     const double Gap = FreeLayout.Gap;     // between boxes, same at every scale
-    const double Pad = 4, PlateRadius = 4, BoxRadius = 2;
+    const double Pad = FreeLayout.PlatePad, PlateRadius = 4, BoxRadius = 2;
     // Margin around the plate inside the window (edit-mode chrome sits in it).
     public const double Bleed = 10;
     public const double MinScale = ClassProfiles.MinScale, MaxScale = ClassProfiles.MaxScale;   // Width/Height settings (box width, height)
@@ -46,6 +46,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
     const double PeerNameShare = 0.55, MinNameFont = 8;   // names stay readable at small scales
     const double FastFrameMs = 1000.0 / 60, SlowFrameMs = 1000.0 / 30;   // 60 fps for shine/tweens, 30 for sweeps only
     const int ChangedKey = (int)Part.변화;  // box key of 각성기 변화 (0–11 are SlotId)
+    const int GaugeKey = (int)Part.게이지;  // the gauge, as a plate's member
+    const double HiddenOpacity = 0.25;     // a box hidden on cooldown, where it is shown anyway (ShowHidden)
     static readonly Color PlateColor = Color.FromArgb(0xD9, 0x0C, 0x0D, 0x10);   // the swatch; windows use their setting
     static readonly MineProfile NoEffects = new();
     static readonly Color IconColor = Color.FromRgb(0x2A, 0x2D, 0x33);   // box behind the class number when there is no emblem
@@ -74,6 +76,10 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// predictions (게이지 읽기: 예측) are another class's (CharacterService.ClassMismatch).</summary>
     public bool ClassWarning { get => _classWarning; set { _classWarning = value; InvalidateVisual(); } }
     bool _classWarning;
+
+    /// <summary>Boxes that hide on cooldown (쿨타임 중 숨기기) are drawn faint instead, so they can be seen and picked:
+    /// the layout editor, edit mode and sample previews.</summary>
+    public bool ShowHidden { get; set; }
 
     /// <summary>The settings object the user edits; read on every frame.</summary>
     public Settings Settings { get; set; } = new();
@@ -170,7 +176,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
         public Player Player = player;
         public string Key = key;
         public double Unit = unit;
-        public Rect Plate;
+        public Rect Plate;                  // around everything drawn
+        public List<(Rect Plate, int[] Keys)>? Split;   // yours, skills placed apart: a plate per group of boxes
         public Rect? Gauge;
         public GaugeBar? Bar;               // yours: splits, segment colours and glow (peers: the plain bar)
         public Appearance? Look;            // yours: the chosen cooldown colours (peers: dimmed automatically)
@@ -407,6 +414,15 @@ public sealed partial class OverlayRenderer : FrameworkElement
         l.GridTop = boxes.Count > 0 ? l.Boxes.Min(b => b.Rect.Y) : l.Gauge!.Value.Bottom;
         double right = all.Max(r => r.Right) + ox, bottom = Math.Max(all.Max(r => r.Bottom) + oy, l.GridTop + leadH);
         l.Plate = new Rect(Bleed, top, right + Pad - Bleed, bottom + Pad - top);
+        if (Peer < 0 && FreeLayout.Spread(cells))
+        {
+            // Skills placed apart stand on plates of their own; the gaps between them stay clear. Only once boxes were
+            // moved apart: a group turned off in a compact layout keeps the one plate.
+            var parts = l.Boxes.Select(b => (b.Key, b.Rect)).Concat(l.Gauge is { } pg ? [(GaugeKey, pg)] : []).ToList();
+            var plates = FreeLayout.Plates([.. parts.Select(b => new Cell(b.Rect.X, b.Rect.Y, b.Rect.Width, b.Rect.Height))], Pad);
+            if (plates.Count > 1)
+                l.Split = [.. plates.Select(g => (new Rect(g.Plate.X, g.Plate.Y, g.Plate.W, g.Plate.H), g.Members.Select(i => parts[i].Key).ToArray()))];
+        }
         return l;
     }
 
@@ -449,7 +465,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     public string? ClassName => _player is { } p ? Emblems.Class(p.Snapshot.ClassId)?.Name : null;
 
     /// <summary>A party member drawn with the layout they sent (파티원 배치 받기), not their class's.</summary>
-    public bool ShowsReceivedLayout => Peer >= 0 && Settings.Party.ReceiveLayout && _player?.Look?.Layout is not null;
+    public bool ShowsReceivedLayout => Peer >= 0 && Settings.Party.ReceiveLayout && _player?.Look?.Layout is { } sent && !FreeLayout.Spread(sent);
 
     /// <summary>DIP per cell unit along each axis (the box size setting, as drawn).</summary>
     public (double X, double Y) CellScale => _layout?.Scale ?? (1, 1);
@@ -488,12 +504,21 @@ public sealed partial class OverlayRenderer : FrameworkElement
     void DrawPlayer(DrawingContext dc, PlayerLayout l, TimeSpan now, double ms, bool reduced)
     {
         var s = l.Player.Snapshot;
+        var hidden = HiddenBoxes(l, now);
         // Plate, gauge and boxes each have their own opacity setting. The detached buff window has no plate.
         if (Settings.Overlay.ShowPlate && !BuffsOnly)
         {
             var rgb = Parse(l.Peer ? Settings.Party.PlateColor : Settings.Overlay.PlateColor);
-            var plate = Color.FromArgb((byte)(PlateColor.A * Math.Clamp(Settings.Overlay.Opacity, MinOpacity, 1)), rgb.R, rgb.G, rgb.B);
-            dc.DrawRoundedRectangle(Solid(plate), null, l.Plate, PlateRadius, PlateRadius);
+            var plate = Solid(Color.FromArgb((byte)(PlateColor.A * Math.Clamp(Settings.Overlay.Opacity, MinOpacity, 1)), rgb.R, rgb.G, rgb.B));
+            if (l.Split is null)
+            {
+                if (ShowHidden || hidden.Count == 0 || l.Gauge is not null || !l.Boxes.All(b => hidden.Contains(b.Key)))   // every box hid: the plate too
+                    dc.DrawRoundedRectangle(plate, null, l.Plate, PlateRadius, PlateRadius);
+            }
+            else
+                foreach (var (r, keys) in l.Split)
+                    if (ShowHidden || !keys.All(hidden.Contains))   // a plate whose boxes all hid goes with them
+                        dc.DrawRoundedRectangle(plate, null, r, PlateRadius, PlateRadius);
         }
 
         if (l.Icon is { } icon)
@@ -553,19 +578,44 @@ public sealed partial class OverlayRenderer : FrameworkElement
             var fx = l.Look?.Effects ?? NoEffects;   // a peer's boxes have none
             var skillIcon = !l.Peer && fx.ShowsIcon(group) ? _icons.GetValueOrDefault(slot) : null;   // none seen yet: colour
             Color? dim = l.Look?.DimOf(slot, group) is { } d ? Parse(d) : null;
-            DrawBox(dc, r, c, dim, s[slot], anim, now, ms, reduced, l, !l.Peer && fx.Shines(slot, group), !l.Peer && fx.Pulses(slot, group),
+            // 쿨타임 중 숨기기: drawn nowhere (its timing state still steps), or faint where hidden boxes are shown.
+            bool gone = hidden.Contains(key);
+            var sink = gone && !ShowHidden ? new DrawingGroup().Open() : null;
+            if (gone && sink is null) dc.PushOpacity(HiddenOpacity);
+            DrawBox(sink ?? dc, r, c, dim, s[slot], anim, now, ms, reduced, l, !l.Peer && fx.Shines(slot, group), !l.Peer && fx.Pulses(slot, group),
                 fx.PulseStyleOf(group), Parse(l.Look?.GlowOf(slot, group) ?? "#FFFFFF"), !l.Peer && fx.EndFlashes(slot, group), skillIcon,
-                !l.Peer && fx.Counts(slot, group), !l.Peer && fx.Holds(slot, group));
+                !l.Peer && fx.Counts(slot, group));
+            if (sink is not null) { sink.Close(); continue; }
             // The key as bound in the 키 tab: on each of two 아덴 blocks (바드 Z and X/C), and on any box of yours picked in
             // 키 표시. A peer's keys aren't known.
             if (!l.Peer && (group == SlotGroup.아덴스킬 && s.AdenSlots.Length > 1 || fx.KeyLetters.Contains(slot)))
                 DrawOutlined(dc, new Rect(r.X, r.Y, r.Width * KeyShare, r.Height * KeyShare),
                     Settings.Keys.GetValueOrDefault((SlotId)key, SlotInfo.DefaultKey((SlotId)key)), Math.Floor(r.Height * KeyShare * 0.7));
+            if (gone) dc.Pop();
         }
         dc.Pop();
     }
 
-    void DrawBox(DrawingContext dc, Rect r, Color c, Color? dim, SlotState st, BoxAnim a, TimeSpan now, double ms, bool reduced, PlayerLayout l, bool shines, bool pulses, ReadyGlowStyle glow, Color glowColor, bool endFlash, ImageSource? icon, bool counts, bool holds)
+    /// <summary>Steps each skill box's held count (사용 후 3초 유지) for this frame and returns the boxes that hide on
+    /// cooldown now (쿨타임 중 숨기기; yours only). Before the plates, which go when all their boxes hid.</summary>
+    HashSet<int> HiddenBoxes(PlayerLayout l, TimeSpan now)
+    {
+        var s = l.Player.Snapshot;
+        var fx = l.Peer ? null : l.Look?.Effects;
+        var hidden = new HashSet<int>();
+        foreach (var (key, _, _) in l.Boxes)
+        {
+            if (key >= ChangedKey) continue;
+            var slot = (SlotId)key;
+            var group = SlotInfo.GroupOf(slot, s.AdenSlots);
+            if (!_boxes.TryGetValue((l.Key, key), out var a)) _boxes[(l.Key, key)] = a = new BoxAnim();
+            a.Held = fx is not null && fx.Counts(slot, group) && fx.Holds(slot, group) ? a.Held.Next(s[slot]) : default;
+            if (fx is not null && fx.Hides(slot, group) && CooldownLook.Hides(s[slot], now, a.Held.Shown(now) is not null)) hidden.Add(key);
+        }
+        return hidden;
+    }
+
+    void DrawBox(DrawingContext dc, Rect r, Color c, Color? dim, SlotState st, BoxAnim a, TimeSpan now, double ms, bool reduced, PlayerLayout l, bool shines, bool pulses, ReadyGlowStyle glow, Color glowColor, bool endFlash, ImageSource? icon, bool counts)
     {
         bool peer = l.Peer;   // peer rows: no shine, no catch-up, no timer
         TimeSpan? rem = st.Remaining(now);
@@ -661,7 +711,6 @@ public sealed partial class OverlayRenderer : FrameworkElement
         if (st.Gold) DrawGold(dc, r);
         if (st.Phase == SlotPhase.LongCooldown) timer = $"{st.Minutes}m";
         // 사용 후 3초 유지: the seconds held before the use take the timer's place for HeldCount.Hold.
-        a.Held = counts && holds ? a.Held.Next(st) : default;
         int? held = a.Held.Shown(now);
         if (held is not null && _frozenAt is null) _moving = true;
         if (held is { } h) DrawReadyCount(dc, r, h);

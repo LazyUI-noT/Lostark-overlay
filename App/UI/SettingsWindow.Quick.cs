@@ -24,7 +24,7 @@ public partial class SettingsWindow
 
     void BuildQuick()
     {
-        var quick = _quick = new OverlayRenderer { Settings = _s, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(8) };
+        var quick = _quick = new OverlayRenderer { Settings = _s, ShowHidden = true, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(8) };
         var buffs = _quickBuffs = new OverlayRenderer { Settings = _s, BuffsOnly = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
         var debuffs = _quickDebuffs = new OverlayRenderer { Settings = _s, DebuffsOnly = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
         var play = _quickPlay = new PreviewPlayer(quick, buffs, debuffs);
