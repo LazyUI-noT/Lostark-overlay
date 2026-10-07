@@ -32,6 +32,7 @@ public sealed partial class LayoutEditorWindow : Window
     readonly CharacterService _chars;   // over the copy: the class picked here, not the game's
     readonly SettingsWindow _forms;     // never shown: its rows (게이지, 칸 옵션) edit the copy
     readonly PreviewPlayer _play;
+    readonly Rectangle _grip = new() { Fill = Brushes.White, Stroke = Brushes.Black, StrokeThickness = 1, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly Rectangle _pick = new() { Stroke = Brushes.White, StrokeThickness = 2, StrokeDashArray = [3, 2], IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     (OverlayRenderer R, Part? Part)? _picked;
     int? _pickedDebuff;   // a debuff box picked instead (PickDebuff)
@@ -46,12 +47,17 @@ public sealed partial class LayoutEditorWindow : Window
     (double W, double H) _startSize, _startPlate;
     Part _part;
     Dictionary<Part, Cell> _startCells = [];   // the fixed grid stays null until the box really moves
+    Part? _still;                              // Box, BoxSize: a box the drag doesn't move, kept where it was on screen
+    Point _stillAt;
     int _debuffIndex;                                       // DebuffSize: the box dragged
     (double W, double H) _startBox, _startDrawn;           // its size setting and drawn size when the drag began
     const string ReceivedNote = "이 파티원은 받은 칸 배치로 그려집니다. 파티 탭의 파티원 배치 받기를 끄면 칸을 옮길 수 있습니다.";
 
     /// <summary>Raised after 적용 wrote the editor's changes into the live settings.</summary>
     public event Action? Applied;
+
+    /// <summary>Raised when an editor preference (the panels hidden) was written into the live settings, to be saved.</summary>
+    public event Action? PrefsChanged;
 
     public LayoutEditorWindow(Settings live)
     {
@@ -75,6 +81,7 @@ public sealed partial class LayoutEditorWindow : Window
         _debuffs.DebuffsOnly = true;
         _peers = [.. Enumerable.Range(0, _s.Party.ShowOthersBySlot.Count).Select(i => Renderer(i, buffs: false))];
         _world.Children.Add(_pick);
+        _world.Children.Add(_grip);
         _play = new PreviewPlayer(_mine, _buffs, _debuffs);
         _view.Child = _world;
         ShowSample();
@@ -88,7 +95,7 @@ public sealed partial class LayoutEditorWindow : Window
             _v = EditorView.Initial(_view.ActualWidth, _view.ActualHeight, _screen.Width, _screen.Height);
             ShowView();
         };
-        _view.MouseWheel += (_, e) => { var at = e.GetPosition(_view); _v?.ZoomAt(at.X, at.Y, e.Delta > 0 ? ZoomStep : 1 / ZoomStep); ShowView(); };
+        _view.MouseWheel += (_, e) => { var at = e.GetPosition(_view); _v?.ZoomAt(at.X, at.Y, e.Delta > 0 ? ZoomStep : 1 / ZoomStep); ShowView(); ShowPick(); };
         _view.MouseDown += OnDown;
         _view.MouseMove += OnMove;
         _view.MouseUp += (_, _) =>
@@ -164,6 +171,7 @@ public sealed partial class LayoutEditorWindow : Window
     /// <summary>Redraws every overlay from the settings copy and puts it at its spot.</summary>
     void Relayout()
     {
+        _s.SyncPlace();   // the class picked, or a 개별 설정 ticked, may have a spot of its own
         _mine.Visibility = _showMine ? Visibility.Visible : Visibility.Collapsed;
         _buffs.Visibility = _showMine && _s.Buffs.Detached ? Visibility.Visible : Visibility.Collapsed;
         _debuffs.Visibility = _showMine && _s.Debuffs.Raid != Raid.없음 ? Visibility.Visible : Visibility.Collapsed;
@@ -219,8 +227,7 @@ public sealed partial class LayoutEditorWindow : Window
         else if (_moveBoxes && r == _debuffs)
         {
             // a debuff box grows by its corner; the rest of the window still drags it (the boxes stand in a fixed row)
-            if (r.DebuffAt(at) is { } i && r.DebuffRect(i) is var box
-                && Math.Min(Grip, Math.Min(box.Width, box.Height) / 3) is var grip && at.X >= box.Right - grip && at.Y >= box.Bottom - grip)
+            if (r.DebuffAt(at) is { } i && r.DebuffRect(i) is var box && InGrip(box, at))
             {
                 (_drag, _debuffIndex) = (Drag.DebuffSize, i);
                 _startBox = (_s.Debuffs.Box(i).Width, _s.Debuffs.Box(i).Height);
@@ -229,10 +236,13 @@ public sealed partial class LayoutEditorWindow : Window
         }
         else if (_moveBoxes && r != _buffs && r.PartAt(at) is var (part, rect))   // the buff window is the fixed grid
         {
-            double grip = Math.Min(Grip, Math.Min(rect.Width, rect.Height) / 3);
-            _drag = at.X >= rect.Right - grip && at.Y >= rect.Bottom - grip ? Drag.BoxSize : Drag.Box;
+            _drag = InGrip(rect, at) ? Drag.BoxSize : Drag.Box;
             (_part, _lastPlate) = (part, r);
             _startCells = new(Boxes(r).Layout ?? r.CellsAsDrawn());
+            var moving = _drag == Drag.BoxSize && _s.Overlay.LayoutLinkSizes ? FreeLayout.Linked(part).Parts : [part];
+            _still = r.DrawnParts.Where(q => !moving.Contains(q)).Cast<Part?>().FirstOrDefault();
+            if (_still is { } p && OnCanvas(r, p) is { } at0) _stillAt = at0;
+            else _still = null;
         }
         _startSize = (SizeOf(r).Width, SizeOf(r).Height);
         _startPlate = (r.ActualWidth - 2 * Bleed, r.ActualHeight - 2 * Bleed);
@@ -242,7 +252,11 @@ public sealed partial class LayoutEditorWindow : Window
 
     void OnMove(object sender, MouseEventArgs e)
     {
-        if (_drag == Drag.None) return;
+        if (_drag == Drag.None)
+        {
+            _view.Cursor = OverGrip(e) ? Cursors.SizeNWSE : null;
+            return;
+        }
         if (_drag == Drag.Pan)
         {
             var at = e.GetPosition(_view);
@@ -279,15 +293,47 @@ public sealed partial class LayoutEditorWindow : Window
                 Boxes(r).Layout = FreeLayout.Drag(_startCells, r.DrawnParts, _part, dx, dy, scale, resize: _drag == Drag.BoxSize,
                     snap: _s.Overlay.LayoutSnap && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift),
                     link: _s.Overlay.LayoutLinkSizes);
-                break;
+                Relayout();
+                KeepStill(r);
+                return;
         }
         Relayout();
     }
 
+    /// <summary>The plate is drawn from its top-left box, so a box dragged above or left of the others would push them
+    /// down or right; the window moves back by as much, as <see cref="OverlayWindow.Refresh"/> does with its anchor.</summary>
+    void KeepStill(OverlayRenderer r)
+    {
+        if (_still is not { } p || OnCanvas(r, p) is not { } at) return;
+        double dx = at.X - _stillAt.X, dy = at.Y - _stillAt.Y;
+        if ((dx, dy) == (0, 0)) return;
+        var (l, t) = Spot(r);
+        SetSpot(r, l - dx, t - dy);
+        Relayout();
+    }
+
+    /// <summary>A box's corner grip (its bottom-right square, which resizes it): <see cref="Grip"/> on screen at any zoom,
+    /// at most half the box so the rest still moves it.</summary>
+    double GripSize(Rect box) => Math.Min(Grip / (_v?.Scale ?? 1), Math.Min(box.Width, box.Height) / 2);
+
+    bool InGrip(Rect box, Point at) => GripSize(box) is var g && at.X >= box.Right - g && at.Y >= box.Bottom - g && box.Contains(at);
+
+    /// <summary>The pointer is on a box's corner grip that a drag would resize (칸 옮기기 on).</summary>
+    bool OverGrip(MouseEventArgs e)
+    {
+        if (!_moveBoxes || _play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r.ShowsReceivedLayout) return false;
+        var at = e.GetPosition(r);
+        if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
+        return r.PartAt(at) is var (_, rect) && InGrip(rect, at);
+    }
+
+    static Point? OnCanvas(OverlayRenderer r, Part p) =>
+        r.PartRect(p) is { } rect ? new Point(Canvas.GetLeft(r) + rect.X, Canvas.GetTop(r) + rect.Y) : null;
+
     /// <summary>The boxes <paramref name="r"/> draws: yours for the class shown, or a party member's for theirs; 기본's
     /// while that class follows 기본.</summary>
     ClassProfile Boxes(OverlayRenderer r) =>
-        ClassProfiles.BoxesShown(_s, r.Peer < 0 ? ClassProfiles.ActiveClass(_s) : r.ClassName, member: r.Peer >= 0);
+        ClassProfiles.BoxesShown(_s, r.Peer < 0 ? ClassProfiles.ActiveKey(_s) : r.ClassName, member: r.Peer >= 0);
 
     // ── the fixed panel (top right) ────────────────────────────────────────────────
 

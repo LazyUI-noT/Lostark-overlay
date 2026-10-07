@@ -62,17 +62,17 @@ public sealed class Settings
     /// <summary>Skill-bar fit per viewport size, keyed "W×H" (Geometry.ViewportKey).</summary>
     public Dictionary<string, Fit> Fits { get; set; } = [];
 
-    /// <summary>크기 직접 입력: the game's HUD size (%) that 스킬바 맞추기 uses instead of reading it off the HP bar; null reads it.</summary>
+    /// <summary>크기 직접 입력: the game's HUD size (%) that 스킬창 맞추기 uses instead of reading it off the HP bar; null reads it.</summary>
     public double? ManualHud { get; set; }
 
     /// <summary>직접 입력 (on while <see cref="ManualHud"/> is set): the game's 해상도 and forced 21:9, which then give the game area
     /// instead of the black bars (Geometry.ManualViewport).</summary>
     public ManualScreen? ManualScreen { get; set; }
 
-    /// <summary>What the last automatic 스킬바 맞추기 found: the game window's size and whether it had 21:9 bars. 직접 입력 starts from it.</summary>
+    /// <summary>What the last automatic 스킬창 맞추기 found: the game window's size and whether it had 21:9 bars. 직접 입력 starts from it.</summary>
     public ManualScreen? DetectedScreen { get; set; }
 
-    /// <summary>Turns 직접 입력 on from what the last 스킬바 맞추기 found: its 해상도, 21:9 and the HUD size of its fit (else 1920×1080
+    /// <summary>Turns 직접 입력 on from what the last 스킬창 맞추기 found: its 해상도, 21:9 and the HUD size of its fit (else 1920×1080
     /// and 100).</summary>
     public void StartManual()
     {
@@ -93,6 +93,30 @@ public sealed class Settings
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
     public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile())];
     public int ActiveProfile { get; set; }
+
+    /// <summary>레이아웃 편집기의 패널 hidden from its 패널 tray (편집, 클래스, 칸 옵션, 전체 화면).</summary>
+    public HashSet<string> EditorHidden { get; set; } = [];
+
+    /// <summary>The 개별 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the classes' one.</summary>
+    public string? PlaceKey { get; set; }
+
+    /// <summary>After the character or a 개별 설정 changed: when the settings your boxes use (<see cref="ClassProfiles.ActiveKey"/>)
+    /// are a 개별 직업각인's, or no longer are, keeps your window's spot and size for the one left (in the active profile) and
+    /// puts back the new one's; a 직업각인 placed for the first time starts where the window is. True when it changed.</summary>
+    public bool SyncPlace()
+    {
+        var key = ClassProfiles.ActiveKey(this) is { } k && ClassProfiles.Parent(k) is { } p && p != ClassProfiles.Template ? k : null;
+        if (key == PlaceKey) return false;
+        if (ActiveProfile >= 0 && ActiveProfile < Profiles.Count)
+        {
+            var profile = Profiles[ActiveProfile];
+            bool placed = key is null || profile.SubclassPlaces.ContainsKey(key);
+            profile.KeepPlace(PlaceKey, this);
+            if (placed) profile.PlaceOf(key).To(Overlay);
+        }
+        PlaceKey = key;
+        return true;
+    }
 
     /// <summary>Keeps the current places in the active profile and puts back <paramref name="index"/>'s. The same or a
     /// missing profile changes nothing.</summary>
@@ -127,7 +151,8 @@ public sealed class Settings
             var live = ClassProfiles.Entry(this, name);
             (live.Own, live.Mine, live.Members) = (c.Own, c.Mine, c.Members);
         }
-        (Profiles, ActiveProfile) = (edited.Profiles, edited.ActiveProfile);
+        (Profiles, ActiveProfile, PlaceKey) = (edited.Profiles, edited.ActiveProfile, edited.PlaceKey);
+        SyncPlace();   // the editor may have shown another 직업각인's spot: back to this character's
     }
 }
 
@@ -168,7 +193,7 @@ public sealed class OverlaySettings : IWindowPlace
     public double BoxOpacity { get; set; } = 1.0;     // boxes (and their timers)
     public bool ShowTimer { get; set; } = true;
     public double TimerFont { get; set; } = 14;      // DIP; drawn capped at what fits the box (OverlayRenderer.MaxTimerFont)
-    /// <summary>준비 후 경과 시간's number colour (#RRGGBB), outlined in white, or black for a light colour.</summary>
+    /// <summary>쿨 돈 뒤 지난 시간's number colour (#RRGGBB), outlined in white, or black for a light colour.</summary>
     public string ReadyCountColor { get; set; } = "#000000";
     /// <summary>1.2's one switch for 준비되면 반짝임; SettingsStore turns false into every group's NoShine.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? ShowShine { get; set; }
@@ -229,7 +254,7 @@ public enum GaugeReadMode { Agreed, SteadyRise, Predicted }
 /// <see cref="Outline"/>, a bright border that breathes.</summary>
 public enum GlowStyle { Pulse, Shine, Outline }
 
-/// <summary>How a ready box shows 준비된 동안 계속 빛남: a band sweeping top-left → bottom-right (사선 띠) or left → right
+/// <summary>How a ready box shows 쿨 돈 동안 계속 빛남: a band sweeping top-left → bottom-right (사선 띠) or left → right
 /// (가로 띠), the whole box breathing (숨쉬기), or a border that breathes (테두리).</summary>
 public enum ReadyGlowStyle { Diagonal, Horizontal, Breathe, Outline }
 
@@ -354,7 +379,7 @@ public sealed class HotkeySettings
 {
     public string EditMode { get; set; } = "Ctrl+Shift+E";
     public string ToggleOverlay { get; set; } = "Ctrl+Shift+H";
-    /// <summary>스킬바 다시 맞추기: fits the skill bar again (the 아덴 keys may have moved), then detects the character
+    /// <summary>스킬창 다시 맞추기: fits the skill bar again (the 아덴 keys may have moved), then detects the character
     /// (class emblem and 초각스 icon). Named for what it did first, so a key set before still works.</summary>
     public string DetectCharacter { get; set; } = "Ctrl+Shift+D";
     /// <summary>테스트 모드: the window last in front (a video player) stands in for the game, which isn't looked for.</summary>

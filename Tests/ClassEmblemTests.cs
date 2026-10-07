@@ -29,7 +29,7 @@ public class ClassEmblemTests
     }
 
     /// <summary>Set to another gauge class, the class played is told on nearly every capture. The misses are 바드 frames under skill
-    /// effects or a tooltip; the capture after a 스킬바 맞추기, the player idle, has none, and a miss only
+    /// effects or a tooltip; the capture after a 스킬창 맞추기, the player idle, has none, and a miss only
     /// delays the warning to the next capture.</summary>
     [Theory]
     [MemberData(nameof(Plays))]

@@ -3,7 +3,7 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>직접 입력 (HUD · 버프 · 해상도 · 21:9): 스킬바 맞추기 takes the game area and the HUD size from the user, and only checks
+/// <summary>직접 입력 (HUD · 버프 · 해상도 · 21:9): 스킬창 맞추기 takes the game area and the HUD size from the user, and only checks
 /// that the 각성기 frame and the HP bar are where they put them, searching wider when they aren't.</summary>
 public class ManualFitTests
 {

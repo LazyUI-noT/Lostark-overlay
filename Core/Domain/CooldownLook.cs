@@ -29,7 +29,7 @@ public readonly record struct CooldownLook(double Base, bool Grey, double? Refil
         : style == CooldownStyle.FillHatched ? new(CooldownLevel, st.StackSkill, 1, true)
         : new(CooldownLevel, st.StackSkill, SweepLevel, false);
 
-    /// <summary>준비 후 경과 시간: whole seconds <paramref name="st"/> has been ready, from 1 and held at 29; null while it isn't
+    /// <summary>쿨 돈 뒤 지난 시간: whole seconds <paramref name="st"/> has been ready, from 1 and held at 29; null while it isn't
     /// ready and read (cooling, greyed, unreadable) and in its first second.</summary>
     public static int? ReadyCount(SlotState st, TimeSpan now) =>
         st is { Phase: SlotPhase.Ready, Estimated: false } ? Seconds(now - st.ChangedAt) : null;

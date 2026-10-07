@@ -18,7 +18,7 @@ public sealed class Engine : IDisposable
     /// <param name="AdenDark">The 아덴 skills are case 2, and how they show it: dark = <see cref="SlotPhase.Unavailable"/>.</param>
     /// <param name="GaugeRule">The 직업각인's gauge rule; its <see cref="GaugeRule.Spend"/> skills take full sections when used.</param>
     /// <param name="Character">The active character ("클래스 · 직업각인"): whose learned gains (gains.json) are used and added to.</param>
-    /// <param name="ManualHud">직접 입력: the HUD size 스킬바 맞추기 keeps, instead of reading it off the HP bar.</param>
+    /// <param name="ManualHud">직접 입력: the HUD size 스킬창 맞추기 keeps, instead of reading it off the HP bar.</param>
     /// <param name="ManualScreen">직접 입력: the game's 해상도 and 21:9, which place the game area without the black-bar probe.</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
@@ -37,16 +37,16 @@ public sealed class Engine : IDisposable
     public event Action<bool>? GameRunningChanged;
     /// <summary>True while the skill bar is on screen; false during loading screens and cutscenes.</summary>
     public event Action<bool>? HudVisibleChanged;
-    /// <summary>No saved fit for this game-area size: the user must run 스킬바 맞추기.</summary>
+    /// <summary>No saved fit for this game-area size: the user must run 스킬창 맞추기.</summary>
     public event Action<Viewport>? FitNeeded;
     /// <summary>Result of <see cref="RequestFit"/>: a fit (null on failure), a message for the user, and on a fit found
     /// without 직접 입력 the 해상도 and 21:9 it was found at (직접 입력 starts from them).</summary>
     public event Action<Viewport, Fit?, string, ManualScreen?>? FitFinished;
     /// <summary>The class emblem, captured on the first frame the skill bar is certainly on screen after <see cref="RequestDetect"/>
-    /// or <see cref="RequestEmblem"/> (스킬바 다시 맞추기, a character picked by hand, 테스트 모드). Never on its own.</summary>
+    /// or <see cref="RequestEmblem"/> (스킬창 다시 맞추기, a character picked by hand, 테스트 모드). Never on its own.</summary>
     public event Action<Image>? EmblemCaptured;
     /// <summary>The 초각스 slot on its first ready read, with the bar certainly on screen, after <see cref="RequestDetect"/> or
-    /// <see cref="RequestSubclass"/> (스킬바 다시 맞추기, 직업각인 다시 감지, 테스트 모드). Never on its own. Its icon tells the
+    /// <see cref="RequestSubclass"/> (스킬창 다시 맞추기, 직업각인 다시 감지, 테스트 모드). Never on its own. Its icon tells the
     /// 직업각인 (SubclassMatcher). With it, when the whole bar is greyed out (SubclassMatcher.Greyed), the 일반 slots' last
     /// crops (SkillPool); else null.</summary>
     public event Action<Image, IReadOnlyList<Image>?>? SubclassSlotCaptured;
@@ -64,7 +64,7 @@ public sealed class Engine : IDisposable
     static readonly TimeSpan LabelEvery = TimeSpan.FromMilliseconds(250), PollEvery = TimeSpan.FromMilliseconds(100),
         ViewportEvery = TimeSpan.FromSeconds(2);
     static readonly TimeSpan ShotWait = TimeSpan.FromSeconds(2);
-    const int FitWaitSteps = 20, TaskbarSettleMs = 500;   // 스킬바 맞추기: up to 2 s for the game to come to the front
+    const int FitWaitSteps = 20, TaskbarSettleMs = 500;   // 스킬창 맞추기: up to 2 s for the game to come to the front
 
     readonly Thread _thread;
     volatile bool _stop, _fitRequested, _detectRequested, _emblemRequested, _subclassRequested, _gainsReset, _iconsStale, _copyIcons, _foreground = true;
@@ -120,7 +120,7 @@ public sealed class Engine : IDisposable
     /// Desktop Duplication captures whatever is on top, so ready icons are learned only while this is true.</summary>
     public bool GameForeground { get => _foreground; set => _foreground = value; }
 
-    /// <summary>Runs 스킬바 맞추기 on the next frame. The user should be in the 수련장 with every cooldown reset.</summary>
+    /// <summary>Runs 스킬창 맞추기 on the next frame. The user should be in the 수련장 with every cooldown reset.</summary>
     public void RequestFit() => _fitRequested = true;
 
     object? _shotFor;   // the pending 게임 화면 찍기 request's token
@@ -129,7 +129,7 @@ public sealed class Engine : IDisposable
     /// <paramref name="token"/>, so an answer that comes after its asker gave up can't reach the next asker.</summary>
     public void RequestScreenshot(object token) => Volatile.Write(ref _shotFor, token);
 
-    /// <summary>스킬바 다시 맞추기 / 테스트 모드: captures the class emblem and the next ready 초각스 slot once.</summary>
+    /// <summary>스킬창 다시 맞추기 / 테스트 모드: captures the class emblem and the next ready 초각스 slot once.</summary>
     public void RequestDetect() => _detectRequested = true;
 
     /// <summary>스킬 등록: the 일반 slots ready on the next frame the bar is certainly on screen (<see cref="SkillsCaptured"/>).</summary>
@@ -139,7 +139,7 @@ public sealed class Engine : IDisposable
     public void CancelSkills() => _skillsRequested = false;
 
     /// <summary>After a character is picked by hand: capture the emblem (learned for it) but not the 직업각인, so the
-    /// pick holds until the next 스킬바 다시 맞추기.</summary>
+    /// pick holds until the next 스킬창 다시 맞추기.</summary>
     public void RequestEmblem() => _emblemRequested = true;
 
     /// <summary>직업각인 다시 감지: the next ready 초각스 is handed to <see cref="SubclassSlotCaptured"/>, with no refit.</summary>
@@ -203,7 +203,7 @@ public sealed class Engine : IDisposable
             return;
         }
         if (!EnsureFit()) { Thread.Sleep(200); return; }
-        // Detection runs only when asked (스킬바 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
+        // Detection runs only when asked (스킬창 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
         // cutscene it used to pick the wrong class.
         // Both in one tick: the full detection wins.
         if (_emblemRequested) { _emblemRequested = false; _emblemPending = true; _subclassPending = false; }
@@ -500,7 +500,7 @@ public sealed class Engine : IDisposable
         return true;
     }
 
-    /// <param name="fitting">스킬바 맞추기 is about to run: the game area as it is now wins over a kept one.</param>
+    /// <param name="fitting">스킬창 맞추기 is about to run: the game area as it is now wins over a kept one.</param>
     void UpdateViewport(TimeSpan now, bool fitting = false)
     {
         if (GameWindow.ClientRect(_hwnd) is not { } client) return;
@@ -519,7 +519,7 @@ public sealed class Engine : IDisposable
         _client = client;
         if (vp == _vp) return;
         // Cutscenes add black bars too: on the same window size, keep a fitted viewport unless the new one has its own fit.
-        // So does a 직접 입력 area: it replaces a fitted one once a fit is found there (스킬바 맞추기 adopts it to look).
+        // So does a 직접 입력 area: it replaces a fitted one once a fit is found there (스킬창 맞추기 adopts it to look).
         var fits = _config.Fits;
         if (!fitting && !resized && fits.ContainsKey(Geometry.ViewportKey(_vp)) && !fits.ContainsKey(Geometry.ViewportKey(vp))) return;
         _vp = vp;
@@ -548,14 +548,14 @@ public sealed class Engine : IDisposable
         _buffers.Clear();
         for (int i = 0; i < _cal.Length; i++) _cal[i] = LoadCalibration(SlotInfo.All[i], _config);    }
 
-    /// <summary>스킬바 맞추기; true when a fit was found.</summary>
+    /// <summary>스킬창 맞추기; true when a fit was found.</summary>
     bool RunFit()
     {
         try { return FitNow(); }
         catch (Exception ex)
         {
             Trace.WriteLine($"[engine] fit failed: {ex}");
-            FitFinished?.Invoke(_vp, null, $"스킬바를 맞추지 못했습니다: {ex.Message}", null);
+            FitFinished?.Invoke(_vp, null, $"스킬창을 맞추지 못했습니다: {ex.Message}", null);
             return false;
         }
     }
@@ -592,14 +592,14 @@ public sealed class Engine : IDisposable
                     SaveCalibration(slots[i], crops[i], trusted: true, _config);
                     ready++;
                 }
-        FitFinished?.Invoke(_vp, fit, $"스킬바를 맞췄습니다 (HUD {fit.Hud:0}%, 준비된 슬롯 {ready}/{slots.Length}개 기준 저장).{note}", detected);
+        FitFinished?.Invoke(_vp, fit, $"스킬창을 맞췄습니다 (HUD {fit.Hud:0}%, 준비된 칸 {ready}/{slots.Length}개 기준 저장).{note}", detected);
         return true;
     }
 
     (Fit? Fit, string Note, ManualScreen? Detected) SolveAuto(Image band, PixelRect rect)
     {
         if (FitSolver.Solve(band, rect, _vp) is not { } fit)
-            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 스킬바에서 직접 입력을 켜 보세요. 저장된 맞춤은 그대로 둡니다.", null);
+            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 스킬창에서 직접 입력을 켜 보세요. 저장된 맞춤은 그대로 둡니다.", null);
         return (fit, "", Geometry.Detected(_vp, _client));
     }
 
@@ -609,7 +609,7 @@ public sealed class Engine : IDisposable
         string given = $"HUD {hud:0}%, {screen.Width}×{screen.Height}{(screen.Wide ? ", 21:9" : "")}";
         var r = FitSolver.SolveManual(band, rect, _vp, hud);
         if (r.Fit is null)
-            return (null, $"직접 입력한 값({given})으로 스킬바를 찾지 못했습니다. 값을 확인하거나 자동으로 맞추기를 눌러 주세요. 저장된 맞춤은 그대로 둡니다.", null);
+            return (null, $"직접 입력한 값({given})으로 스킬창을 찾지 못했습니다. 값을 확인하거나 자동으로 맞추기를 눌러 주세요. 저장된 맞춤은 그대로 둡니다.", null);
         string note = r.Moved > 0 ? $" 입력한 값의 자리에서 {r.Moved}px 옮겨 맞췄습니다." : "";
         if ((_client.Width, _client.Height) != (screen.Width, screen.Height))
             note += $" 게임 창({_client.Width}×{_client.Height})이 입력한 해상도와 달라 창 크기에 맞춰 계산했습니다.";

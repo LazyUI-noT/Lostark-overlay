@@ -80,7 +80,7 @@ public class ClassProfilesTests
         Assert.Equal("#010101", ClassProfiles.Mine(s).DimOf(SlotId.일반3, SlotGroup.일반스킬));
     }
 
-    /// <summary>Each 일반스킬's 준비되면 반짝임 and 준비된 동안 계속 빛남 follow the group switch until set for that skill;
+    /// <summary>Each 일반스킬's 준비되면 반짝임 and 쿨 돈 동안 계속 빛남 follow the group switch until set for that skill;
     /// key letters are off until picked.</summary>
     [Fact]
     public void A_일반스킬_follows_the_group_shine_until_set_on_its_own()
@@ -95,7 +95,7 @@ public class ClassProfilesTests
         Assert.Empty(o.KeyLetters);
     }
 
-    /// <summary>끝나기 직전 깜빡임 (the buff bars' last-0.9 s sweep on a skill box): off for every group until turned on;
+    /// <summary>쿨 돌기 직전 깜빡임 (the buff bars' last-0.9 s sweep on a skill box): off for every group until turned on;
     /// an 일반스킬 follows its group until set on its own.</summary>
     [Fact]
     public void The_end_flash_is_off_until_turned_on_for_a_group_or_a_skill()
@@ -111,7 +111,7 @@ public class ClassProfilesTests
         Assert.Equal((false, true), (back.EndFlashes(SlotId.일반1, SlotGroup.일반스킬), back.EndFlashes(SlotId.일반2, SlotGroup.일반스킬)));
     }
 
-    /// <summary>준비된 동안 계속 빛남's look per group: by default 각성기, 초각스 and 아덴스킬 sweep a diagonal band and
+    /// <summary>쿨 돈 동안 계속 빛남's look per group: by default 각성기, 초각스 and 아덴스킬 sweep a diagonal band and
     /// 일반스킬 breathe, all white; each group's style and colour can be changed and are saved.</summary>
     [Fact]
     public void Each_group_glows_in_its_own_style_and_colour_while_ready()

@@ -108,7 +108,7 @@ public static class Protocol
 
     // ── State ────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Encodes the slots of the groups in <paramref name="send"/> (and the 각성기 변화 flag with 각성기)
+    /// <summary>Encodes the slots of the groups in <paramref name="send"/> (and the 초각기 표시 flag with 각성기)
     /// as remaining/total ms at <paramref name="now"/>, plus the 아덴 게이지 when <paramref name="sendGauge"/>.
     /// Layout: <c>[8B origin][1B group mask][1B 아덴 slot mask][1B 변화][2B gauge, 0xFFFF = none][1B class][1B n]
     /// + n × [1B slot][1B phase | 0x80 estimated | 0x40 stacked | 0x20 gold][4B remaining ms][4B total ms][1B minutes]</c>. Other slots are not sent.</summary>

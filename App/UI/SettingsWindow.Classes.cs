@@ -19,7 +19,7 @@ public partial class SettingsWindow
 
     static string ClassName(string cls) => cls == ClassProfiles.Template ? "기본" : cls;
 
-    string ActiveOrTemplate => ClassProfiles.ActiveClass(_s) ?? ClassProfiles.Template;
+    string ActiveOrTemplate => ClassProfiles.ActiveKey(_s) ?? ClassProfiles.Template;
     string ShownClass => _classShown ?? ActiveOrTemplate;
 
     /// <summary>What depends on the class picked: the 편집 중 line and the sections that edit that class.</summary>
@@ -43,7 +43,8 @@ public partial class SettingsWindow
     {
         string cls = ShownClass, active = ActiveOrTemplate;
         _context.Children.Clear();
-        var names = _chars.Classes.Select(c => c.Name);
+        // each class, then its 직업각인 ("워로드 · 전투태세"), which follow it until 개별
+        var names = _chars.Classes.SelectMany(c => c.Subclasses.Keys.Select(sub => $"{c.Name} · {sub}").Prepend(c.Name));
         var pick = PickCombo(names.Prepend(ClassProfiles.Template), cls, v => { _classShown = v; Dispatcher.BeginInvoke(() => { FillClassSections(); FillBox(); }); });
         pick.MinWidth = 160;
         var line = Wrap(new TextBlock { Text = "편집 중", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center }, pick);
@@ -55,7 +56,8 @@ public partial class SettingsWindow
         _context.Children.Add(line);
         string? note = cls == ClassProfiles.Template
             ? "기본: 클래스 정보가 없을 때의 표시이고, 개별 설정을 켜지 않은 클래스가 따르는 설정입니다. 버프·초각스·각성기·일반스킬만 보이고, 아덴 게이지와 아덴스킬은 보이지 않습니다."
-            : !ClassProfiles.IsOwn(_s, cls) ? "기본을 따르는 중입니다. 보이는 값은 기본의 값이고, 바꾸려면 개별 설정을 켜세요." : null;
+            : !ClassProfiles.IsOwn(_s, cls) ? $"{ClassName(ClassProfiles.Parent(cls)!)}을(를) 따르는 중입니다. 보이는 값은 그 값이고, 바꾸려면 개별 설정을 켜세요."
+            : ClassProfiles.Parent(cls) != ClassProfiles.Template ? "이 직업각인의 내 칸과 내 창의 위치·크기는 따로 저장됩니다. 파티원 설정은 클래스의 것입니다." : null;
         if (cls != active) note = $"{note} 미리보기와 칸 옵션은 지금 캐릭터({ClassName(active)}) 기준입니다.".Trim();
         if (note is not null) _context.Children.Add(Note(note));
     }
@@ -79,41 +81,45 @@ public partial class SettingsWindow
         DisplayRows(p, mine, () => edit().Mine, enabled: true);
         p.Children.Add(Row("색", EnumCombo([(ColorSource.Default, "기본"), (ColorSource.Personal, "개인 설정")],
             mine.Color, v => { edit().Mine.Color = v; Dispatcher.BeginInvoke(FillClassSections); })));
+        p.Children.Add(Note("칸 하나의 색은 위의 칸 옵션에서 바꿉니다 (바꾸면 개인 설정이 됩니다)."));
         var autoDim = Check("쿨타임 색 자동 (어둡게)", mine.AutoDim, v => { edit().Mine.AutoDim = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed);
         autoDim.ToolTip = "끄면 색마다 쿨타임 동안의 색을 고릅니다. 처음에는 지금 자동으로 어둡게 한 색입니다.";
         autoDim.Visibility = Shown(mine.Color == ColorSource.Personal);
         p.Children.Add(autoDim);
+        bool personal = mine.Color == ColorSource.Personal;
+        // 아이콘으로 표시: a group drawn as icons has no colour rows here, only the note saying where its colour still shows.
+        if (personal && mine.Icons.Count > 0) p.Children.Add(Note($"{string.Join(", ", mine.Icons.Order())} {IconColourNote}"));
         ColorRows(p, mine, () => edit().Mine, g => ClassProfiles.BuiltIn[g],
-            enabled: mine.Color == ColorSource.Personal, skillsOwnRows: !mine.SkillsOneColor, dims: !mine.AutoDim);
-        SkillColorRows(p, mine, () => edit().Mine, enabled: mine.Color == ColorSource.Personal);
+            enabled: personal, skillsOwnRows: !mine.SkillsOneColor, dims: !mine.AutoDim, icons: mine.Icons);
+        SkillColorRows(p, mine, () => edit().Mine, enabled: personal && !mine.ShowsIcon(SlotGroup.일반스킬));
         GlowRows(p, mine, () => edit().Mine);
     }
 
-    /// <summary>빛 색 직접 고르기 (준비된 동안 계속 빛남): off, every glow is white; on, a colour per group, and per 일반스킬 for
-    /// the skills with their own colour (as their 쿨타임 colours).</summary>
+    /// <summary>빛 색 is picked in 칸 옵션 under 쿨 돈 동안 계속 빛남 (BoxOptions.SetGlowColor); here only the way back to
+    /// every glow white, once a colour was picked.</summary>
     void GlowRows(Panel p, MineProfile read, Func<MineProfile> edit)
     {
-        p.Children.Add(Check("빛 색 직접 고르기 (준비된 동안 계속 빛남)", read.CustomGlow,
-            v => { edit().CustomGlow = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed));
         if (!read.CustomGlow) return;
-        foreach (var g in Enum.GetValues<SlotGroup>())
-            p.Children.Add(ColorRow(Label($"   {g} 빛"), read.PulseColorOf(g), v => edit().PulseColor[g] = v, swatch: false));
-        if (read.Color != ColorSource.Personal || read.SkillsOneColor) return;
-        for (int i = 0; i < 8; i++)
+        var white = new Button { Content = "빛 색 모두 흰색으로", HorizontalAlignment = HorizontalAlignment.Left,
+            ToolTip = "칸 옵션에서 고른 빛 색을 끄고 모든 칸이 흰색으로 빛나게 합니다." };
+        white.Click += (_, _) =>
         {
-            var id = SlotId.일반1 + i;
-            p.Children.Add(ColorRow(Label($"      {SlotWithKey(_s, id)} 빛"), read.SlotPulseColors.GetValueOrDefault(id) ?? read.PulseColorOf(SlotGroup.일반스킬),
-                v => edit().SlotPulseColors[id] = v, swatch: false));
-        }
+            var e = edit();
+            (e.CustomGlow, e.PulseColor, e.SlotPulseColors) = (false, [], []);   // gone, not waiting to come back
+            Changed();
+            Dispatcher.BeginInvoke(() => { FillClassSections(); FillBox(); });
+        };
+        p.Children.Add(Row(Described("빛 색", "칸 옵션의 '쿨 돈 동안 계속 빛남' 아래에서 고릅니다"), white));
     }
 
-    void MembersPart(Panel p, ClassSettings read, Func<ClassSettings> edit)
+    /// <param name="mine">The 나 settings 내 설정 복사 copies (a 직업각인's own when one is picked); null = the class's.</param>
+    void MembersPart(Panel p, ClassSettings read, Func<ClassSettings> edit, MineProfile? mine = null)
     {
         var m = read.Members;
         p.Children.Add(Note("이 클래스 파티원의 칸입니다. '내 설정 적용'을 켠 부분은 내 오버레이 → 스킬 칸의 '나' 설정을 쓰고, 아래 파티원 설정은 그대로 남습니다."));
         void Refill() => Dispatcher.BeginInvoke(FillClassSections);
         var copyMine = new Button { Content = "내 설정 복사", ToolTip = "'나'의 표시, 배치, 색, 크기를 이 클래스의 파티원 설정으로 복사합니다." };
-        copyMine.Click += (_, _) => { var c = edit(); ClassProfiles.Copy(_s, c.Mine, [c.Members], CopyParts.All); Changed(); Refill(); };
+        copyMine.Click += (_, _) => { var c = edit(); ClassProfiles.Copy(_s, mine ?? c.Mine, [c.Members], CopyParts.All); Changed(); Refill(); };
         p.Children.Add(Row("내 설정 적용",
             Check("색", m.UseMineColor, v => { edit().Members.UseMineColor = v; Refill(); }, Changed),
             Check("표시", m.UseMineDisplay, v => { edit().Members.UseMineDisplay = v; Refill(); }, Changed),
@@ -180,7 +186,7 @@ public partial class SettingsWindow
                 var hidden = edit().HiddenSlots;
                 if (v) hidden.Add(id); else hidden.Remove(id);
             }, Changed));
-        p.Children.Add(Row(Described("숨길 슬롯", "빈 슬롯 등을 숨깁니다. 자리는 비워 둡니다"), [.. slots]));
+        p.Children.Add(Row(Described("숨길 칸", "빈 칸 등을 숨깁니다. 자리는 비워 둡니다"), [.. slots]));
     }
 
     void PlacementRow(Panel p, ClassProfile read, Func<ClassProfile> edit, string hint)
@@ -192,11 +198,14 @@ public partial class SettingsWindow
 
     /// <summary>A colour row per group: the profile's own colour, else <paramref name="fallback"/> (shown while it isn't
     /// 개인 설정, when the rows are disabled).</summary>
-    void ColorRows(Panel p, ClassProfile read, Func<ClassProfile> edit, Func<SlotGroup, string> fallback, bool enabled, bool skillsOwnRows = false, bool dims = false)
+    /// <param name="icons">Groups drawn as icons (yours only): their rows are left out.</param>
+    void ColorRows(Panel p, ClassProfile read, Func<ClassProfile> edit, Func<SlotGroup, string> fallback, bool enabled, bool skillsOwnRows = false, bool dims = false,
+        IReadOnlySet<SlotGroup>? icons = null)
     {
         foreach (var g in Enum.GetValues<SlotGroup>())
         {
             if (skillsOwnRows && g == SlotGroup.일반스킬) continue;   // the eight rows of SkillColorRows stand in for it
+            if (icons?.Contains(g) == true) continue;
             string colour = read.Colors.GetValueOrDefault(g) ?? fallback(g);
             var row = ColorRow(Label(g.ToString()), colour, v => edit().Colors[g] = v, swatch: true, warnGold: true);
             row.Visibility = Shown(enabled);

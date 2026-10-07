@@ -3,7 +3,7 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Core.Vision;
 
 /// <summary>--build-gauge's input from any screenshot of the game: the game area (letterbox bars removed) and the skill bar's fit
-/// found as 스킬바 맞추기 finds them, then the shot resampled to the reference screen, 1920×1080 at HUD 110%, where gauge masks,
+/// found as 스킬창 맞추기 finds them, then the shot resampled to the reference screen, 1920×1080 at HUD 110%, where gauge masks,
 /// emblems and every other reference rect live (<see cref="Geometry"/>).</summary>
 public static class ReferenceShot
 {
@@ -64,13 +64,13 @@ public static class ReferenceShot
         var (foundEmpty, foundFull) = (Find(empty), Find(full));
         bool sameSize = (empty.Width, empty.Height) == (full.Width, full.Height);
         if (foundEmpty is null && foundFull is null)
-            throw new InvalidDataException("두 스크린샷 모두에서 스킬바를 찾지 못했습니다. 수련장에서 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍어 주세요.");
+            throw new InvalidDataException("두 스크린샷 모두에서 스킬창을 찾지 못했습니다. 수련장에서 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍어 주세요.");
         if ((foundEmpty is null || foundFull is null) && !sameSize)
-            throw new InvalidDataException("한 장에서만 스킬바를 찾았는데 두 스크린샷의 크기가 달라, 같은 자리로 맞출 수 없습니다. 같은 설정으로 두 장을 다시 찍어 주세요.");
+            throw new InvalidDataException("한 장에서만 스킬창을 찾았는데 두 스크린샷의 크기가 달라, 같은 자리로 맞출 수 없습니다. 같은 설정으로 두 장을 다시 찍어 주세요.");
 
         var (vpE, fitE) = sameSize ? (foundEmpty ?? foundFull)!.Value : foundEmpty!.Value;
         var (vpF, fitF) = sameSize ? (vpE, fitE) : foundFull!.Value;
-        string note = $"게임 화면 {vpE.Width}×{vpE.Height}, HUD {fitE.Hud:0}%" + (foundEmpty is null || foundFull is null ? " (스킬바가 보인 한 장의 위치를 두 장에 씀)"
+        string note = $"게임 화면 {vpE.Width}×{vpE.Height}, HUD {fitE.Hud:0}%" + (foundEmpty is null || foundFull is null ? " (스킬창이 보인 한 장의 위치를 두 장에 씀)"
             : sameSize && Math.Abs(foundEmpty.Value.Fit.Hud - foundFull.Value.Fit.Hud) > 1 ? $" (두 장의 HUD가 달라 보여({foundFull.Value.Fit.Hud:0}%) 빈 화면 기준으로 맞춤)" : "");
         return (ToReference(empty, vpE, fitE), ToReference(full, vpF, fitF), note);
     }

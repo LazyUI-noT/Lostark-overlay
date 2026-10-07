@@ -32,7 +32,7 @@ public static class Geometry
 
     /// <summary>Other fixed regions in reference pixels.</summary>
     public static readonly PixelRect RefAwakeningFrame = new(505, 982, 75, 73);   // gold frame around 각성기 (fit anchor)
-    // "✳ key" 각성기 변화 banner above 각성기 (505, 955, 77×21, measured on 각성기변화2.png) with 3 px around it for the search.
+    // "✳ key" 초각기 표시 banner above 각성기 (505, 955, 77×21, measured on 각성기변화2.png) with 3 px around it for the search.
     public static readonly PixelRect RefAwakeningLabel = new(502, 952, 83, 27);
     public static readonly PixelRect RefEmblem = new(912, 962, 96, 108);          // class emblem without the top ornament (differs between shots)
 
@@ -80,7 +80,7 @@ public static class Geometry
     // buff size setting × viewport height and not with the HUD. Measured on buff_80_to_110.mp4 (sizes 80–110 at 1080,
     // HUD 110) and buff_gameplay.mp4 (120): the pitch is 22.25, 25.5, 28.75, 32, 35 — linear in the size but not
     // proportional to it — and the icon bottom rises 15 buff px above the baseline (930 at 80 to 924 at 120).
-    public const int BuffBoxCount = 5;
+    public const int BuffBoxCount = 7, DebuffBoxCount = 5;
     const double RefBuffRight = 845, RefBuffBaseline = 941.6, BuffBottomAboveBaseline = 15;
     // Pitch at a 1080-high viewport = BuffPitchPerSize × size/100 + BuffPitchOffset; the gold frame is BuffIconShare of it.
     const double BuffPitchPerSize = 32.5, BuffPitchOffset = -3.75, BuffIconShare = 0.885;
@@ -93,8 +93,8 @@ public static class Geometry
     /// <summary>Screen pixels per buff-reference pixel for the game's buff size setting (80–120%).</summary>
     public static double BuffScale(Viewport vp, int buffSize) => buffSize / 100.0 * vp.Height / ReferenceHeight;
 
-    /// <summary>The <see cref="BuffBoxCount"/> rightmost buff boxes, box 0 rightmost, in screen pixels.</summary>
-    public static BuffBox[] BuffBoxes(Viewport vp, Fit fit, int buffSize)
+    /// <summary>The <paramref name="count"/> rightmost buff boxes, box 0 rightmost, in screen pixels.</summary>
+    public static BuffBox[] BuffBoxes(Viewport vp, Fit fit, int buffSize, int count = BuffBoxCount)
     {
         double k = Scale(vp, fit), s = BuffScale(vp, buffSize);
         double pitch = (BuffPitchPerSize * buffSize / 100.0 + BuffPitchOffset) * vp.Height / ReferenceHeight, icon = BuffIconShare * pitch;
@@ -102,7 +102,7 @@ public static class Geometry
         double bottom = vp.Y + vp.Height + (RefBuffBaseline - RefBottom + fit.NudgeY) * k - BuffBottomAboveBaseline * s;
         int size = (int)Math.Round(icon), top = (int)Math.Round(bottom - icon);
         int timerTop = (int)Math.Round(bottom + BuffTimerTop * s), timerBottom = (int)Math.Round(bottom + BuffTimerBottom * s);
-        return [.. Enumerable.Range(0, BuffBoxCount).Select(i =>
+        return [.. Enumerable.Range(0, count).Select(i =>
         {
             double r = right - i * pitch;
             int x = (int)Math.Round(r - icon), tx = (int)Math.Round(r - (icon + pitch) / 2);
@@ -122,12 +122,12 @@ public static class Geometry
     // The debuff row mirrors the buff row about the HUD's centre: its left edge is fixed and new debuffs are added on the
     // right, at the buff row's size and height (mordum.png: frames from 1074, pitch 35, at buff 120%).
 
-    /// <summary>The <see cref="BuffBoxCount"/> leftmost debuff boxes, box 0 leftmost, in screen pixels.</summary>
+    /// <summary>The <see cref="DebuffBoxCount"/> leftmost debuff boxes, box 0 leftmost, in screen pixels.</summary>
     public static BuffBox[] DebuffBoxes(Viewport vp, Fit fit, int buffSize)
     {
         double axis = 2 * (vp.X + vp.Width / 2.0 + fit.NudgeX * Scale(vp, fit));
         PixelRect Mirror(PixelRect r) => r with { X = (int)Math.Round(axis - r.X - r.Width) };
-        return [.. BuffBoxes(vp, fit, buffSize).Select(b => new BuffBox(Mirror(b.Icon), Mirror(b.Timer)))];
+        return [.. BuffBoxes(vp, fit, buffSize, DebuffBoxCount).Select(b => new BuffBox(Mirror(b.Icon), Mirror(b.Timer)))];
     }
 
     /// <summary>The one rect to capture for the debuff row.</summary>

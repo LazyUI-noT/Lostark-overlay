@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Data;
 
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>What a 스킬바 다시 맞추기 capture makes active (PLAN §7 item 6): only a character the capture confirms, else
+/// <summary>What a 스킬창 다시 맞추기 capture makes active (PLAN §7 item 6): only a character the capture confirms, else
 /// 기본 (no class). Detection runs only when the user asks for it. The class's 직업각인 is the one last played
 /// (Settings.SubclassHistory) when there is one; a class whose 직업각인 have the same skills takes its first without one.</summary>
 public static class CharacterDetect

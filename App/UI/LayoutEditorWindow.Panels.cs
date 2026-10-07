@@ -18,17 +18,51 @@ public sealed partial class LayoutEditorWindow
     readonly List<TranslateTransform> _cards = [];
 
     /// <summary>The screenshot across the window, the panels over it: [class, box options under it] on the left, the
-    /// fixed panel top right, 전체 화면 bottom right.</summary>
+    /// fixed panel top right, 전체 화면 bottom right, and bottom left the 패널 tray that hides and shows them.</summary>
     Grid Layout(UIElement view, UIElement panel, UIElement fullScreen)
     {
         var left = new Grid { HorizontalAlignment = HorizontalAlignment.Left };
         left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         left.RowDefinitions.Add(new RowDefinition());   // the box options scroll in what is left
         var box = BoxPanel();
+        var cls = ClassPanel();
         Grid.SetRow(box, 1);
-        left.Children.Add(ClassPanel());
+        left.Children.Add(cls);
         left.Children.Add(box);
-        return new Grid { Children = { view, left, panel, fullScreen } };
+        var tray = PanelTray([("편집", panel), ("클래스", cls), ("칸 옵션", box), ("전체 화면", fullScreen)]);
+        return new Grid { Children = { view, left, panel, fullScreen, tray } };
+    }
+
+    /// <summary>패널 (bottom left, never hidden itself): a tick per panel to hide it and see more of the screenshot;
+    /// what is hidden is saved at once (Settings.EditorHidden), 적용 or not.</summary>
+    UIElement PanelTray(IReadOnlyList<(string Name, UIElement Panel)> panels)
+    {
+        var list = new StackPanel { Visibility = Visibility.Collapsed, Margin = new(0, 0, 0, 6) };
+        foreach (var (name, panel) in panels)
+        {
+            bool shown = !_live.EditorHidden.Contains(name);
+            panel.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+            var c = new CheckBox { Content = name, IsChecked = shown, MinWidth = 0 };
+            c.Click += (_, _) =>
+            {
+                bool on = c.IsChecked == true;
+                panel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                foreach (var s in new[] { _live, _s })
+                    if (on) s.EditorHidden.Remove(name); else s.EditorHidden.Add(name);
+                PrefsChanged?.Invoke();
+            };
+            list.Children.Add(c);
+        }
+        var open = new ToggleButton { Content = "패널 ▴", Padding = new(10, 3, 10, 3), ToolTip = "편집기 위의 패널을 숨기거나 다시 보입니다." };
+        open.Checked += (_, _) => { list.Visibility = Visibility.Visible; open.Content = "패널 ▾"; };
+        open.Unchecked += (_, _) => { list.Visibility = Visibility.Collapsed; open.Content = "패널 ▴"; };
+        var tray = new Border
+        {
+            Child = new StackPanel { Children = { list, open } }, Padding = new(8), Margin = new(12), CornerRadius = new(6),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        tray.SetResourceReference(Border.BackgroundProperty, SystemColors.WindowBrushKey);
+        return tray;
     }
 
     /// <summary>전체 화면 on or off: the window changes size, so every panel goes back where it starts.</summary>
@@ -139,9 +173,10 @@ public sealed partial class LayoutEditorWindow
         ShowPick();
     }
 
-    /// <summary>Outlines the picked box on the screenshot.</summary>
+    /// <summary>Outlines the picked box on the screenshot; with 칸 옮기기 on, its corner grip shows as a white square.</summary>
     void ShowPick()
     {
+        _grip.Visibility = Visibility.Collapsed;
         (OverlayRenderer? On, Rect? Rect) shown = _pickedDebuff is { } d ? (_debuffs, _debuffs.DebuffRect(d))
             : _picked is ({ } r, { } part) ? (r, r.PartRect(part)) : (null, null);
         var (on, rect) = shown;
@@ -151,5 +186,11 @@ public sealed partial class LayoutEditorWindow
         (_pick.Width, _pick.Height) = (b.Width + 4, b.Height + 4);
         Canvas.SetLeft(_pick, Canvas.GetLeft(on) + b.X - 2);
         Canvas.SetTop(_pick, Canvas.GetTop(on) + b.Y - 2);
+        if (!_moveBoxes || on == _buffs || on.ShowsReceivedLayout) return;
+        double g = GripSize(b);
+        (_grip.Width, _grip.Height, _grip.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
+        Canvas.SetLeft(_grip, Canvas.GetLeft(on) + b.Right - g);
+        Canvas.SetTop(_grip, Canvas.GetTop(on) + b.Bottom - g);
+        _grip.Visibility = Visibility.Visible;
     }
 }

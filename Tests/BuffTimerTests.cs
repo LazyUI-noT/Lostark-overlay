@@ -14,7 +14,7 @@ public class BuffTimerTests
         for (int i = 0; i < BgLabels.Length; i++)
         {
             int n = 0;
-            for (int b = 0; b < Geometry.BuffBoxCount; b++)
+            for (int b = 0; b < BgLabels[i].Length; b++)
                 if (Label(BgLabels[i][b]) is not null) yield return (i * 5, b, BgTimers[i][n++]);
         }
     }

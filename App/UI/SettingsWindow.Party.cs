@@ -101,8 +101,10 @@ public partial class SettingsWindow
     void FillMembers()
     {
         var party = _s.Party;
-        var p = Refill(_secMembers, $"파티원 ({ClassName(ShownClass)})");
-        MembersPart(p, ClassProfiles.Of(_s, ShownClass), () => ClassProfiles.Edit(_s, ShownClass));
+        // party members are per class: a 직업각인 picked shows its class's
+        string cls = ClassProfiles.Parent(ShownClass) is { } parent && parent != ClassProfiles.Template ? parent : ShownClass;
+        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})");
+        MembersPart(p, ClassProfiles.Of(_s, cls), () => ClassProfiles.Edit(_s, cls), ClassProfiles.Of(_s, ShownClass).Mine);
 
         p.Children.Add(Heading("모든 파티원"));
         p.Children.Add(Row("칸 왼쪽", EnumCombo([(PeerLabel.IconAndName, "클래스 아이콘 + 이름"), (PeerLabel.Name, "이름"), (PeerLabel.Icon, "클래스 아이콘")],

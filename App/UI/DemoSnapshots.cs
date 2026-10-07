@@ -5,7 +5,7 @@ namespace GaugeOverlay.App.UI;
 
 /// <summary>Fake snapshot source for --demo and the edit-mode sample. A 30 s script loops: cooldowns of
 /// several lengths, a reduction, a reset (333 E → 아덴), a stack skill with a use left, a 3m long cooldown,
-/// estimated, unknown, 각성기 변화, a gold frame on E and R from 12 to 18 s, a moving gauge and two peers. From 23 s to 30 s nothing moves, so the render loop can idle.</summary>
+/// estimated, unknown, 초각기 표시, a gold frame on E and R from 12 to 18 s, a moving gauge and two peers. From 23 s to 30 s nothing moves, so the render loop can idle.</summary>
 public sealed class DemoSnapshots
 {
     const double Loop = 30;

@@ -75,7 +75,7 @@ public class BuffReaderTests
         var f = Fixture.Load(src.Fixture);
         var boxes = Boxes(src);
         for (int i = 0; i < labels.Length; i++)
-            for (int b = 0; b < Geometry.BuffBoxCount; b++)
+            for (int b = 0; b < labels[i].Length; b++)   // the recordings label the first five boxes
             {
                 char want = labels[i][b];
                 var got = BuffReader.Classify(f.Frames[i * step], boxes[b].Icon);

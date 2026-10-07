@@ -5,7 +5,7 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>--build-gauge takes screenshots at any resolution, HUD size and 21:9: each is fitted like 스킬바 맞추기 and
+/// <summary>--build-gauge takes screenshots at any resolution, HUD size and 21:9: each is fitted like 스킬창 맞추기 and
 /// resampled to the reference screen (1920×1080, HUD 110%) the gauge masks are made in.</summary>
 public class ReferenceShotTests
 {
@@ -123,7 +123,7 @@ public class ReferenceShotTests
     public void No_skill_bar_in_either_shot_is_a_clear_error()
     {
         var ex = Assert.Throws<InvalidDataException>(() => ReferenceShot.Normalize(new Image(1920, 1080), new Image(1920, 1080)));
-        Assert.Contains("스킬바", ex.Message);
+        Assert.Contains("스킬창", ex.Message);
     }
 
     [Fact]

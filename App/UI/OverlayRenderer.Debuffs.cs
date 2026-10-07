@@ -7,7 +7,7 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>The debuff window (PLAN §4 디버프): three boxes in a row. Your sigil, as the game draws it; the swap box, in the colour of the
+/// <summary>The debuff window (PLAN §4 디버프): three boxes in a row. Your sigil, as the game draws it, bordered in its colour; the swap box, in the colour of the
 /// teammates to bring with their number in white (DebuffAdvice), shown only while the swap debuff is on; the lightning, flashing yellow and black with its seconds in the opposite colour while it is on you.</summary>
 public sealed partial class OverlayRenderer
 {
@@ -16,6 +16,7 @@ public sealed partial class OverlayRenderer
     const double FlashMs = 500;          // 번개: yellow for the first half of each period, black for the second
     const double DebuffTextShare = 0.55; // text height, share of a box's height
     const double SwapOutline = 3;        // the swap box's outline in the other colour
+    const double SigilOutline = 3;       // 내 색's border in its own colour, so it reads even when the icon is small
     // 내 색: the blue and red sigils as the game draws them (the reader's templates, 25 px, scaled to the box).
     static readonly ImageSource[] SigilIcons = [.. new[] { DebuffKind.파랑, DebuffKind.빨강 }.Select(k =>
     {
@@ -63,7 +64,14 @@ public sealed partial class OverlayRenderer
         Rect Cell(int i) => cells[i];
 
         var mine = d.Colour;
-        if (mine is { } sigil) dc.DrawImage(SigilIcons[sigil == DebuffKind.빨강 ? 1 : 0], Cell(0));   // the game's own icon
+        if (mine is { } sigil)
+        {
+            bool red = sigil == DebuffKind.빨강;
+            dc.DrawImage(SigilIcons[red ? 1 : 0], Cell(0));   // the game's own icon
+            var edge = Cell(0);
+            edge.Inflate(-SigilOutline / 2, -SigilOutline / 2);   // the stroke stays inside the box
+            dc.DrawRectangle(null, new Pen(Solid(red ? DebuffRed : DebuffBlue), SigilOutline), edge);
+        }
         else
         {
             dc.DrawRectangle(Solid(DebuffEmpty), null, Cell(0));

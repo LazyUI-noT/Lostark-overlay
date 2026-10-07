@@ -83,8 +83,8 @@ public partial class SettingsWindow
         _checkMessage.Tick += (_, _) => { _checkMessage.Stop(); SetUpdateBusy(false); };
         _areas =
         [
-            new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬바를 맞춥니다.",
-                ("캐릭터", _secCharacter), ("스킬바", _secFit), ("배운 값", _secLearned), ("클래스 확인", _secCheck)),
+            new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬창을 맞춥니다.",
+                ("캐릭터", _secCharacter), ("스킬창", _secFit), ("배운 값", _secLearned), ("클래스 확인", _secCheck)),
             new(AreaOverlay, "보고 싶은 요소를 고르고 미리보기로 확인하세요. 미리보기의 칸이나 게이지를 누르면 그 설정으로 갑니다.",
                 ("전체", _secDisplay), (SecSkills, _secSkills), ("아덴 게이지", _secGauge), (SecBuffs, _secBuffs), ("배치", _secPlace), ("복사", _secCopy)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
@@ -107,7 +107,7 @@ public partial class SettingsWindow
         NavFoot.Children.Add(Wrap(Label("테마"), theme));
         NavFoot.Children.Add(_navNote);
         NavFoot.Children.Add(ResetButton("모두 기본값으로 되돌리기",
-            "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬바 맞춤을 되돌립니다. "
+            "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
             + "캐릭터, 오버레이 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
         _update.Click += (_, _) =>

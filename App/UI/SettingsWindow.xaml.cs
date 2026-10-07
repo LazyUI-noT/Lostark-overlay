@@ -24,7 +24,7 @@ public partial class SettingsWindow : Window
     /// <summary>Raised after every edit (and after a reset).</summary>
     public event Action? SettingsChanged;
 
-    /// <summary>캐릭터·인식 → 스킬바 → "스킬바 다시 맞추기".</summary>
+    /// <summary>캐릭터·인식 → 스킬창 → "스킬창 다시 맞추기".</summary>
     public event Action? RefitRequested;
 
     /// <summary>내 오버레이 → 배치 → "편집 모드".</summary>
@@ -46,7 +46,7 @@ public partial class SettingsWindow : Window
     /// <summary>배운 값 → 이 캐릭터의 배운 값 지우기 (스킬별 예측).</summary>
     public event Action? GainsResetRequested;
 
-    /// <summary>캐릭터·인식 → 스킬바 → "스킬 등록" / "등록된 스킬 지우기".</summary>
+    /// <summary>캐릭터·인식 → 스킬창 → "스킬 등록" / "등록된 스킬 지우기".</summary>
     public event Action? SkillsSubmitRequested, SkillsClearRequested;
 
     /// <summary>캐릭터·인식 → 캐릭터 → "직업각인 다시 감지".</summary>
@@ -92,7 +92,7 @@ public partial class SettingsWindow : Window
     /// <summary>다시 허용 was pressed for this device.</summary>
     public event Action<string>? UnblockRequested;
 
-    /// <summary>Shows the last fit result in 캐릭터·인식 → 스킬바 ("맞춤 완료: …" or the error).</summary>
+    /// <summary>Shows the last fit result in 캐릭터·인식 → 스킬창 ("맞춤 완료: …" or the error).</summary>
     public void SetFitResult(string text)
     {
         _fitResult = text;
@@ -144,7 +144,7 @@ public partial class SettingsWindow : Window
 
     void BuildAll()
     {
-        string? active = ClassProfiles.ActiveClass(_s);
+        string? active = ClassProfiles.ActiveKey(_s);
         if (active != _lastActive) (_classShown, _lastActive) = (null, active);   // a new character: edit its class
         FillCharacter();
         FillFit();
@@ -179,7 +179,7 @@ public partial class SettingsWindow : Window
     {
         var p = Refill(_secCharacter, "캐릭터");
         p.Children.Add(BuildCharacterPanel(_s, _chars, () => { Changed(); Dispatcher.BeginInvoke(BuildAll); }));
-        p.Children.Add(Note("트레이 메뉴에서 고른 캐릭터와 같습니다. 클래스마다 마지막으로 고르거나 읽은 직업각인을 기록해 두고, 스킬바를 다시 맞출 때 그 클래스면 직업각인을 읽지 않고 기록대로 고릅니다. 기록이 없을 때만 게임 화면에서 직업각인을 읽습니다."));
+        p.Children.Add(Note("트레이 메뉴에서 고른 캐릭터와 같습니다. 클래스마다 마지막으로 고르거나 읽은 직업각인을 기록해 두고, 스킬창을 다시 맞출 때 그 클래스면 직업각인을 읽지 않고 기록대로 고릅니다. 기록이 없을 때만 게임 화면에서 직업각인을 읽습니다."));
         if (_chars.ActiveClass is { } cls)
             p.Children.Add(Label(_s.SubclassHistory.TryGetValue(cls.Name, out var sub) ? $"기록된 직업각인: {cls.Name} → {sub}" : $"기록된 직업각인: {cls.Name} → 없음", 0.8));
         var redetect = new Button { Content = "직업각인 다시 감지", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
@@ -191,13 +191,13 @@ public partial class SettingsWindow : Window
 
     void FillFit()
     {
-        var p = Refill(_secFit, "스킬바 맞추기", "수련장에서 재사용 대기시간을 초기화한 뒤 누르세요. 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
+        var p = Refill(_secFit, "스킬창 맞추기", "수련장에서 쿨초한 뒤 누르세요. 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
         if (_s.Fits.Count == 0) p.Children.Add(Label("아직 맞춘 적이 없습니다.", 0.7));
         foreach (var (size, fit) in _s.Fits)
             p.Children.Add(Row(size, Label($"HUD {fit.Hud:0.#}%")));
         p.Children.Add(Check("직접 입력 (HUD · 버프 · 해상도 · 21:9)", _s.ManualHud is not null,
             v => { if (v) _s.StartManual(); else (_s.ManualHud, _s.ManualScreen) = (null, null); }, () => { FillFit(); Changed(); }));
-        p.Children.Add(Note("맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다. 켜면 찾지 않고 게임 설정에 적힌 값을 그대로 써서, 스킬바 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다."));
+        p.Children.Add(Note("맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다. 켜면 찾지 않고 게임 설정에 적힌 값을 그대로 써서, 스킬창 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다."));
         if (_s.ManualHud is { } hud)
         {
             p.Children.Add(SliderRow("HUD 크기 (%)", 70, 130, hud, 1, v => $"{v:0}%", v => _s.ManualHud = v, Changed));
@@ -206,14 +206,14 @@ public partial class SettingsWindow : Window
             var auto = new Button { Content = "자동으로 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
             auto.Click += (_, _) => { (_s.ManualHud, _s.ManualScreen) = (null, null); FillFit(); Changed(); RefitRequested?.Invoke(); };
             p.Children.Add(auto);
-            p.Children.Add(Note("직접 입력한 값으로 스킬바를 찾지 못하면 직접 입력을 끄고 해상도와 HUD 크기를 찾아 맞춥니다."));
+            p.Children.Add(Note("직접 입력한 값으로 스킬창을 찾지 못하면 직접 입력을 끄고 해상도와 HUD 크기를 찾아 맞춥니다."));
         }
-        var b = new Button { Content = "스킬바 다시 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 12, 0, 0) };
+        var b = new Button { Content = "스킬창 다시 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 12, 0, 0) };
         b.Click += (_, _) => RefitRequested?.Invoke();
         p.Children.Add(b);
         if (_fitResult is { } result) p.Children.Add(new TextBlock { Text = result, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
         p.Children.Add(SubHeading("스킬 등록"));
-        p.Children.Add(Note("마을처럼 스킬을 못 쓰는 곳에서는 스킬바가 회색이 되어 직업각인을 읽기 어렵습니다. 스킬을 쓸 수 있는 곳에서 일반 스킬이 모두 준비됐을 때 등록해 두면, 회색 스킬바에서도 일반 스킬 8개 중 5개 이상이 맞는 직업각인을 고릅니다. 스킬 위치는 상관없습니다. 지금 고른 직업각인으로 저장되며, 다른 스킬 구성은 추가로 등록할 수 있습니다. 초각스 아이콘으로 읽지 못할 때 쓰입니다. 등록하지 않은 직업각인은 스킬로 고르지 않고, 두 직업각인이 같이 쓰는 스킬은 빼고 나머지로 비교합니다."));
+        p.Children.Add(Note("마을처럼 스킬을 못 쓰는 곳에서는 스킬창이 회색이 되어 직업각인을 읽기 어렵습니다. 스킬을 쓸 수 있는 곳에서 일반 스킬이 모두 준비됐을 때 등록해 두면, 회색 스킬창에서도 일반 스킬 8개 중 5개 이상이 맞는 직업각인을 고릅니다. 스킬 위치는 상관없습니다. 지금 고른 직업각인으로 저장되며, 다른 스킬 구성은 추가로 등록할 수 있습니다. 초각스 아이콘으로 읽지 못할 때 쓰입니다. 등록하지 않은 직업각인은 스킬로 고르지 않고, 두 직업각인이 같이 쓰는 스킬은 빼고 나머지로 비교합니다."));
         var submit = new Button { Content = "스킬 등록", Margin = new(0, 0, 8, 0) };
         submit.Click += (_, _) => SkillsSubmitRequested?.Invoke();
         submit.IsEnabled = _chars.SameSkillsNote is null;
@@ -222,14 +222,14 @@ public partial class SettingsWindow : Window
         p.Children.Add(new WrapPanel { Children = { submit, clear } });
         if (_chars.SameSkillsNote is not null) p.Children.Add(Note($"{_chars.ActiveClass!.Name}: 두 직업각인의 스킬이 같아 스킬로 고를 수 없으므로 등록하지 않습니다."));
         if (_skillsResult is { } skills) p.Children.Add(new TextBlock { Text = skills, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
-        p.Children.Add(ResetButton("스킬바 맞춤 지우기", "저장된 스킬바 맞춤을 모두 지웁니다. 다음 실행 때 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
+        p.Children.Add(ResetButton("스킬창 맞춤 지우기", "저장된 스킬창 맞춤을 모두 지웁니다. 다음 실행 때 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
     }
 
     /// <summary>What the app learned for the character: for 스킬별 예측, its gauge gains.</summary>
     void FillLearned()
     {
         var p = Refill(_secLearned, "배운 게이지 값");
-        p.Children.Add(Note("아덴 게이지의 '스킬별 예측' 읽기에서 스킬마다 게이지가 얼마나 차는지 배운 값입니다. 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 슬롯의 스킬을 바꿨으면 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다."));
+        p.Children.Add(Note("아덴 게이지의 '스킬별 예측' 읽기에서 스킬마다 게이지가 얼마나 차는지 배운 값입니다. 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 스킬창의 스킬을 바꿨으면 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다."));
         var reset = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left };
         reset.Click += (_, _) => GainsResetRequested?.Invoke();
         p.Children.Add(reset);
@@ -239,7 +239,7 @@ public partial class SettingsWindow : Window
     {
         var p = Refill(_secCheck, "클래스 확인");
         p.Children.Add(Note(_chars.ClassCheckable
-            ? "스킬바 다시 맞추기 때 스킬바 가운데나 초각스 아이콘이 고른 클래스와 다르면 아덴 게이지가 빨갛게 깜빡이고 게이지 예측을 멈춥니다. 캐릭터 감지는 스킬바 다시 맞추기(Ctrl+Shift+D)를 누를 때만 합니다. 로딩이나 컷신 뒤에는 저절로 바뀌지 않습니다. 가만히 있을 때 누르면 가장 정확합니다."
+            ? "스킬창 다시 맞추기 때 스킬창 가운데나 초각스 아이콘이 고른 클래스와 다르면 아덴 게이지가 빨갛게 깜빡이고 게이지 예측을 멈춥니다. 캐릭터 감지는 스킬창 다시 맞추기(Ctrl+Shift+D)를 누를 때만 합니다. 로딩이나 컷신 뒤에는 저절로 바뀌지 않습니다. 가만히 있을 때 누르면 가장 정확합니다."
             : ClassProfiles.ActiveClass(_s) is null
                 ? "캐릭터를 고르면 그 클래스가 맞는지 게임 화면과 비교합니다."
                 : "이 클래스는 비교할 그림(Profiles/aden, Profiles/subclass)이 없어 클래스를 확인하지 못합니다. 고른 클래스가 맞는지 직접 확인하세요."));
@@ -258,31 +258,38 @@ public partial class SettingsWindow : Window
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed));
         p.Children.Add(opacityRow = SliderRow("배경 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
         opacityRow.Visibility = Shown(o.ShowPlate);
-        p.Children.Add(SliderRow("칸 불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed));
-        double maxFont = Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(o.Width, o.Height));   // the box size is the editor's
-        UIElement? fontRow = null, fromRow = null;
-        p.Children.Add(Check("남은 시간 숫자 표시", o.ShowTimer, v => { o.ShowTimer = v; fontRow!.Visibility = Shown(v); }, Changed));
-        p.Children.Add(fontRow = SliderRow("숫자 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
-            OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed));
-        fontRow.Visibility = Shown(o.ShowTimer);
-        p.Children.Add(ColorRow(Label("경과 시간 색 (준비 후 경과 시간 표시, 스킬 칸에서 켭니다)"), o.ReadyCountColor, v => o.ReadyCountColor = v, swatch: false));
-        p.Children.Add(Row("쿨타임 표시", EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
-            (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")], o.CooldownStyle,
-            v => { o.CooldownStyle = v; fromRow!.Visibility = Shown(v != CooldownStyle.Sweep); })));
-        p.Children.Add(fromRow = Row("채움 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
-            o.FillFrom, v => o.FillFrom = v)));
-        fromRow.Visibility = Shown(o.CooldownStyle != CooldownStyle.Sweep);
+        CooldownLookRows(p);
         p.Children.Add(Note("빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 합니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 표시됩니다."));
         p.Children.Add(Check("화면 캡처에서 오버레이 숨기기 (OBS·디스코드 화면 공유에서도 숨겨집니다)", o.ExcludeFromCapture, v => o.ExcludeFromCapture = v, Changed));
-        p.Children.Add(ColorRow(Label("각성기 변화 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true));
+        p.Children.Add(ColorRow(Label("초각기 표시 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true));
 
         p.Children.Add(Heading("금색 테두리"));
         p.Children.Add(Note("게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 테두리를 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 금색과 비슷한 칸 색은 스킬 칸의 색 항목에서 알려 줍니다."));
         p.Children.Add(ColorRow(Label("테두리 색"), o.GoldColor, v => { o.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false));   // their warnings
         p.Children.Add(SliderRow("테두리 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed));
-        p.Children.Add(ResetButton("오버레이 표시 되돌리기", "이 화면의 표시, 불투명도, 시간 숫자, 쿨타임 표시, 각성기 변화, 금색 테두리를 되돌립니다. 위치, 크기, 판 색은 남습니다.",
+        p.Children.Add(ResetButton("오버레이 표시 되돌리기", "이 화면의 표시, 불투명도, 시간 숫자, 쿨타임 표시, 초각기 표시, 금색 테두리를 되돌립니다. 위치, 크기, 판 색은 남습니다.",
             () => SettingsResets.Display(_s)));
         FillBuffs();
+    }
+
+    /// <summary>How every box shows its cooldown: 칸 불투명도, 남은 시간 숫자 (and its size), 쿨타임 표시 (and 채움 방향).
+    /// The same rows in 내 오버레이 → 전체 and in the editor's 창 전체.</summary>
+    void CooldownLookRows(Panel p)
+    {
+        var o = _s.Overlay;
+        p.Children.Add(SliderRow("칸 불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed));
+        double maxFont = Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(o.Width, o.Height));   // the box size is the editor's
+        UIElement? fontRow = null, fromRow = null;
+        p.Children.Add(Check("남은 시간 숫자 표시", o.ShowTimer, v => { o.ShowTimer = v; fontRow!.Visibility = Shown(v); }, Changed));
+        p.Children.Add(fontRow = SliderRow("   숫자 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
+            OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed));
+        fontRow.Visibility = Shown(o.ShowTimer);
+        p.Children.Add(Row("쿨타임 표시", EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
+            (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")], o.CooldownStyle,
+            v => { o.CooldownStyle = v; fromRow!.Visibility = Shown(v != CooldownStyle.Sweep); })));
+        p.Children.Add(fromRow = Row("   채움 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
+            o.FillFrom, v => o.FillFrom = v)));
+        fromRow.Visibility = Shown(o.CooldownStyle != CooldownStyle.Sweep);
     }
 
     /// <summary>버프/디버프: the buff bars, then under a line the raid debuffs, each part with its own reset.</summary>
@@ -376,7 +383,7 @@ public partial class SettingsWindow : Window
         Button Key(string action, Func<string> get, Action<string> set) => keys[action] = KeyField(get, v => { set(v); Changed(); Mark(); });
         p.Children.Add(Row("편집 모드", Key(nameof(h.EditMode), () => h.EditMode, v => h.EditMode = v)));
         p.Children.Add(Row("오버레이 표시/숨기기", Key(nameof(h.ToggleOverlay), () => h.ToggleOverlay, v => h.ToggleOverlay = v)));
-        p.Children.Add(Row("스킬바 다시 맞추기 (캐릭터 감지 포함)", Key(nameof(h.DetectCharacter), () => h.DetectCharacter, v => h.DetectCharacter = v)));
+        p.Children.Add(Row("스킬창 다시 맞추기 (캐릭터 감지 포함)", Key(nameof(h.DetectCharacter), () => h.DetectCharacter, v => h.DetectCharacter = v)));
         var clearRedetect = new Button { Content = "지우기" };
         clearRedetect.Click += (_, _) => { h.DetectSubclass = ""; FillHotkeys(); Changed(); };
         p.Children.Add(Row("직업각인 다시 감지", Key(nameof(h.DetectSubclass), () => h.DetectSubclass, v => h.DetectSubclass = v), clearRedetect));
@@ -530,7 +537,7 @@ public partial class SettingsWindow : Window
         foreach (var id in SlotInfo.All)
         {
             var field = KeyField(() => s.Keys.GetValueOrDefault(id, ""), key => { s.Keys[id] = key; changed(); Refresh(); });
-            var warn = new TextBlock { Text = "다른 슬롯과 겹칩니다", VerticalAlignment = VerticalAlignment.Center };
+            var warn = new TextBlock { Text = "다른 칸과 겹칩니다", VerticalAlignment = VerticalAlignment.Center };
             warn.SetResourceReference(TextBlock.ForegroundProperty, CriticalBrushKey);
             fields[id] = (field, warn);
             p.Children.Add(Row(SlotLabel(id), field, warn));

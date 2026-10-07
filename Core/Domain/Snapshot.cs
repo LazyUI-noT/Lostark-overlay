@@ -5,7 +5,7 @@ namespace GaugeOverlay.Core.Domain;
 /// <summary>Everything the overlay draws for one player at one moment. Yours and each party member's
 /// use the same type, so one renderer draws both.</summary>
 /// <param name="Slots">One state per slot, indexed by <see cref="SlotId"/>.</param>
-/// <param name="AwakeningChanged">The "✳ C+V" 각성기 변화 state is showing.</param>
+/// <param name="AwakeningChanged">The "✳ C+V" 초각기 표시 state is showing.</param>
 /// <param name="Gauge">아덴 게이지 0..1, or null when the character has none enabled.</param>
 /// <param name="Groups">Groups this snapshot carries (a party member may send only some).</param>
 /// <param name="AdenSlots">The player's class adenSlots (which of 아덴1/아덴2 form the 아덴스킬 column).</param>

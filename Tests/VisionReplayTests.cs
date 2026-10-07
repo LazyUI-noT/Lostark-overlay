@@ -187,7 +187,7 @@ public class VisionReplayTests(ITestOutputHelper log)
         }
     }
 
-    // other_*: the ready icons 스킬바 맞추기 saved on one character; lt2_clear_*: the same slots on another character,
+    // other_*: the ready icons 스킬창 맞추기 saved on one character; lt2_clear_*: the same slots on another character,
     // whose skills look nothing alike. What the two share is the key label the game draws over every icon.
     [Theory]
     [InlineData("각성기")]

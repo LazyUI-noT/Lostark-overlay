@@ -21,16 +21,16 @@ public sealed partial class OverlayRenderer : FrameworkElement
     public const double Bleed = 10;
     public const double MinScale = ClassProfiles.MinScale, MaxScale = ClassProfiles.MaxScale;   // Width/Height settings (box width, height)
     public const double MinOpacity = 0.1;   // floor for the plate, box and gauge opacity settings
-    const double ChangedShare = FreeLayout.ChangedShare;   // 각성기 변화 box height, share of a box
+    const double ChangedShare = FreeLayout.ChangedShare;   // 초각기 표시 box height, share of a box
     const double PeerShare = 0.6;          // peer box size vs yours
     const double MinIconScale = 0.5, MaxIconScale = 2.0;   // 파티 → 아이콘 크기
     const double CooldownLevel = CooldownLook.CooldownLevel, SweepLevel = CooldownLook.SweepLevel;
     const double LineWidth = 2;            // white progress line of a stack skill with a use left
     const double MaxCooldownSweep = 0.99;  // sweep holds here until Ready arrives
-    const double ChangedOffLevel = 0.20;   // 각성기 변화 off
+    const double ChangedOffLevel = 0.20;   // 초각기 표시 off
     const double SideBuffWidth = 6;       // an upright buff bar's width at box size 1.0 (버프 막대 위치 왼쪽 바깥)
     const double KeyShare = 0.45;   // the key letter on a 아덴 block: its top-left corner, this share of each side
-    const double PulsePeriod = 1.2;   // 준비된 동안 계속 빛남: seconds per pulse, the gauge glow's default
+    const double PulsePeriod = 1.2;   // 쿨 돈 동안 계속 빛남: seconds per pulse, the gauge glow's default
     const double GlowAlpha = 0.55;          // gauge glow: white over the fill at its brightest
     const int EndFlashSweeps = 3;           // 마지막 1초 깜빡임: sweeps from EndFlashFrom to 0
     const double EndFlashFrom = 0.8;        // below this many seconds left (shown 0.7s and down)
@@ -45,7 +45,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     const double TimerInset = 4;           // "88" must fit the box width minus this
     const double PeerNameShare = 0.55, MinNameFont = 8;   // names stay readable at small scales
     const double FastFrameMs = 1000.0 / 60, SlowFrameMs = 1000.0 / 30;   // 60 fps for shine/tweens, 30 for sweeps only
-    const int ChangedKey = (int)Part.변화;  // box key of 각성기 변화 (0–11 are SlotId)
+    const int ChangedKey = (int)Part.변화;  // box key of 초각기 표시 (0–11 are SlotId)
     const int GaugeKey = (int)Part.게이지;  // the gauge, as a plate's member
     const double HiddenOpacity = 0.25;     // a box hidden on cooldown, where it is shown anyway (ShowHidden)
     static readonly Color PlateColor = Color.FromArgb(0xD9, 0x0C, 0x0D, 0x10);   // the swatch; windows use their setting
@@ -63,7 +63,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     static readonly Pen DottedPen = Frozen(new Pen(new SolidColorBrush(EstimatedOutline), 1) { DashStyle = new DashStyle([2, 2], 0) });
     static readonly Pen OutlinePen = Frozen(new Pen(new SolidColorBrush(TextOutline), 2) { LineJoin = PenLineJoin.Round });
     static readonly Pen LightOutlinePen = Frozen(new Pen(Brushes.White, 2) { LineJoin = PenLineJoin.Round });
-    const double LightFill = 50;   // CIE L*: a 준비 후 경과 시간 colour this light is outlined in black
+    const double LightFill = 50;   // CIE L*: a 쿨 돈 뒤 지난 시간 colour this light is outlined in black
     static readonly Pen GlowPen = Frozen(new Pen(Brushes.White, 1));
     const double GoldEdge = 1;   // dark line inside the gold frame
     static readonly Pen GoldEdgePen = Frozen(new Pen(new SolidColorBrush(TextOutline), GoldEdge));
@@ -673,7 +673,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             {
                 if (_frozenAt is null) _moving = true;
                 double sec = left.TotalSeconds;
-                // 끝나기 직전 깜빡임: the buff bars' last-second sweep, here to say the skill is about to be ready.
+                // 쿨 돌기 직전 깜빡임: the buff bars' last-second sweep, here to say the skill is about to be ready.
                 if (endFlash && sec < EndFlashFrom) DrawBoxEndFlash(dc, r, sec, reduced);
                 timer = sec < 3
                     ? (Math.Ceiling(sec * 10) / 10).ToString("0.0", CultureInfo.InvariantCulture)
@@ -684,7 +684,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         a.EndsAt = st.Phase == SlotPhase.Cooldown ? st.EndsAt : null;
         a.Total = st.Total;
 
-        // 준비된 동안 계속 빛남, in the group's style and colour, once every PulsePeriod (steady under reduced motion).
+        // 쿨 돈 동안 계속 빛남, in the group's style and colour, once every PulsePeriod (steady under reduced motion).
         if (ready && pulses && !peer)
         {
             var brush = Solid(glowColor);
@@ -715,7 +715,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         if (held is not null && _frozenAt is null) _moving = true;
         if (held is { } h) DrawReadyCount(dc, r, h);
         else if (timer is not null && Settings.Overlay.ShowTimer && !peer) DrawTimer(dc, r, timer);
-        // 준비 후 경과 시간: where the timer would be, redrawn each frame until it holds at 29.
+        // 쿨 돈 뒤 지난 시간: where the timer would be, redrawn each frame until it holds at 29.
         if (counts && st is { Phase: SlotPhase.Ready, Estimated: false })
         {
             int? n = CooldownLook.ReadyCount(st, now);
@@ -874,7 +874,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             dc.DrawRectangle(mark, null, new Rect(g.X + g.Width * split - bar.SplitThickness / 2, g.Y, bar.SplitThickness, g.Height));
     }
 
-    /// <summary>A 준비 후 경과 시간 number in the timer's place, in its own colour.</summary>
+    /// <summary>A 쿨 돈 뒤 지난 시간 number in the timer's place, in its own colour.</summary>
     void DrawReadyCount(DrawingContext dc, Rect r, int count)
     {
         var fill = Parse(Settings.Overlay.ReadyCountColor);
@@ -929,7 +929,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         dc.Pop();
     }
 
-    /// <summary>끝나기 직전 깜빡임 on a skill box: a white band sweeps diagonally, top-left → bottom-right,
+    /// <summary>쿨 돌기 직전 깜빡임 on a skill box: a white band sweeps diagonally, top-left → bottom-right,
     /// <see cref="EndFlashSweeps"/> times over the last <see cref="EndFlashFrom"/> s, the last ending at 0 (steady under
     /// reduced motion), as a buff bar's 마지막 1초 깜빡임.</summary>
     void DrawBoxEndFlash(DrawingContext dc, Rect r, double rem, bool reduced) =>

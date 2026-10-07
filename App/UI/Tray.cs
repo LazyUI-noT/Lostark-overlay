@@ -52,7 +52,7 @@ public sealed class Tray : IDisposable
         _raid = new ToolStripMenuItem();
         foreach (var r in Enum.GetValues<Raid>()) _raid.DropDownItems.Add(Item(RaidName(r), () => RaidChosen?.Invoke(r)));
         SetRaid(Raid.없음);
-        _refit = Item("스킬바 다시 맞추기", () => Refit?.Invoke());
+        _refit = Item("스킬창 다시 맞추기", () => Refit?.Invoke());
         _detectSubclass = Item("직업각인 다시 감지", () => DetectSubclass?.Invoke());
         var submitSkills = Item("스킬 등록", () => SubmitSkills?.Invoke());
         _rereadIcons = Item("아이콘 다시 읽기", () => RereadIcons?.Invoke());
@@ -132,7 +132,7 @@ public sealed class Tray : IDisposable
     {
         _overlay.ShortcutKeyDisplayString = KeyNames.Display(keys.ToggleOverlay);
         _edit.ShortcutKeyDisplayString = KeyNames.Display(keys.EditMode);
-        _refit.ShortcutKeyDisplayString = KeyNames.Display(keys.DetectCharacter);   // 스킬바 다시 맞추기, which detects too
+        _refit.ShortcutKeyDisplayString = KeyNames.Display(keys.DetectCharacter);   // 스킬창 다시 맞추기, which detects too
         _detectSubclass.ShortcutKeyDisplayString = keys.DetectSubclass == "" ? "" : KeyNames.Display(keys.DetectSubclass);
         _rereadIcons.ShortcutKeyDisplayString = keys.RereadIcons == "" ? "" : KeyNames.Display(keys.RereadIcons);
         _test.ShortcutKeyDisplayString = KeyNames.Display(keys.TestMode);

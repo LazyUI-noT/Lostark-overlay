@@ -228,6 +228,7 @@ public partial class App : Application
                 _changed();
             };
             _editor.ShotSaved += () => _changed();
+            _editor.PrefsChanged += () => _changed();
             _editor.TakeShot = _takeShot;
             _editor.Closed += (_, _) => { _editor = null; _settingsWindow.EditorOpen = false; UpdatePreview(); };
             _settingsWindow.EditorOpen = true;
@@ -331,7 +332,7 @@ public partial class App : Application
         var party = new PartyService(device);
         _owned.AddRange([party, device, foreground, engine]);
         _gameForeground = foreground.IsGameForeground;
-        engine.GameForeground = _gameForeground;   // calibration pictures and 스킬바 맞추기 only while the game is in front
+        engine.GameForeground = _gameForeground;   // calibration pictures and 스킬창 맞추기 only while the game is in front
 
         // 게임 화면 찍기 (레이아웃 편집기): 설정 and the overlays (unless kept out of capture) step aside for the picture.
         engine.ScreenshotCaptured += (token, img, area) => ((TaskCompletionSource<(Image?, PixelRect)>)token).TrySetResult((img, area));
@@ -397,7 +398,7 @@ public partial class App : Application
             bool warn = settings.Gauge.ReadMode == GaugeReadMode.Predicted && characters.ClassMismatch;
             if (warn && !_overlay.Renderer.ClassWarning)
                 _tray.Notify(characters.ShownClass is { } shown
-                    ? $"스킬바 가운데가 {shown}(으)로 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
+                    ? $"스킬창 가운데가 {shown}(으)로 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
                     : $"초각스 아이콘이 고른 클래스({characters.ActiveClass?.Name})와 다릅니다. 클래스를 확인하세요. 게이지 예측은 멈췄습니다.");
             _overlay.Renderer.ClassWarning = warn;
             // About 10 s of flashing with no fix: back to 기본, so a wrong class doesn't stay on.
@@ -411,7 +412,7 @@ public partial class App : Application
             if (!_overlay.Renderer.ClassWarning) return;
             characters.PickDefault();
             _settingsWindow.Reload();
-            _tray.Notify("클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬바 다시 맞추기(Ctrl+Shift+D)나 트레이에서 클래스를 고르세요.");
+            _tray.Notify("클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬창 다시 맞추기(Ctrl+Shift+D)나 트레이에서 클래스를 고르세요.");
             OnSettingsChanged();
         };
 
@@ -497,6 +498,7 @@ public partial class App : Application
                 ClassProfiles.Reads(settings, characters.AdenSlots), characters.Gauge, characters.ActiveClass?.AdenRects, characters.AdenDark,
                 characters.GaugeRule, wrongClass ? GaugeReadMode.Agreed : settings.Gauge.ReadMode, wrongClass ? null : settings.ActiveCharacter,
                 settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen));
+            if (settings.SyncPlace()) _overlay.Replace();   // a 개별 직업각인 has its own spot and size
             ApplyUi();
             Draw();
         }
@@ -526,7 +528,7 @@ public partial class App : Application
         engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() => { _hudVisible = visible; UpdateVisibility(); });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
-            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬바가 없습니다. 수련장에서 설정 → 스킬바 → 스킬바 맞추기를 눌러 주세요.");
+            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 수련장에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
         });
         engine.FitFinished += (vp, fit, message, detected) => Dispatcher.BeginInvoke(() =>
         {
@@ -551,7 +553,7 @@ public partial class App : Application
         // A character picked by hand (tray, 설정 or first run, all through CharacterService.Pick): its emblem is learned.
         characters.Picked += engine.RequestEmblem;
         _settingsWindow.GainsResetRequested += () => { engine.ResetGains(); _tray.Notify($"{settings.ActiveCharacter}의 배운 게이지 값을 지웠습니다."); };
-        // 스킬바 다시 맞추기 by hotkey (the tray and 설정 below): the same Refit.
+        // 스킬창 다시 맞추기 by hotkey (the tray and 설정 below): the same Refit.
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectCharacter)) Dispatcher.BeginInvoke(() => Refit()); };
         engine.SubclassSlotCaptured += (slot, greyedSkills) => Dispatcher.BeginInvoke(() =>
         {
@@ -591,7 +593,7 @@ public partial class App : Application
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.TestMode)) ToggleTestMode(); };
 
         // UI → settings / engine.
-        // 스킬바 다시 맞추기 (tray, 설정, hotkey): fit again, since the 아덴 keys may have moved, then detect the character, even
+        // 스킬창 다시 맞추기 (tray, 설정, hotkey): fit again, since the 아덴 keys may have moved, then detect the character, even
         // when the fit fails. A fit needs the game in front: from the tray or 설정 the taskbar covers the skill bar (Engine.FitNow waits).
         void Refit() { GameWindow.Activate(); engine.RequestFit(); engine.RequestDetect(); }
         _settingsWindow.RefitRequested += Refit;
@@ -621,7 +623,7 @@ public partial class App : Application
             if (characters.SkillsBlocked is { } why) { SkillsResult(why); return; }
             skillsWait?.Stop();
             skillsWait = new DispatcherTimer(TimeSpan.FromSeconds(3), DispatcherPriority.Normal,
-                (_, _) => SkillsResult("스킬바가 보이지 않습니다. 게임 화면에 스킬바가 보일 때 다시 눌러 주세요."), Dispatcher);
+                (_, _) => SkillsResult("스킬창이 보이지 않습니다. 게임 화면에 스킬창이 보일 때 다시 눌러 주세요."), Dispatcher);
             GameWindow.Activate();
             engine.RequestSkills();
         }
@@ -772,7 +774,7 @@ public partial class App : Application
     // ── --demo: the real UI driven by DemoSnapshots; no capture, no party, nothing saved ──────
     // Flags: --settings, --first-run, --debug, --edit, --editor (레이아웃 편집기), --full (its 전체 화면), --pick=<Part> (a part clicked, in the editor and the 오버레이 tab), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
     // --theme=<UiTheme>, --peer-colors=<ColorSource>, --support=<number 1–4>, --my-number=<1–4>, --name-length=<2–14>, --receive (파티원 크기·배치 받기),
-    // --glow (계속 빛남 in chosen colours and 준비 후 경과 시간 on 일반스킬 and 초각스).
+    // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스).
     void StartDemo(string[] args)
     {
         Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo.log")));
@@ -798,6 +800,7 @@ public partial class App : Application
             (fx.Pulse, fx.CustomGlow, fx.ReadyCount) = ([.. Enum.GetValues<SlotGroup>()], true, [SlotGroup.일반스킬, SlotGroup.초각스]);
             (fx.PulseColor[SlotGroup.일반스킬], fx.PulseColor[SlotGroup.초각스]) = ("#FFD400", "#00E5FF");
         }
+        if (args.Contains("--icons")) ClassProfiles.Edit(settings, ClassProfiles.Template).Mine.Icons = [SlotGroup.일반스킬, SlotGroup.초각스];
         if (args.Contains("--spread"))   // 각성기 placed apart, 일반스킬 hidden while cooling
         {
             var mine = ClassProfiles.Edit(settings, ClassProfiles.Template).Mine;

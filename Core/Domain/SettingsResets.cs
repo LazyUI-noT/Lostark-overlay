@@ -4,7 +4,7 @@ namespace GaugeOverlay.Core.Domain;
 /// plates' colours (the 레이아웃 편집기's), characters, overlay profiles and learned gains are never touched.</summary>
 public static class SettingsResets
 {
-    /// <summary>내 오버레이 → 전체: visibility, opacity, timer, cooldown look, 금색 테두리, 각성기 변화.</summary>
+    /// <summary>내 오버레이 → 전체: visibility, opacity, timer, cooldown look, 금색 테두리, 초각기 표시.</summary>
     public static void Display(Settings s)
     {
         var o = s.Overlay;
@@ -53,7 +53,7 @@ public static class SettingsResets
 
     public static void Hotkeys(Settings s) => s.Hotkeys = new();
 
-    /// <summary>캐릭터·인식 → 스킬바: every saved fit.</summary>
+    /// <summary>캐릭터·인식 → 스킬창: every saved fit.</summary>
     public static void Fits(Settings s) => s.Fits.Clear();
 
     public static void All(Settings s)

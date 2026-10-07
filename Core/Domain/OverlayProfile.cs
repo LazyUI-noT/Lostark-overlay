@@ -30,6 +30,9 @@ public sealed class OverlayProfile
     public const int Count = 5;
 
     public WindowPlace Overlay { get; set; } = new();
+    /// <summary>Your window's spot and size for each 개별 직업각인 ("클래스 · 직업각인") placed in this profile;
+    /// <see cref="Overlay"/> is the one every other class uses.</summary>
+    public Dictionary<string, WindowPlace> SubclassPlaces { get; set; } = [];
     public double Opacity { get; set; } = 0.9;
     public string PlateColor { get; set; } = OverlaySettings.DefaultPlate;
     public double GaugeThickness { get; set; } = 6;
@@ -55,17 +58,28 @@ public sealed class OverlayProfile
     /// <summary>Takes the places now in <paramref name="s"/> (the screenshot is kept).</summary>
     public void CaptureFrom(Settings s)
     {
-        (Overlay, Opacity, PlateColor, GaugeThickness) = (WindowPlace.Of(s.Overlay), s.Overlay.Opacity, s.Overlay.PlateColor, s.Gauge.Thickness);
+        KeepPlace(s.PlaceKey, s);
+        (Opacity, PlateColor, GaugeThickness) = (s.Overlay.Opacity, s.Overlay.PlateColor, s.Gauge.Thickness);
         (BuffsDetached, BuffsSide, Buffs) = (s.Buffs.Detached, s.Buffs.Side, WindowPlace.Of(s.Buffs));
         BuffBars = s.Buffs.Indicators.ToDictionary(i => i.Key, i => new BarSize { Thickness = i.Value.Thickness, Length = i.Value.Length });
         (PartyTogether, BoundPartyLeft, BoundPartyTop, PartyPlateColor) = (s.Party.Together, s.Party.Left, s.Party.Top, s.Party.PlateColor);
         PartySlots = [.. s.Party.ShowOthersBySlot.Select(d => new WindowPlace { Left = d.Left, Top = d.Top })];
     }
 
+    /// <summary>Stores your window's spot and size (in <paramref name="s"/>) as <paramref name="key"/>'s (null = the classes').</summary>
+    internal void KeepPlace(string? key, Settings s)
+    {
+        if (key is null) Overlay = WindowPlace.Of(s.Overlay);
+        else SubclassPlaces[key] = WindowPlace.Of(s.Overlay);
+    }
+
+    /// <summary><paramref name="key"/>'s spot and size, the classes' one where it has none yet.</summary>
+    internal WindowPlace PlaceOf(string? key) => key is not null && SubclassPlaces.TryGetValue(key, out var p) ? p : Overlay;
+
     /// <summary>Puts this profile's places into <paramref name="s"/>.</summary>
     public void ApplyTo(Settings s)
     {
-        Overlay.To(s.Overlay);
+        PlaceOf(s.PlaceKey).To(s.Overlay);
         (s.Overlay.Opacity, s.Overlay.PlateColor, s.Gauge.Thickness) = (Opacity, PlateColor, GaugeThickness);
         Buffs.To(s.Buffs);
         (s.Buffs.Detached, s.Buffs.Side) = (BuffsDetached, BuffsSide);

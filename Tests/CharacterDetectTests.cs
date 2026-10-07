@@ -3,7 +3,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>What 스킬바 다시 맞추기 makes active (CharacterDetect.Resolve): a character is kept only when the capture
+/// <summary>What 스킬창 다시 맞추기 makes active (CharacterDetect.Resolve): a character is kept only when the capture
 /// confirms it; nothing confirmed is 기본.</summary>
 public class CharacterDetectTests
 {

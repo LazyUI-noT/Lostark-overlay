@@ -118,7 +118,7 @@ public class LayoutEditorDataTests
 
     // ── effects per class ────────────────────────────────────────────────────────────
 
-    /// <summary>준비되면 반짝임, 계속 빛남, 끝나기 직전 깜빡임, 아이콘 and 키 표시 are set per class now.</summary>
+    /// <summary>준비되면 반짝임, 계속 빛남, 쿨 돌기 직전 깜빡임, 아이콘 and 키 표시 are set per class now.</summary>
     [Fact]
     public void Effects_are_set_per_class()
     {

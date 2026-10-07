@@ -48,6 +48,20 @@ public static class BoxOptions
         }
     }
 
+    /// <summary>빛 색 picked in 칸 옵션: turns 빛 색 직접 고르기 on, dropping colours left from when it was on before so
+    /// no other group changes. 이 칸만 gives an 일반스킬 its own glow only while the skills have their own colours (the
+    /// only time GlowOf reads it); otherwise the group's glow changes.</summary>
+    public static void SetGlowColor(MineProfile p, SlotId slot, SlotGroup g, string hex, bool onlyThis)
+    {
+        if (!p.CustomGlow) (p.CustomGlow, p.PulseColor, p.SlotPulseColors) = (true, [], []);
+        if (OwnGlow(p, g, onlyThis)) p.SlotPulseColors[slot] = hex;
+        else p.PulseColor[g] = hex;
+    }
+
+    /// <summary>Whether 빛 색 in 칸 옵션 is the box's own (else the group's), see <see cref="SetGlowColor"/>.</summary>
+    public static bool OwnGlow(MineProfile p, SlotGroup g, bool onlyThis) =>
+        onlyThis && PerBox(g) && p.Color == ColorSource.Personal && !p.SkillsOneColor;
+
     static void Set(Dictionary<SlotId, bool> perBox, Action<bool> setGroup, SlotId slot, SlotGroup g, bool on, bool onlyThis,
         IReadOnlyCollection<SlotId> adenSlots)
     {

@@ -58,6 +58,17 @@ public class BuffGeometryTests
         AssertNear(new PixelRect(2179, 1370, 41, 41), box.Icon, 1);
     }
 
+    /// <summary>Seven buffs are read (the two leftmost past the four party buffs and one more); the debuff row keeps five.</summary>
+    [Fact]
+    public void Seven_buff_boxes_at_one_pitch_and_five_debuff_boxes()
+    {
+        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120);
+        Assert.Equal(7, boxes.Length);
+        Assert.InRange(boxes[5].Icon.X - boxes[6].Icon.X, boxes[0].Icon.X - boxes[1].Icon.X - 1, boxes[0].Icon.X - boxes[1].Icon.X + 1);
+        Assert.Equal(boxes[0].Icon.Y, boxes[6].Icon.Y);
+        Assert.Equal(5, Geometry.DebuffBoxes(Fhd, new Fit(110), 120).Length);
+    }
+
     [Fact]
     public void Area_covers_every_box_and_timer()
     {

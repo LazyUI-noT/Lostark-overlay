@@ -57,14 +57,14 @@ public sealed class MemberProfile : ClassProfile
 }
 
 /// <summary>Your boxes' effects while you play the class (party members' boxes have none): 준비되면 반짝임, 준비된 동안
-/// 계속 빛남 (with its style and colour), 끝나기 직전 깜빡임, 아이콘으로 표시 and 키 표시. An 일반스킬 follows its group's
+/// 계속 빛남 (with its style and colour), 쿨 돌기 직전 깜빡임, 아이콘으로 표시 and 키 표시. An 일반스킬 follows its group's
 /// switch until set on its own.</summary>
 public sealed class MineProfile : ClassProfile
 {
     /// <summary>Groups whose boxes don't flash on becoming ready.</summary>
     public HashSet<SlotGroup> NoShine { get; set; } = [];
     public bool Shines(SlotGroup g) => !NoShine.Contains(g);
-    /// <summary>준비된 동안 계속 빛남: groups whose ready boxes glow for as long as they stay ready.</summary>
+    /// <summary>쿨 돈 동안 계속 빛남: groups whose ready boxes glow for as long as they stay ready.</summary>
     public HashSet<SlotGroup> Pulse { get; set; } = [];
     public bool Pulses(SlotGroup g) => Pulse.Contains(g);
     /// <summary>How each group's ready box shows 계속 빛남, and in what colour (#RRGGBB); a group not in them: 일반스킬
@@ -78,7 +78,7 @@ public sealed class MineProfile : ClassProfile
     public bool CustomGlow { get; set; }
     /// <summary>An 일반스킬's own glow colour, used while the 일반스킬 have their own colours (see Appearance.GlowOf).</summary>
     public Dictionary<SlotId, string> SlotPulseColors { get; set; } = [];
-    /// <summary>준비 후 경과 시간: groups whose ready boxes count the seconds since ready (off by default).</summary>
+    /// <summary>쿨 돈 뒤 지난 시간: groups whose ready boxes count the seconds since ready (off by default).</summary>
     public HashSet<SlotGroup> ReadyCount { get; set; } = [];
     public Dictionary<SlotId, bool> SlotReadyCount { get; set; } = [];
     public bool Counts(SlotId slot, SlotGroup g) => SlotReadyCount.TryGetValue(slot, out var on) ? on : ReadyCount.Contains(g);
@@ -93,7 +93,7 @@ public sealed class MineProfile : ClassProfile
     public Dictionary<SlotId, bool> SlotPulse { get; set; } = [];
     public bool Shines(SlotId slot, SlotGroup g) => SlotShine.TryGetValue(slot, out var on) ? on : Shines(g);
     public bool Pulses(SlotId slot, SlotGroup g) => SlotPulse.TryGetValue(slot, out var on) ? on : Pulses(g);
-    /// <summary>끝나기 직전 깜빡임: a band sweeps the box in the last 0.8 s of its cooldown (off by default).</summary>
+    /// <summary>쿨 돌기 직전 깜빡임: a band sweeps the box in the last 0.8 s of its cooldown (off by default).</summary>
     public HashSet<SlotGroup> EndFlash { get; set; } = [];
     public Dictionary<SlotId, bool> SlotEndFlash { get; set; } = [];
     public bool EndFlashes(SlotGroup g) => EndFlash.Contains(g);
@@ -166,12 +166,32 @@ public static class ClassProfiles
     public static string? ActiveClass(Settings s) =>
         s.ActiveCharacter is { } k && s.Characters.TryGetValue(k, out var c) && c.Class.Length > 0 ? c.Class : null;
 
-    /// <summary>What <paramref name="className"/> draws with (not stored: for reading): its own boxes when 개별, else
-    /// 기본's.</summary>
+    /// <summary>Between a class and its 직업각인 in a 직업각인's key, "워로드 · 전투태세" (the character's key too).</summary>
+    const string SubclassSeparator = " · ";
+
+    /// <summary>The key of the settings your boxes use: the active character's 직업각인 ("클래스 · 직업각인") when it is
+    /// 개별, else its class; null with no class.</summary>
+    public static string? ActiveKey(Settings s) =>
+        s.ActiveCharacter is { } k && IsOwn(s, k) && ActiveClass(s) is not null && k.Contains(SubclassSeparator) ? k : ActiveClass(s);
+
+    /// <summary>What <paramref name="key"/> follows while not 개별: a 직업각인 its class, a class 기본; null for 기본.</summary>
+    public static string? Parent(string? key) => key switch
+    {
+        null or Template => null,
+        _ when key.IndexOf(SubclassSeparator, StringComparison.Ordinal) is var i and > 0 => key[..i],
+        _ => Template,
+    };
+
+    /// <summary>What <paramref name="className"/> (a class, or a 직업각인's key) draws with (not stored: for reading): its
+    /// own boxes when 개별, else what it follows (<see cref="Parent"/>). A 직업각인 has your boxes only; party members'
+    /// are its class's.</summary>
     public static ClassSettings Of(Settings s, string? className)
     {
         var t = s.Classes.GetValueOrDefault(Template);
-        if (className is null or Template || !s.Classes.TryGetValue(className, out var c)) return t ?? new ClassSettings();
+        if (className is null or Template) return t ?? new ClassSettings();
+        if (Parent(className) is { } parent and not Template)
+            return IsOwn(s, className) ? new ClassSettings { Own = true, Mine = s.Classes[className].Mine, Members = Of(s, parent).Members } : Of(s, parent);
+        if (!s.Classes.TryGetValue(className, out var c)) return t ?? new ClassSettings();
         return c.Own ? c : new ClassSettings { Mine = t?.Mine ?? new(), Members = t?.Members ?? new() };
     }
 
@@ -187,15 +207,15 @@ public static class ClassProfiles
         return c;
     }
 
-    /// <summary>개별 설정 on or off. On for the first time copies 기본; off keeps the class's settings for the next time
-    /// it is turned on.</summary>
+    /// <summary>개별 설정 on or off. On for the first time copies what it followed (a class 기본, a 직업각인 its class);
+    /// off keeps its settings for the next time it is turned on.</summary>
     public static void SetOwn(Settings s, string? className, bool on)
     {
         if (className is null or Template) return;
+        var from = Of(s, Parent(className));
         var c = Entry(s, className);
-        if (on && !c.Own && Same(c.Mine, new MineProfile()) && Same(c.Members, new MemberProfile())
-            && s.Classes.TryGetValue(Template, out var t))
-            (c.Mine, c.Members) = (Clone(t.Mine), Clone(t.Members));
+        if (on && !c.Own && Same(c.Mine, new MineProfile()) && Same(c.Members, new MemberProfile()))
+            (c.Mine, c.Members) = (Clone(from.Mine), Clone(from.Members));
         c.Own = on;
     }
 
@@ -210,7 +230,7 @@ public static class ClassProfiles
     /// <summary>What a change seen on screen (편집 모드) goes into: the class's own settings when 개별, else 기본's, which
     /// the class shows.</summary>
     public static ClassSettings EditShown(Settings s, string? className) =>
-        IsOwn(s, className) ? s.Classes[className!] : Entry(s, Template);
+        IsOwn(s, className) ? s.Classes[className!] : Parent(className) is { } parent and not Template ? EditShown(s, parent) : Entry(s, Template);
 
     /// <summary>The boxes a drag on screen (레이아웃 편집기의 칸 옮기기) changes: yours, or a party member's of
     /// <paramref name="className"/> when <paramref name="member"/>, in <see cref="EditShown"/>'s settings.</summary>
@@ -232,7 +252,7 @@ public static class ClassProfiles
     public static Appearance Mine(Settings s)
     {
         var cls = ActiveClass(s);
-        var c = Of(s, cls);
+        var c = Of(s, ActiveKey(s));
         // No class known yet: 기본 without the 아덴 slots and the gauge, which only a class gives a meaning.
         IReadOnlySet<SlotId> hidden = cls is null ? new HashSet<SlotId>(c.Mine.HiddenSlots) { SlotId.아덴1, SlotId.아덴2 } : c.Mine.HiddenSlots;
         bool personal = c.Mine.Color == ColorSource.Personal;
@@ -242,7 +262,7 @@ public static class ClassProfiles
     }
 
     /// <summary>What the engine reads: a slot is skipped when it is neither shown (its group on, the slot not hidden) nor
-    /// sent to the party, the 각성기 변화 label likewise with its 각성기 group, the gauge likewise, and the buff row only
+    /// sent to the party, the 초각기 표시 label likewise with its 각성기 group, the gauge likewise, and the buff row only
     /// while an indicator is on.</summary>
     public static ReadPlan Reads(Settings s, IReadOnlyCollection<SlotId> adenSlots)
     {

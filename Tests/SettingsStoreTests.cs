@@ -81,7 +81,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(kept ? new ManualScreen(w, h, wide) : null, loaded.DetectedScreen);
     }
 
-    /// <summary>Turning 직접 입력 on starts from what the last 스킬바 맞추기 found: its 해상도, 21:9 and HUD size.</summary>
+    /// <summary>Turning 직접 입력 on starts from what the last 스킬창 맞추기 found: its 해상도, 21:9 and HUD size.</summary>
     [Fact]
     public void Direct_input_starts_from_the_last_detected_values()
     {
@@ -244,7 +244,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal([true, false, true, false], Enum.GetValues<SlotGroup>().Select(back.ShowsIcon).ToArray());
     }
 
-    /// <summary>준비된 동안 계속 빛남: off for every group until picked, and kept per group.</summary>
+    /// <summary>쿨 돈 동안 계속 빛남: off for every group until picked, and kept per group.</summary>
     [Fact]
     public void Glow_while_ready_is_off_until_picked_per_group()
     {
@@ -336,7 +336,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.DoesNotMatch("\"Party(Left|Top|Width|Height)\"", File.ReadAllText(FilePath));
     }
 
-    /// <summary>The 각성기 변화 box turned red; a file still holding the old orange default gets it, a chosen colour stays.</summary>
+    /// <summary>The 초각기 표시 box turned red; a file still holding the old orange default gets it, a chosen colour stays.</summary>
     [Theory]
     [InlineData("#FF7F27", "#FF4D4D")]
     [InlineData("#123456", "#123456")]

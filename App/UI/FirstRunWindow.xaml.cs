@@ -5,7 +5,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>First start (PLAN.md §6): 키 설정 → 캐릭터 → 스킬바 맞추기. Edits the settings object like 설정 does.</summary>
+/// <summary>First start (PLAN.md §6): 키 설정 → 캐릭터 → 스킬창 맞추기. Edits the settings object like 설정 does.</summary>
 public partial class FirstRunWindow : Window
 {
     readonly Settings _s;
@@ -36,7 +36,7 @@ public partial class FirstRunWindow : Window
             ("캐릭터", SettingsWindow.Stack(
                 SettingsWindow.Note("지금 플레이할 캐릭터를 고르세요. 캐릭터를 바꾸면 게임 화면의 엠블럼으로 자동 전환되고, 트레이 메뉴에서도 고를 수 있습니다."),
                 SettingsWindow.BuildCharacterPanel(settings, characters, Changed))),
-            ("스킬바 맞추기", FitPage()),
+            ("스킬창 맞추기", FitPage()),
         ];
         BackButton.Click += (_, _) => Go(_page - 1);
         NextButton.Click += (_, _) =>
@@ -73,7 +73,7 @@ public partial class FirstRunWindow : Window
         var fit = new Button { Content = "맞추기", MinWidth = 120, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 0) };
         fit.Click += (_, _) => FitRequested?.Invoke();
         return SettingsWindow.Stack(
-            SettingsWindow.Note("오버레이가 게임의 스킬바 위치와 크기를 알아내는 단계입니다."),
+            SettingsWindow.Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
             Step("1", "게임에서 수련장에 들어갑니다."),
             Step("2", "수련장 설정에서 재사용 대기시간을 초기화해 모든 스킬이 준비된 상태로 둡니다."),
             Step("3", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),

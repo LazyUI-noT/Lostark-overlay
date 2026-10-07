@@ -62,7 +62,7 @@ public static partial class GameWindow
         return n > 0 && Shell.Contains(new string(name, 0, n));
     }
 
-    /// <summary>Brings the game to the front, when the user asked for something that needs it (스킬바 맞추기: the taskbar
+    /// <summary>Brings the game to the front, when the user asked for something that needs it (스킬창 맞추기: the taskbar
     /// covers the skill bar while the tray menu or 설정 has the foreground). Nothing if it isn't running.</summary>
     public static void Activate()
     {

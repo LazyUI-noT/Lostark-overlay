@@ -1,6 +1,6 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>What the overlay places: the twelve slots (same numbers as <see cref="SlotId"/>), the 각성기 변화 box, the
+/// <summary>What the overlay places: the twelve slots (same numbers as <see cref="SlotId"/>), the 초각기 표시 box, the
 /// 아덴 게이지 and the four buff bars (<see cref="BuffKind"/> order; yours only).</summary>
 public enum Part
 {
@@ -24,7 +24,7 @@ public readonly record struct Cell(double X, double Y, double W, double H)
 public static class FreeLayout
 {
     public const double Box = 34, Gap = 2;   // the grid's box edge and spacing (OverlayRenderer draws the same)
-    public const double ChangedShare = 0.42; // 각성기 변화 box height, share of a box
+    public const double ChangedShare = 0.42; // 초각기 표시 box height, share of a box
     public const double SnapDistance = 6;    // DIP at size 1.0
     public const double MinSize = 8;
     public const double BuffHeight = 12;     // a buff bar's height at size 1.0

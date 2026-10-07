@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Tests;
 
 /// <summary>빛 색 직접 고르기: the ready glow is white until it is on, then the group's colour, or a skill's own where the skill
-/// has its own colour (as 쿨타임 colours go). 준비 후 경과 시간: seconds a skill has been ready and unused, from 1 to 29.</summary>
+/// has its own colour (as 쿨타임 colours go). 쿨 돈 뒤 지난 시간: seconds a skill has been ready and unused, from 1 to 29.</summary>
 public sealed class GlowAndCountTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "GaugeOverlayTests", Guid.NewGuid().ToString("N"));
@@ -21,6 +21,34 @@ public sealed class GlowAndCountTests : IDisposable
         mine.CustomGlow = true;
         Assert.Equal("#FF0000", ClassProfiles.Mine(s).GlowOf(SlotId.초각스, SlotGroup.초각스));
         Assert.Equal("#FFFFFF", ClassProfiles.Mine(s).GlowOf(SlotId.각성기, SlotGroup.각성기));
+    }
+
+    [Fact]
+    public void Picking_a_glow_colour_in_the_box_options_turns_custom_glow_on_for_that_group_only()
+    {
+        var s = new Settings();
+        var mine = ClassProfiles.Edit(s, null).Mine;
+        mine.PulseColor[SlotGroup.각성기] = "#00FF00";   // chosen once, then 빛 색 직접 고르기 turned off: not shown
+
+        BoxOptions.SetGlowColor(mine, SlotId.초각스, SlotGroup.초각스, "#FF0000", onlyThis: false);
+
+        Assert.True(mine.CustomGlow);
+        Assert.Equal("#FF0000", ClassProfiles.Mine(s).GlowOf(SlotId.초각스, SlotGroup.초각스));
+        Assert.Equal("#FFFFFF", ClassProfiles.Mine(s).GlowOf(SlotId.각성기, SlotGroup.각성기));   // the hidden colour stays hidden
+    }
+
+    [Fact]
+    public void A_glow_colour_for_one_skill_is_its_own_only_while_the_skills_have_their_own_colours()
+    {
+        var s = new Settings();
+        var mine = ClassProfiles.Edit(s, null).Mine;
+        BoxOptions.SetGlowColor(mine, SlotId.일반1, SlotGroup.일반스킬, "#0000FF", onlyThis: true);
+        Assert.Equal("#0000FF", ClassProfiles.Mine(s).GlowOf(SlotId.일반2, SlotGroup.일반스킬));   // one colour for all: the group's
+
+        (mine.Color, mine.SkillsUnified) = (ColorSource.Personal, false);
+        BoxOptions.SetGlowColor(mine, SlotId.일반1, SlotGroup.일반스킬, "#00FFFF", onlyThis: true);
+        Assert.Equal("#00FFFF", ClassProfiles.Mine(s).GlowOf(SlotId.일반1, SlotGroup.일반스킬));
+        Assert.Equal("#0000FF", ClassProfiles.Mine(s).GlowOf(SlotId.일반2, SlotGroup.일반스킬));
     }
 
     [Fact]

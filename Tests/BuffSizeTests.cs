@@ -49,7 +49,7 @@ public class BuffSizeTests
         for (int t = 0; t < Labels.Length; t++)
         {
             int n = 0;
-            for (int b = 0; b < Geometry.BuffBoxCount; b++)
+            for (int b = 0; b < Labels[t].Length; b++)
                 if (Label(Labels[t][b]) is not null && Timers[t][n++] is var v && !double.IsNaN(v)) yield return (t, b, v);
         }
     }
@@ -66,7 +66,7 @@ public class BuffSizeTests
         for (int t = 0; t < Labels.Length; t++)
         {
             var boxes = Boxes(At(t));
-            for (int b = 0; b < Geometry.BuffBoxCount; b++)
+            for (int b = 0; b < Labels[t].Length; b++)
             {
                 char want = Labels[t][b];
                 var got = BuffReader.Classify(f.Frames[2 * t], boxes[b].Icon);

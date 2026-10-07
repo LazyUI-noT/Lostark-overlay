@@ -83,7 +83,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         Picked?.Invoke();
     }
 
-    /// <summary>기본 picked by hand (tray, 설정 캐릭터): no class until the next pick or 스킬바 다시 맞추기.</summary>
+    /// <summary>기본 picked by hand (tray, 설정 캐릭터): no class until the next pick or 스킬창 다시 맞추기.</summary>
     public void PickDefault()
     {
         settings.ActiveCharacter = null;
@@ -92,7 +92,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
 
     string? _confirmed;   // the class the centre piece showed at the last detection
 
-    /// <summary>Handles a freshly captured emblem: after a pick by hand it is learned for the picked character; else (스킬바
+    /// <summary>Handles a freshly captured emblem: after a pick by hand it is learned for the picked character; else (스킬창
     /// 다시 맞추기) the character it confirms becomes active, or 기본 when none (<see cref="CharacterDetect"/>). Returns what
     /// changed, to tell the user, or null.</summary>
     public string? OnEmblem(Image emblem)
@@ -105,7 +105,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             if (Active is { } picked) picked.EmblemBgra = bgra;
             return null;
         }
-        _redetect = false;   // 스킬바 다시 맞추기 goes by the history
+        _redetect = false;   // 스킬창 다시 맞추기 goes by the history
         var refs = _classEmblems ??= LoadClassEmblems();
         var shown = _confirmed = ClassEmblemMatcher.Shown(emblem, refs);
         bool Fits(string cls) => refs.Any(r => r.Class == cls) ? ClassEmblemMatcher.Other(emblem, cls, refs) is null : shown is null;
@@ -145,7 +145,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     List<ClassEmblem>? _classEmblems;
     string? _shown, _shownFor;   // the class the last emblem capture showed, when not the one set for it
 
-    /// <summary>Another class than the one set, told by the skill bar's centre piece at the last emblem capture (스킬바 다시
+    /// <summary>Another class than the one set, told by the skill bar's centre piece at the last emblem capture (스킬창 다시
     /// 맞추기 or a pick by hand), or null.</summary>
     public string? ShownClass => _shownFor == ActiveClass?.Name ? _shown : null;
 
@@ -178,7 +178,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         && (cls.Subclasses.Keys.All(s => File.Exists(Path.Combine(profilesDir, "subclass", cls.Name, s + ".png")))
             || (_classEmblems ??= LoadClassEmblems()).Any(e => e.Class == cls.Name));
 
-    /// <summary>Handles a ready 초각스 slot crop (스킬바 다시 맞추기): sets the 직업각인 its icon shows when that differs from
+    /// <summary>Handles a ready 초각스 slot crop (스킬창 다시 맞추기): sets the 직업각인 its icon shows when that differs from
     /// the active character's; an icon unlike every 직업각인 of a class the centre piece didn't confirm is another class, so
     /// 기본. Returns what changed, to tell the user, or null. Only for a class with an icon for every 직업각인 in
     /// Profiles/subclass/&lt;클래스&gt;/&lt;직업각인&gt;.png.</summary>
@@ -195,7 +195,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         bool greyed = greyedSkills is not null;
         // Kept only once loaded, so icons added (or a file unlocked) while running are picked up at the next capture.
         if (_iconsFor != cls.Name || _icons is null) (_iconsFor, _icons) = (cls.Name, LoadIcons(cls));
-        // ponytail: Pick runs here on the UI thread (about 25 ms, once per 스킬바 다시 맞추기); Task.Run if it shows.
+        // ponytail: Pick runs here on the UI thread (about 25 ms, once per 스킬창 다시 맞추기); Task.Run if it shows.
         string? sub = null;
         if (_icons is not null)
         {
@@ -250,7 +250,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     public string SubmitSkills(IReadOnlyList<Image>? ready)
     {
         if (Active is not { Subclass.Length: > 0 } c || ActiveClass is not { } cls) return NoSubclass;
-        if (ready is null) return "스킬바가 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
+        if (ready is null) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
         if (ready.Count == 0) return "준비된 일반 스킬이 없습니다. 재사용 대기 중이 아닐 때 다시 눌러 주세요.";
         try
         {

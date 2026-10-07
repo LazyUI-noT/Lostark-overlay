@@ -23,5 +23,5 @@ public readonly record struct Viewport(int X, int Y, int Width, int Height);
 public sealed record Fit(double Hud, double NudgeX = 0, double NudgeY = 0);
 
 /// <summary>직접 입력: the game's 해상도 and whether its forced 21:9 is on (<see cref="Wide"/>), as the user typed them or as the
-/// last 스킬바 맞추기 found them (Settings.DetectedScreen).</summary>
+/// last 스킬창 맞추기 found them (Settings.DetectedScreen).</summary>
 public sealed record ManualScreen(int Width, int Height, bool Wide);
