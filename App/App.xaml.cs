@@ -497,7 +497,7 @@ public partial class App : Application
             engine.Configure(new Engine.Config(new Dictionary<string, Fit>(settings.Fits), characters.AdenSlots, _debug.IsVisible,
                 ClassProfiles.Reads(settings, characters.AdenSlots), characters.Gauge, characters.ActiveClass?.AdenRects, characters.AdenDark,
                 characters.GaugeRule, wrongClass ? GaugeReadMode.Agreed : settings.Gauge.ReadMode, wrongClass ? null : settings.ActiveCharacter,
-                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen));
+                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts()));
             if (settings.SyncPlace()) _overlay.Replace();   // a 개별 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -530,11 +530,13 @@ public partial class App : Application
         {
             if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 수련장에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
         });
-        engine.FitFinished += (vp, fit, message, detected) => Dispatcher.BeginInvoke(() =>
+        engine.FitFinished += (vp, fit, message, detected, test) => Dispatcher.BeginInvoke(() =>
         {
-            if (detected is not null) settings.DetectedScreen = detected;   // 직접 입력 starts from it
-            if (fit is not null) { settings.Fits[Geometry.ViewportKey(vp)] = fit; Configure(); Save(now: true); }
-            var text = FitText(vp, fit, message);
+            // 테스트 모드 (as the engine ran the fit, not as the flag is now: it may have been switched meanwhile): a fit of the
+            // video in front is the engine's alone (memory); the game's saved fits stay as they are.
+            if (detected is not null && !test) settings.DetectedScreen = detected;   // 직접 입력 starts from it
+            if (fit is not null && !test) { settings.Fits[Geometry.ViewportKey(vp)] = fit; Configure(); Save(now: true); }
+            var text = (test ? "테스트 모드: " : "") + FitText(vp, fit, message);
             _settingsWindow.SetFitResult(text);
             first?.SetFitResult(fit is not null, text);
             _tray.Notify(text);
@@ -577,26 +579,79 @@ public partial class App : Application
             });
         };
 
+        // Buff, debuff and boss rows of the debug window, coalesced the same way (latest per key).
+        var extraRows = new System.Collections.Concurrent.ConcurrentDictionary<string, Engine.ExtraDebugRow>();
+        int extraPending = 0;
+        engine.ExtraDebug += row =>
+        {
+            extraRows[row.Key] = row;
+            if (Interlocked.Exchange(ref extraPending, 1) != 0) return;
+            Dispatcher.BeginInvoke(() =>
+            {
+                Interlocked.Exchange(ref extraPending, 0);
+                foreach (var key in extraRows.Keys.ToList())
+                    if (extraRows.TryRemove(key, out var r)) _debug.UpdateExtra(r.Key, r.Crop, r.Reading, r.State);
+            });
+        };
+
         // Platform → engine / UI.
         foreground.Changed += fg => { engine.GameForeground = fg; Dispatcher.BeginInvoke(() => { _gameForeground = fg; UpdateVisibility(); }); };
-        // 테스트 모드 (tray or hotkey): the window last in front (a video of the game) is watched instead of LOSTARK.
-        void ToggleTestMode()
+        // 테스트 모드 (tray or hotkey): a window (a video of the game) is watched instead of LOSTARK: the one picked from the tray's
+        // list, or (picked zero: the hotkey, 맨 앞 창 따라가기) whichever was last in front.
+        void SetTest(bool on, IntPtr picked, string? notice = null)
         {
-            bool on = GameWindow.TestMode = !GameWindow.TestMode;
+            GameWindow.Picked = on ? picked : 0;
+            GameWindow.TestMode = on;
+            if (on && picked != 0) GameWindow.Show(picked);   // the overlay and the fit need it in front
             foreground.Recheck();
-            engine.RequestDetect();   // the video's character
-            _tray.SetTestMode(on);
-            _tray.Notify(on ? "테스트 모드: 맨 앞에 있던 창(영상 플레이어 등)을 게임으로 봅니다. 다른 창을 보려면 그 창을 클릭하세요."
-                : "테스트 모드를 껐습니다. 로스트아크 창을 찾습니다.");
+            if (on) engine.RequestDetect();   // the video's character
+            _tray.SetTestMode(on, GameWindow.Picked);
+            _tray.Notify(notice ?? (!on ? "테스트 모드를 껐습니다. 로스트아크 창을 찾습니다."
+                : picked != 0 ? "테스트 모드: 고른 창을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다."
+                : "테스트 모드: 맨 앞에 있던 창(영상 플레이어 등)을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다. 다른 창을 보려면 그 창을 클릭하거나 트레이 → 테스트 모드에서 고르세요."));
         }
+        void ToggleTestMode() => SetTest(!(GameWindow.TestMode && GameWindow.Picked == 0), 0);
         _tray.ToggleTestMode += ToggleTestMode;
-        _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.TestMode)) ToggleTestMode(); };
+        _tray.TestWindowPicked += hwnd =>
+        {
+            if (GameWindow.Exists(hwnd)) SetTest(true, hwnd);
+            else _tray.Notify("그 창은 이미 닫혔습니다. 트레이 → 테스트 모드를 다시 열어 고르세요.");
+        };
+        _tray.TestOff += () => SetTest(false, 0);
+        _tray.TestMenuOpening += () => _tray.SetTestWindows(GameWindow.Choices(), GameWindow.TestMode, GameWindow.Picked);
+        _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.TestMode)) SetTest(!GameWindow.TestMode, 0); };
+        // The picked window closed: 테스트 모드 ends (minimised, the engine just pauses). Checked again here: the engine
+        // raises it each step until then, and the user may have picked another window meanwhile.
+        engine.PickedWindowClosed += hwnd => Dispatcher.BeginInvoke(() =>
+        {
+            if (GameWindow.TestMode && GameWindow.Picked == hwnd && !GameWindow.Exists(hwnd))
+                SetTest(false, 0, "테스트 모드: 고른 창이 닫혀 테스트 모드를 껐습니다.");
+        });
 
         // UI → settings / engine.
         // 스킬창 다시 맞추기 (tray, 설정, hotkey): fit again, since the 아덴 keys may have moved, then detect the character, even
         // when the fit fails. A fit needs the game in front: from the tray or 설정 the taskbar covers the skill bar (Engine.FitNow waits).
-        void Refit() { GameWindow.Activate(); engine.RequestFit(); engine.RequestDetect(); }
+        // With a 수동 조정 applied to this game area it asks first: drop it and fit (자동), or keep it and only detect the class.
+        void Refit()
+        {
+            if (engine.GameAreaKey is { } key && settings.AdjustActive(key))
+            {
+                if (MessageBox.Show("수동 조정을 버리고 스킬창을 다시 맞출까요?\n\n아니요: 수동 조정은 그대로 두고 클래스와 직업각인만 다시 확인합니다.",
+                        "GaugeOverlay", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+                {
+                    GameWindow.Activate();
+                    engine.RequestDetect();
+                    return;
+                }
+                settings.DiscardAdjust(key);
+                Configure();
+                Save(now: true);
+                _settingsWindow.Reload();
+            }
+            GameWindow.Activate(); engine.RequestFit(); engine.RequestDetect();
+        }
         _settingsWindow.RefitRequested += Refit;
+        WireAdjust(engine, settings, Configure, () => Save(now: true));
         _overlay.LayoutCommitted += () => { Save(now: true); _settingsWindow.Reload(); };   // 숫자 크기 range follows the box size
         foreach (var w in Others) w.LayoutCommitted += () => Save(now: true);
         _debug.IsVisibleChanged += (_, _) => Configure();
@@ -849,7 +904,8 @@ public partial class App : Application
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
         if (args.Contains("--first-run")) { var first = ShowFirstRun(ApplyUi); first.FitRequested += () => first.SetFitResult(true, demoFit); }
-        if (args.Contains("--debug")) _debug.Show();
+        if (args.Contains("--debug") || args.Contains("--adjust")) { _debug.Capturable = true; _debug.Show(); }
+        if (args.Contains("--adjust")) _debug.ShowAdjust();
         if (args.Contains("--edit")) SetEditMode(true);
         if (args.Contains("--editor")) OpenLayoutEditor();
         if (Enum.TryParse(Flag("pick"), out Part picked)) { _settingsWindow.ShowBox(picked, plate: false); _editor?.DemoPick(picked); }

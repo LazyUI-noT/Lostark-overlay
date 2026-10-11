@@ -15,7 +15,7 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _icon;
     readonly ContextMenuStrip _menu = new();
     readonly ToolStripMenuItem _overlay, _edit, _test, _character, _refit, _detectSubclass, _rereadIcons, _party, _host, _join, _copyToken, _leave;
-    readonly ToolStripMenuItem _profiles, _raid;
+    readonly ToolStripMenuItem _profiles, _raid, _testFront, _testOff;
     readonly ToolStripMenuItem[] _profileItems;
     bool _gameRunning = true, _partyActive;
 
@@ -26,6 +26,12 @@ public sealed class Tray : IDisposable
     public event Action? DefaultPicked;
     /// <summary>오버레이 프로필 picked (0-based).</summary>
     public event Action<int>? ProfileChosen;
+    /// <summary>The 테스트 모드 submenu is opening: answer with <see cref="SetTestWindows"/>.</summary>
+    public event Action? TestMenuOpening;
+    /// <summary>A window picked from the 테스트 모드 list.</summary>
+    public event Action<IntPtr>? TestWindowPicked;
+    /// <summary>테스트 모드 → 끄기.</summary>
+    public event Action? TestOff;
     /// <summary>디버프 레이드 picked (없음: off).</summary>
     public event Action<Raid>? RaidChosen;
 
@@ -44,7 +50,12 @@ public sealed class Tray : IDisposable
         _overlay = Item("오버레이 표시", () => ToggleOverlay?.Invoke());
         _overlay.Checked = true;
         _edit = Item("편집 모드", () => ToggleEditMode?.Invoke());
-        _test = Item("테스트 모드 (맨 앞 창을 게임으로)", () => ToggleTestMode?.Invoke());
+        _test = new ToolStripMenuItem("테스트 모드");
+        _testFront = Item("맨 앞 창 따라가기", () => ToggleTestMode?.Invoke());
+        _testOff = Item("끄기", () => TestOff?.Invoke());
+        // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
+        _test.DropDownItems.Add(_testFront);
+        _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
         _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
         _profiles = new ToolStripMenuItem("오버레이 프로필");
         _profiles.DropDownItems.AddRange(_profileItems);
@@ -124,8 +135,33 @@ public sealed class Tray : IDisposable
     /// <summary>Checkmark on "편집 모드".</summary>
     public void SetEditMode(bool on) => _edit.Checked = on;
 
-    /// <summary>Checkmark on "테스트 모드".</summary>
-    public void SetTestMode(bool on) => _test.Checked = on;
+    /// <summary>Checkmark on "테스트 모드", and on 맨 앞 창 따라가기 while no window is picked.</summary>
+    public void SetTestMode(bool on, IntPtr picked)
+    {
+        _test.Checked = on;
+        _testFront.Checked = on && picked == 0;
+    }
+
+    const int MaxTitle = 50;
+
+    /// <summary>The 테스트 모드 submenu: 맨 앞 창 따라가기, the open windows (the picked one checked), 끄기 while on.</summary>
+    public void SetTestWindows(IReadOnlyList<GameWindow.Choice> windows, bool on, IntPtr picked)
+    {
+        _test.DropDownItems.Clear();
+        _test.DropDownItems.Add(_testFront);
+        _test.DropDownItems.Add(new ToolStripSeparator());
+        if (windows.Count == 0) _test.DropDownItems.Add(new ToolStripMenuItem("열린 창 없음") { Enabled = false });
+        foreach (var w in windows)
+        {
+            var title = w.Title.Length > MaxTitle ? w.Title[..MaxTitle] + "…" : w.Title;
+            var item = new ToolStripMenuItem(title.Replace("&", "&&")) { Checked = on && w.Hwnd == picked, ToolTipText = w.Title };
+            item.Click += (_, _) => TestWindowPicked?.Invoke(w.Hwnd);
+            _test.DropDownItems.Add(item);
+        }
+        _test.DropDownItems.Add(new ToolStripSeparator());
+        _testOff.Enabled = on;
+        _test.DropDownItems.Add(_testOff);
+    }
 
     /// <summary>Shows the user's hotkeys next to the items.</summary>
     public void SetHotkeys(HotkeySettings keys)
@@ -135,7 +171,7 @@ public sealed class Tray : IDisposable
         _refit.ShortcutKeyDisplayString = KeyNames.Display(keys.DetectCharacter);   // 스킬창 다시 맞추기, which detects too
         _detectSubclass.ShortcutKeyDisplayString = keys.DetectSubclass == "" ? "" : KeyNames.Display(keys.DetectSubclass);
         _rereadIcons.ShortcutKeyDisplayString = keys.RereadIcons == "" ? "" : KeyNames.Display(keys.RereadIcons);
-        _test.ShortcutKeyDisplayString = KeyNames.Display(keys.TestMode);
+        _testFront.ShortcutKeyDisplayString = KeyNames.Display(keys.TestMode);
         string[] profiles = [keys.Profile1, keys.Profile2, keys.Profile3, keys.Profile4, keys.Profile5];
         for (int i = 0; i < _profileItems.Length; i++) _profileItems[i].ShortcutKeyDisplayString = profiles[i] == "" ? "" : KeyNames.Display(profiles[i]);
     }

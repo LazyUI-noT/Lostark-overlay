@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using GaugeOverlay.Core.Domain;
+using Geometry = GaugeOverlay.Core.Vision.Geometry;
 
 namespace GaugeOverlay.App.UI;
 
@@ -26,6 +27,30 @@ public partial class DebugWindow : Window
             _rows[id] = row;
             AddRow([new TextBlock { Text = id.ToString(), VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3]);
         }
+        // The buff and debuff boxes and the boss's counts, fed by UpdateExtra while their reads run.
+        foreach (var key in Enumerable.Range(1, Geometry.BuffBoxCount).Select(i => $"버프 {i}")
+                     .Concat(Enumerable.Range(1, Geometry.DebuffBoxCount).Select(i => $"디버프 {i}")).Append("보스"))
+        {
+            var crop = new System.Windows.Controls.Image { Height = key == "보스" ? 40 : 60, MaxWidth = 150, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+            RenderOptions.SetBitmapScalingMode(crop, BitmapScalingMode.NearestNeighbor);
+            TextBlock T() => new() { Text = "—", VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Consolas, Malgun Gothic"), TextWrapping = TextWrapping.Wrap };
+            var row = (crop, T(), T());
+            _extra[key] = row;
+            AddRow([new TextBlock { Text = key, VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3]);
+        }
+        BuildAdjust();
+    }
+
+    readonly Dictionary<string, (System.Windows.Controls.Image Crop, TextBlock Reading, TextBlock State)> _extra = [];
+
+    /// <summary>Shows the latest read of a buff or debuff box ("버프 1", "디버프 3") or of the boss's counts ("보스").</summary>
+    public void UpdateExtra(string key, Core.Domain.Image crop, string reading, string state)
+    {
+        if (!_extra.TryGetValue(key, out var r)) return;
+        r.Crop.Source = crop.Width > 0 && crop.Height > 0
+            ? BitmapSource.Create(crop.Width, crop.Height, 96, 96, PixelFormats.Bgr32, null, crop.Bgra, crop.Stride) : null;
+        r.Reading.Text = reading;
+        r.State.Text = state == "" ? "—" : state;
     }
 
     /// <summary>Shows the latest data for one slot; any argument may be null when not known yet.</summary>

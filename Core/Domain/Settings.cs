@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 
 namespace GaugeOverlay.Core.Domain;
 
+/// <summary>설정 → 스킬창: 자동 (read off the HP bar), 직접 입력 (typed 해상도 and HUD), 수동 조정 (moved by hand in the debug window).</summary>
+public enum FitMode { 자동, 직접입력, 수동조정 }
+
 /// <summary>Everything the user sets. One JSON file (%APPDATA%\GaugeOverlay\settings.json).
 /// Adding a setting = adding a property with a default here; loading fills missing properties with defaults.</summary>
 public sealed class Settings
@@ -62,8 +65,18 @@ public sealed class Settings
     /// <summary>Skill-bar fit per viewport size, keyed "W×H" (Geometry.ViewportKey).</summary>
     public Dictionary<string, Fit> Fits { get; set; } = [];
 
-    /// <summary>크기 직접 입력: the game's HUD size (%) that 스킬창 맞추기 uses instead of reading it off the HP bar; null reads it.</summary>
+    /// <summary>크기 직접 입력: the game's HUD size (%) that 스킬창 맞추기 uses instead of reading it off the HP bar; null reads it.
+    /// One of <see cref="HudSizes"/>.</summary>
     public double? ManualHud { get; set; }
+
+    /// <summary>The HUD sizes the game's settings offer.</summary>
+    public static readonly int[] HudSizes = [80, 90, 100, 105, 110];
+
+    /// <summary>The 버프 크기 sizes the game's settings offer.</summary>
+    public static readonly int[] BuffSizes = [80, 90, 100, 110, 120];
+
+    /// <summary>The offered HUD size nearest <paramref name="hud"/> (a size read off the HP bar is a little off).</summary>
+    public static int NearestHud(double hud) => HudSizes.MinBy(h => Math.Abs(h - hud));
 
     /// <summary>직접 입력 (on while <see cref="ManualHud"/> is set): the game's 해상도 and forced 21:9, which then give the game area
     /// instead of the black bars (Geometry.ManualViewport).</summary>
@@ -79,8 +92,48 @@ public sealed class Settings
         var d = DetectedScreen ?? new ManualScreen(1920, 1080, false);
         ManualScreen = d;
         var area = Vision.Geometry.ManualViewport(new PixelRect(0, 0, d.Width, d.Height), d);
-        ManualHud = Fits.TryGetValue(Vision.Geometry.ViewportKey(area), out var fit) ? Math.Round(fit.Hud) : 100;
+        ManualHud = Fits.TryGetValue(Vision.Geometry.ViewportKey(area), out var fit) ? NearestHud(fit.Hud) : 100;
     }
+
+    /// <summary>수동 조정: fits moved and scaled by hand in the debug window and applied (적용), per game-area size (ViewportKey).
+    /// Used only while <see cref="UseAdjusts"/>; kept when another mode is picked.</summary>
+    public Dictionary<string, Fit> Adjusts { get; set; } = [];
+    public bool UseAdjusts { get; set; }
+
+    /// <summary>Where the skill bar's place comes from (설정 → 스킬창).</summary>
+    [JsonIgnore]
+    public FitMode FitMode => UseAdjusts ? FitMode.수동조정 : ManualHud is not null ? FitMode.직접입력 : FitMode.자동;
+
+    public void SetFitMode(FitMode mode)
+    {
+        switch (mode)
+        {
+            case FitMode.직접입력: if (ManualHud is null) StartManual(); UseAdjusts = false; break;   // typed values stay
+            // 직접 입력's values stay (the game area they give is the one the adjust was made on); otherwise the area is measured.
+            case FitMode.수동조정: UseAdjusts = true; break;
+            default: (ManualHud, ManualScreen, UseAdjusts) = (null, null, false); break;
+        }
+    }
+
+    /// <summary>적용: <paramref name="fit"/> is the game area <paramref name="key"/>'s 수동 조정, and that mode is on.</summary>
+    public void ApplyAdjust(string key, Fit fit)
+    {
+        Adjusts[key] = fit;
+        SetFitMode(FitMode.수동조정);
+    }
+
+    /// <summary>스킬창 다시 맞추기 chose to drop <paramref name="key"/>'s 수동 조정: back to 자동.</summary>
+    public void DiscardAdjust(string key)
+    {
+        Adjusts.Remove(key);
+        SetFitMode(FitMode.자동);
+    }
+
+    /// <summary>The game area <paramref name="key"/> uses an applied 수동 조정 now.</summary>
+    public bool AdjustActive(string? key) => UseAdjusts && key is not null && Adjusts.ContainsKey(key);
+
+    /// <summary>What the engine tries before the fits: a copy of <see cref="Adjusts"/> in 수동 조정, else null.</summary>
+    public IReadOnlyDictionary<string, Fit>? ActiveAdjusts() => UseAdjusts ? new Dictionary<string, Fit>(Adjusts) : null;
 
     /// <summary>Per class (ClassInfo.Name, or <see cref="ClassProfiles.Template"/> for a class without its own): colours
     /// learned from its icons at a fit, and what to show, where and in what colours, for you and for party members. See
@@ -292,8 +345,9 @@ public sealed class BuffSettings : IWindowPlace
     public double Top { get; set; } = double.NaN;
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
-    /// <summary>The game's 버프 크기 setting (%), 80–120: where the buff row sits and how big its icons are.</summary>
-    public int Size { get; set; } = 100;
+    /// <summary>The game's 버프 크기 setting (%), one of <see cref="Settings.BuffSizes"/>: where the buff and debuff rows sit and
+    /// how big their icons are. 스킬창 맞추기 doesn't detect it; 120 is the size the reads are measured best at.</summary>
+    public int Size { get; set; } = 120;
     /// <summary>세로: the bars stand upright side by side instead of lying flat one under another. In the fixed grid they stand
     /// left of the plate, outside it (flat: under the grid, two to a row); in their own window they fill it (flat: one to a
     /// row). A free layout keeps them where they were put.</summary>

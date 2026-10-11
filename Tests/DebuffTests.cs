@@ -76,6 +76,15 @@ public class DebuffTests
     {
         var row = Fixture.Load(fixture).Frames[0];
         Assert.Equal((red, blue), DebuffReader.BossCounts(row, 1));
+        // The same strip at HUD 80 (synthetic: shrunk by the boss icons' scale there, since no HUD 80 shot shows sigils). Shrunk
+        // and enlarged again, a glyph can fall under the strict MinCount (bossrow_61's 6): unknown then, which shows "?", but
+        // never a wrong count.
+        double s = Geometry.BossScale(Fhd, new Fit(80));
+        var small = BuffReader.Resample(row, new PixelRect(0, 0, row.Width, row.Height), s);
+        var (r80, b80) = DebuffReader.BossCounts(small, s);
+        Assert.True(r80 is null || r80 == red, $"red {r80}");
+        Assert.True(b80 is null || b80 == blue, $"blue {b80}");
+        Assert.True(r80 is not null || b80 is not null, "the sigils were found at HUD 80 scale");
     }
 
     [Fact]
@@ -174,14 +183,33 @@ public class DebuffTests
     }
 
     [Fact]
-    public void A_count_read_alone_completes_the_other_and_both_hold_through_a_miss()
+    public void Both_counts_hold_through_a_miss_for_three_seconds()
     {
-        var s = DebuffTracker.Update(DebuffStatus.None, [], 6, null, T0);
-        Assert.Equal((6, 2), (s.BossRed, s.BossBlue));
+        var s = DebuffTracker.Update(DebuffStatus.None, [], 6, 2, T0);
         s = DebuffTracker.Update(s, [], null, null, At(2));
         Assert.Equal((6, 2), (s.BossRed, s.BossBlue));
         s = DebuffTracker.Update(s, [], null, null, At(4));
         Assert.Equal((null, null), (s.BossRed, s.BossBlue));
+    }
+
+    [Fact]
+    public void A_count_read_alone_with_nothing_to_keep_is_unsure()
+    {
+        // 8 less the one read was a guess a death breaks (5 / 2 in 18-22.mp4): unsure shows "?" instead.
+        var s = DebuffTracker.Update(DebuffStatus.None, [], 6, null, T0);
+        Assert.Equal((null, null), (s.BossRed, s.BossBlue));
+        s = DebuffTracker.Update(DebuffStatus.None, [], null, 2, T0);
+        Assert.Equal((null, null), (s.BossRed, s.BossBlue));
+    }
+
+    [Fact]
+    public void A_count_read_alone_after_the_other_changed_is_unsure()
+    {
+        // 6 / 2, then the blue reads 3 with the red missed: a swap happened, so the old 6 no longer stands.
+        var s = DebuffTracker.Update(DebuffStatus.None, [], 6, 2, T0);
+        s = DebuffTracker.Update(s, [], null, 3, At(0.5));
+        Assert.Equal((null, null), (s.BossRed, s.BossBlue));
+        Assert.Null(DebuffAdvice.Bring(DebuffKind.빨강, s.BossRed, s.BossBlue));   // the swap box shows "?"
     }
 
     // ── Templates ─────────────────────────────────────────────────────────────────────────────────────────────────

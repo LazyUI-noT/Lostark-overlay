@@ -68,6 +68,15 @@ public class GeometryTests
     }
 
     [Fact]
+    public void A_streamed_videos_noisy_blurred_bars_still_give_the_forced_21_9_area()
+    {
+        var client = new PixelRect(0, 0, 1920, 1080);
+        var f = Fixture.Load("probe_discord");
+        Assert.Equal(new Viewport(0, 135, 1920, 810), Letterbox.Viewport(client, f.Frames[0], Letterbox.VideoNoise));
+        Assert.NotEqual(new Viewport(0, 135, 1920, 810), Letterbox.Viewport(client, f.Frames[0]));   // the game's pure-black rule
+    }
+
+    [Fact]
     public void Scale_is_hud_share_times_height_share()
     {
         Assert.Equal(1.0, Geometry.Scale(Fhd, new Fit(110)), 6);

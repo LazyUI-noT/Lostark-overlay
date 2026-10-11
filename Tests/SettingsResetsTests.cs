@@ -46,7 +46,7 @@ public class SettingsResetsTests
         SettingsResets.Buffs(s);
 
         Assert.Equal((5.0, 6.0, 1.2), (s.Buffs.Left, s.Buffs.Top, s.Buffs.Width));
-        Assert.Equal(100, s.Buffs.Size);
+        Assert.Equal(120, s.Buffs.Size);   // the default
         Assert.Empty(s.Buffs.Indicators);
         Assert.Equal(2, s.Debuffs.Box(1).Width);
         Assert.Equal(0.5, s.Overlay.Opacity);

@@ -32,6 +32,10 @@ public static class DebuffReader
     // depends on the boss's other effects, so the row is searched in steps the match's own ±2 px search covers. The
     // "X n" count's digit sits 17–18 px right of its icon's left edge and 14 px above it.
     const int BossIconY = 29, BossIcon = 32, BossStep = 4;
+    /// <summary>Where the sigils' frames start inside <see cref="Geometry.RefBossRow"/>, reference pixels from its top.</summary>
+    public const int BossIconTop = BossIconY;
+    /// <summary>The boss's effect icon's side in reference pixels (<see cref="Geometry.BossScale"/> × this on screen).</summary>
+    public const int BossIconSize = BossIcon;
     const int CountDx = 17, CountDy = -14, CountSearch = 3;
     const int GlyphW = 8, GlyphH = 11;
     // A digit's own glyph scores 0.9+ (DebuffReaderTests); a look-alike (8 against 6) less. 7, the one digit without a

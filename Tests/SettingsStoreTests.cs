@@ -51,19 +51,66 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(new PixelRect(0, 0, 1920, 1080), back.Profiles[1].Shot);
     }
 
-    /// <summary>크기 직접 입력: off by default, kept across restarts, and a hand-edited size outside the game's range is
-    /// pulled into it.</summary>
+    /// <summary>크기 직접 입력: off by default, kept across restarts, and a size the game doesn't offer (a hand-edited one, or
+    /// one the old 70–130 slider saved) becomes the nearest of its five.</summary>
     [Theory]
     [InlineData(null, null)]
     [InlineData(100.0, 100.0)]
-    [InlineData(10.0, 70.0)]
-    [InlineData(900.0, 130.0)]
-    public void A_given_HUD_size_is_kept_within_range(double? given, double? loaded)
+    [InlineData(105.0, 105.0)]
+    [InlineData(97.0, 100.0)]
+    [InlineData(103.0, 105.0)]
+    [InlineData(10.0, 80.0)]
+    [InlineData(900.0, 110.0)]
+    public void A_given_HUD_size_becomes_one_the_game_offers(double? given, double? loaded)
     {
         Assert.Null(new Settings().ManualHud);
         var store = new SettingsStore(FilePath);
         store.Save(new Settings { ManualHud = given });
         Assert.Equal(loaded, store.Load(out _).ManualHud);
+    }
+
+    /// <summary>수동 조정: an applied adjust survives a restart with its row shifts; one a hand edit put outside the HUD 50–250 range
+    /// is dropped; a fit with no shifts writes none (files stay as before).</summary>
+    [Fact]
+    public void An_adjust_round_trips_and_one_outside_50_250_is_dropped()
+    {
+        var store = new SettingsStore(FilePath);
+        var s = new Settings();
+        s.ApplyAdjust("1920×1080", new Fit(95, 1, 2, new Shift(3, 4), new Shift(-1, 0), new Shift(0, 5), 130));
+        s.Adjusts["1×1"] = new Fit(400);
+        store.Save(s);
+        var loaded = store.Load(out _);
+        Assert.Equal(s.Adjusts["1920×1080"], loaded.Adjusts["1920×1080"]);
+        Assert.False(loaded.Adjusts.ContainsKey("1×1"));
+        Assert.Equal(FitMode.수동조정, loaded.FitMode);
+    }
+
+    /// <summary>A boss size a hand edit put outside what the debug window allows falls back to the game's size; the rest stays.</summary>
+    [Fact]
+    public void An_adjusts_boss_size_out_of_range_falls_back_to_the_games()
+    {
+        var store = new SettingsStore(FilePath);
+        var s = new Settings();
+        s.ApplyAdjust("1920×1080", new Fit(95, 1, 2, BossSize: 9999));
+        store.Save(s);
+        Assert.Equal(new Fit(95, 1, 2), store.Load(out _).Adjusts["1920×1080"]);
+    }
+
+    [Fact]
+    public void A_new_settings_file_says_the_game_buff_size_is_120()
+    {
+        Assert.Equal(120, new Settings().Buffs.Size);
+        Assert.Contains(120, Settings.BuffSizes);
+    }
+
+    [Fact]
+    public void A_plain_fit_writes_no_shifts()
+    {
+        var s = new Settings();
+        s.Fits["1920×1080"] = new Fit(100);
+        new SettingsStore(FilePath).Save(s);
+        var text = File.ReadAllText(FilePath);
+        foreach (var name in new[] { "BuffShift", "DebuffShift", "BossShift", "BossSize" }) Assert.DoesNotContain(name, text);
     }
 
     /// <summary>직접 입력's 해상도 and the last detected one survive a restart; a hand-edited one no screen has is dropped (the game
@@ -86,9 +133,9 @@ public sealed class SettingsStoreTests : IDisposable
     public void Direct_input_starts_from_the_last_detected_values()
     {
         var s = new Settings { DetectedScreen = new ManualScreen(2560, 1440, true) };
-        s.Fits["2560×1080"] = new Fit(95);
+        s.Fits["2560×1080"] = new Fit(104.2);   // the size read off the HP bar, a little off the game's 105
         s.StartManual();
-        Assert.Equal(95, s.ManualHud);
+        Assert.Equal(105, s.ManualHud);
         Assert.Equal(new ManualScreen(2560, 1440, true), s.ManualScreen);
 
         var fresh = new Settings();
@@ -553,7 +600,7 @@ public sealed class SettingsStoreTests : IDisposable
         File.WriteAllText(FilePath, "{ \"Version\": 1, \"FirstRunDone\": true }");
 
         var s = new SettingsStore(FilePath).Load(out _);
-        Assert.Equal(100, s.Buffs.Size);
+        Assert.Equal(120, s.Buffs.Size);
         Assert.Equal(["#E8262B", "#FFE600", "#1BA8E0", "#A04FB0"], Enum.GetValues<BuffKind>().Select(k => s.Buffs.Of(k).Color));
         Assert.All(Enum.GetValues<BuffKind>(), k => Assert.True(s.Buffs.Of(k).Visible && s.Buffs.Of(k).ShowLabel));
     }

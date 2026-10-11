@@ -20,7 +20,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>GaugeOverlay.App</RootNamespace>
     <AssemblyName>GaugeOverlay</AssemblyName>
-    <Version>1.1.0</Version>
+    <Version>1.2.1</Version>
   </PropertyGroup>
 
   <!-- WinForms is only here for NotifyIcon; keep its names out of the global namespace. -->
@@ -33,6 +33,7 @@
     <None Include="..\Profiles\**\*" LinkBase="Profiles" CopyToOutputDirectory="PreserveNewest" />
     <!-- 레이아웃 편집기: the screen shown while a profile has no screenshot of its own (reference/No cd.png, a clean 1920×1080 frame). -->
     <Resource Include="Assets/sample-screen.jpg" />
+    <Resource Include="Assets/guide/*.png" />
   </ItemGroup>
 
   <!-- D3D11/DXGI COM wrappers for capture (brings Vortice.DXGI). -->

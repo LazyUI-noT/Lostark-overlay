@@ -26,6 +26,8 @@ public partial class SettingsWindow : Window
 
     /// <summary>캐릭터·인식 → 스킬창 → "스킬창 다시 맞추기".</summary>
     public event Action? RefitRequested;
+    /// <summary>캐릭터·인식 → 스킬창 → "디버그 창에서 위치 조정".</summary>
+    public event Action? AdjustRequested;
 
     /// <summary>내 오버레이 → 배치 → "편집 모드".</summary>
     public event Action? EditModeRequested;
@@ -191,17 +193,49 @@ public partial class SettingsWindow : Window
 
     void FillFit()
     {
-        var p = Refill(_secFit, "스킬창 맞추기", "수련장에서 쿨초한 뒤 누르세요. 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
+        var p = Refill(_secFit, "스킬창 맞추기", "스킬을 쓸 수 있는 곳에서 모든 스킬이 쿨 돈 상태로 가만히 서서 누르세요 (수련장에서는 쿨초). 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
         if (_s.Fits.Count == 0) p.Children.Add(Label("아직 맞춘 적이 없습니다.", 0.7));
         foreach (var (size, fit) in _s.Fits)
-            p.Children.Add(Row(size, Label($"HUD {fit.Hud:0.#}%")));
-        p.Children.Add(Check("직접 입력 (HUD · 버프 · 해상도 · 21:9)", _s.ManualHud is not null,
-            v => { if (v) _s.StartManual(); else (_s.ManualHud, _s.ManualScreen) = (null, null); }, () => { FillFit(); Changed(); }));
-        p.Children.Add(Note("맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다. 켜면 찾지 않고 게임 설정에 적힌 값을 그대로 써서, 스킬창 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다."));
-        if (_s.ManualHud is { } hud)
+            p.Children.Add(Row(size, Label($"HUD {fit.Hud:0.#}%" + (_s.Adjusts.TryGetValue(size, out var adj) ? $" · 수동 조정 HUD {adj.Hud:0.#}%" : ""))));
+        foreach (var (size, adj) in _s.Adjusts.Where(a => !_s.Fits.ContainsKey(a.Key)))
+            p.Children.Add(Row(size, Label($"수동 조정 HUD {adj.Hud:0.#}%")));
+
+        // 스킬창 위치: 자동 / 직접 입력 / 수동 조정 (the last only once one was applied in the debug window).
+        var mode = _s.FitMode;
+        var modes = new WrapPanel();
+        foreach (var (m, text) in new[] { (FitMode.자동, "자동"), (FitMode.직접입력, "직접 입력"), (FitMode.수동조정, "수동 조정") })
         {
-            p.Children.Add(SliderRow("HUD 크기 (%)", 70, 130, hud, 1, v => $"{v:0}%", v => _s.ManualHud = v, Changed));
-            p.Children.Add(Row("게임의 버프 크기 (%)", BuffSizeCombo()));
+            var r = Toggle(text, "fitMode", m == mode);
+            r.IsEnabled = m != FitMode.수동조정 || _s.Adjusts.Count > 0 || mode == FitMode.수동조정;
+            r.Checked += (_, _) =>
+            {
+                if (_s.FitMode == m) return;
+                _s.SetFitMode(m);
+                Changed();
+                Dispatcher.BeginInvoke(FillFit);
+            };
+            modes.Children.Add(r);
+        }
+        p.Children.Add(Row("스킬창 위치", modes));
+        p.Children.Add(Note(mode switch
+        {
+            FitMode.직접입력 => "찾지 않고 게임 설정에 적힌 값을 그대로 써서, 스킬창 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다.",
+            FitMode.수동조정 => "디버그 창에서 옮기고 적용한 위치를 씁니다. 게임 화면 크기마다 따로 저장하며, 적용하지 않은 크기에서는 자동으로 맞춘 값을 씁니다.",
+            _ => "맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다." + (_s.Adjusts.Count == 0 ? " 수동 조정은 디버그 창에서 위치를 적용한 뒤 고를 수 있습니다." : ""),
+        }));
+        p.Children.Add(Row("게임의 버프 크기 (%)", BuffSizeCombo()));
+        p.Children.Add(Note("게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기는 버프 크기를 찾지 않습니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽습니다."));
+        var adjustButton = new Button { Content = "디버그 창에서 위치 조정", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 4) };
+        adjustButton.Click += (_, _) => AdjustRequested?.Invoke();
+        p.Children.Add(adjustButton);
+        p.Children.Add(Note("인식이 어긋나면 디버그 창의 실시간 화면에서 스킬창과 버프·디버프·보스 줄을 끌어 맞추고 적용합니다. 적용하기 전에는 창이 열려 있는 동안만 쓰입니다."));
+        if (mode == FitMode.직접입력 && _s.ManualHud is { } hud)
+        {
+            var hudSize = Combo();
+            hudSize.ItemsSource = Settings.HudSizes;
+            hudSize.SelectedItem = Settings.NearestHud(hud);
+            hudSize.SelectionChanged += (_, _) => { if (hudSize.SelectedItem is int v && v != _s.ManualHud) { _s.ManualHud = v; Changed(); } };
+            p.Children.Add(Row("게임의 HUD 크기 (%)", hudSize));
             ScreenRows(p);
             var auto = new Button { Content = "자동으로 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
             auto.Click += (_, _) => { (_s.ManualHud, _s.ManualScreen) = (null, null); FillFit(); Changed(); RefitRequested?.Invoke(); };
@@ -323,7 +357,7 @@ public partial class SettingsWindow : Window
         p.Children.Add(Heading("디버프", first: true));
         p.Children.Add(Note("레이드를 고르면 MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " +
             "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " +
-            "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 하나만 읽히면 다른 하나는 8에서 뺀 값으로 봅니다."));
+            "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
         p.Children.Add(Row("레이드", EnumCombo([.. Enum.GetValues<Raid>().Select(r => (r, Tray.RaidName(r)))], _s.Debuffs.Raid, v => _s.Debuffs.Raid = v)));
         p.Children.Add(SubHeading("칸 크기"));
         p.Children.Add(Note("칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " +
@@ -698,11 +732,11 @@ public partial class SettingsWindow : Window
         p.Children.Add(Note("게임 설정의 21:9 화면 비율입니다. 더 좁은 화면에서는 위아래에 검은 띠가 생기고, 21:9보다 넓은 화면에서는 화면을 그대로 씁니다."));
     }
 
-    /// <summary>게임의 버프 크기, shown in 버프/디버프 and with 직접 입력; either one changes the same setting.</summary>
+    /// <summary>게임의 버프 크기, shown in 버프/디버프 and in 스킬창 맞추기 (every mode); either one changes the same setting.</summary>
     ComboBox BuffSizeCombo()
     {
         var size = Combo();
-        size.ItemsSource = new[] { 80, 90, 100, 110, 120 };
+        size.ItemsSource = Settings.BuffSizes;
         size.SelectedItem = _s.Buffs.Size;
         size.SelectionChanged += (_, _) => { if (size.SelectedItem is int v && v != _s.Buffs.Size) { _s.Buffs.Size = v; Changed(); Dispatcher.BeginInvoke(() => { FillBuffs(); FillFit(); }); } };
         return size;

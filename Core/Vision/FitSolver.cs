@@ -32,11 +32,13 @@ public static class FitSolver
     /// (screen pixels) that contains the HP bar and the 각성기 frame. The HP bar gives the HUD size, or the user does
     /// (<paramref name="hud"/>, 크기 직접 입력); the frame only gives the nudge. Null when the HP bar isn't found, or no frame is at
     /// the size it gives.</summary>
-    public static Fit? Solve(Image bottomBand, PixelRect bandRect, Viewport vp)
+    /// <param name="video">테스트 모드 on a stream or video: compression blurs the frame's thin ring below <see cref="MinScore"/>
+    /// (0.23–0.35 on a Discord stream where the bar sat within 3 px of the HP-bar spot), so the HP bar alone gives the size.</param>
+    public static Fit? Solve(Image bottomBand, PixelRect bandRect, Viewport vp, bool video = false)
     {
         if (HudFromHpBar(bottomBand, bandRect, vp) is not { } size) return null;
         var m = Match(bottomBand, bandRect, vp, size, Radius);
-        if (m.Score < MinScore) return null;   // a red edge with no skill bar under it: not the HUD
+        if (m.Score < MinScore) return video ? new Fit(size) : null;   // a red edge with no skill bar under it: not the HUD
         if (m.Score < Good) return new Fit(size);   // a charged or covered frame places nothing
         double k = Geometry.Scale(vp, new Fit(size));
         return new Fit(size, m.Dx / k, m.Dy / k);

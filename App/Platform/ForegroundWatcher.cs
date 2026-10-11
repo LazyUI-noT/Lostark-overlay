@@ -39,7 +39,7 @@ public sealed partial class ForegroundWatcher : IDisposable
 
     private static bool IsGame(IntPtr hwnd)
     {
-        if (GameWindow.TestMode) return hwnd != 0 && hwnd == GameWindow.Front;
+        if (GameWindow.TestMode) return hwnd != 0 && hwnd == GameWindow.Target;
         if (hwnd == 0 || GetWindowThreadProcessId(hwnd, out uint pid) == 0) return false;
         try
         {

@@ -11,7 +11,7 @@ namespace GaugeOverlay.App.Services;
 /// <summary>The pipeline (ARCHITECTURE §2) on its own thread: capture only the due slot areas (L2) → read them (L1)
 /// → track cooldowns (L0) → publish an immutable <see cref="Snapshot"/>.
 /// All events are raised on the engine thread; the UI marshals them.</summary>
-public sealed class Engine : IDisposable
+public sealed partial class Engine : IDisposable
 {
     /// <summary>What the engine needs from the settings, handed over as one immutable value (no shared mutable state).</summary>
     /// <param name="AdenRects">Where the class draws 아덴1/아덴2 when not at the usual spots (reference pixels).</param>
@@ -20,10 +20,11 @@ public sealed class Engine : IDisposable
     /// <param name="Character">The active character ("클래스 · 직업각인"): whose learned gains (gains.json) are used and added to.</param>
     /// <param name="ManualHud">직접 입력: the HUD size 스킬창 맞추기 keeps, instead of reading it off the HP bar.</param>
     /// <param name="ManualScreen">직접 입력: the game's 해상도 and 21:9, which place the game area without the black-bar probe.</param>
+    /// <param name="Adjusts">수동 조정 (null: another mode): fits applied in the debug window, tried before <paramref name="Fits"/>.</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
         GaugeReadMode ReadMode = GaugeReadMode.Agreed, string? Character = null, Raid Raid = Raid.없음, int DebuffSize = 100, double? ManualHud = null,
-        ManualScreen? ManualScreen = null)
+        ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -32,6 +33,8 @@ public sealed class Engine : IDisposable
 
     /// <summary>One slot read, for the debug window.</summary>
     public sealed record DebugRow(SlotId Slot, Image Crop, Reading Reading, SlotState State);
+    /// <summary>The debug window's row for a buff or debuff box or the boss's counts: its crop, what was read, what is shown.</summary>
+    public sealed record ExtraDebugRow(string Key, Image Crop, string Reading, string State);
 
     public event Action<Snapshot>? SnapshotReady;
     public event Action<bool>? GameRunningChanged;
@@ -41,7 +44,7 @@ public sealed class Engine : IDisposable
     public event Action<Viewport>? FitNeeded;
     /// <summary>Result of <see cref="RequestFit"/>: a fit (null on failure), a message for the user, and on a fit found
     /// without 직접 입력 the 해상도 and 21:9 it was found at (직접 입력 starts from them).</summary>
-    public event Action<Viewport, Fit?, string, ManualScreen?>? FitFinished;
+    public event Action<Viewport, Fit?, string, ManualScreen?, bool>? FitFinished;   // last: found in 테스트 모드 (never saved)
     /// <summary>The class emblem, captured on the first frame the skill bar is certainly on screen after <see cref="RequestDetect"/>
     /// or <see cref="RequestEmblem"/> (스킬창 다시 맞추기, a character picked by hand, 테스트 모드). Never on its own.</summary>
     public event Action<Image>? EmblemCaptured;
@@ -57,6 +60,8 @@ public sealed class Engine : IDisposable
     /// The int is the run it was read in (<see cref="CopyIcons"/>'s result), so a read posted before a new run can be dropped.</summary>
     public event Action<SlotId, Image, int>? IconSeen;
     public event Action<DebugRow>? Debug;
+    /// <summary>Like <see cref="Debug"/>, for the buff and debuff boxes and the boss's counts (only while the debug window is open).</summary>
+    public event Action<ExtraDebugRow>? ExtraDebug;
     /// <summary>게임 화면 찍기: the game's client area (on its monitor) and where it lies on screen; null picture when there's
     /// no game or no frame came.</summary>
     public event Action<object, Image?, PixelRect>? ScreenshotCaptured;
@@ -104,6 +109,14 @@ public sealed class Engine : IDisposable
     DigitReader? _digits;
     TimeSpan _lastViewport = TimeSpan.MinValue, _lastLabel = TimeSpan.MinValue, _lastPoll = TimeSpan.MinValue, _lastGauge = TimeSpan.MinValue;   // MinValue = never (see Elapsed)
     bool _awakeningChanged, _labelMissed, _running, _fitNeededRaised, _emblemPending, _subclassPending, _testMode;
+    // 테스트 모드: fits found on the video in front, memory only; _quietFit while one is looked for unasked (no failure notices).
+    readonly TestFits _testFits = new();
+    bool _quietFit;
+    bool _adjusted;   // the fit in use is a 수동 조정 (Config.Adjusts): its calibration files are its own
+    string? _areaKey;
+
+    /// <summary>The game area's size key ("W×H", Settings.Fits / Adjusts), null before one is measured; any thread.</summary>
+    public string? GameAreaKey => Volatile.Read(ref _areaKey);
     // Each 일반 slot's colour and crop at its last read (NaN, null until read): a greyed-out bar (a town) and its skills, sent with
     // the 초각스 crop; the ready ones for 스킬 등록.
     readonly double[] _skillColour = [.. Enumerable.Repeat(double.NaN, 8)];
@@ -184,7 +197,7 @@ public sealed class Engine : IDisposable
             if (_fitRequested)
             {
                 _fitRequested = false;
-                FitFinished?.Invoke(_vp, null, "게임이 실행 중이 아닙니다. 게임을 켜고 수련장에서 다시 시도해 주세요.", null);
+                FitFinished?.Invoke(_vp, null, "게임이 실행 중이 아닙니다. 게임을 켜고 다시 시도해 주세요.", null, _testMode);
             }
             if (Interlocked.Exchange(ref _shotFor, null) is { } missed) ScreenshotCaptured?.Invoke(missed, null, default);
             Thread.Sleep(1000);
@@ -198,11 +211,14 @@ public sealed class Engine : IDisposable
         {
             _fitRequested = false;
             var kept = _vp;
+            _previewing = false;   // the debug window's preview starts over on the new fit
             UpdateViewport(now, fitting: true);
             if (!RunFit() && _vp != kept) (_vp, _fit) = (kept, null);   // a failed fit keeps the game area its saved fit is for
             return;
         }
         if (!EnsureFit()) { Thread.Sleep(200); return; }
+        PreviewStep();
+        if (_fit is null) return;   // a preview just ended: the saved fit is resolved next step
         // Detection runs only when asked (스킬창 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
         // cutscene it used to pick the wrong class.
         // Both in one tick: the full detection wins.
@@ -222,10 +238,14 @@ public sealed class Engine : IDisposable
         _gaugeFilter.Mode = config.ReadMode;
         if (config.AdenRects != _rectsFrom) { _rectsFrom = config.AdenRects; ReloadAden(config); }   // another class: its own 아덴 spots
         (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, config.Raid != Raid.없음);
-        int? buffSize = poll ? config.Reads.BuffSize : null;
+        // 위치 조정 tries a 버프 크기 live: both rows read at it until 적용 stores it in 설정 or the panel closes.
+        int? previewSize = _previewing ? _previewBuffSize : null;
+        int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? set : null;
+        int debuffSize = previewSize ?? config.DebuffSize;
         bool debuffs = poll && _debuffsOn, boss = debuffs && Elapsed(now, _lastBoss, BossEvery);
         if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
-        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs)
+        bool preview = _previewing && Elapsed(now, _lastPreview, PreviewEvery);
+        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
             Thread.Sleep(4);
@@ -238,8 +258,10 @@ public sealed class Engine : IDisposable
         if (gaugeDef is not null) rects.Add(Geometry.ToScreen(gaugeDef.Ref, _vp, _fit!));
         if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size));
         int debuffAt = rects.Count;
-        if (debuffs) rects.Add(Geometry.DebuffArea(_vp, _fit!, config.DebuffSize));
+        if (debuffs) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize));
         if (boss) rects.Add(Geometry.BossRow(_vp, _fit!));
+        int previewAt = rects.Count;   // the debug window's pictures, in the same capture as the reads
+        if (preview) { rects.Add(FitSolver.Band(_vp)); rects.Add(Geometry.BossBand(_vp)); }
 
         var images = rects.Select(Buffer).ToList();
         if (!_source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out long ts))
@@ -260,12 +282,12 @@ public sealed class Engine : IDisposable
             double v = _gaugeFilter.Add(gaugeDef.Read(images[slots.Count + (wantLabel ? 1 : 0)]), t);
             changed |= v != _gauge;
             _gauge = v;
-            _gains.Seen(v, t);
+            if (!_previewing) _gains.Seen(v, t);
             if (Elapsed(now, _gainsSavedAt, GainsSaveEvery)) { SaveGains(); _gainsSavedAt = now; }
         }
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
         if (buffSize is { } read) changed |= ReadBuffs(images[debuffAt - 1], read, t);
-        if (debuffs) changed |= ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, config.DebuffSize, t);
+        if (debuffs) changed |= ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, t);
         if (wantLabel)
         {
             _lastLabel = t;
@@ -276,6 +298,12 @@ public sealed class Engine : IDisposable
         }
         changed |= Advance(t);
         if (changed) Publish(t);
+        if (preview)
+        {
+            _lastPreview = t;
+            // ponytail: two copies per frame (~21 MB at 4K, 5 fps, only while the debug window is open); pool them if GC shows.
+            PreviewFrame?.Invoke(_gen, images[previewAt].Copy(), rects[previewAt], images[previewAt + 1].Copy(), rects[previewAt + 1]);
+        }
     }
 
     /// <summary>Reads each captured slot and updates its state. Returns true if anything changed.</summary>
@@ -362,14 +390,28 @@ public sealed class Engine : IDisposable
         var origin = Geometry.BuffArea(_vp, _fit!, size);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var readings = new List<BuffReading>();
-        foreach (var box in Geometry.BuffBoxes(_vp, _fit!, size))
-            if (BuffReader.Classify(area, Local(box.Icon)) is { } kind)
-                readings.Add(new(kind, reader.ReadTimer(area, Local(box.Timer)), t));
+        var boxes = Geometry.BuffBoxes(_vp, _fit!, size);
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            var kind = BuffReader.Classify(area, Local(boxes[i].Icon));
+            double? seconds = kind is null ? null : reader.ReadTimer(area, Local(boxes[i].Timer));
+            if (kind is { } k) readings.Add(new(k, seconds, t));
+            BoxDebug($"버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), kind?.ToString(), seconds);
+        }
 
         var next = _buffs.Select(b => BuffTracker.Update(b, readings, t, _hud.Visible == true)).ToArray();
         bool changed = !next.SequenceEqual(_buffs);
         _buffs = next;
         return changed;
+    }
+
+    /// <summary>The debug window's row for one buff or debuff box: its icon and timer, and what was read.</summary>
+    void BoxDebug(string key, Image area, PixelRect icon, PixelRect timer, string? kind, double? seconds)
+    {
+        if (!_config.Debug) return;
+        int x = Math.Min(icon.X, timer.X), right = Math.Max(icon.Right, timer.Right);
+        var crop = area.Crop(new PixelRect(x, icon.Y, right - x, timer.Bottom - icon.Y));
+        ExtraDebug?.Invoke(new(key, crop, kind is null ? "없음" : $"{kind}{(seconds is { } s ? $" {s:0.#}초" : "")}", ""));
     }
 
     /// <summary>Finds your debuffs in the captured debuff row (<see cref="Geometry.DebuffArea"/>) and, when captured, the
@@ -380,11 +422,19 @@ public sealed class Engine : IDisposable
         var origin = Geometry.DebuffArea(_vp, _fit!, size);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var reads = new List<DebuffReading>();
-        foreach (var box in Geometry.DebuffBoxes(_vp, _fit!, size))
-            if (DebuffReader.Classify(area, Local(box.Icon)) is { } kind)
-                reads.Add(new(kind, kind is DebuffKind.번개 or DebuffKind.교체 ? reader.ReadTimer(area, Local(box.Timer)) : null));
-        var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.Scale(_vp, _fit!));
+        var boxes = Geometry.DebuffBoxes(_vp, _fit!, size);
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            var kind = DebuffReader.Classify(area, Local(boxes[i].Icon));
+            double? seconds = kind is DebuffKind.번개 or DebuffKind.교체 ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
+            if (kind is { } k) reads.Add(new(k, seconds));
+            BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), kind?.ToString(), seconds);
+        }
+        var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.BossScale(_vp, _fit!));
         var next = DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true);
+        if (boss is not null && _config.Debug)
+            ExtraDebug?.Invoke(new("보스", boss.Copy(), $"빨강 {red?.ToString() ?? "?"} / 파랑 {blue?.ToString() ?? "?"}",
+                $"표시: 빨강 {next.BossRed?.ToString() ?? "?"} / 파랑 {next.BossBlue?.ToString() ?? "?"}"));
         bool changed = next != _debuffs;
         _debuffs = next;
         return changed;
@@ -431,7 +481,7 @@ public sealed class Engine : IDisposable
         _castAt = at;
         Arm(slot, config, at);
         if (_gauge is not { } gauge || _hud.Visible != true) return;
-        _gains.Cast(slot, at, gauge);
+        if (!_previewing) _gains.Cast(slot, at, gauge);   // a gauge read at a fit still being moved teaches nothing
         if (config.ReadMode == GaugeReadMode.Predicted && _gains.Expected(slot) is { } rise and > 0) _gaugeFilter.Expect(rise, at + GaugeGains.Window);
     }
 
@@ -458,7 +508,8 @@ public sealed class Engine : IDisposable
 
     void SaveGains()
     {
-        if (_gainsFor is null || _savedGains is null || _gains.Version == _gainsSaved) return;
+        // 테스트 모드: casts in a video teach nothing kept (the character may be the user's own).
+        if (_testMode || _gainsFor is null || _savedGains is null || _gains.Version == _gainsSaved) return;
         _savedGains[_gainsFor] = _gains.Export();
         _gainsSaved = _gains.Version;
         WriteGains();
@@ -467,7 +518,7 @@ public sealed class Engine : IDisposable
     void ForgetGains()
     {
         (_gains, _gainsSaved) = (new(), 0);
-        if (_gainsFor is not null && _savedGains?.Remove(_gainsFor) == true) WriteGains();
+        if (!_testMode && _gainsFor is not null && _savedGains?.Remove(_gainsFor) == true) WriteGains();
     }
 
     void WriteGains()
@@ -483,9 +534,27 @@ public sealed class Engine : IDisposable
     {
         // In test mode the window can change at any click; a switch of mode drops the cached one either way.
         bool test = GameWindow.TestMode;
-        var hwnd = !test && test == _testMode && _hwnd != 0 && GameWindow.ClientRect(_hwnd) is not null ? _hwnd : GameWindow.Find();
+        var hwnd = !test && test == _testMode && _hwnd != 0 && GameWindow.ClientRect(_hwnd) is not null ? _hwnd : GameWindow.Find(test);
+        // The window picked for 테스트 모드 is gone (also when it closed while minimised, already not running): App ends the mode.
+        if (test && GameWindow.Picked is var picked && picked != 0 && !GameWindow.Exists(picked)) PickedWindowClosed?.Invoke(picked);
+        if (test != _testMode)
+        {
+            // In or out of 테스트 모드: the video's fit and calibration (memory only) and the game's saved ones don't mix.
+            _testFits.Clear();
+            (_vp, _fit, _fitNeededRaised, _lastViewport) = (default, null, false, TimeSpan.MinValue);
+            Array.Clear(_cal);
+            for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
+            _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
+            (_debuffs, _gauge, _gaugeSpent) = (DebuffStatus.None, null, false);
+            _gaugeFilter.Reset();
+            // What casts add to the gauge: the game's is saved before a video plays, and what the video taught is dropped after.
+            if (!_testMode) SaveGains();
+            _gains = new(_gainsFor is not null ? _savedGains?.GetValueOrDefault(_gainsFor) : null);
+            _gainsSaved = _gains.Version;
+        }
         _testMode = test;
-        bool running = hwnd != 0;
+        // 테스트 모드: a minimised window pauses everything (its capture would be stale), as if it weren't there.
+        bool running = hwnd != 0 && (!test || GameWindow.ClientRect(hwnd) is not null);
         if (running != _running) { _running = running; GameRunningChanged?.Invoke(running); }
         if (!running) { ResetSource(); return false; }
         // Desktop Duplication covers one monitor: a window moved to another one needs a new source.
@@ -504,7 +573,7 @@ public sealed class Engine : IDisposable
     void UpdateViewport(TimeSpan now, bool fitting = false)
     {
         if (GameWindow.ClientRect(_hwnd) is not { } client) return;
-        var manual = _config.Manual(client);
+        var manual = _testMode ? null : _config.Manual(client);   // 직접 입력 describes the game, not a video of it
         Viewport vp;
         if (manual is { } m) vp = Geometry.ManualViewport(client, m.Screen);   // 직접 입력: no black-bar probe
         else
@@ -512,7 +581,7 @@ public sealed class Engine : IDisposable
             var probe = Letterbox.Probe(client);
             var column = Buffer(probe);
             if (!_source!.TryCapture([probe], [column], TimeSpan.FromMilliseconds(100), out _)) return;
-            vp = Letterbox.Viewport(client, column);
+            vp = Letterbox.Viewport(client, column, _testMode ? Letterbox.VideoNoise : 0);
         }
         _lastViewport = now;
         bool resized = (client.Width, client.Height) != (_client.Width, _client.Height);
@@ -520,9 +589,13 @@ public sealed class Engine : IDisposable
         if (vp == _vp) return;
         // Cutscenes add black bars too: on the same window size, keep a fitted viewport unless the new one has its own fit.
         // So does a 직접 입력 area: it replaces a fitted one once a fit is found there (스킬창 맞추기 adopts it to look).
+        // In 테스트 모드 the fits are the video's (a fade to black or a dark scene in it is the same case).
         var fits = _config.Fits;
-        if (!fitting && !resized && fits.ContainsKey(Geometry.ViewportKey(_vp)) && !fits.ContainsKey(Geometry.ViewportKey(vp))) return;
+        bool Fitted(Viewport v) => _testMode ? _testFits.For(v) is not null
+            : fits.ContainsKey(Geometry.ViewportKey(v)) || _config.Adjusts?.ContainsKey(Geometry.ViewportKey(v)) == true;
+        if (!fitting && !resized && Fitted(_vp) && !Fitted(vp)) return;
         _vp = vp;
+        Volatile.Write(ref _areaKey, Geometry.ViewportKey(vp));
         _fit = null;          // re-resolved for the new size
         _fitNeededRaised = false;
     }
@@ -530,7 +603,32 @@ public sealed class Engine : IDisposable
     bool EnsureFit()
     {
         if (_vp.Height == 0) return false;
+        // 설정 switched to or from 수동 조정 (or one was dropped): the fit in use isn't the one the mode now gives.
+        if (_fit is not null && !_testMode && !_previewing && (_config.Adjusts?.ContainsKey(Geometry.ViewportKey(_vp)) == true) != _adjusted) _fit = null;
         if (_fit is not null) return true;
+        if (_testMode)
+        {
+            // The video in front: its own fit, looked for on it while it is in front (TestFits), never the game's saved one.
+            if (_testFits.For(_vp) is { } found) { ApplyFit(found); return true; }
+            if (_foreground && _testFits.ShouldTry(_vp, Clock.Now()))
+            {
+                _quietFit = true;
+                try { RunFit(); }
+                finally { _quietFit = false; }
+            }
+            // 위치 조정 opened with nothing found: start from where HUD 100 puts the bar, for the user to move it (a drop
+            // clears it again, 적용 keeps it as the video's fit).
+            if (_fit is null && Volatile.Read(ref _ask) is not null)
+            {
+                ApplyFit(new Fit(BareHud));
+                if (!_bareNoticed) { _bareNoticed = true; PreviewWithoutFit?.Invoke(); }   // once per session, not per game-area change
+            }
+            return _fit is not null;
+        }
+        // 수동 조정 applied for this game area wins; its slot calibration is kept apart (CalibrationFile).
+        Fit? adjust = null;
+        _adjusted = _config.Adjusts?.TryGetValue(Geometry.ViewportKey(_vp), out adjust) == true;
+        if (adjust is not null) { ApplyFit(adjust); return true; }
         if (!_config.Fits.TryGetValue(Geometry.ViewportKey(_vp), out var fit))
         {
             if (!_fitNeededRaised) { _fitNeededRaised = true; FitNeeded?.Invoke(_vp); }
@@ -555,50 +653,64 @@ public sealed class Engine : IDisposable
         catch (Exception ex)
         {
             Trace.WriteLine($"[engine] fit failed: {ex}");
-            FitFinished?.Invoke(_vp, null, $"스킬창을 맞추지 못했습니다: {ex.Message}", null);
-            return false;
+            return Failed($"스킬창을 맞추지 못했습니다: {ex.Message}");
         }
+    }
+
+    /// <summary>A fit not found, told to App unless it was looked for unasked (테스트 모드, <see cref="_quietFit"/>).</summary>
+    bool Failed(string message)
+    {
+        if (!_quietFit) FitFinished?.Invoke(_vp, null, message, null, _testMode);
+        return false;
     }
 
     bool FitNow()
     {
-        if (_vp.Height == 0) { FitFinished?.Invoke(_vp, null, "게임 화면을 찾지 못했습니다. 게임을 창 모드(전체 창)로 실행해 주세요.", null); return false; }
+        if (_vp.Height == 0) return Failed("게임 화면을 찾지 못했습니다. 게임을 창 모드(전체 창)로 실행해 주세요.");
         // The request came from the tray menu or 설정, which leave the taskbar over the skill bar: App brings the game to
         // the front, and the capture waits for it and for the taskbar to slide away.
         for (int i = 0; i < FitWaitSteps && !_foreground; i++) Thread.Sleep(100);
-        if (!_foreground) { FitFinished?.Invoke(_vp, null, "게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도해 주세요.", null); return false; }
-        Thread.Sleep(TaskbarSettleMs);
+        if (!_foreground) return Failed("게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도해 주세요.");
+        if (!_quietFit) Thread.Sleep(TaskbarSettleMs);   // a quiet try runs with the video already in front, no taskbar to wait out
         var band = FitSolver.Band(_vp);
         var img = new Image(band.Width, band.Height);
         if (!_source!.TryCapture([band], [img], TimeSpan.FromMilliseconds(500), out _))
-        {
-            FitFinished?.Invoke(_vp, null, "화면을 캡처하지 못했습니다. 게임 창이 보이는 상태에서 다시 시도해 주세요.", null);
-            return false;
-        }
-        var (fit, note, detected) = _config.Manual(_client) is { } m ? SolveManual(img, band, m.Hud, m.Screen) : SolveAuto(img, band);
-        if (fit is null) { FitFinished?.Invoke(_vp, null, note, null); return false; }
+            return Failed("화면을 캡처하지 못했습니다. 게임 창이 보이는 상태에서 다시 시도해 주세요.");
+        // 테스트 모드: always read off the video (직접 입력 describes the game), and its calibration stays in memory.
+        var (fit, note, detected) = !_testMode && _config.Manual(_client) is { } m ? SolveManual(img, band, m.Hud, m.Screen) : SolveAuto(img, band);
+        if (fit is null) return Failed(note);
 
-        foreach (var file in Directory.Exists(CalibrationDir) ? Directory.GetFiles(CalibrationDir) : []) File.Delete(file);
+        if (_testMode) _testFits.Set(_vp, fit);
+        _adjusted = false;   // found on screen (App drops a 수동 조정 of this area before asking)
+        int ready = Recalibrate(fit);
+        FitFinished?.Invoke(_vp, fit, $"스킬창을 맞췄습니다 (HUD {fit.Hud:0}%, 준비된 칸 {ready}/{SlotInfo.All.Length}개 기준 저장).{note}", detected, _testMode);
+        return true;
+    }
+
+    /// <summary>Puts <paramref name="fit"/> to use and calibrates every slot that reads ready now (cooldowns reset), replacing the
+    /// saved calibration of the fit in use (수동 조정's or the others', <see cref="OwnCalibrationFiles"/>; none in 테스트 모드).
+    /// Returns how many slots were ready.</summary>
+    int Recalibrate(Fit fit)
+    {
+        if (!_testMode) foreach (var file in OwnCalibrationFiles().ToList()) File.Delete(file);
         ApplyFit(fit);
-        // Calibrate every slot that reads ready now (cooldowns reset in the 수련장).
         var slots = SlotInfo.All;
         var rects = slots.Select(s => Rect(s, fit, _config)).ToList();
         var crops = rects.Select(r => new Image(r.Width, r.Height)).ToList();
         int ready = 0;
-        if (_source.TryCapture(rects, crops, TimeSpan.FromMilliseconds(500), out long ts))
+        if (_source!.TryCapture(rects, crops, TimeSpan.FromMilliseconds(500), out long ts))
             for (int i = 0; i < slots.Length; i++)
                 if (SlotClassifier.Read(slots[i], crops[i], Clock.FromTimestamp(ts), null, _digits!, Dark(slots[i], _config)).Kind == ReadKind.Ready)
                 {
                     SaveCalibration(slots[i], crops[i], trusted: true, _config);
                     ready++;
                 }
-        FitFinished?.Invoke(_vp, fit, $"스킬창을 맞췄습니다 (HUD {fit.Hud:0}%, 준비된 칸 {ready}/{slots.Length}개 기준 저장).{note}", detected);
-        return true;
+        return ready;
     }
 
     (Fit? Fit, string Note, ManualScreen? Detected) SolveAuto(Image band, PixelRect rect)
     {
-        if (FitSolver.Solve(band, rect, _vp) is not { } fit)
+        if (FitSolver.Solve(band, rect, _vp, _testMode) is not { } fit)
             return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 스킬창에서 직접 입력을 켜 보세요. 저장된 맞춤은 그대로 둡니다.", null);
         return (fit, "", Geometry.Detected(_vp, _client));
     }
@@ -630,6 +742,7 @@ public sealed class Engine : IDisposable
         var cal = new SlotCalibration(copy);
         if (!trusted && cal.HueSpread < MinHueSpread) return;
         _cal[(int)slot] = cal;
+        if (_testMode || _previewing) return;   // a video's slots, or a fit still being moved: memory only
         try
         {
             Directory.CreateDirectory(CalibrationDir);
@@ -646,7 +759,8 @@ public sealed class Engine : IDisposable
     SlotCalibration? LoadCalibration(SlotId slot, Config config)
     {
         var path = CalibrationFile(slot, config);
-        if (!File.Exists(path)) return null;
+        // 테스트 모드: the game's calibration isn't the video's; previewing: the fit on show isn't the one it was saved at.
+        if (_testMode || _previewing || !File.Exists(path)) return null;
         try
         {
             var img = Image.FromBytes(File.ReadAllBytes(path));
@@ -665,8 +779,15 @@ public sealed class Engine : IDisposable
 
     /// <summary>A 아덴 slot a class moves (발키리) keeps its ready icon in a file of its own, so switching classes doesn't
     /// overwrite the other's.</summary>
+    /// A 수동 조정's calibration has files of its own (…_adj), so 자동 and 직접 입력 keep theirs.
     string CalibrationFile(SlotId slot, Config config) => Path.Combine(CalibrationDir,
-        (config.AdenRects?.GetValueOrDefault(slot) is { Width: > 0 } r ? $"{slot}_{r.X}_{r.Y}" : slot.ToString()) + ".bgra");
+        (config.AdenRects?.GetValueOrDefault(slot) is { Width: > 0 } r ? $"{slot}_{r.X}_{r.Y}" : slot.ToString()) + (_adjusted ? AdjustSuffix : "") + ".bgra");
+
+    const string AdjustSuffix = "_adj";
+
+    /// <summary>The calibration files of the fit in use: 수동 조정's (…_adj) or the others'.</summary>
+    IEnumerable<string> OwnCalibrationFiles() => (Directory.Exists(CalibrationDir) ? Directory.GetFiles(CalibrationDir, "*.bgra") : [])
+        .Where(f => Path.GetFileNameWithoutExtension(f).EndsWith(AdjustSuffix, StringComparison.Ordinal) == _adjusted);
 
     void ReloadAden(Config config)
     {

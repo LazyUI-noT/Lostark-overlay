@@ -1,0 +1,16 @@
+{
+  "source": "HUD90_buff120.png",
+  "slot": "buffs",
+  "hud": 90,
+  "rect": [
+    610,
+    912,
+    260,
+    60
+  ],
+  "width": 260,
+  "height": 60,
+  "pts": [
+    0.0
+  ]
+}

@@ -21,6 +21,16 @@ public sealed class Image(int width, int height, byte[] bgra)
 
     public Image Copy() => new(Width, Height, (byte[])Bgra.Clone());
 
+    /// <summary>A copy of <paramref name="r"/>, clipped to the image (empty when it lies outside).</summary>
+    public Image Crop(PixelRect r)
+    {
+        int x0 = Math.Max(0, r.X), y0 = Math.Max(0, r.Y);
+        int w = Math.Max(0, Math.Min(Width, r.X + r.Width) - x0), h = Math.Max(0, Math.Min(Height, r.Y + r.Height) - y0);
+        var dst = new Image(w, h);
+        for (int y = 0; y < h; y++) Row(y0 + y).Slice(x0 * 4, w * 4).CopyTo(dst.Bgra.AsSpan(y * dst.Stride));
+        return dst;
+    }
+
     /// <summary>The one stored form of an image (calibration files, learned emblems): width, height, packed rows.</summary>
     public byte[] ToBytes()
     {

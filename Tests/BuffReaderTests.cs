@@ -13,6 +13,19 @@ public class BuffReaderTests
     internal static readonly (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) Down =
         ("buffrow_down", new Viewport(0, 135, 1920, 810), new Fit(100), 100, new(760, 815, 124, 40));
 
+    [Theory]
+    // HUD80_buff120.png / HUD90_buff120.png: the four party buffs sit in boxes 0–3 of a row packed tighter than at HUD 100+.
+    [InlineData("buffrow_hud80", 80, 630, 925, 250, 60)]
+    [InlineData("buffrow_hud90", 90, 610, 912, 260, 60)]
+    public void The_four_party_buffs_are_found_in_a_small_hud_row(string fixture, int hud, int x, int y, int w, int h)
+    {
+        var src = (fixture, Fhd, new Fit(hud), 120, new PixelRect(x, y, w, h));
+        var frame = Fixture.Load(fixture).Frames[0];
+        var kinds = Boxes(src).Take(4).Select(b => BuffReader.Classify(frame, b.Icon)).ToArray();
+        Assert.All(kinds, k => Assert.NotNull(k));
+        Assert.Equal(4, kinds.Distinct().Count());
+    }
+
     /// <summary>The boxes relative to a fixture's crop.</summary>
     internal static Geometry.BuffBox[] Boxes((string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) src) =>
         [.. Geometry.BuffBoxes(src.Vp, src.Fit, src.Buff).Select(b => new Geometry.BuffBox(

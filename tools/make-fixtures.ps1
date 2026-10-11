@@ -216,6 +216,15 @@ CutRect 'band_1440' $q 'band' 100 @(1713, 1395, 373, 206)
 # band_bard_charged: bardbug_103.mp4 (바드, HUD 100, charged 각성기 frame) at 1, 10 and 20 s, rect 400,880,360,200: cut by hand,
 # since CutRect writes one span only.
 CutRect 'buffrow_1440' $q 'buffs' 100 @(1990, 1360, 240, 85)
+# HUD80_buff120.png / HUD90_buff120.png (1920×1080, buff 120%): the row packed tighter below HUD 100, the four party buffs in
+# boxes 0–3 and other buffs further left.
+CutRect 'buffrow_hud80' (Join-Path $ref 'HUD80_buff120.png') 'buffs' 80 @(630, 925, 250, 60)
+CutRect 'buffrow_hud90' (Join-Path $ref 'HUD90_buff120.png') 'buffs' 90 @(610, 912, 260, 60)
+# discord_stream.png: a screen grab of a Discord full-screen stream (바드, HUD ~90, forced 21:9: game area 1920×810 from row 135),
+# blurred, its bars 1–3 rather than 0. The black-bar probe column and the bottom band of the game area.
+$disc = Join-Path $ref 'discord_stream.png'
+CutRect 'probe_discord' $disc 'probe' 90 @(96, 0, 2, 1080)
+CutRect 'band_discord' $disc 'band' 90 @(400, 621, 1120, 324)
 $r = @(664, 886, 184, 60)
 $log = & ffmpeg -v info -y -i $b80 -vf "fps=2,format=bgra,crop=$($r[2]):$($r[3]):$($r[0]):$($r[1]),showinfo" -f rawvideo -pix_fmt bgra (Join-Path $out 'buffrow_b80.bgra') 2>&1 | Out-String
 $pts = [regex]::Matches($log, 'pts_time:([0-9.]+)') | ForEach-Object { [double]$_.Groups[1].Value }

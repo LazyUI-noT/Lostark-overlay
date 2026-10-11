@@ -28,6 +28,18 @@ public class FitSolverTests
             Assert.InRange(FitSolver.Solve(frame, rect, Fhd)!.Hud, 98, 102);
     }
 
+    /// <summary>discord_stream.png (바드, HUD ~90, forced 21:9): the stream's blur takes the 각성기 ring below the game's check,
+    /// though the bar sits where the HP bar puts it. 테스트 모드 (video) takes the HP bar's size alone.</summary>
+    [Fact]
+    public void A_blurred_stream_is_fitted_from_the_hp_bar_in_test_mode()
+    {
+        var band = Fixture.Load("band_discord");
+        var rect = new PixelRect(band.Rect[0], band.Rect[1], band.Rect[2], band.Rect[3]);
+        var vp = new Viewport(0, 135, 1920, 810);
+        Assert.Null(FitSolver.Solve(band.Frames[0], rect, vp));
+        Assert.InRange(FitSolver.Solve(band.Frames[0], rect, vp, video: true)!.Hud, 89, 92);
+    }
+
     /// <summary>The HP bar's top edge sits 1.21 × HUD px above the bottom of a 1080-high game area for every class
     /// (80percent–110percent.png: 983, 971, 953, 947).</summary>
     [Theory]

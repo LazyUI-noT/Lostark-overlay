@@ -1,0 +1,16 @@
+{
+  "source": "discord_stream.png",
+  "slot": "band",
+  "hud": 90,
+  "rect": [
+    400,
+    621,
+    1120,
+    324
+  ],
+  "width": 1120,
+  "height": 324,
+  "pts": [
+    0.0
+  ]
+}

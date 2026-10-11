@@ -64,7 +64,10 @@ public sealed class SettingsStore(string path)
                         foreach (var c in s.Classes.Values)
                             c.Mine.CustomGlow = c.Mine.PulseColor.Values.Any(v => !string.Equals(v, "#FFFFFF", StringComparison.OrdinalIgnoreCase));
                     FiveProfiles(s);
-                    if (s.ManualHud is { } hud) s.ManualHud = Math.Clamp(hud, 70, 130);   // a hand-edited size: the 설정 slider's range
+                    if (s.ManualHud is { } hud) s.ManualHud = Settings.NearestHud(hud);   // hand-edited, or saved by the old 70–130 slider
+                    foreach (var (key, f) in s.Adjusts.ToList())   // a hand edit the debug window couldn't have made
+                        if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
+                        else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
                     (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
                     if (s.Overlay.AwakeningChangedColor.Equals("#FF7F27", StringComparison.OrdinalIgnoreCase))
                         s.Overlay.AwakeningChangedColor = new OverlaySettings().AwakeningChangedColor;   // 1.x default → red
