@@ -64,7 +64,7 @@ public sealed partial class Engine
             // A drop, or an 적용 made for a game area that has changed since (its fit is for the old one): back to the saved fit.
             if (end == 1 || _vp != _previewVp) { _fit = null; return; }
             var fit = kept ?? _fit!;
-            if (_testMode) _testFits.Set(_vp, fit);
+            if (_testMode) { _testFits.Set(_vp, fit); _vpPinned = true; }
             else _adjusted = true;   // App has stored it in Settings.Adjusts; its calibration is the …_adj files
             // The ready slots are read off the game: App brings it to the front, so wait for it as 스킬창 맞추기 does.
             for (int i = 0; i < FitWaitSteps && !_foreground; i++) Thread.Sleep(100);

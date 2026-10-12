@@ -91,7 +91,7 @@
 
 ## 설치
 
-1. 이 저장소의 **Releases**에서 `GaugeOverlay-v1.3.1.zip`을 받습니다.
+1. 이 저장소의 **Releases**에서 `GaugeOverlay-v1.3.2.zip`을 받습니다.
 2. 원하는 폴더에 압축을 풉니다. `GaugeOverlay.exe`와 `Profiles` 폴더가 같은 곳에 있어야 합니다.
 3. `GaugeOverlay.exe`를 실행합니다. 설치 과정은 없고 .NET도 따로 설치할 필요가 없습니다.
 

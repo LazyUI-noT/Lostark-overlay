@@ -114,6 +114,7 @@ public sealed partial class Engine : IDisposable
     bool _awakeningChanged, _labelMissed, _running, _fitNeededRaised, _emblemPending, _subclassPending, _testMode;
     // 테스트 모드: fits found on the video in front, memory only; _quietFit while one is looked for unasked (no failure notices).
     readonly TestFits _testFits = new();
+    bool _vpPinned;   // 테스트 모드 after 적용: the game area stays on these screen pixels (a video's dark scene or a moved window doesn't shift it)
     bool _quietFit;
     bool _adjusted;   // the fit in use is a 수동 조정 (Config.Adjusts): its calibration files are its own
     string? _areaKey;
@@ -546,7 +547,7 @@ public sealed partial class Engine : IDisposable
         {
             // In or out of 테스트 모드: the video's fit and calibration (memory only) and the game's saved ones don't mix.
             _testFits.Clear();
-            (_vp, _fit, _fitNeededRaised, _lastViewport) = (default, null, false, TimeSpan.MinValue);
+            (_vp, _fit, _fitNeededRaised, _lastViewport, _vpPinned) = (default, null, false, TimeSpan.MinValue, false);
             Array.Clear(_cal);
             for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
             _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
@@ -567,6 +568,7 @@ public sealed partial class Engine : IDisposable
         if (hwnd != _hwnd || monitor != _monitor || _source is null)
         {
             ResetSource();
+            if (hwnd != _hwnd) _vpPinned = false;   // another video in test mode
             (_hwnd, _monitor) = (hwnd, monitor);
             _source = CaptureFactory.Create(hwnd);
             _lastViewport = TimeSpan.MinValue;
@@ -577,7 +579,13 @@ public sealed partial class Engine : IDisposable
     /// <param name="fitting">스킬창 맞추기 is about to run: the game area as it is now wins over a kept one.</param>
     void UpdateViewport(TimeSpan now, bool fitting = false)
     {
+        // 테스트 모드 while 위치 조정 is open or after its 적용: the boxes stay on the screen pixels they were put on. A video's
+        // dark scene reads as black bars, which moved the area, restarted the preview and looked for a fit again.
+        // A moved window keeps them there; refit (fitting), another window or a resize releases it.
         if (GameWindow.ClientRect(_hwnd) is not { } client) return;
+        bool sameSize = (client.Width, client.Height) == (_client.Width, _client.Height);
+        if (fitting || !sameSize) _vpPinned = false;
+        else if (_testMode && _vp.Height > 0 && (_vpPinned || _previewing)) { _lastViewport = now; return; }
         var manual = _testMode ? null : _config.Manual(client);   // 직접 입력 describes the game, not a video of it
         Viewport vp;
         if (manual is { } m) vp = Geometry.ManualViewport(client, m.Screen);   // 직접 입력: no black-bar probe

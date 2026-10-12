@@ -16,6 +16,8 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     public const double MinHud = 50, MaxHud = 250;
     /// <summary>The boss row's size range in % of the game's.</summary>
     public const int MinBoss = 50, MaxBoss = 200;
+    /// <summary>The 버프 크기 range ± reaches: the game offers <see cref="Settings.BuffSizes"/>, a video (테스트 모드) may show any size.</summary>
+    public const int MinBuffSize = 50, MaxBuffSize = 200;
 
     public static FitAdjust Begin(Viewport vp, int buffSize, Fit fit)
     {
@@ -50,10 +52,11 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     /// <summary>± on the size: the bar <paramref name="pixels"/> screen pixels wider, its x/y kept.</summary>
     public FitAdjust WidenBy(int pixels) => ScaleTo(Geometry.HudForWidth(Vp, Geometry.BarRect(Vp, Current).Width + pixels));
 
-    /// <summary>The game's 버프 크기 for both rows: the nearest of the game's choices (<see cref="Settings.BuffSizes"/>).</summary>
+    /// <summary>The 버프 크기 for both rows, any whole % in <see cref="MinBuffSize"/>–<see cref="MaxBuffSize"/> (the slider's drag
+    /// snaps to the game's choices; ± steps 1% between them).</summary>
     public FitAdjust WithBuffSize(int size)
     {
-        var a = this with { BuffSize = Settings.BuffSizes.MinBy(s => Math.Abs(s - size)) };
+        var a = this with { BuffSize = Math.Clamp(size, MinBuffSize, MaxBuffSize) };
         return a with { Current = a.Clamp(Current) };
     }
 

@@ -832,7 +832,7 @@ public partial class SettingsWindow : Window
     ComboBox BuffSizeCombo()
     {
         var size = Combo();
-        size.ItemsSource = Settings.BuffSizes;
+        size.ItemsSource = Settings.BuffSizes.Append(_s.Buffs.Size).Distinct().Order().ToList();   // a size set with 위치 조정's ± shows too
         size.SelectedItem = _s.Buffs.Size;
         size.SelectionChanged += (_, _) => { if (size.SelectedItem is int v && v != _s.Buffs.Size) { _s.Buffs.Size = v; Changed(); Dispatcher.BeginInvoke(() => { FillBuffs(); FillFit(); }); } };
         return size;

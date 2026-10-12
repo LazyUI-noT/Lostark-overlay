@@ -386,7 +386,7 @@ public sealed class BuffSettings : IWindowPlace
     public double Top { get; set; } = double.NaN;
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
-    /// <summary>The game's 버프 크기 setting (%), one of <see cref="Settings.BuffSizes"/>: where the buff and debuff rows sit and
+    /// <summary>The game's 버프 크기 setting (%), usually one of <see cref="Settings.BuffSizes"/> (위치 조정's ± sets any whole %): where the buff and debuff rows sit and
     /// how big their icons are. 스킬창 맞추기 doesn't detect it; 120 is the size the reads are measured best at.</summary>
     public int Size { get; set; } = 120;
     /// <summary>세로: the bars stand upright side by side instead of lying flat one under another. In the fixed grid they stand

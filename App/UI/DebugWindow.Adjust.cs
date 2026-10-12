@@ -41,7 +41,7 @@ public partial class DebugWindow
     const double MaxMove = 400;     // a slider's reach in screen pixels
     const double MaxZoom = 8, ZoomStep = 1.25;
     const double MinView = 40, MaxView = 1200;       // a picture's height range (DIP), set by its grip
-    const int BuffStep = 10;                         // the game's 버프 크기 choices are 10% apart
+    const int BuffStep = 10;                         // the game's 버프 크기 choices are 10% apart: the slider's drag snaps to them
 
     static readonly (AdjustPart Part, string Name, Color Color)[] Parts =
     [
@@ -202,7 +202,7 @@ public partial class DebugWindow
                 else
                 {
                     body.Children.Add(SliderRow("게임의 버프 크기 (%)", part, 'b', Settings.BuffSizes[0], Settings.BuffSizes[^1]));
-                    body.Children.Add(Hint("게임 설정의 버프 크기입니다. 버프 줄과 디버프 줄이 같이 쓰고, 적용하면 설정 → 게임의 버프 크기에 저장합니다. 스킬창 맞추기는 버프 크기를 찾지 않습니다."));
+                    body.Children.Add(Hint("게임 설정의 버프 크기입니다. 막대는 게임의 값(80, 90 … 120)에 붙고, ± 버튼은 1%씩 바꿉니다. 버프 줄과 디버프 줄이 같이 쓰고, 적용하면 설정 → 게임의 버프 크기에 저장합니다. 스킬창 맞추기는 버프 크기를 찾지 않습니다."));
                 }
             }
             _tabs.Items.Add(new TabItem { Header = new TextBlock { Text = name, Foreground = new SolidColorBrush(color), FontWeight = FontWeights.SemiBold }, Content = body });
@@ -421,7 +421,7 @@ public partial class DebugWindow
         return grid;
     }
 
-    /// <summary>± buttons: one screen pixel (the bar's size: one pixel wider or narrower), the next 버프 크기 the game offers, 1% of the boss's size.</summary>
+    /// <summary>± buttons: one screen pixel (the bar's size: one pixel wider or narrower), 1% of the 버프 크기 or the boss's size.</summary>
     void Nudge(AdjustPart part, char axis, int d)
     {
         if (_adj is not { } a) return;
@@ -430,7 +430,7 @@ public partial class DebugWindow
             'x' => a.Move(part, d, 0),
             'y' => a.Move(part, 0, d),
             's' => a.WidenBy(d),
-            'b' => a.WithBuffSize(a.BuffSize + d * BuffStep),
+            'b' => a.WithBuffSize(a.BuffSize + d),
             _ => a.BossTo(a.BossPercent + d),
         });
     }

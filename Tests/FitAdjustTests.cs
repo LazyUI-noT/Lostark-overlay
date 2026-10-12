@@ -102,10 +102,10 @@ public class FitAdjustTests
     }
 
     [Theory]
-    [InlineData(113, 110)]
-    [InlineData(9999, 120)]
-    [InlineData(1, 80)]
-    public void The_buff_size_snaps_to_the_games_choices(int asked, int got) =>
+    [InlineData(113, 113)]   // ± between the game's choices
+    [InlineData(9999, FitAdjust.MaxBuffSize)]
+    [InlineData(1, FitAdjust.MinBuffSize)]
+    public void The_buff_size_takes_any_whole_percent_in_range(int asked, int got) =>
         Assert.Equal(got, Session().WithBuffSize(asked).BuffSize);
 
     [Fact]
