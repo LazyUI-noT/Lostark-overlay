@@ -11,6 +11,7 @@ public partial class FirstRunWindow : Window
     readonly Settings _s;
     readonly (string Title, UIElement Content)[] _pages;
     readonly TextBlock _fitResult = new() { TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) };
+    readonly Button _fit = new() { Content = "맞추기", MinWidth = 120, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 0) };
     int _page;
     bool _fitted;
 
@@ -27,6 +28,7 @@ public partial class FirstRunWindow : Window
     {
         _s = settings;
         InitializeComponent();
+        Themes.Apply(this, settings.Theme, Root);
         void Changed() => SettingsChanged?.Invoke();
         _pages =
         [
@@ -53,11 +55,27 @@ public partial class FirstRunWindow : Window
     void Go(int page)
     {
         _page = page;
-        StepText.Text = $"{page + 1} / {_pages.Length}";
+        ShowSteps();
         TitleText.Text = _pages[page].Title;
         Page.Content = _pages[page].Content;
         BackButton.Visibility = page == 0 ? Visibility.Hidden : Visibility.Visible;
         NextButton.Content = page < _pages.Length - 1 ? "다음" : _fitted ? "완료" : "나중에 맞추기";
+        // The step's one action is the accent button: 다음 and 완료, but on the last page 맞추기 until a fit worked.
+        bool nextIsMain = page < _pages.Length - 1 || _fitted;
+        if (nextIsMain) Themes.Primary(NextButton); else NextButton.ClearValue(StyleProperty);
+        if (nextIsMain) _fit.ClearValue(StyleProperty); else Themes.Primary(_fit);
+    }
+
+    /// <summary>"1 / 3   키 설정 › 캐릭터 › 스킬창 맞추기", the current step in bold, so the steps ahead are known.</summary>
+    void ShowSteps()
+    {
+        StepText.Inlines.Clear();
+        StepText.Inlines.Add(new System.Windows.Documents.Run($"{_page + 1} / {_pages.Length}   "));
+        for (int i = 0; i < _pages.Length; i++)
+        {
+            if (i > 0) StepText.Inlines.Add(new System.Windows.Documents.Run(" › "));
+            StepText.Inlines.Add(new System.Windows.Documents.Run(_pages[i].Title) { FontWeight = i == _page ? FontWeights.SemiBold : FontWeights.Normal });
+        }
     }
 
     /// <summary>Shows a fit result on the last page; after a successful fit the button reads "완료".</summary>
@@ -70,12 +88,12 @@ public partial class FirstRunWindow : Window
 
     UIElement FitPage()
     {
-        var fit = new Button { Content = "맞추기", MinWidth = 120, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 0) };
+        var fit = _fit;
         fit.Click += (_, _) => FitRequested?.Invoke();
         return SettingsWindow.Stack(
             SettingsWindow.Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
             Step("1", "게임에서 수련장에 들어갑니다."),
-            Step("2", "수련장 설정에서 재사용 대기시간을 초기화해 모든 스킬이 준비된 상태로 둡니다."),
+            Step("2", "수련장에서 쿨초해 모든 스킬이 쿨 돈 상태로 둡니다."),
             Step("3", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),
             fit,
             _fitResult,

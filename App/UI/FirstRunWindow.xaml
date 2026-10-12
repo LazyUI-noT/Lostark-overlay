@@ -3,17 +3,18 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GaugeOverlay 시작하기" Width="560" Height="680" MinWidth="480" MinHeight="480"
         WindowStartupLocation="CenterScreen" ThemeMode="System">
-    <DockPanel Margin="24,20,24,20">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+    <DockPanel x:Name="Root">
+        <StackPanel DockPanel.Dock="Top" Margin="24,20,24,16">
             <TextBlock x:Name="StepText" Opacity="0.7" />
             <TextBlock x:Name="TitleText" FontSize="22" FontWeight="SemiBold" Margin="0,2,0,0" />
         </StackPanel>
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
+        <DockPanel DockPanel.Dock="Bottom" Margin="24,16,24,20">
             <Button x:Name="BackButton" DockPanel.Dock="Left" Content="이전" MinWidth="88" />
             <Button x:Name="NextButton" HorizontalAlignment="Right" MinWidth="88" />
         </DockPanel>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <ContentControl x:Name="Page" />
+            <!-- Right margin wider than the left: Fluent's scroll bar is drawn over the content. -->
+            <ContentControl x:Name="Page" Margin="24,0,32,0" />
         </ScrollViewer>
     </DockPanel>
 </Window>

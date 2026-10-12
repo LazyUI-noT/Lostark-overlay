@@ -75,6 +75,104 @@ public class SchedulerTests
         Assert.InRange(reads.Count, 20, 31);
     }
 
+    // --- Watch (코어 빌드: a slot a cast is known to change is read on every frame for a while) ---
+
+    private const SlotId Other = SlotId.일반2;
+
+    private static SlotState On(SlotId slot, double endsAt) =>
+        new(slot, SlotPhase.Cooldown, S(endsAt), S(endsAt), false, TimeSpan.Zero);
+
+    /// <summary>Q and 일반2 on a cooldown that ends at 10.5, whole-second edges at .5: at the times used below (not within 60 ms
+    /// of one) neither is due on its own while it was read 10 ms before.</summary>
+    private static (ReadScheduler, SlotState[]) Idle(params double[] justRead)
+    {
+        var scheduler = new ReadScheduler();
+        foreach (var t in justRead) { scheduler.MarkRead(Q, S(t)); scheduler.MarkRead(Other, S(t)); }
+        return (scheduler, [On(Q, 10.5), On(Other, 10.5)]);
+    }
+
+    [Fact]
+    public void A_watched_slot_is_due_on_every_frame_until_the_time_and_then_follows_its_normal_pace()
+    {
+        var (scheduler, states) = Idle(1.99);
+        scheduler.Watch(Q, S(2.3));
+
+        for (int k = 0; k <= 18; k++)   // 2.0 .. 2.3 at 60 fps, each frame read just before the next
+        {
+            double t = 2.0 + k * Frame;
+            Assert.Contains(Q, scheduler.Due(S(t), states));
+            scheduler.MarkRead(Q, S(t));
+        }
+        Assert.DoesNotContain(Q, scheduler.Due(S(2.0 + 19 * Frame), states));   // past 2.3: 17 ms after its last read, normal pace
+    }
+
+    [Fact]
+    public void A_watch_ends_exactly_at_its_time()
+    {
+        var (scheduler, states) = Idle(1.99);
+        scheduler.Watch(Q, S(2.0));
+        Assert.Contains(Q, scheduler.Due(S(2.0), states));
+        Assert.DoesNotContain(Q, scheduler.Due(S(2.0 + 1e-6), states));
+    }
+
+    [Fact]
+    public void A_watch_reaches_no_other_slot()
+    {
+        var (scheduler, states) = Idle(1.99);
+        scheduler.Watch(Q, S(3));
+        Assert.Equal([Q], scheduler.Due(S(2.0), states));
+    }
+
+    /// <summary>Every phase, not only a cooldown: a ready slot (normally 20 Hz), a long cooldown (1 Hz) and an unread one (4 Hz).</summary>
+    [Theory]
+    [InlineData(SlotPhase.Ready)]
+    [InlineData(SlotPhase.LongCooldown)]
+    [InlineData(SlotPhase.Unknown)]
+    public void A_watched_slot_is_due_on_every_frame_in_any_phase_and_only_until_the_time(SlotPhase phase)
+    {
+        var scheduler = new ReadScheduler();
+        var states = new[] { State(phase) };
+        scheduler.MarkRead(Q, S(1.99));
+        scheduler.Watch(Q, S(2.3));
+
+        for (int k = 0; k <= 18; k++)
+        {
+            double t = 2.0 + k * Frame;
+            Assert.Contains(Q, scheduler.Due(S(t), states));
+            scheduler.MarkRead(Q, S(t));
+        }
+        Assert.DoesNotContain(Q, scheduler.Due(S(2.0 + 19 * Frame), states));
+    }
+
+    [Fact]
+    public void Watching_again_extends_a_watch_and_an_earlier_time_never_shortens_it()
+    {
+        var (scheduler, states) = Idle(3.39, 3.59);
+        scheduler.Watch(Q, S(2.5));
+        scheduler.Watch(Q, S(3.5));
+        scheduler.Watch(Q, S(1.0));
+        Assert.Contains(Q, scheduler.Due(S(3.4), states));
+        Assert.DoesNotContain(Q, scheduler.Due(S(3.6), states));
+    }
+
+    [Fact]
+    public void Several_slots_can_be_watched_at_once_each_for_its_own_time()
+    {
+        var (scheduler, states) = Idle(2.09, 2.59);
+        scheduler.Watch(Q, S(2.2));
+        scheduler.Watch(Other, S(3));
+        Assert.Equal([Q, Other], scheduler.Due(S(2.1), states));
+        Assert.Equal([Other], scheduler.Due(S(2.6), states));
+    }
+
+    [Fact]
+    public void A_watched_slot_not_in_the_states_is_not_invented()
+    {
+        var (scheduler, states) = Idle(1.99);
+        scheduler.Watch(SlotId.아덴2, S(3));
+        Assert.DoesNotContain(SlotId.아덴2, scheduler.Due(S(2.0), states));
+    }
+
     [Fact]
     public void Key_press_also_reads_ready_slots_so_a_cast_is_seen_on_the_next_frame()
     {

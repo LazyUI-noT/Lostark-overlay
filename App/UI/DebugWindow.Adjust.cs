@@ -167,7 +167,7 @@ public partial class DebugWindow
         };
         IsVisibleChanged += (_, _) => AdjustOpenChanged?.Invoke();
 
-        AdjustHost.Children.Add(new TextBlock { Text = "위치 조정", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
+        AdjustHost.Children.Add(new TextBlock { Text = "수동 조정", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
         AdjustHost.Children.Add(_note);
         AdjustHost.Children.Add(_freeze);
         foreach (var (part, name, color) in Parts)

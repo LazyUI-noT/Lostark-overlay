@@ -142,6 +142,7 @@ public partial class App : Application
         _settingsWindow.SettingsChanged += changed;
         _settingsWindow.EditModeRequested += () => SetEditMode(true);
         _settingsWindow.IsVisibleChanged += (_, _) => UpdatePreview();
+        _settingsWindow.PickedChanged += ApplyPreviewTarget;
         _hotkeys.Pressed += action => Dispatcher.BeginInvoke(() =>
         {
             if (action == nameof(HotkeySettings.EditMode)) SetEditMode(!_overlay.EditMode);
@@ -158,8 +159,8 @@ public partial class App : Application
         _settingsWindow.LayoutEditorRequested += OpenLayoutEditor;
         _tray.CharacterPicked += (family, cls, sub) => { characters.Pick(family, cls, sub); _settingsWindow.Reload(); changed(); };
         _tray.DefaultPicked += () => { characters.PickDefault(); _settingsWindow.Reload(); changed(); };
-        _tray.RaidChosen += r => { _settings.Debuffs.Raid = r; _settingsWindow.Reload(); changed(); };
-        _tray.Exit += () => Shutdown();
+        _tray.RaidChosen += r => { _settings.Debuffs.Raid = r; _editor?.ShowRaid(r); _settingsWindow.Reload(); changed(); };
+        _tray.Exit += Quit;
     }
 
     /// <summary>Applies the settings to the UI side: overlay, hotkeys, tray.</summary>
@@ -177,6 +178,7 @@ public partial class App : Application
         }
         _failedHotkeys = failed;
         _tray.SetHotkeys(_settings.Hotkeys);
+        _tray.SetTheme(_settings.Theme);
         _tray.SetProfile(_settings.ActiveProfile);
         _tray.SetRaid(_settings.Debuffs.Raid);
         _tray.SetCharacters(_characters.ClassTree, _settings.ActiveCharacter);
@@ -198,20 +200,24 @@ public partial class App : Application
         _tray.Notify($"오버레이 프로필 {profile + 1}");
     }
 
-    /// <summary>미리보기: sample data while 설정 is open (it takes the foreground, so the overlay must show regardless),
-    /// but not while the 레이아웃 편집기 is open, which draws the overlays itself.</summary>
-    void UpdatePreview()
-    {
-        bool on = _settingsWindow.IsVisible && _editor is null;
-        _overlay.Preview = on;
-        foreach (var w in Others) w.Preview = on;
-        UpdateVisibility();
-    }
-
     LayoutEditorWindow? _editor;
     string _failedHotkeys = "";   // told once, not on every change
     Func<Task<(Image?, PixelRect)>>? _takeShot;   // 게임 화면 찍기; none in the demo
     static readonly TimeSpan ShotSettle = TimeSpan.FromMilliseconds(150), ShotTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>종료 and an update's restart: a shutdown can't be cancelled, so the editor doesn't ask about changes not applied.</summary>
+    void Quit()
+    {
+        _editor?.CloseUnasked();
+        Shutdown();
+    }
+
+    /// <summary>Windows is logging off or shutting down: nothing may ask, as with <see cref="Quit"/>.</summary>
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        _editor?.CloseUnasked();
+        base.OnSessionEnding(e);
+    }
 
     /// <summary>One editor at a time; 적용 moves the windows to the new spots and saves (through _changed).</summary>
     void OpenLayoutEditor()
@@ -241,6 +247,7 @@ public partial class App : Application
     void SetEditMode(bool on)
     {
         _overlay.SetEditMode(on);
+        ApplyPreviewTarget();   // none while editing; back after
         foreach (var w in Others) w.SetEditMode(on);
         _tray.SetEditMode(on);
         UpdateVisibility();
@@ -293,7 +300,8 @@ public partial class App : Application
 
     void UpdateVisibility()
     {
-        bool show = _overlay.EditMode || _overlay.Preview || (_settings.Overlay.Visible && _gameForeground && _hudVisible && _settings.FirstRunDone);
+        bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, preview: _overlay.Preview, visible: _settings.Overlay.Visible,
+            gameForeground: _gameForeground, hudVisible: _hudVisible, firstRunDone: _settings.FirstRunDone);
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _overlay.Visibility;
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
@@ -325,6 +333,15 @@ public partial class App : Application
         var settings = store.Load(out bool wasReset);
         var debounce = new SaveDebounce();
         var characters = new CharacterService(settings, CharacterService.DefaultProfilesDir);
+        // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
+        if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
+        // 설정 → 캐릭터 marks what was added since: the first run of a version with the list records what ships now.
+        // Saved by the debounced writer (retries a locked file); unsaved, the next start just records it again.
+        if (settings.SeenSupport is null)
+        {
+            settings.SeenSupport = ClassSupport.Keys(characters.Support(slot => slot.ToString()));
+            debounce.Changed(Clock.Now());
+        }
 
         var engine = new Engine();
         var foreground = new ForegroundWatcher();
@@ -412,7 +429,7 @@ public partial class App : Application
             if (!_overlay.Renderer.ClassWarning) return;
             characters.PickDefault();
             _settingsWindow.Reload();
-            _tray.Notify("클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬창 다시 맞추기(Ctrl+Shift+D)나 트레이에서 클래스를 고르세요.");
+            _tray.Notify($"클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬창 다시 맞추기({SettingsWindow.KeyOrNone(_settings.Hotkeys.DetectCharacter)})나 트레이에서 클래스를 고르세요.");
             OnSettingsChanged();
         };
 
@@ -497,8 +514,8 @@ public partial class App : Application
             engine.Configure(new Engine.Config(new Dictionary<string, Fit>(settings.Fits), characters.AdenSlots, _debug.IsVisible,
                 ClassProfiles.Reads(settings, characters.AdenSlots), characters.Gauge, characters.ActiveClass?.AdenRects, characters.AdenDark,
                 characters.GaugeRule, wrongClass ? GaugeReadMode.Agreed : settings.Gauge.ReadMode, wrongClass ? null : settings.ActiveCharacter,
-                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts()));
-            if (settings.SyncPlace()) _overlay.Replace();   // a 개별 직업각인 has its own spot and size
+                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts(), wrongClass ? null : characters.CoreWatches));
+            if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
         }
@@ -711,7 +728,7 @@ public partial class App : Application
         {
             party.PublishLook(MyLook());
             if (!await party.Host(settings.Party.HostPort, PartyName())) return;
-            if (party.Token is { } t) TokenDialog.ShowToken(t, settings.Party.HostPort);
+            if (party.Token is { } t) TokenDialog.ShowToken(t, settings.Party.HostPort, settings.Theme);
             else _tray.Notify("파티를 열었습니다.");
         }
         async void JoinParty(string? token)
@@ -721,7 +738,7 @@ public partial class App : Application
             if (await party.Join(token, PartyName())) _tray.Notify("파티에 참가했습니다.");
         }
         _tray.HostParty += HostParty;
-        _tray.JoinParty += () => JoinParty(JoinDialog.Ask());
+        _tray.JoinParty += () => JoinParty(JoinDialog.Ask(settings.Theme));
         _tray.CopyToken += CopyTokenWithNotice;
         _tray.LeaveParty += party.Leave;
         _settingsWindow.HostRequested += HostParty;
@@ -765,7 +782,7 @@ public partial class App : Application
                 (settings.Updates.WhatsNewTag, settings.Updates.WhatsNew) = (release.Tag, UpdateCheck.PlainNotes(release.Notes));   // shown once by the new version
                 Save(now: true);
                 Process.Start(new ProcessStartInfo(Path.Combine(appDir, UpdateInstaller.ExeName), "--updated") { UseShellExecute = false });
-                Shutdown();
+                Quit();
             }
             catch (Exception ex)
             {
@@ -810,7 +827,7 @@ public partial class App : Application
                 if (settings.Updates.Notified == release.Tag) return;   // told once per version
                 settings.Updates.Notified = release.Tag;
                 Save(now: false);
-                _tray.Notify($"GaugeOverlay {release.Tag}이(가) 있습니다. 설정에서 업데이트할 수 있습니다.",
+                _tray.Notify($"GaugeOverlay {Josa.Subject(release.Tag)} 있습니다. 설정에서 업데이트할 수 있습니다.",
                     () => { _settingsWindow.Show(); _settingsWindow.Activate(); });
             }
             catch (Exception ex) { Trace.WriteLine($"[update] check: {ex}"); }   // never shown: the app runs on as it is
@@ -829,7 +846,12 @@ public partial class App : Application
     // ── --demo: the real UI driven by DemoSnapshots; no capture, no party, nothing saved ──────
     // Flags: --settings, --first-run, --debug, --edit, --editor (레이아웃 편집기), --full (its 전체 화면), --pick=<Part> (a part clicked, in the editor and the 오버레이 tab), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
     // --theme=<UiTheme>, --peer-colors=<ColorSource>, --support=<number 1–4>, --my-number=<1–4>, --name-length=<2–14>, --receive (파티원 크기·배치 받기),
-    // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스).
+    // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스),
+    // --unseen=<클래스> (설정 → 캐릭터 shows that class as newly added),
+    // --cores (코어 빌드 applied to 워로드 · 고독한기사: 해 3, 버스트 캐넌 in 일반3),
+    // --edit-as=<클래스 · 직업각인> (설정 → 편집 중 picks that 직업각인, so the overlay shows its sample; with --settings),
+    // --duelist (the debuff window shows the 결투자 from each loop's start; implies --debuffs), --reduced (the debuff window drawn as under 애니메이션 끔),
+    // --tray-menu (the tray menu opened), --join (파티 참가 dialog), --token (파티 호스트 token dialog).
     void StartDemo(string[] args)
     {
         Trace.Listeners.Add(new TextWriterTraceListener(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo.log")));
@@ -843,11 +865,15 @@ public partial class App : Application
         if (int.TryParse(Flag("support"), out int support)) (settings.Party.SupportFixed, settings.Party.SupportNumber) = (true, support);
         if (int.TryParse(Flag("my-number"), out int number)) settings.Party.MyNumber = number;
         if (int.TryParse(Flag("name-length"), out int nameLength)) settings.Party.NameLength = nameLength;
+        if (Flag("unseen") is { } unseen)   // 설정 → 캐릭터 as after an update that added this class: NEW on its rows
+            settings.SeenSupport = [.. ClassSupport.Keys(new CharacterService(settings, CharacterService.DefaultProfilesDir).Support(s => s.ToString()))
+                .Where(k => !k.StartsWith(unseen + "/", StringComparison.Ordinal))];
         if (Enum.TryParse(Flag("theme"), out UiTheme theme)) settings.Theme = theme;
         if (args.Contains("--receive")) (settings.Party.ReceiveSize, settings.Party.ReceiveLayout) = (true, true);
         if (args.Contains("--side-buffs")) settings.Buffs.Side = true;
         if (args.Contains("--detach-buffs")) settings.Buffs.Detached = true;
-        if (args.Contains("--debuffs")) settings.Debuffs.Raid = Raid.모르둠;
+        if (args.Contains("--debuffs") || args.Contains("--duelist")) settings.Debuffs.Raid = Raid.모르둠;
+        OverlayRenderer.DemoReducedMotion = args.Contains("--reduced");
         if (args.Contains("--bound-party")) settings.Party.Together = true;
         if (args.Contains("--glow"))
         {
@@ -869,17 +895,20 @@ public partial class App : Application
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",
         };
         settings.ActiveCharacter = "워로드 · 고독한기사";
+        if (args.Contains("--cores")) settings.SetCore("워로드 · 고독한기사", new CoreChoice { Apply = true, Sun = 3 }.WithSlot("버스트 캐넌", SlotId.일반3));
         if (args.Contains("--bar"))
         {
             var bar = GaugeBar.Edit(settings, "워로드", "고독한기사");
             (bar.Splits, bar.UnifiedColor, bar.SegmentColors, bar.SplitThickness) = ([0.25, 0.5, 0.75], false, ["#1E9BE6", "#2EC4B6", "#E8B53A", "#E8262B"], 2);
         }
-        BuildUi(settings, new CharacterService(settings, CharacterService.DefaultProfilesDir), ApplyUi);
+        var demoCharacters = new CharacterService(settings, CharacterService.DefaultProfilesDir);
+        ClassProfileMigration.EnsureOwn(settings, demoCharacters.Classes);   // as at the real start
+        BuildUi(settings, demoCharacters, ApplyUi);
         _tray.SetParty("호스트 중 (3/4)");
         var demoFit = FitText(new Viewport(0, 0, 1920, 1080), new Fit(100), "");
         _settingsWindow.RefitRequested += () => _settingsWindow.SetFitResult(demoFit);
 
-        var demo = new DemoSnapshots();
+        var demo = new DemoSnapshots(args.Contains("--duelist"));
         void Push()
         {
             if (!demo.TryNext(out var self, out var peers)) return;
@@ -903,6 +932,7 @@ public partial class App : Application
         UpdateVisibility();
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
+        if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);
         if (args.Contains("--first-run")) { var first = ShowFirstRun(ApplyUi); first.FitRequested += () => first.SetFitResult(true, demoFit); }
         if (args.Contains("--debug") || args.Contains("--adjust")) { _debug.Capturable = true; _debug.Show(); }
         if (args.Contains("--adjust")) _debug.ShowAdjust();
@@ -910,6 +940,9 @@ public partial class App : Application
         if (args.Contains("--editor")) OpenLayoutEditor();
         if (Enum.TryParse(Flag("pick"), out Part picked)) { _settingsWindow.ShowBox(picked, plate: false); _editor?.DemoPick(picked); }
         if (args.Contains("--full")) _editor?.DemoFullScreen();
+        if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);
+        if (args.Contains("--join")) Dispatcher.BeginInvoke(() => JoinDialog.Ask(settings.Theme), DispatcherPriority.ApplicationIdle);
+        if (args.Contains("--token")) Dispatcher.BeginInvoke(() => TokenDialog.ShowToken("demo-token-1234567890abcdef", settings.Party.HostPort, settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--countdown")) _ = CountdownWindow.Run(new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight), capturable: true);
     }
 }

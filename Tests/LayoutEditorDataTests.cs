@@ -266,6 +266,45 @@ public class LayoutEditorDataTests
         Assert.False(live.Overlay.Visible);
     }
 
+    /// <summary>닫기 asks first only when 적용 would change something.</summary>
+    [Fact]
+    public void An_untouched_editor_copy_has_nothing_to_apply()
+    {
+        var live = WithCharacter();
+        var edited = RoundTrip(live);
+        edited.SyncPlace();   // as the editor's Relayout does
+        edited.EditorHidden.Add("편집");   // a panel hidden: saved at once, not by 적용
+        edited.PickCharacter("전사", Bard, "절실한구원");   // only previewed
+
+        Assert.False(live.LayoutDiffers(edited));
+    }
+
+    [Fact]
+    public void Switching_profiles_there_and_back_is_nothing_to_apply()
+    {
+        var live = WithCharacter();
+        var edited = RoundTrip(live);
+        edited.SyncPlace();
+        int at = edited.ActiveProfile;
+        edited.SwitchProfile(at == 1 ? 2 : 1);
+        edited.SwitchProfile(at);
+
+        Assert.False(live.LayoutDiffers(edited));
+    }
+
+    [Fact]
+    public void A_moved_window_or_a_changed_look_is_something_to_apply()
+    {
+        var live = WithCharacter();
+        var moved = RoundTrip(live);
+        moved.Overlay.Left = 123;
+        var looked = RoundTrip(live);
+        ClassProfiles.Edit(looked, Warlord).Mine.Pulse.Add(SlotGroup.각성기);
+
+        Assert.True(live.LayoutDiffers(moved));
+        Assert.True(live.LayoutDiffers(looked));
+    }
+
     [Fact]
     public void Editing_the_editor_copy_after_applying_leaves_the_live_settings_alone()
     {

@@ -21,10 +21,13 @@ public sealed partial class Engine : IDisposable
     /// <param name="ManualHud">직접 입력: the HUD size 스킬창 맞추기 keeps, instead of reading it off the HP bar.</param>
     /// <param name="ManualScreen">직접 입력: the game's 해상도 and 21:9, which place the game area without the black-bar probe.</param>
     /// <param name="Adjusts">수동 조정 (null: another mode): fits applied in the debug window, tried before <paramref name="Fits"/>.</param>
+    /// <param name="CoreWatches">코어 빌드, worked out when the config is built: the slots to read on every frame after a cast (null: none).
+    /// A hidden, unsent slot (<see cref="ReadPlan.Skip"/>) is never read: as the target its reset isn't tracked, and as the trigger its cast is
+    /// never seen, so nothing starts.</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
         GaugeReadMode ReadMode = GaugeReadMode.Agreed, string? Character = null, Raid Raid = Raid.없음, int DebuffSize = 100, double? ManualHud = null,
-        ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null)
+        ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -425,10 +428,11 @@ public sealed partial class Engine : IDisposable
         var boxes = Geometry.DebuffBoxes(_vp, _fit!, size);
         for (int i = 0; i < boxes.Length; i++)
         {
-            var kind = DebuffReader.Classify(area, Local(boxes[i].Icon));
+            var kind = DebuffReader.Classify(area, Local(boxes[i].Icon), out double duelScore);
+            // 결투자's "38초" is not read: its countdown and hold are the tracker's own clock (DuelMark).
             double? seconds = kind is DebuffKind.번개 or DebuffKind.교체 ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
             if (kind is { } k) reads.Add(new(k, seconds));
-            BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), kind?.ToString(), seconds);
+            if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), DebuffReader.DebugText(kind, duelScore), seconds);
         }
         var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.BossScale(_vp, _fit!));
         var next = DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true);
@@ -480,6 +484,7 @@ public sealed partial class Engine : IDisposable
     {
         _castAt = at;
         Arm(slot, config, at);
+        CoreEffects.ApplyAfterCast(config.CoreWatches, slot, at, _scheduler.Watch);
         if (_gauge is not { } gauge || _hud.Visible != true) return;
         if (!_previewing) _gains.Cast(slot, at, gauge);   // a gauge read at a fit still being moved teaches nothing
         if (config.ReadMode == GaugeReadMode.Predicted && _gains.Expected(slot) is { } rise and > 0) _gaugeFilter.Expect(rise, at + GaugeGains.Window);

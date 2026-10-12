@@ -30,8 +30,8 @@ public sealed class OverlayProfile
     public const int Count = 5;
 
     public WindowPlace Overlay { get; set; } = new();
-    /// <summary>Your window's spot and size for each 개별 직업각인 ("클래스 · 직업각인") placed in this profile;
-    /// <see cref="Overlay"/> is the one every other class uses.</summary>
+    /// <summary>Your window's spot and size for each 직업각인 ("클래스 · 직업각인") placed in this profile;
+    /// <see cref="Overlay"/> is the one every other character uses (no listed 직업각인).</summary>
     public Dictionary<string, WindowPlace> SubclassPlaces { get; set; } = [];
     public double Opacity { get; set; } = 0.9;
     public string PlateColor { get; set; } = OverlaySettings.DefaultPlate;

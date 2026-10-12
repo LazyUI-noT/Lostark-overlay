@@ -16,7 +16,7 @@ public partial class SettingsWindow
     const string AreaCharacter = "캐릭터·인식", AreaOverlay = "내 오버레이", AreaParty = "파티", AreaKeys = "키·단축키";
     const string SecSkills = "스킬 칸", SecBuffs = "버프/디버프", SecMembers = "파티원 모양";
     const double WideNav = 760, WidePreview = 1040, PreviewWidth = 330;
-    const string CardBrushKey = "CardBackgroundFillColorDefaultBrush", StrokeBrushKey = "CardStrokeColorDefaultBrush";
+    const string CardBrushKey = Themes.CardBrushKey, StrokeBrushKey = Themes.StrokeBrushKey;
 
     sealed class Area(string name, string lead, params (string Name, StackPanel Panel)[] sections)
     {
@@ -27,10 +27,11 @@ public partial class SettingsWindow
     }
 
     // One panel per section, refilled by the Fill methods.
-    readonly StackPanel _secCharacter = new(), _secFit = new(), _secLearned = new(), _secCheck = new();
-    readonly StackPanel _secDisplay = new(), _secSkills = new(), _secGauge = new(), _secBuffs = new(), _secPlace = new(), _secCopy = new();
-    readonly StackPanel _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
-    readonly StackPanel _secKeys = new(), _secHotkeys = new();
+    // Each a CardStack: its rows in Windows 11 setting cards, headings between them.
+    readonly CardStack _secCharacter = new(), _secFit = new();
+    readonly CardStack _secDisplay = new(), _secSkills = new(), _secGauge = new(), _secBuffs = new(), _secPlace = new(), _secCopy = new();
+    readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
+    readonly CardStack _secKeys = new(), _secHotkeys = new();
     readonly StackPanel _context = new();   // 편집 중: the class the class sections edit
     Area[] _areas = [];
     Area _area = null!;
@@ -84,7 +85,7 @@ public partial class SettingsWindow
         _areas =
         [
             new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬창을 맞춥니다.",
-                ("캐릭터", _secCharacter), ("스킬창", _secFit), ("배운 값", _secLearned), ("클래스 확인", _secCheck)),
+                ("캐릭터", _secCharacter), ("스킬창", _secFit)),
             new(AreaOverlay, "보고 싶은 요소를 고르고 미리보기로 확인하세요. 미리보기의 칸이나 게이지를 누르면 그 설정으로 갑니다.",
                 ("전체", _secDisplay), (SecSkills, _secSkills), ("아덴 게이지", _secGauge), (SecBuffs, _secBuffs), ("배치", _secPlace), ("복사", _secCopy)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
@@ -97,7 +98,9 @@ public partial class SettingsWindow
         foreach (var area in _areas)
         {
             var b = Toggle(area.Name, "area", area == _area);
-            b.HorizontalContentAlignment = HorizontalAlignment.Left;
+            // Full width with an icon: the four areas read as one list, not as buttons of four widths.
+            (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (area.Name, AreaLabel(area.Name), HorizontalAlignment.Left, HorizontalAlignment.Stretch);
+            System.Windows.Automation.AutomationProperties.SetName(b, area.Name);   // read as the area, not the icon glyph
             b.Checked += (_, _) => { if (_area != area) Go(area.Name); };
             Nav.Children.Add(b);
         }
@@ -123,48 +126,31 @@ public partial class SettingsWindow
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
         SizeChanged += (_, _) => Relayout();
+        // Opened on the 캐릭터 section: it is seen now (ShowBody only marks it while the window is up).
+        IsVisibleChanged += (_, _) => { if (IsVisible && _area.Name == AreaCharacter && _area.Shown == "캐릭터") MarkSupportSeen(); };
         ApplyTheme();
     }
 
     readonly TextBlock _navNote = Note("바꾼 설정은 바로 저장되고 오버레이에 반영됩니다. 파티원에게는 파티 → 보내기·받기에서 따로 보냅니다.");
 
-    // The window's own backgrounds: unset (the Fluent window shows through) unless the theme gives them.
-    const string BackgroundBrushKey = "SettingsBackgroundBrush", NavBrushKey = "SettingsNavBrush";
+    const string BackgroundBrushKey = Themes.BackgroundBrushKey, NavBrushKey = Themes.NavBrushKey;
 
-    /// <summary>Which resources each palette colour sets: the window's own, and the Fluent ones the controls draw with.
-    /// The Fluent styles read the control keys (ToggleButtonBackgroundChecked…) dynamically but the Accent* brushes
-    /// they point at statically, so the accent is set on the control keys.</summary>
-    static readonly (string Palette, string[] Brushes)[] ThemeBrushes =
-    [
-        (UiPalette.Background, [BackgroundBrushKey]),
-        (UiPalette.Nav, [NavBrushKey]),
-        (UiPalette.Card, [CardBrushKey]),
-        (UiPalette.Stroke, [StrokeBrushKey]),
-        (UiPalette.Accent,
-        [
-            "AccentFillColorDefaultBrush", "AccentTextFillColorPrimaryBrush",
-            "ToggleButtonBackgroundChecked", "ToggleButtonBackgroundCheckedPointerOver", "ToggleButtonBackgroundCheckedPressed",
-            "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver", "CheckBoxCheckBackgroundFillCheckedPressed",
-            "CheckBoxCheckBackgroundStrokeChecked", "CheckBoxCheckBackgroundStrokeCheckedPointerOver", "CheckBoxCheckBackgroundStrokeCheckedPressed",
-            "RadioButtonOuterEllipseCheckedFill", "RadioButtonOuterEllipseCheckedStroke", "RadioButtonOuterEllipseCheckedStrokePointerOver",
-            "RadioButtonCheckOuterEllipseCheckedFillPointerOver", "RadioButtonCheckOuterEllipseCheckedFillPressed",
-            "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "AccentButtonBackground", "AccentButtonBackgroundPointerOver",
-            "TextControlFocusedBorderBrush", "ComboBoxItemPillFillBrush",
-        ]),
-        (UiPalette.OnAccent, ["TextOnAccentFillColorPrimaryBrush", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPressed", "AccentButtonForeground"]),
-    ];
+    void ApplyTheme() => Themes.Apply(this, _s.Theme);
 
-    /// <summary>Fluent light, dark or Windows', then the theme's own colours over it (딥 틸).</summary>
-    void ApplyTheme()
+    /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
+    static readonly Dictionary<string, string> AreaIcons = new()
     {
-        var palette = UiPalette.Of(_s.Theme);
-#pragma warning disable WPF0001   // Fluent theme
-        ThemeMode = _s.Theme == UiTheme.System ? ThemeMode.System : palette.Dark ? ThemeMode.Dark : ThemeMode.Light;
-#pragma warning restore WPF0001
-        foreach (var (key, brushes) in ThemeBrushes)
-            foreach (var brush in brushes)
-                if (palette.Colors.TryGetValue(key, out var hex) && ParseHex(hex) is { } c) Resources[brush] = new SolidColorBrush(c);
-                else Resources.Remove(brush);
+        [AreaCharacter] = "", [AreaOverlay] = "", [AreaParty] = "", [AreaKeys] = "",
+    };
+
+    static StackPanel AreaLabel(string name)
+    {
+        var icon = new TextBlock
+        {
+            Text = AreaIcons[name], FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
+            Margin = new(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+        };
+        return new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
     }
 
     /// <summary>A section button (or area button): one of a group, drawn as a toggle.</summary>
@@ -179,7 +165,7 @@ public partial class SettingsWindow
     {
         _area = _areas.FirstOrDefault(a => a.Name == area) ?? _area;
         if (section is not null && _area.Sections.Any(s => s.Name == section)) _area.Shown = section;
-        foreach (var b in Nav.Children.OfType<RadioButton>()) b.IsChecked = (string)b.Content == _area.Name;
+        foreach (var b in Nav.Children.OfType<RadioButton>()) b.IsChecked = (string)b.Tag == _area.Name;
         ShowArea();
     }
 
@@ -214,6 +200,7 @@ public partial class SettingsWindow
     void ShowBody()
     {
         var panel = _area.Sections.First(s => s.Name == _area.Shown).Panel;
+        if (panel == _secCharacter && IsVisible) MarkSupportSeen();
         bool preview = _area.Name == AreaOverlay && _quickBlock is not null;
         _previewPinned = preview && _wide && ActualWidth >= WidePreview;
         PreviewColumn.Width = new(_previewPinned ? PreviewWidth : 0);
@@ -225,7 +212,7 @@ public partial class SettingsWindow
         if (place == PreviewHost) PreviewHost.Content = _quickBlock;
         else if (place == Form && _quickBlock!.Parent is null) Form.Children.Add(_quickBlock);
         Detach(panel);
-        Form.Children.Add(Card(panel));
+        Form.Children.Add(panel);   // its own cards (CardStack)
     }
 
     /// <summary>A thin line across, in the cards' stroke colour: under the section buttons, and between the parts of a section.</summary>

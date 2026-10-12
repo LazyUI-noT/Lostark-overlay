@@ -91,7 +91,7 @@ public partial class OverlayWindow : Window
     /// <summary>True while edit mode is on.</summary>
     public bool EditMode => _editMode;
 
-    /// <summary>While 설정 is open: shown whatever is in front, with live data, so changed colours can be judged on it;
+    /// <summary>While 설정 is open and 오버레이 표시 is on: shown whatever is in front, with live data, so changed colours can be judged on it;
     /// sample data only when there is nothing live (no game, an empty party slot). Never clickable.</summary>
     public bool Preview
     {
@@ -109,8 +109,22 @@ public partial class OverlayWindow : Window
         if (Sample || wasSample) Redraw(); else Renderer.Update(_shown = player);
     }
 
-    /// <summary>Sample data is drawn: in edit mode, and while 설정 is open with nothing live.</summary>
-    bool Sample => _editMode || (_preview && _player is null);
+    /// <summary>Sample data is drawn: in edit mode, and while 설정 is open with nothing live or with another 직업각인 picked.</summary>
+    bool Sample => _editMode || (_preview && (_player is null || _target is not null));
+
+    PreviewTarget? _target;
+
+    /// <summary>설정 has another 직업각인 than the character's picked in 편집 중 (<see cref="PreviewTarget.Decide"/>): this window,
+    /// yours only, shows that 직업각인's sample with its settings and <paramref name="icons"/> (its saved ones) until cleared
+    /// (null), which brings back the live data and the character's own icons.</summary>
+    public void SetPreviewTarget(PreviewTarget? target, IReadOnlyDictionary<SlotId, Image>? icons = null)
+    {
+        if (_peer >= 0 || _buffs || _debuffs) return;
+        _target = target;
+        Renderer.SetTarget(target, icons);
+        ShowLabel();
+        Redraw();
+    }
 
     /// <summary>Call after the settings object changed.</summary>
     public void Refresh()
@@ -165,6 +179,7 @@ public partial class OverlayWindow : Window
         string who = _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
         EditLabelText.Text = _editMode
             ? $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기"
+            : _target is { } t ? $"미리보기 · {t.Key} (예시 데이터)"
             : $"미리보기{who} (예시 데이터)";
         EditLabel.ToolTip = EditLabelText.Text;
     }
@@ -174,7 +189,8 @@ public partial class OverlayWindow : Window
         Renderer.ShowHidden = Sample;   // sample data: a box that hides on cooldown stays faint, to be seen and dragged
         if (Sample)
         {
-            var (self, peers) = DemoSnapshots.Sample(Clock.Now(), _player?.Snapshot.AdenSlots);
+            var (self, peers) = DemoSnapshots.Sample(Clock.Now(), _target?.AdenSlots ?? _player?.Snapshot.AdenSlots);
+            if (_target is { } t) self = self with { Snapshot = self.Snapshot with { ClassId = t.ClassId } };
             var sample = _peer < 0 ? self : peers[_peer % peers.Count];
             Renderer.Update(_shown = sample, frozenAt: sample.Snapshot.At);
         }

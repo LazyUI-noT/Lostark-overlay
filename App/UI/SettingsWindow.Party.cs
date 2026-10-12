@@ -74,8 +74,7 @@ public partial class SettingsWindow
     {
         var party = _s.Party;
         p.Children.Add(Heading("참가 요청"));
-        p.Children.Add(Check("참가 요청 승인", party.ApproveJoins, v => party.ApproveJoins = v, Changed));
-        p.Children.Add(Note("켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
+        p.Children.Add(Check("참가 요청 승인", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
         if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰한 기기", Label("없음", 0.7)));
         foreach (var trusted in party.TrustedDevices.ToList())
         {
@@ -103,20 +102,18 @@ public partial class SettingsWindow
         var party = _s.Party;
         // party members are per class: a 직업각인 picked shows its class's
         string cls = ClassProfiles.Parent(ShownClass) is { } parent && parent != ClassProfiles.Template ? parent : ShownClass;
-        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})");
+        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})", "이 클래스 파티원의 칸입니다. '내 설정 적용'을 켠 부분은 내 오버레이 → 스킬 칸의 '나' 설정을 쓰고(지금 캐릭터가 같은 클래스면 그 직업각인의 것, 아니면 마지막으로 한 직업각인의 것), 아래 파티원 설정은 그대로 남습니다.");
+        if (cls != ShownClass && ClassPicker.SharedPartyNote(_chars.Classes.FirstOrDefault(c => c.Name == cls)) is { } shared) p.Children.Add(Note(shared));
         MembersPart(p, ClassProfiles.Of(_s, cls), () => ClassProfiles.Edit(_s, cls), ClassProfiles.Of(_s, ShownClass).Mine);
 
         p.Children.Add(Heading("모든 파티원"));
-        p.Children.Add(Row("칸 왼쪽", EnumCombo([(PeerLabel.IconAndName, "클래스 아이콘 + 이름"), (PeerLabel.Name, "이름"), (PeerLabel.Icon, "클래스 아이콘")],
+        p.Children.Add(HelpRow("칸 왼쪽", "클래스를 고르지 않은 파티원은 아이콘 자리에 '?'가 표시됩니다.", EnumCombo([(PeerLabel.IconAndName, "클래스 아이콘 + 이름"), (PeerLabel.Name, "이름"), (PeerLabel.Icon, "클래스 아이콘")],
             party.Label, v => party.Label = v)));
-        p.Children.Add(Note("클래스를 고르지 않은 파티원은 아이콘 자리에 '?'가 표시됩니다."));
         p.Children.Add(SliderRow("아이콘 크기", 0.5, 2, party.IconScale, 0.1, v => $"{v * 100:0}%", v => party.IconScale = v, Changed));
         p.Children.Add(SliderRow("이름 길이", PlayerName.MinUnits, PlayerName.MaxUnits, party.NameLength, 1,
-            v => $"{v:0}", v => party.NameLength = (int)v, Changed));
-        p.Children.Add(Note("파티원 이름을 내 화면에서 이 길이까지만 보여 줍니다. 영문은 1, 한글은 2로 셉니다 (14 = 한글 7자, 6 = 한글 3자)."));
+            v => $"{v:0}", v => party.NameLength = (int)v, Changed, "파티원 이름을 내 화면에서 이 길이까지만 보여 줍니다. 영문은 1, 한글은 2로 셉니다 (14 = 한글 7자, 6 = 한글 3자)."));
 
-        p.Children.Add(Heading("기본 역할 색"));
-        p.Children.Add(Note("파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 한눈에 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
+        p.Children.Add(Heading("기본 역할 색", help: "파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 한눈에 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
         foreach (var role in Enum.GetValues<Role>())
             p.Children.Add(ColorRow(Label(role.ToString()), party.RoleColor.GetValueOrDefault(role, "#808080"),
                 v => party.RoleColor[role] = v, swatch: true, warnGold: true));
@@ -125,7 +122,7 @@ public partial class SettingsWindow
     void FillOrder()
     {
         var party = _s.Party;
-        var p = Refill(_secOrder, "파티원 순서", "번호는 파티원 창 왼쪽에 보입니다. 게임에서 내가 몇 번인지 고르면 파티원은 나머지 번호를 씁니다. 바꾼 순서는 그 이름에 고정되어, 다시 참가해도 같은 자리에 옵니다.");
+        var p = Refill(_secOrder, "파티원 순서", "번호는 파티원 창 왼쪽에 보입니다. 게임에서 내가 몇 번인지 고르면 파티원은 나머지 번호를 씁니다. 바꾼 순서는 그 이름에 고정되어, 다시 참가해도 같은 자리에 옵니다. " + "파티원마다 창이 따로 있습니다. 편집 모드에서 각 창을 끌어 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꿉니다.");
         int mine = party.MyNumber;
         p.Children.Add(Row("내 번호", NumberCombo([1, 2, 3, 4], mine, v =>
         {
@@ -168,9 +165,8 @@ public partial class SettingsWindow
         var fixSupport = Check("서포터 고정", party.SupportFixed, v => { party.SupportFixed = v; supportNumber.Visibility = Shown(v); }, Changed);
         supportNumber.Visibility = Shown(party.SupportFixed);
         fixSupport.IsEnabled = supportNumber.IsEnabled = !iAmSupport;
-        p.Children.Add(Row("서포터", fixSupport, supportNumber));
-        p.Children.Add(Note(iAmSupport ? "내가 서포터라서 서포터 고정은 쓰지 않습니다." : "켜면 첫 서포터가 고른 번호에 옵니다."));
-        p.Children.Add(Note("파티원마다 창이 따로 있습니다. 편집 모드에서 각 창을 끌어 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꿉니다."));
+        p.Children.Add(HelpRow("서포터", "켜면 첫 서포터가 고른 번호에 옵니다.", fixSupport, supportNumber));
+        if (iAmSupport) p.Children.Add(Note("내가 서포터라서 서포터 고정은 쓰지 않습니다."));
     }
 
     void FillSend()
@@ -187,8 +183,7 @@ public partial class SettingsWindow
         send.Add(Check("아덴 게이지", party.SendGauge, v => party.SendGauge = v, Changed));
         p.Children.Add(Row(Described("보낼 그룹", "끈 그룹은 파티원에게 보내지 않습니다"), [.. send]));
 
-        p.Children.Add(Heading("파티원에게서 받기"));
-        p.Children.Add(Note("색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에 씁니다. 크기와 배치는 아래를 켤 때만 쓰고, 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창이 커지지 않습니다."));
+        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에 씁니다. 크기와 배치는 아래를 켤 때만 쓰고, 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창이 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));
         p.Children.Add(Check("파티원 배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
     }

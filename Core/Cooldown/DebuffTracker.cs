@@ -12,7 +12,7 @@ public static class DebuffTracker
 
     /// <summary>The state after one read of the debuff row (<paramref name="reads"/>) and of the boss's counts (null:
     /// not read this time, or not found). A hidden HUD (loading screen, cutscene) shows nothing: everything is kept as
-    /// seen now, so the holds start over when it is back.</summary>
+    /// seen now, so the holds start over when it is back. The 결투자 cycle is the exception: it runs on the real clock.</summary>
     public static DebuffStatus Update(DebuffStatus prev, IReadOnlyList<DebuffReading> reads, int? red, int? blue, TimeSpan now, bool hudVisible = true)
     {
         if (!hudVisible)
@@ -21,6 +21,7 @@ public static class DebuffTracker
                 Blue = prev.Blue is { } b ? b with { SeenAt = now } : null, Red = prev.Red is { } r ? r with { SeenAt = now } : null,
                 Lightning = prev.Lightning is { } l ? l with { SeenAt = now } : null, Swap = prev.Swap is { } w ? w with { SeenAt = now } : null,
                 BossSeenAt = prev.BossRed is null ? prev.BossSeenAt : now,
+                Duelist = Duel(prev.Duelist, false, now),
             };
 
         DebuffMark? Mark(DebuffKind kind, DebuffMark? was)
@@ -36,6 +37,7 @@ public static class DebuffTracker
         {
             Blue = Mark(DebuffKind.파랑, prev.Blue), Red = Mark(DebuffKind.빨강, prev.Red),
             Lightning = Mark(DebuffKind.번개, prev.Lightning), Swap = Mark(DebuffKind.교체, prev.Swap),
+            Duelist = Duel(prev.Duelist, reads.Any(r => r.Kind == DebuffKind.결투자), now),
         };
         // One sigil at a time: the one just seen replaces the other at once.
         if (reads.Any(r => r.Kind == DebuffKind.파랑) && !reads.Any(r => r.Kind == DebuffKind.빨강)) next = next with { Red = null };
@@ -49,5 +51,18 @@ public static class DebuffTracker
         if (red is not null && blue is not null) return next with { BossRed = red, BossBlue = blue, BossSeenAt = now };
         if (red is not null || blue is not null) return next with { BossRed = null, BossBlue = null };
         return now - prev.BossSeenAt <= BossHold ? next : next with { BossRed = null, BossBlue = null };
+    }
+
+    /// <summary>The 결투자 cycle: a running one is kept through misses, a hidden HUD and the icon's return until
+    /// <see cref="DuelMark.Hold"/> after its first sighting. After that it is kept as ended while the icon is read read
+    /// after read (the game's debuff outlasts our 30 s: no second cycle); a read without the icon drops it, and the next
+    /// sighting starts a new one. A sighting that follows a miss from before the 30 s were over starts one too: it cannot be
+    /// told from a new debuff.</summary>
+    static DuelMark? Duel(DuelMark? was, bool seen, TimeSpan now)
+    {
+        if (was is null) return seen ? new DuelMark(now) : null;
+        if (was.IsActive(now)) return was with { InRow = seen };
+        if (!seen) return null;
+        return was.InRow ? was with { InRow = true, Ended = true } : new DuelMark(now);
     }
 }

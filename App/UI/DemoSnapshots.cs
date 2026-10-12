@@ -11,8 +11,12 @@ public sealed class DemoSnapshots
     const double Loop = 30;
     static readonly SlotId[] Aden = [SlotId.아덴2];
     readonly TimeSpan _origin = Clock.Now();
+    readonly bool _duelist;
     Snapshot? _last;
     Snapshot[]? _lastPeers;
+
+    /// <param name="duelist">--duelist: the debuff window shows the 결투자 from the start of each loop instead of the lightning.</param>
+    public DemoSnapshots(bool duelist = false) => _duelist = duelist;
 
     /// <summary>True when the script changed since the last call; then returns the new state.</summary>
     public bool TryNext(out Player self, out IReadOnlyList<Player> peers)
@@ -21,7 +25,7 @@ public sealed class DemoSnapshots
         double cycles = Math.Floor((now - _origin).TotalSeconds / Loop);
         var start = _origin + TimeSpan.FromSeconds(cycles * Loop);
         double t = (now - start).TotalSeconds;
-        var me = Self(start, t);
+        var me = Self(start, t, _duelist);
         self = new Player("", me);
         peers = [new("민수", Minsu(start, t), MinsuLook), new("지현가나다라마바사", Jihyun(start, t))];   // 지현 sent none
         bool changed = _last is null || !Same(_last, me) || _lastPeers is null || !_lastPeers.Zip(peers).All(p => Same(p.First, p.Second.Snapshot));
@@ -44,7 +48,7 @@ public sealed class DemoSnapshots
                 : BuffState.Absent(b.Item1, s)),
     ];
 
-    static Snapshot Self(TimeSpan s, double t)
+    static Snapshot Self(TimeSpan s, double t, bool duelist = false)
     {
         SlotState Rdy(SlotId id, double at) => new(id, SlotPhase.Ready, null, null, false, s + Sec(at));
         SlotState Cd(SlotId id, double cast, double total, double? endsAt = null, bool est = false) =>
@@ -68,16 +72,18 @@ public sealed class DemoSnapshots
 
         double gauge = t < 20 ? Math.Floor(t * 2) / 40 : 0.2;
         SlotState Lit(SlotId id) => State(id) with { Gold = id is SlotId.일반3 or SlotId.일반4 && t is >= 12 and < 18 };   // gold frame
-        return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t) };
+        return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist) };
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap
-    /// from 12 s (3 s), then blue at 4 / 4 from 15 s.</summary>
-    static DebuffStatus Debuffs(TimeSpan s, double t)
+    /// from 12 s (3 s), then blue at 4 / 4 from 15 s. With <paramref name="duelist"/> no lightning, and the 결투자 first seen at
+    /// the start of the loop: its 5 s countdown, then the icon until the loop ends (30 s).</summary>
+    static DebuffStatus Debuffs(TimeSpan s, double t, bool duelist = false)
     {
         DebuffMark? On(double from, double length) => t >= from && t < from + length ? new(s + Sec(from), s + Sec(from + length)) : null;
         var colour = new DebuffMark(s + Sec(t < 15 ? 0 : 15), null);
-        return new(t < 15 ? null : colour, t < 15 ? colour : null, On(5, 6), On(12, 3), t < 15 ? 6 : 4, t < 15 ? 2 : 4);
+        var status = new DebuffStatus(t < 15 ? null : colour, t < 15 ? colour : null, On(5, 6), On(12, 3), t < 15 ? 6 : 4, t < 15 ? 2 : 4);
+        return duelist ? status with { Lightning = null, Duelist = new DuelMark(s) } : status;
     }
 
     /// <summary>What 민수 sent of their boxes: colours (shown under 파티원 설정 받기) and a wide, short box size (under

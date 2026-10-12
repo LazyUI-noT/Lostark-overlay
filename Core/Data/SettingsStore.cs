@@ -52,6 +52,7 @@ public sealed class SettingsStore(string path)
                         var o = s.Overlay;
                         (o.Width, o.Height, o.PartyWidth, o.PartyHeight, o.Scale) = (k, k, k, k, null);
                     }
+                    RepairClasses(s);
                     SplitPartyWindow(s);
                     MoveIntoClassProfiles(s);
                     MoveEffectsIntoClasses(s);
@@ -68,6 +69,9 @@ public sealed class SettingsStore(string path)
                     foreach (var (key, f) in s.Adjusts.ToList())   // a hand edit the debug window couldn't have made
                         if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
                         else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
+                    s.Cores ??= [];
+                    foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
+                        if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
                     (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
                     if (s.Overlay.AwakeningChangedColor.Equals("#FF7F27", StringComparison.OrdinalIgnoreCase))
                         s.Overlay.AwakeningChangedColor = new OverlaySettings().AwakeningChangedColor;   // 1.x default → red
@@ -85,6 +89,15 @@ public sealed class SettingsStore(string path)
             try { File.Copy(file, $"{file}.broken-{stamp}", overwrite: true); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // best effort
         return new Settings();
+    }
+
+    /// <summary>A hand edit can leave a class entry, or its 나 or 파티원 part, null: the entry is dropped, the part made default.</summary>
+    static void RepairClasses(Settings s)
+    {
+        s.Classes ??= [];
+        foreach (var (key, c) in s.Classes.ToList())
+            if (c is null) s.Classes.Remove(key);
+            else (c.Mine, c.Members) = (c.Mine ?? new(), c.Members ?? new());
     }
 
     /// <summary>A typed or remembered 해상도 a screen can have (the game's smallest is 1280×720; 16384 covers any monitor), else null.</summary>

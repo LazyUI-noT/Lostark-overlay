@@ -24,6 +24,9 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// <summary>Every class, in classes.json order.</summary>
     public IReadOnlyList<ClassInfo> Classes => _classes;
 
+    /// <summary>The supported 직업각인 and their features (설정 → 캐릭터), slots named by <paramref name="keyName"/>.</summary>
+    public IReadOnlyList<SupportRow> Support(Func<SlotId, string> keyName) => ClassSupport.Rows(profilesDir, _classes, keyName);
+
     public ClassInfo? ActiveClass => Active is { } c ? _classes.FirstOrDefault(x => x.Name == c.Class) : null;
 
     /// <summary>The active 직업각인's 아덴 skill slots (its own, else its class's).</summary>
@@ -40,6 +43,33 @@ public sealed class CharacterService(Settings settings, string profilesDir)
 
     /// <summary>The active 직업각인's "adenGauge" rule in classes.json, or null.</summary>
     public GaugeRule? GaugeRule => Active is { } c ? ActiveClass?.Subclasses.GetValueOrDefault(c.Subclass) : null;
+
+    string? _coresFor;
+    IReadOnlyDictionary<string, IReadOnlyList<CoreEffect>> _cores = new Dictionary<string, IReadOnlyList<CoreEffect>>();
+
+    /// <summary>The active 직업각인's 코어 빌드 effects (Profiles/cores), empty when it has none. The file is read once per class
+    /// (<see cref="CoreEffects.Load(string, string)"/> is uncached), never per frame or per cast.</summary>
+    public IReadOnlyList<CoreEffect> ActiveCoreEffects
+    {
+        get
+        {
+            if (Active is not { } c) return [];
+            if (c.Class != _coresFor)
+            {
+                var loaded = CoreEffects.Load(profilesDir, c.Class, out bool readFailed);
+                // A read that failed (locked file) is tried again at the next call, not kept empty for the session.
+                if (readFailed) return loaded.GetValueOrDefault(c.Subclass) ?? [];
+                (_coresFor, _cores) = (c.Class, loaded);
+            }
+            return _cores.GetValueOrDefault(c.Subclass) ?? [];
+        }
+    }
+
+    /// <summary>The slots to read on every frame after a cast, from the active 직업각인's saved 코어 빌드: a fresh immutable list the
+    /// engine keeps (it never reads <see cref="Settings.Cores"/>, which the UI thread edits). Empty when off or none apply.</summary>
+    public IReadOnlyList<CoreWatch> CoreWatches => Active is { } c
+        ? CoreEffects.Watches(settings.CoreOf(Settings.CharacterKey(c.Class, c.Subclass)), Role, ActiveCoreEffects)
+        : [];
 
     (string?, string?) _gaugeFor;
     GaugeDef? _gauge;

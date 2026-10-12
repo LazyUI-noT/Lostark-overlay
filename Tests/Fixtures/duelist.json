@@ -1,0 +1,16 @@
+{
+  "source": "결투자.png",
+  "slot": "debuffs",
+  "hud": 110,
+  "rect": [
+    0,
+    0,
+    143,
+    81
+  ],
+  "width": 143,
+  "height": 81,
+  "pts": [
+    0.0
+  ]
+}

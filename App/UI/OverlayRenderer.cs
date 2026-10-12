@@ -102,16 +102,34 @@ public sealed partial class OverlayRenderer : FrameworkElement
     readonly Dictionary<Color, Pen> _glowPens = [];   // 계속 빛남 테두리, per colour
     double _lastFrame;
 
-    readonly Dictionary<SlotId, ImageSource> _icons = [];
+    readonly Dictionary<SlotId, ImageSource> _icons = [], _targetIcons = [];
+
+    static BitmapSource ToBitmap(Image icon)
+    {
+        var bmp = BitmapSource.Create(icon.Width, icon.Height, 96, 96, PixelFormats.Bgr32, null, icon.Bgra, icon.Stride);
+        bmp.Freeze();
+        return bmp;
+    }
 
     /// <summary>아이콘으로 표시: the skill's icon as the skill bar last showed it ready (Engine.IconSeen).</summary>
     public void SetIcon(SlotId slot, Image icon)
     {
-        var bmp = BitmapSource.Create(icon.Width, icon.Height, 96, 96, PixelFormats.Bgr32, null, icon.Bgra, icon.Stride);
-        bmp.Freeze();
-        _icons[slot] = bmp;
+        _icons[slot] = ToBitmap(icon);
         InvalidateVisual();
     }
+
+    /// <summary>Your boxes drawn as another 직업각인 than the active character's (설정's 편집 중 pick): its slots' groups,
+    /// colours, effects and gauge, with <paramref name="icons"/> (its saved ones) in place of the character's. Null = the
+    /// active character. Only yours (not the buff or debuff windows or a party member).</summary>
+    public void SetTarget(PreviewTarget? target, IReadOnlyDictionary<SlotId, Image>? icons = null)
+    {
+        Target = target;
+        _targetIcons.Clear();
+        foreach (var (slot, icon) in icons ?? new Dictionary<SlotId, Image>()) _targetIcons[slot] = ToBitmap(icon);
+        Refresh();
+    }
+
+    public PreviewTarget? Target { get; private set; }
 
     /// <summary>Another character: its icons aren't known until each slot is read ready again.</summary>
     public void ClearIcons()
@@ -212,18 +230,20 @@ public sealed partial class OverlayRenderer : FrameworkElement
         }
         if (Peer < 0)
         {
-            var mine = ClassProfiles.Mine(Settings);
+            var mine = Target is { } t ? ClassProfiles.Mine(Settings, t.Key) : ClassProfiles.Mine(Settings);
             var own = LayoutPlayer(p, "", BoxSize(mine.Width), BoxSize(mine.Height), 0, Bleed, mine, leadH: 0);
             if (own is not null) own.Look = mine;
-            if (own is not null && Settings.ActiveCharacter is { } k && Settings.Characters.TryGetValue(k, out var c))
-                own.Bar = GaugeBar.Resolve(Settings, c.Class, c.Subclass, Emblems.Class(p.Snapshot.ClassId)?.Subclasses.GetValueOrDefault(c.Subclass));
+            var (barClass, barSub) = Target is { } picked ? (picked.Class, picked.Subclass)
+                : Settings.ActiveCharacter is { } k && Settings.Characters.TryGetValue(k, out var c) ? (c.Class, c.Subclass) : default;
+            if (own is not null && barClass is not null)
+                own.Bar = GaugeBar.Resolve(Settings, barClass, barSub!, Emblems.Class(p.Snapshot.ClassId)?.Subclasses.GetValueOrDefault(barSub!));
             return own;
         }
 
         // What of the member to show, where, in what colours and at what size follows their class (ClassProfiles).
         var party = Settings.Party;
         var cls = Emblems.Class(p.Snapshot.ClassId);
-        var look = ClassProfiles.Member(Settings, cls?.Name, cls?.Role ?? Role.딜러, p.Look);
+        var look = ClassProfiles.Member(Settings, cls?.Name, cls?.Role ?? Role.딜러, p.Look, cls);
         double bw = BoxSize(look.Width, PeerShare, ClassProfiles.MinFitScale), bh = BoxSize(look.Height, PeerShare, ClassProfiles.MinFitScale);
         double font = NameFont(bh);
         // Left of the boxes, level with them (below any gauge): the slot number (파티원 순서), then the class emblem
@@ -576,7 +596,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             // Your boxes' effects are the class's (MineProfile); an 일반스킬 may have its own flash and pulse.
             var slot = (SlotId)key;
             var fx = l.Look?.Effects ?? NoEffects;   // a peer's boxes have none
-            var skillIcon = !l.Peer && fx.ShowsIcon(group) ? _icons.GetValueOrDefault(slot) : null;   // none seen yet: colour
+            var skillIcon = !l.Peer && fx.ShowsIcon(group) ? (Target is null ? _icons : _targetIcons).GetValueOrDefault(slot) : null;   // none seen yet: colour
             Color? dim = l.Look?.DimOf(slot, group) is { } d ? Parse(d) : null;
             // 쿨타임 중 숨기기: drawn nowhere (its timing state still steps), or faint where hidden boxes are shown.
             bool gone = hidden.Contains(key);

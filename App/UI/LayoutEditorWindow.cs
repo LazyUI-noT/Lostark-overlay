@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -14,11 +15,13 @@ namespace GaugeOverlay.App.UI;
 /// <summary>레이아웃 편집기: a screenshot of the game with the overlays drawn where they stand on screen. The wheel zooms
 /// around the cursor, a drag on the picture (or a right or middle drag anywhere) pans, 원래 크기 shows it at 100%; a plate drags to move its window, its bottom-right corner scales it,
 /// and with 칸 옮기기 on a box, yours or a party member's (their class's party boxes), drags (or, by its corner, resizes) on its own. Everything happens on a copy of the settings:
-/// 적용 hands the editor's part to the live settings (<see cref="Settings.ApplyLayoutFrom"/>), 닫기 drops it.</summary>
+/// 적용 hands the editor's part to the live settings (<see cref="Settings.ApplyLayoutFrom"/>), 닫기 drops it, asking first
+/// when 적용 would change something.</summary>
 public sealed partial class LayoutEditorWindow : Window
 {
     const double Grip = 10, ZoomStep = 1.15;
     const double Strip = OverlayWindow.StripHeight, Bleed = OverlayRenderer.Bleed;
+    const string PanelBrushKey = "EditorPanelBrush";   // the panels over the screenshot: opaque, in 설정's theme
 
     readonly Settings _live, _s;
     readonly Border _view = new() { ClipToBounds = true, Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x1B, 0x1F)) };
@@ -70,9 +73,8 @@ public sealed partial class LayoutEditorWindow : Window
         (Width, Height, MinWidth, MinHeight) = (1400, 820, 1100, 500);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         WindowState = WindowState.Maximized;   // the box options take 420 px; the screenshot needs the rest
-#pragma warning disable WPF0001   // Fluent theme, as the settings window's ThemeMode="System"
-        ThemeMode = ThemeMode.System;
-#pragma warning restore WPF0001
+        Themes.Apply(this, live.Theme);   // as 설정, whose box options it hosts
+        Resources[PanelBrushKey] = new SolidColorBrush(Themes.PanelColor(live.Theme));
 
         _world.Children.Add(_shot);
         _mine = Renderer(-1, buffs: false);
@@ -106,6 +108,32 @@ public sealed partial class LayoutEditorWindow : Window
         _view.LostMouseCapture += (_, _) => _drag = Drag.None;   // released, or taken away (Alt+Tab): no drag on hover
         Loaded += (_, _) => { ShowShot(); Relayout(); };   // the picture again, at the window's real DPI
         Closed += (_, _) => _play.Stop();   // a running ▶ timer would keep ticking (and this window alive)
+    }
+
+    bool _closeUnasked;
+
+    /// <summary>The app is quitting, which can't be cancelled: close without asking about changes not applied.</summary>
+    public void CloseUnasked()
+    {
+        _closeUnasked = true;
+        Close();
+    }
+
+    void Apply()
+    {
+        _live.ApplyLayoutFrom(_s);
+        Applied?.Invoke();
+    }
+
+    /// <summary>닫기 or the window's ✕ with changes not applied: 예 applies them, 아니요 drops them, 취소 keeps editing.</summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || _closeUnasked || !_live.LayoutDiffers(_s)) return;
+        var answer = MessageBox.Show(this, "적용하지 않은 변경이 있습니다. 적용하고 닫을까요?\n\n예: 적용하고 닫기\n아니요: 적용하지 않고 닫기\n취소: 계속 편집",
+            Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Yes) Apply();
+        else if (answer != MessageBoxResult.No) e.Cancel = true;
     }
 
     static Settings Copy(Settings s) =>
@@ -171,7 +199,7 @@ public sealed partial class LayoutEditorWindow : Window
     /// <summary>Redraws every overlay from the settings copy and puts it at its spot.</summary>
     void Relayout()
     {
-        _s.SyncPlace();   // the class picked, or a 개별 설정 ticked, may have a spot of its own
+        _s.SyncPlace();   // the class picked may have a spot of its own
         _mine.Visibility = _showMine ? Visibility.Visible : Visibility.Collapsed;
         _buffs.Visibility = _showMine && _s.Buffs.Detached ? Visibility.Visible : Visibility.Collapsed;
         _debuffs.Visibility = _showMine && _s.Debuffs.Raid != Raid.없음 ? Visibility.Visible : Visibility.Collapsed;
@@ -351,17 +379,30 @@ public sealed partial class LayoutEditorWindow : Window
     /// <summary>The live overlay went to <paramref name="profile"/> (tray, hotkey): the editor goes there too.</summary>
     public void ShowProfile(int profile) => _profileButtons[profile].IsChecked = true;
 
+    CheckBox? _debuffWindow;
+
+    /// <summary>A raid was picked in the tray: the copy follows, so 닫기 doesn't take it for a change and 적용 doesn't undo it.</summary>
+    public void ShowRaid(Raid raid)
+    {
+        _s.Debuffs.Raid = raid;
+        if (_debuffWindow is not null) _debuffWindow.IsChecked = raid != Raid.없음;
+        Relayout();
+    }
+
+    /// <summary>편집: what 적용 saves first (프로필 and its screenshot, the windows, 칸 배치), then 보기, which only changes
+    /// this view.</summary>
     UIElement Panel()
     {
         var p = new StackPanel { Width = 250 };
-        var apply = new Button { Content = "적용", Padding = new(14, 4, 14, 4), Margin = new(0, 0, 8, 0) };
-        apply.Click += (_, _) => { _live.ApplyLayoutFrom(_s); Applied?.Invoke(); };
-        var close = new Button { Content = "닫기", Padding = new(14, 4, 14, 4) };
+        var apply = new Button { Content = "적용", Padding = new(14, 4, 14, 4), Margin = new(0, 0, 8, 0),
+            ToolTip = "바꾼 위치, 크기, 모양을 오버레이에 적용하고 저장합니다." };
+        Themes.Primary(apply);   // nothing here reaches the overlay until 적용
+        apply.Click += (_, _) => Apply();
+        var close = new Button { Content = "닫기", Padding = new(14, 4, 14, 4), ToolTip = "적용하지 않은 변경이 있으면 닫기 전에 묻습니다." };
         close.Click += (_, _) => Close();
         p.Children.Add(Line(apply, close));
-        p.Children.Add(RunButtons());
 
-        p.Children.Add(Heading("프로필"));
+        p.Children.Add(Heading("오버레이 프로필"));   // as the tray and 앱 단축키 name them
         var profiles = Line();
         _profileButtons = new RadioButton[OverlayProfile.Count];
         for (int i = 0; i < OverlayProfile.Count; i++)
@@ -375,20 +416,19 @@ public sealed partial class LayoutEditorWindow : Window
 
         p.Children.Add(ShotRows());
 
-        p.Children.Add(Heading("표시"));
-        p.Children.Add(Line(Check("나", _showMine, v => _showMine = v), Check("파티", _showParty, v => _showParty = v)));
+        p.Children.Add(Heading("내 오버레이"));
+        p.Children.Add(Line(ColorButton("판 색", () => _s.Overlay.PlateColor, v => _s.Overlay.PlateColor = v),
+            // ponytail: G3 모르둠 is the only raid; turning it on picks that one. Remember the last raid when a second one exists.
+            _debuffWindow = Check("디버프 창", _s.Debuffs.Raid != Raid.없음, v => _s.Debuffs.Raid = v ? Raid.모르둠 : Raid.없음)));
+        // The buff bars: on the plate or in a window of their own (설정 → 버프's 분리된 창), and which way they lie
+        // (세로: upright side by side; on the plate, left of it).
+        p.Children.Add(SubLabel("버프 막대"));
+        p.Children.Add(Line(Radio("판에 함께", "buffs", !_s.Buffs.Detached, () => _s.Buffs.Detached = false),
+            Radio("분리된 창", "buffs", _s.Buffs.Detached, () => _s.Buffs.Detached = true)));
+        p.Children.Add(Line(Radio("가로", "buffAxis", !_s.Buffs.Side, () => _s.Buffs.Side = false),
+            Radio("세로", "buffAxis", _s.Buffs.Side, () => _s.Buffs.Side = true)));
 
-        p.Children.Add(Heading("나"));
-        p.Children.Add(Line(Radio("함께", "buffs", !_s.Buffs.Detached, () => _s.Buffs.Detached = false),
-            Radio("버프 따로", "buffs", _s.Buffs.Detached, () => _s.Buffs.Detached = true)));
-        // Upright side by side, or flat one under another (함께: left of the plate, or under the grid).
-        p.Children.Add(Line(Radio("세로", "buffAxis", _s.Buffs.Side, () => _s.Buffs.Side = true),
-            Radio("가로", "buffAxis", !_s.Buffs.Side, () => _s.Buffs.Side = false)));
-        p.Children.Add(Line(ColorButton("판 색", () => _s.Overlay.PlateColor, v => _s.Overlay.PlateColor = v)));
-        // ponytail: G3 모르둠 is the only raid; turning it on picks that one. Remember the last raid when a second one exists.
-        p.Children.Add(Line(Check("디버프 창", _s.Debuffs.Raid != Raid.없음, v => _s.Debuffs.Raid = v ? Raid.모르둠 : Raid.없음)));
-
-        p.Children.Add(Heading("파티"));
+        p.Children.Add(Heading("파티원 창"));
         p.Children.Add(Line(Radio("묶기", "party", _s.Party.Together, () => _s.Party.Together = true),
             Radio("따로", "party", !_s.Party.Together, () => _s.Party.Together = false)));
         p.Children.Add(Line(ColorButton("판 색", () => _s.Party.PlateColor, v => _s.Party.PlateColor = v)));
@@ -399,6 +439,11 @@ public sealed partial class LayoutEditorWindow : Window
         _reset.Click += (_, _) => { Boxes(_lastPlate ?? _mine).Layout = null; Relayout(); };
         p.Children.Add(Line(_reset));
         p.Children.Add(_note);
+
+        // 보기: only this view changes, nothing is saved.
+        p.Children.Add(Heading("보기"));
+        p.Children.Add(RunButtons());
+        p.Children.Add(Line(Check("나", _showMine, v => _showMine = v), Check("파티원", _showParty, v => _showParty = v)));
         var actual = new Button { Content = "원래 크기 (100%)", Padding = new(8, 2, 8, 2), ToolTip = "게임 화면과 같은 크기로 봅니다." };
         actual.Click += (_, _) => { _v?.ActualSize(_view.ActualWidth / 2, _view.ActualHeight / 2); ShowView(); };
         p.Children.Add(Line(actual));
@@ -456,6 +501,9 @@ public sealed partial class LayoutEditorWindow : Window
     }
 
     static TextBlock Heading(string text) => new() { Text = text, FontWeight = FontWeights.SemiBold, Margin = new(0, 10, 0, 2) };
+
+    /// <summary>What the rows under it set, within a heading's group.</summary>
+    static TextBlock SubLabel(string text) => new() { Text = text, Opacity = 0.75, Margin = new(0, 6, 0, 0) };
 
     CheckBox Check(string text, bool value, Action<bool> set)
     {

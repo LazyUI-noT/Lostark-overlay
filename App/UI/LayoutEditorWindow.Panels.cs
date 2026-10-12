@@ -7,12 +7,13 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>레이아웃 편집기's panels, over the screenshot: top left the class (기본 first, then every 클래스 · 직업각인)
-/// and, once the gauge is clicked, its options (아덴 게이지, and that class's 막대); under it the options of the box
-/// clicked; top right 편집, with ▶ 실행해 보기. Each folds to its title bar and drags by it.</summary>
+/// <summary>레이아웃 편집기's panels, over the screenshot: top left the class (기본 first, then every 클래스 · 직업각인);
+/// under it 칸 옵션, the options of what was clicked (a box, a buff bar, the plate, or the gauge: 아덴 게이지 and that
+/// class's 막대); top right 편집, with ▶ 실행해 보기. Each folds to its title bar and drags by it.</summary>
 public sealed partial class LayoutEditorWindow
 {
-    const double ClassWidth = 300, GaugeWidth = 400, BoxWidth = 420;
+    const double ClassWidth = 300, BoxWidth = 460;
+    const double TrayRoom = 56;   // under the left panels: the 패널 tray
     const double KeepShown = 40;   // a dragged panel keeps this much of its title bar in the window
 
     readonly List<TranslateTransform> _cards = [];
@@ -21,7 +22,7 @@ public sealed partial class LayoutEditorWindow
     /// fixed panel top right, 전체 화면 bottom right, and bottom left the 패널 tray that hides and shows them.</summary>
     Grid Layout(UIElement view, UIElement panel, UIElement fullScreen)
     {
-        var left = new Grid { HorizontalAlignment = HorizontalAlignment.Left };
+        var left = new Grid { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, TrayRoom) };
         left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         left.RowDefinitions.Add(new RowDefinition());   // the box options scroll in what is left
         var box = BoxPanel();
@@ -61,15 +62,14 @@ public sealed partial class LayoutEditorWindow
             Child = new StackPanel { Children = { list, open } }, Padding = new(8), Margin = new(12), CornerRadius = new(6),
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
         };
-        tray.SetResourceReference(Border.BackgroundProperty, SystemColors.WindowBrushKey);
+        Panelled(tray);
         return tray;
     }
 
     /// <summary>전체 화면 on or off: the window changes size, so every panel goes back where it starts.</summary>
     void FullScreenLayout() => _cards.ForEach(at => (at.X, at.Y) = (0, 0));
 
-    /// <summary>The class picked (what the sample shows and what changes go to), and under it the gauge's options, shown
-    /// while the gauge is the part picked (<see cref="SettingsWindow.ShowBox"/>).</summary>
+    /// <summary>The class picked: what the sample shows and what changes go to.</summary>
     UIElement ClassPanel()
     {
         var pick = new ComboBox { Width = ClassWidth, HorizontalAlignment = HorizontalAlignment.Left };
@@ -90,16 +90,25 @@ public sealed partial class LayoutEditorWindow
             Pick(null, null);
             Relayout();
         };
-        var gauge = _forms.GaugeBox;
-        (gauge.Width, gauge.Margin) = (GaugeWidth, new(0, 8, 0, 0));
-        var p = new StackPanel { Children = { pick, gauge } };
-        return Card("클래스", new ScrollViewer { Content = p, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, HorizontalAlignment.Left);
+        return Card("클래스", pick, HorizontalAlignment.Left);
     }
 
+    /// <summary>칸 옵션: the options of what was clicked; the gauge's (<see cref="SettingsWindow.GaugeBox"/>, shown while it
+    /// is the part picked) here too, rather than under 클래스, where they ran under the 패널 tray.</summary>
     UIElement BoxPanel()
     {
         _forms.ShowBox(null, plate: false);
-        return Card("칸 옵션", new ScrollViewer { Content = _forms.BoxTab, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Width = BoxWidth }, HorizontalAlignment.Left);
+        _forms.GaugeBox.Margin = new(0, 0, 0, 12);
+        var options = new StackPanel { Children = { _forms.BoxTab, _forms.GaugeBox } };
+        return Card("칸 옵션", new ScrollViewer { Content = options, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Width = BoxWidth }, HorizontalAlignment.Left);
+    }
+
+    /// <summary>A panel's opaque background and outline, in 설정's theme.</summary>
+    static void Panelled(Border b)
+    {
+        b.SetResourceReference(Border.BackgroundProperty, PanelBrushKey);
+        b.SetResourceReference(Border.BorderBrushProperty, Themes.StrokeBrushKey);
+        b.BorderThickness = new(1);
     }
 
     /// <summary>A panel over the screenshot, in the window's colours, as tall as its content, under a title bar: ▾ folds it
@@ -121,7 +130,7 @@ public sealed partial class LayoutEditorWindow
             Child = new DockPanel { Children = { head, body } }, Padding = new(12), Margin = new(12), CornerRadius = new(6),
             HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Top, RenderTransform = at,
         };
-        card.SetResourceReference(Border.BackgroundProperty, SystemColors.WindowBrushKey);
+        Panelled(card);
 
         Point from = default, home = default;   // home: where the panel stands undragged
         (double X, double Y) start = default;

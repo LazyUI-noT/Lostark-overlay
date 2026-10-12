@@ -73,14 +73,18 @@ sealed class PreviewPlayer
         foreach (var t in _targets) t.Update(_sample, _sample.Snapshot.At);
     }
 
-    /// <summary>Sample boxes for the active class: its class (for the gauge's splits and glow) and 아덴 slots.</summary>
-    public static Player SampleFor(CharacterService c)
+    /// <summary>Sample boxes for the active class, or for <paramref name="target"/> (the 직업각인 picked in 설정): its class (for the
+    /// gauge's splits and glow) and 아덴 slots.</summary>
+    public static Player SampleFor(CharacterService c, PreviewTarget? target = null)
     {
-        var (self, _) = DemoSnapshots.Sample(Clock.Now(), c.AdenSlots);
-        return new Player(self.Name, self.Snapshot with { ClassId = c.ClassId });
+        var (self, _) = DemoSnapshots.Sample(Clock.Now(), target?.AdenSlots ?? c.AdenSlots);
+        return new Player(self.Name, self.Snapshot with { ClassId = target?.ClassId ?? c.ClassId });
     }
 
-    /// <summary>How many sections the active class's gauge has: a click fills one.</summary>
-    public static int Sections(Settings s, CharacterService c) =>
-        c.Active is { } a && c.ActiveClass is { } k ? GaugeBar.Resolve(s, a.Class, a.Subclass, k.Subclasses.GetValueOrDefault(a.Subclass)).Splits.Count + 1 : 1;
+    /// <summary>How many sections the active class's (or <paramref name="target"/>'s) gauge has: a click fills one.</summary>
+    public static int Sections(Settings s, CharacterService c, PreviewTarget? target = null)
+    {
+        var (cls, sub) = target is not null ? (c.Classes.FirstOrDefault(k => k.Name == target.Class), target.Subclass) : (c.ActiveClass, c.Active?.Subclass);
+        return cls is not null && sub is not null ? GaugeBar.Resolve(s, cls.Name, sub, cls.Subclasses.GetValueOrDefault(sub)).Splits.Count + 1 : 1;
+    }
 }

@@ -81,7 +81,7 @@ public sealed class PartyService : IDisposable
             if (ip is null) return Fail("공인 IP(IPv4)를 확인하지 못했습니다. 인터넷 연결을 확인해 주세요.");
             UdpTransport udp;
             try { udp = new UdpTransport(port); }
-            catch (SocketException) { return Fail($"UDP 포트 {port}을(를) 열 수 없습니다. 다른 프로그램이 쓰고 있는지 확인해 주세요."); }
+            catch (SocketException) { return Fail($"UDP 포트 {Josa.Object(port.ToString(System.Globalization.CultureInfo.InvariantCulture))} 열 수 없습니다. 다른 프로그램이 쓰고 있는지 확인해 주세요."); }
 
             Listen(udp);
             Locked(() =>

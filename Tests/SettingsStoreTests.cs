@@ -28,6 +28,34 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Null_class_entries_and_null_profiles_in_a_hand_edited_file_load_as_defaults_and_survive_EnsureOwn()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"Classes":{"워로드 · 전투태세":null,"워로드":{"Own":true,"Mine":null,"Members":null},"바드":{"Own":false}}}""");
+        var classes = ProfileLoader.LoadClasses(Path.Combine(Helpers.RepoRoot(), "Profiles"));
+
+        var s = new SettingsStore(FilePath).Load(out bool reset);
+        var added = ClassProfileMigration.EnsureOwn(s, classes);
+
+        Assert.False(reset);
+        Assert.True(added);
+        Assert.All(s.Classes.Values, c => Assert.NotNull(c));
+        Assert.All(s.Classes.Values, c => { Assert.NotNull(c.Mine); Assert.NotNull(c.Members); });
+        Assert.True(ClassProfiles.IsOwn(s, "워로드 · 전투태세"));
+        Assert.True(ClassProfiles.Of(s, "워로드 · 전투태세").Mine.Gauge);   // a default entry, not the dropped null
+        Assert.False(ClassProfiles.IsOwn(s, "없는클래스 · 어떤각인"));
+    }
+
+    [Fact]
+    public void IsOwn_and_Of_do_not_crash_on_a_null_entry()
+    {
+        var s = new Settings();
+        s.Classes["가 · 나"] = null!;
+        Assert.False(ClassProfiles.IsOwn(s, "가 · 나"));
+        Assert.NotNull(ClassProfiles.Of(s, "가 · 나").Mine);
+    }
+
+    [Fact]
     public void A_settings_file_from_before_updates_checks_for_updates_and_has_notified_none()
     {
         new SettingsStore(FilePath).Save(new Settings { FirstRunDone = true });

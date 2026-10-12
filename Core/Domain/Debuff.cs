@@ -3,9 +3,10 @@ namespace GaugeOverlay.Core.Domain;
 /// <summary>The raid whose debuffs are read (PLAN §4 디버프); each has its own icons. 없음: the debuff row isn't read.</summary>
 public enum Raid { 없음, 모르둠 }
 
-/// <summary>모르둠 (G3)'s debuffs: the blue and red sigils (your side, permanent), the lightning (urgent, timed) and the
-/// swap (timed: you and everyone near you change to the other colour).</summary>
-public enum DebuffKind { 파랑, 빨강, 번개, 교체 }
+/// <summary>모르둠 (G3)'s debuffs: the blue and red sigils (your side, permanent), the lightning (urgent, timed), the
+/// swap (timed: you and everyone near you change to the other colour) and the 결투자 (no timer read: <see cref="DuelMark"/>).
+/// Appended in this order: the order is the reader's template order.</summary>
+public enum DebuffKind { 파랑, 빨강, 번개, 교체, 결투자 }
 
 /// <summary>A debuff icon found in the debuff row, with its timer when one could be read.</summary>
 public sealed record DebuffReading(DebuffKind Kind, double? Seconds);
@@ -17,9 +18,41 @@ public sealed record DebuffMark(TimeSpan SeenAt, TimeSpan? EndsAt)
     public int? Seconds(TimeSpan now) => EndsAt is { } end ? (int)Math.Max(0, (end - now).TotalSeconds) : null;
 }
 
+/// <summary>The 결투자 cycle: when it was first seen. The 4 → 0 countdown and the 30 s hold run from that instant on the
+/// app's own clock (the game's "38초" is not read), whether or not the icon is still read after it. The 30 s are a hard
+/// cap: the game's own debuff lasts longer, so a mark whose time is over stays (<see cref="Ended"/>) while the icon is read
+/// without a gap, and only a read without it lets the next sighting start a new cycle.
+/// <paramref name="InRow"/>: the latest read had the icon. <paramref name="Ended"/>: the 30 s passed with the icon still read.</summary>
+public sealed record DuelMark(TimeSpan FirstSeenAt, bool InRow = true, bool Ended = false)
+{
+    /// <summary>The countdown shows 4, 3, 2, 1, 0: <see cref="CountSteps"/> steps of <see cref="CountStep"/>.</summary>
+    public const int CountSteps = 5;
+    public static readonly TimeSpan CountStep = TimeSpan.FromSeconds(1);
+    /// <summary>How long after the first sighting the icon is kept (a cutscene hides it; it may come back, and the cycle
+    /// does not restart).</summary>
+    public static readonly TimeSpan Hold = TimeSpan.FromSeconds(30);
+
+    /// <summary>True from the first sighting until <see cref="Hold"/> has passed.</summary>
+    public bool IsActive(TimeSpan now) => now - FirstSeenAt < Hold;
+}
+
+/// <summary>What the 결투자 box shows: nothing, the countdown (<see cref="DuelPhase.Number"/> 4..0), or the icon alone.</summary>
+public enum DuelStage { None, Countdown, Icon }
+
+/// <summary>The 결투자 box at one instant (<see cref="At"/>). Pure: the renderer only draws it.</summary>
+public readonly record struct DuelPhase(DuelStage Stage, int Number = 0)
+{
+    public static DuelPhase At(DuelMark? mark, TimeSpan now)
+    {
+        if (mark is null || now < mark.FirstSeenAt || !mark.IsActive(now)) return new(DuelStage.None);
+        int step = (int)((now - mark.FirstSeenAt) / DuelMark.CountStep);
+        return step < DuelMark.CountSteps ? new(DuelStage.Countdown, DuelMark.CountSteps - 1 - step) : new(DuelStage.Icon);
+    }
+}
+
 /// <summary>What the debuff window draws: your debuffs (null = not on you) and the boss's red and blue counts.</summary>
 public sealed record DebuffStatus(DebuffMark? Blue, DebuffMark? Red, DebuffMark? Lightning, DebuffMark? Swap, int? BossRed, int? BossBlue,
-    TimeSpan BossSeenAt = default)
+    TimeSpan BossSeenAt = default, DuelMark? Duelist = null)
 {
     public static readonly DebuffStatus None = new(null, null, null, null, null, null);
 

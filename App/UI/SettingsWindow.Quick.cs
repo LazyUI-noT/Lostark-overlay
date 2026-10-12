@@ -6,7 +6,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>내 오버레이's preview: your overlay as it is now (the active class) with ▶ 실행해 보기. A click opens the section
+/// <summary>내 오버레이's preview: your overlay as it is now (the active class, or the 직업각인 picked in 편집 중) with ▶ 실행해 보기. A click opens the section
 /// of what was clicked (a box: 스킬 칸 with that box picked; the gauge: 아덴 게이지; a buff bar or the debuff window: 버프/디버프; else 전체).
 /// While the 레이아웃 편집기 is open, the preview steps aside for it.</summary>
 public partial class SettingsWindow
@@ -37,7 +37,7 @@ public partial class SettingsWindow
         quick.MouseLeftButtonDown += (_, e) =>
         {
             var part = quick.PartAt(e.GetPosition(quick))?.Part;
-            if (part is { } used) play.Click(used, PreviewPlayer.Sections(_s, _chars));
+            if (part is { } used) play.Click(used, PreviewPlayer.Sections(_s, _chars, PreviewTarget));
             if (part is { } box && box < Part.변화)
             {
                 ShowBox(box, plate: false);
@@ -54,7 +54,7 @@ public partial class SettingsWindow
         IsVisibleChanged += (_, _) => { if (!IsVisible) run.IsChecked = false; };
 
         var p = _quickShown;
-        p.Children.Add(new TextBlock { Text = "오버레이 미리보기 · 눌러서 편집", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
+        p.Children.Add(Helped(new TextBlock { FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) }, "오버레이 미리보기 · 눌러서 편집", "▶ 실행해 보기를 켜면 누른 칸이 쓴 것처럼 움직이고 (쿨타임 중이면 1초 전으로), 바꾼 설정이 바로 보입니다. 크기와 위치는 배치의 레이아웃 편집기에서 바꿉니다."));
         // Shrinks to fit the pinned column; clicks still land on the right part.
         p.Children.Add(new Border
         {
@@ -65,7 +65,6 @@ public partial class SettingsWindow
         buttons.Children.Add(run);
         buttons.Children.Add(reset);
         p.Children.Add(buttons);
-        p.Children.Add(Note("▶ 실행해 보기를 켜면 누른 칸이 쓴 것처럼 움직이고 (쿨타임 중이면 1초 전으로), 바꾼 설정이 바로 보입니다. 크기와 위치는 배치의 레이아웃 편집기에서 바꿉니다."));
 
         _quickBlock = new StackPanel { Margin = new(0, 0, 16, 12), Children = { _editorOpen, p } };
         QuickRefresh();
@@ -91,6 +90,6 @@ public partial class SettingsWindow
         foreach (var r in new[] { _quick, _quickBuffs, _quickDebuffs }) r.Refresh();
     }
 
-    /// <summary>The preview's sample, for the class active now.</summary>
-    void QuickSample() => _quickPlay?.Show(PreviewPlayer.SampleFor(_chars));
+    /// <summary>The preview's sample, for the class active now or the 직업각인 picked in 편집 중.</summary>
+    void QuickSample() => _quickPlay?.Show(PreviewPlayer.SampleFor(_chars, PreviewTarget));
 }

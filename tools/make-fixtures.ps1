@@ -389,6 +389,9 @@ $m = @('mordum.png', 'mordum debuff.png', 'mordum debuff2.png', 'mordum debuff3.
 $at = @(@(0, 0), @(453, 721), @(551, 741), @(657, 755))
 for ($i = 0; $i -lt 4; $i++) { CutRect "debuffrow_$i" (Join-Path $ref $m[$i]) 'debuffs' 110 @((1060 - $at[$i][0]), (880 - $at[$i][1]), 200, 60) }
 CutRect 'bossrow' (Join-Path $ref $m[0]) 'boss' 110 @(700, 140, 540, 70)
+# 결투자.png: a 143×81 crop of a debuff row (HUD 110, buff about 110%: the frames are 29 px, not 32). Left the blue sigil, right
+# the 결투자 burst at (71, 30, 29, 29), the game's own "38초" under it.
+CutRect 'duelist' (Join-Path $ref '결투자.png') 'debuffs' 110 @(0, 0, 143, 81)
 CutRect 'stacks_1' (Join-Path $ref $m[1]) 'stacks' 110 @(60, 150, 200, 22)
 CutRect 'stacks_2' (Join-Path $ref $m[2]) 'stacks' 110 @(50, 128, 200, 22)
 

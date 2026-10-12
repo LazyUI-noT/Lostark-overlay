@@ -10,7 +10,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     /// <summary>The gauge's options; shown while the gauge is the part picked (<see cref="ShowBox"/>).</summary>
-    internal StackPanel GaugeBox { get; } = new() { Margin = new(16, 0, 16, 12), Visibility = Visibility.Collapsed };
+    internal CardStack GaugeBox { get; } = new() { Margin = new(16, 0, 16, 12), Visibility = Visibility.Collapsed };
 
     void FillGauge()
     {
@@ -23,24 +23,27 @@ public partial class SettingsWindow
     UIElement GaugePanel()
     {
         var g = _s.Gauge;
-        var p = new StackPanel();
-        p.Children.Add(Heading("아덴 게이지", first: true));
-        p.Children.Add(Note("아덴 게이지를 추적하는 직업각인이면 오버레이 위쪽에 막대로 표시됩니다."));
+        var p = new CardStack();
+        p.Children.Add(Heading("아덴 게이지", first: true, help: "아덴 게이지를 추적하는 직업각인이면 오버레이 위쪽에 막대로 표시됩니다."));
         if (!(_chars.ActiveClass is { } cls && _chars.Active is { } c && cls.Subclasses.GetValueOrDefault(c.Subclass) is not null))
             p.Children.Add(Note("현재 직업각인은 아덴 게이지를 추적하지 않습니다 (나중에 추가 예정)."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
         p.Children.Add(ColorRow(Label("채움 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 칸 색"), g.Empty, v => g.Empty = v, swatch: false));
-        p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed));
-        p.Children.Add(Note("두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));
+        p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));
         p.Children.Add(SliderRow("불투명도", 0.2, 1, g.Opacity, 0.05, v => $"{v * 100:0}%", v => g.Opacity = v, Changed));
-        var beta = new StackPanel();
-        beta.Children.Add(Note("스킬마다 게이지가 얼마나 차는지 쓸 때마다 배워, 그만큼 오르는 값은 2번 일치하면 바로 반영합니다. 스킬마다 10번쯤 쓴 뒤부터 적용되고, 배운 값은 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 아덴스킬로 게이지를 쓰는 양은 배우지 않고 클래스 규칙으로 바로 반영합니다. 배운 값은 캐릭터·인식 → 배운 값에서 지웁니다."));
-        beta.Visibility = Shown(g.ReadMode == GaugeReadMode.Predicted);
-        p.Children.Add(Row("게이지 읽기", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
-            (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], g.ReadMode, v => { g.ReadMode = v; beta.Visibility = Shown(v == GaugeReadMode.Predicted); })));
-        p.Children.Add(beta);
+        p.Children.Add(HelpRow("게이지 읽기", "기본: 같은 값이 5번 연속 읽히면 반영합니다. 작은 상승: 조금 오른 값은 2번 일치하면 반영합니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 쓸 때마다 배워, 그만큼 오르는 값은 2번 일치하면 바로 반영합니다. 스킬마다 10번쯤 쓴 뒤부터 적용되고, 배운 값은 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 아덴스킬로 게이지를 쓰는 양은 배우지 않고 클래스 규칙으로 바로 반영합니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다.", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
+            (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], g.ReadMode, v => g.ReadMode = v)));
+        // Shown for every reading: gains learned under 스킬별 예측 stay saved after switching to another reading, and are used again on
+        // switching back. Not in the editor: its copy has no engine to forget them.
+        if (!_inEditor)
+        {
+            var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 8),
+                ToolTip = "스킬별 예측에서 배운 게이지 값을 지웁니다. 스킬창의 스킬을 바꿨을 때 쓰세요." };
+            forget.Click += (_, _) => GainsResetRequested?.Invoke();
+            p.Children.Add(forget);
+        }
         BarRows(p);
         return p;
     }
@@ -57,7 +60,9 @@ public partial class SettingsWindow
         var shown = _chars.Classes.SelectMany(k => k.Subclasses.Select(sc => (Class: k.Name, Sub: sc.Key, Rule: sc.Value)))
             .FirstOrDefault(x => x.Class == a.Class && x.Sub == a.Subclass);
         if (shown.Class is null) return;   // a class the profiles don't know
-        p.Children.Add(Heading($"막대 ({shown.Class} · {shown.Sub})"));
+        p.Children.Add(Heading($"막대 ({shown.Class} · {shown.Sub})", help: shown.Rule is null
+            ? "이 직업각인은 아직 게이지 기본값이 없습니다. 구분선과 색은 정해 둘 수 있고, 빛나는 조건은 클래스 정보가 추가될 때 정해집니다."
+            : "구분선은 게이지를 나누는 위치(%)입니다. 빛나는 조건은 클래스마다 정해져 있고, 여기서는 켜고 끄기와 방식만 바꿉니다."));
         var bar = GaugeBar.Resolve(_s, shown.Class, shown.Sub, shown.Rule);
         string key = GaugeBar.Key(shown.Class, shown.Sub);
         var set = _s.GaugeBars.GetValueOrDefault(key) ?? new GaugeBarSettings();
@@ -65,9 +70,6 @@ public partial class SettingsWindow
         void Rebuild() { Changed(); Dispatcher.BeginInvoke(FillGauge); }
         void SetSplits(IEnumerable<double> splits) { GaugeBar.SetSplits(_s, shown.Class, shown.Sub, shown.Rule, splits); Rebuild(); }
 
-        p.Children.Add(Note(shown.Rule is null
-            ? "이 직업각인은 아직 게이지 기본값이 없습니다. 구분선과 색은 정해 둘 수 있고, 빛나는 조건은 클래스 정보가 추가될 때 정해집니다."
-            : "구분선은 게이지를 나누는 위치(%)입니다. 빛나는 조건은 클래스마다 정해져 있고, 여기서는 켜고 끄기와 방식만 바꿉니다."));
         var splits = new WrapPanel();
         foreach (double split in bar.Splits)
         {
@@ -80,6 +82,7 @@ public partial class SettingsWindow
                 else box.Text = $"{split * 100:0.#}";
             };
             var remove = new Button { Content = "✕", ToolTip = "이 구분선 지우기", Margin = new(0, 0, 10, 0) };
+            System.Windows.Automation.AutomationProperties.SetName(remove, "이 구분선 지우기");   // read aloud instead of "✕"
             remove.Click += (_, _) => SetSplits(bar.Splits.Where(x => x != split));
             splits.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { box, new TextBlock { Text = "%", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 4, 0) }, remove } });
         }

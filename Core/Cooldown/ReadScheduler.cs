@@ -16,6 +16,7 @@ public sealed class ReadScheduler
     private static readonly TimeSpan KeyInterval = TimeSpan.FromSeconds(1.0 / 30);
 
     private readonly TimeSpan?[] lastRead = new TimeSpan?[SlotInfo.All.Length];
+    private readonly TimeSpan?[] watchUntil = new TimeSpan?[SlotInfo.All.Length];
     private TimeSpan? keyPendingFrom;
     private TimeSpan? lastKeyServe;
 
@@ -28,7 +29,7 @@ public sealed class ReadScheduler
 
         var due = new List<SlotId>();
         foreach (var s in states)
-            if (key || IsDue(s, now))
+            if (key || Watched(s.Slot, now) || IsDue(s, now))
                 due.Add(s.Slot);
         return due;
     }
@@ -37,6 +38,13 @@ public sealed class ReadScheduler
     /// (cooldown slots to check for resets/spam, ready slots so a cast is seen without waiting for the 4 Hz check).
     /// Presses before that frame merge into one read; at most 30 such frames per second.</summary>
     public void RequestCooldownReads(TimeSpan now) => keyPendingFrom = now;
+
+    /// <summary>Reads <paramref name="target"/> on every frame captured up to and including <paramref name="until"/>, whatever its
+    /// phase (코어 빌드: a cast is known to change it). A later call extends the watch; an earlier time never shortens it.</summary>
+    public void Watch(SlotId target, TimeSpan until) =>
+        watchUntil[(int)target] = watchUntil[(int)target] is { } current && current > until ? current : until;
+
+    private bool Watched(SlotId slot, TimeSpan now) => watchUntil[(int)slot] is { } until && now <= until;
 
     public void MarkRead(SlotId slot, TimeSpan at) => lastRead[(int)slot] = at;
 

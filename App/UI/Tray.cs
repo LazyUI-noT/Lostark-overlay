@@ -74,8 +74,21 @@ public sealed class Tray : IDisposable
         _party = new ToolStripMenuItem("파티: 없음");
         _party.DropDownItems.AddRange([_host, _join, _copyToken, _leave]);
 
+        // Rarely used tools in one submenu, so the top level keeps what is used between gates.
+        var tools = new ToolStripMenuItem("인식 도구");
+        tools.DropDownItems.AddRange([_detectSubclass, submitSkills, _rereadIcons, new ToolStripSeparator(),
+            Item("디버그 창", () => OpenDebug?.Invoke())]);
+        // 설정 열기 first and bold: it is what double-clicking the icon does (Windows' default-item convention).
+        var settings = Item("설정 열기", () => OpenSettings?.Invoke());
+        settings.Font = _bold = new Font(settings.Font, FontStyle.Bold);
+        // Windows' dark mode or high contrast switched while running: redraw the menu for it.
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemColors;
+
         _menu.Items.AddRange(
         [
+            settings,
+            Item("레이아웃 편집기", () => OpenLayoutEditor?.Invoke()),
+            new ToolStripSeparator(),
             _overlay,
             _edit,
             _test,
@@ -83,16 +96,10 @@ public sealed class Tray : IDisposable
             new ToolStripSeparator(),
             _character,
             _raid,
-            new ToolStripSeparator(),
             _party,
             new ToolStripSeparator(),
             _refit,
-            _detectSubclass,
-            submitSkills,
-            _rereadIcons,
-            Item("설정 열기", () => OpenSettings?.Invoke()),
-            Item("레이아웃 편집기", () => OpenLayoutEditor?.Invoke()),
-            Item("디버그 창", () => OpenDebug?.Invoke()),
+            tools,
             new ToolStripSeparator(),
             Item("종료", () => Exit?.Invoke()),
         ]);
@@ -115,6 +122,23 @@ public sealed class Tray : IDisposable
         _icon.ShowBalloonTip(5000, "GaugeOverlay", text, ToolTipIcon.None);
     }
     Action? _onNoticeClick;
+
+    /// <summary>The menu drawn in 설정's theme: dark for 딥 틸 and 어둡게 (and Windows' dark mode), Windows' own otherwise.</summary>
+    public void SetTheme(UiTheme theme)
+    {
+        if (theme == _theme) return;   // ApplyUi runs on every change; the renderer only when the theme does
+        _theme = theme;
+        _menu.Renderer = TrayRenderer.For(theme);
+    }
+    UiTheme? _theme;
+    readonly Font _bold;
+
+    void OnSystemColors(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.General or Microsoft.Win32.UserPreferenceCategory.Accessibility
+            or Microsoft.Win32.UserPreferenceCategory.Color) || _theme is not { } theme) return;
+        _menu.Renderer = TrayRenderer.For(theme);
+    }
 
     /// <summary>Checkmark on "오버레이 표시".</summary>
     public void SetOverlayVisible(bool visible) => _overlay.Checked = visible;
@@ -265,11 +289,16 @@ public sealed class Tray : IDisposable
     [DllImport("user32.dll")]
     static extern bool DestroyIcon(nint handle);
 
+    /// <summary>--demo --tray-menu: the menu opened near the top left of the screen, for screenshots.</summary>
+    internal void DemoShowMenu() => _menu.Show(new Point(40, 40));
+
     public void Dispose()
     {
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemColors;
         _icon.Visible = false;
         _icon.Icon?.Dispose();
         _icon.Dispose();
         _menu.Dispose();
+        _bold.Dispose();
     }
 }

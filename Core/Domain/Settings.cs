@@ -43,15 +43,32 @@ public sealed class Settings
     /// <paramref name="remember"/>: it was picked by hand or read off the bar, so it goes into <see cref="SubclassHistory"/>.</summary>
     public string PickCharacter(string family, string className, string subclass, bool remember = false)
     {
-        var key = $"{className} · {subclass}";
+        var key = CharacterKey(className, subclass);
         if (!Characters.ContainsKey(key)) Characters[key] = new() { ClassFamily = family, Class = className, Subclass = subclass };
         if (remember) SubclassHistory[className] = subclass;
         return ActiveCharacter = key;
     }
 
+    /// <summary>The key of a character in <see cref="Characters"/>, <see cref="Cores"/>: "클래스 · 직업각인".</summary>
+    public static string CharacterKey(string className, string subclass) => $"{className} · {subclass}";
+
+    /// <summary>코어 빌드 per "클래스 · 직업각인" (<see cref="CharacterKey"/>): kept when the character changes, one for all three
+    /// 프로필 and apart from the active character. Read through <see cref="CoreOf"/>, set through <see cref="SetCore"/>.</summary>
+    public Dictionary<string, CoreChoice> Cores { get; set; } = [];
+
+    /// <summary>The choice saved for <paramref name="characterKey"/>, or the default (off, 1 1 1) when none was ever made.</summary>
+    public CoreChoice CoreOf(string characterKey) => Cores.GetValueOrDefault(characterKey) ?? new();
+
+    /// <summary>Saves <paramref name="choice"/> (digits clamped to 1–3) for <paramref name="characterKey"/> only.</summary>
+    public void SetCore(string characterKey, CoreChoice choice) => Cores[characterKey] = choice.Clamped();
+
     /// <summary>The 직업각인 last played per class (picked by hand or read off the bar): a class detected with one takes it
     /// and its 직업각인 isn't read again until asked (직업각인 다시 감지).</summary>
     public Dictionary<string, string> SubclassHistory { get; set; } = [];
+
+    /// <summary>설정 → 캐릭터's supported 직업각인 and features the user has seen (Core.Data.ClassSupport keys): anything shipped
+    /// later shows NEW until the tab is opened. Null: never recorded (set at start-up, so a first run marks nothing).</summary>
+    public List<string>? SeenSupport { get; set; }
 
     /// <summary>The 초각스 icon shows <paramref name="subclass"/>: switches to the active class's character for it (added
     /// if new), which takes the emblem when it has none, since both are the same class on screen.</summary>
@@ -150,11 +167,11 @@ public sealed class Settings
     /// <summary>레이아웃 편집기의 패널 hidden from its 패널 tray (편집, 클래스, 칸 옵션, 전체 화면).</summary>
     public HashSet<string> EditorHidden { get; set; } = [];
 
-    /// <summary>The 개별 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the classes' one.</summary>
+    /// <summary>The 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the one shared by a character with no listed 직업각인.</summary>
     public string? PlaceKey { get; set; }
 
-    /// <summary>After the character or a 개별 설정 changed: when the settings your boxes use (<see cref="ClassProfiles.ActiveKey"/>)
-    /// are a 개별 직업각인's, or no longer are, keeps your window's spot and size for the one left (in the active profile) and
+    /// <summary>After the character changed: when the settings your boxes use (<see cref="ClassProfiles.ActiveKey"/>)
+    /// are a 직업각인's, or no longer are, keeps your window's spot and size for the one left (in the active profile) and
     /// puts back the new one's; a 직업각인 placed for the first time starts where the window is. True when it changed.</summary>
     public bool SyncPlace()
     {
@@ -206,6 +223,30 @@ public sealed class Settings
         }
         (Profiles, ActiveProfile, PlaceKey) = (edited.Profiles, edited.ActiveProfile, edited.PlaceKey);
         SyncPlace();   // the editor may have shown another 직업각인's spot: back to this character's
+    }
+
+    /// <summary>Whether <see cref="ApplyLayoutFrom"/> would change these settings: the 레이아웃 편집기 asks before 닫기
+    /// drops changes not applied.</summary>
+    public bool LayoutDiffers(Settings edited)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(this, SettingsStore.Json);
+        Settings Copy() => JsonSerializer.Deserialize<Settings>(bytes, SettingsStore.Json)!;
+        var applied = Copy();
+        applied.ApplyLayoutFrom(edited);
+        return !Captured(Copy()).AsSpan().SequenceEqual(Captured(applied));
+    }
+
+    /// <summary>The settings with every profile's stored copy as a switch leaves it: a profile is stored only on leaving
+    /// it (and an unvisited one in a shorter form), so a visit to another profile and back is no change.</summary>
+    static byte[] Captured(Settings s)
+    {
+        int at = s.ActiveProfile;
+        if (at >= 0 && at < s.Profiles.Count)
+        {
+            for (int i = 0; i < s.Profiles.Count; i++) s.SwitchProfile(i);
+            s.SwitchProfile(at);
+        }
+        return JsonSerializer.SerializeToUtf8Bytes(s, SettingsStore.Json);
     }
 }
 

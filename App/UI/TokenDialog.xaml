@@ -3,11 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="파티 호스트" Width="440" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen" ThemeMode="System" ShowInTaskbar="True">
-    <StackPanel Margin="20">
-        <TextBlock x:Name="Hint" TextWrapping="Wrap" Margin="0,0,0,8" />
-        <TextBox x:Name="TokenBox" IsReadOnly="True" />
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="복사" MinWidth="88" Margin="0,0,8,0" Click="OnCopy" />
+    <StackPanel x:Name="Root">
+        <TextBlock x:Name="Hint" TextWrapping="Wrap" Margin="20,20,20,8" />
+        <TextBox x:Name="TokenBox" IsReadOnly="True" Margin="20,0" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,16,20,20">
+            <Button x:Name="CopyButton" Content="복사" MinWidth="88" Margin="0,0,8,0" Click="OnCopy" />
             <Button Content="닫기" IsCancel="True" IsDefault="True" MinWidth="88" />
         </StackPanel>
     </StackPanel>

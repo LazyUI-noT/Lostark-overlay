@@ -21,6 +21,59 @@ public class ClassProfilesTests
 
     // ── yours ────────────────────────────────────────────────────────────────────────
 
+    const string Combat = "워로드 · 전투태세";
+
+    [Fact]
+    public void Mine_for_a_key_uses_that_entrys_boxes_whoever_is_active()
+    {
+        var s = WithCharacter();   // active: 워로드 · 고독한기사, which shows everything
+        var other = ClassProfiles.Entry(s, Combat);
+        (other.Own, other.Mine.Gauge, other.Mine.Color) = (true, false, ColorSource.Personal);
+        other.Mine.Colors[SlotGroup.일반스킬] = "#123456";
+        other.Mine.HiddenSlots = [SlotId.일반4];
+        var a = ClassProfiles.Mine(s, Combat);
+        Assert.Equal("#123456", a.Colors[SlotGroup.일반스킬]);
+        Assert.False(a.Gauge);
+        Assert.Contains(SlotId.일반4, a.Hidden);
+        Assert.Same(other.Mine, a.Effects);
+        Assert.NotEqual("#123456", ClassProfiles.Mine(s).Colors[SlotGroup.일반스킬]);   // the active character's is untouched
+    }
+
+    [Fact]
+    public void Mine_for_a_key_differs_from_Mine_of_the_active_character_and_matches_it_for_the_active_key()
+    {
+        var s = WithCharacter();   // active: 워로드 · 고독한기사
+        const string Lone = "워로드 · 고독한기사";
+        var (lone, combat) = (ClassProfiles.Edit(s, Lone).Mine, ClassProfiles.Edit(s, Combat).Mine);
+        (lone.Color, lone.Colors[SlotGroup.각성기]) = (ColorSource.Personal, "#ABCDEF");
+        (combat.Color, combat.Colors[SlotGroup.각성기]) = (ColorSource.Personal, "#FEDCBA");
+
+        Assert.Equal("#ABCDEF", ClassProfiles.Mine(s, ClassProfiles.ActiveKey(s)).Colors[SlotGroup.각성기]);
+        Assert.Equal("#ABCDEF", ClassProfiles.Mine(s).Colors[SlotGroup.각성기]);
+        Assert.Equal("#FEDCBA", ClassProfiles.Mine(s, Combat).Colors[SlotGroup.각성기]);   // fails if the key were ignored
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Mine_for_기본_has_no_아덴_slots_and_no_gauge(string? key)
+    {
+        var a = ClassProfiles.Mine(WithCharacter(), key);
+        Assert.False(a.Gauge);
+        Assert.Contains(SlotId.아덴1, a.Hidden);
+        Assert.Contains(SlotId.아덴2, a.Hidden);
+    }
+
+    [Fact]
+    public void Mine_for_a_class_key_without_an_entry_falls_back_to_기본()
+    {
+        var s = WithCharacter();
+        ClassProfiles.Entry(s, ClassProfiles.Template).Mine.Colors[SlotGroup.초각스] = "#0A0B0C";
+        ClassProfiles.Entry(s, ClassProfiles.Template).Mine.Color = ColorSource.Personal;
+        Assert.Equal("#0A0B0C", ClassProfiles.Mine(s, "없는클래스 · 어떤각인").Colors[SlotGroup.초각스]);
+    }
+
+
     [Fact]
     public void The_각성기_변화_box_is_red_by_default() =>
         Assert.Equal("#FF4D4D", new OverlaySettings().AwakeningChangedColor);

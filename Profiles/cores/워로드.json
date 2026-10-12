@@ -1,0 +1,10 @@
+{
+  "_note": "코어 빌드 효과. 직업각인마다 effects: requires = 이 코어 레벨이어야 적용(해/달/별, 1–3; 딜러는 해·달, 서포터는 별; 적은 코어만 봄). effect = cooldown_reset 또는 cooldown_reduce (trigger 스킬 이름은 표시용, 칸은 사용자가 고름; target 칸의 쿨초를 trigger 칸을 쓴 뒤 watchSeconds(0–5초, 기본 1) 동안 매 프레임 읽음) 또는 text (표에만 나오는 글, text 필수). 추적 효과가 있는 코어만 적는다. tag = CURRENT/UNVERIFIED, source = 출처.",
+  "subclasses": {
+    "고독한기사": {
+      "effects": [
+        { "requires": { "해": 3 }, "trigger": "버스트 캐넌", "effect": "cooldown_reset", "target": "아덴2", "watchSeconds": 1.0, "tag": "CURRENT", "source": "owner 2026-10-12" }
+      ]
+    }
+  }
+}

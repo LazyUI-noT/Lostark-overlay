@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GaugeOverlay.Core.Data;
 
 namespace GaugeOverlay.Core.Domain;
 
@@ -191,19 +192,19 @@ public static class ClassProfiles
         if (className is null or Template) return t ?? new ClassSettings();
         if (Parent(className) is { } parent and not Template)
             return IsOwn(s, className) ? new ClassSettings { Own = true, Mine = s.Classes[className].Mine, Members = Of(s, parent).Members } : Of(s, parent);
-        if (!s.Classes.TryGetValue(className, out var c)) return t ?? new ClassSettings();
+        if (!s.Classes.TryGetValue(className, out var c) || c is null) return t ?? new ClassSettings();
         return c.Own ? c : new ClassSettings { Mine = t?.Mine ?? new(), Members = t?.Members ?? new() };
     }
 
     /// <summary>개별 설정 is on for <paramref name="className"/> (never for 기본 itself).</summary>
     public static bool IsOwn(Settings s, string? className) =>
-        className is not (null or Template) && s.Classes.TryGetValue(className, out var c) && c.Own;
+        className is not (null or Template) && s.Classes.TryGetValue(className, out var c) && c is { Own: true };
 
     /// <summary>The class's stored entry, added bare (following 기본) the first time.</summary>
     public static ClassSettings Entry(Settings s, string? className)
     {
         className ??= Template;
-        if (!s.Classes.TryGetValue(className, out var c)) s.Classes[className] = c = new ClassSettings();
+        if (!s.Classes.TryGetValue(className, out var c) || c is null) s.Classes[className] = c = new ClassSettings();
         return c;
     }
 
@@ -249,14 +250,18 @@ public static class ClassProfiles
         JsonSerializer.SerializeToUtf8Bytes(a).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(b));
 
     /// <summary>Your boxes, for the active character's class.</summary>
-    public static Appearance Mine(Settings s)
+    public static Appearance Mine(Settings s) => Mine(s, ActiveKey(s));
+
+    /// <summary>Your boxes as <paramref name="key"/> (<see cref="ActiveKey"/> or another entry of the 편집 중 list) draws them;
+    /// null or <see cref="Template"/> = 기본.</summary>
+    public static Appearance Mine(Settings s, string? key)
     {
-        var cls = ActiveClass(s);
-        var c = Of(s, ActiveKey(s));
+        bool classless = key is null or Template;
+        var c = Of(s, key);
         // No class known yet: 기본 without the 아덴 slots and the gauge, which only a class gives a meaning.
-        IReadOnlySet<SlotId> hidden = cls is null ? new HashSet<SlotId>(c.Mine.HiddenSlots) { SlotId.아덴1, SlotId.아덴2 } : c.Mine.HiddenSlots;
+        IReadOnlySet<SlotId> hidden = classless ? new HashSet<SlotId>(c.Mine.HiddenSlots) { SlotId.아덴1, SlotId.아덴2 } : c.Mine.HiddenSlots;
         bool personal = c.Mine.Color == ColorSource.Personal;
-        return new(c.Mine.Groups, hidden, c.Mine.Gauge && cls is not null, c.Mine.Layout, MineColors(c), s.Overlay.Width, s.Overlay.Height,
+        return new(c.Mine.Groups, hidden, c.Mine.Gauge && !classless, c.Mine.Layout, MineColors(c.Mine), s.Overlay.Width, s.Overlay.Height,
             personal && !c.Mine.SkillsOneColor ? c.Mine.SlotColors : null,
             personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine);
     }
@@ -276,14 +281,28 @@ public static class ClassProfiles
         return new(skip.ToHashSet(), Kept(SlotGroup.각성기), buffs ? s.Buffs.Size : null, !classless && (mine.Gauge || s.Party.SendGauge));
     }
 
+    /// <summary>The 직업각인 whose 나 settings a member of <paramref name="shipped"/> takes with 내 설정 적용 (each 직업각인 has
+    /// its own, so the class's own 나 is no longer edited): the active character's when it plays that class, else the one last
+    /// played of it (<see cref="Settings.SubclassHistory"/>) when shipped, else the class's first. Null (use the class entry):
+    /// no class info, or a class with no 직업각인.</summary>
+    public static string? MemberMineKey(Settings s, ClassInfo? shipped)
+    {
+        if (shipped is null) return null;
+        if (ActiveClass(s) == shipped.Name && ActiveKey(s) is { } active && active != shipped.Name) return active;
+        var sub = shipped.Remembered(s.SubclassHistory) ?? shipped.Subclasses.Keys.FirstOrDefault();
+        return sub is null ? null : Settings.CharacterKey(shipped.Name, sub);
+    }
+
     /// <summary>A party member's boxes: class <paramref name="className"/> (null = unknown) in role <paramref name="role"/>,
-    /// having sent <paramref name="look"/> (null = nothing yet).</summary>
-    public static Appearance Member(Settings s, string? className, Role role, Look? look)
+    /// having sent <paramref name="look"/> (null = nothing yet). <paramref name="shipped"/>: the class's info, which says whose
+    /// 나 settings 내 설정 적용 uses (<see cref="MemberMineKey"/>).</summary>
+    public static Appearance Member(Settings s, string? className, Role role, Look? look, ClassInfo? shipped = null)
     {
         var c = Of(s, className);
         var m = c.Members;
-        ClassProfile display = m.UseMineDisplay ? c.Mine : m;
-        var colors = m.UseMineColor ? MineColors(c) : ColorsBy(g => m.Color switch
+        var mine = MemberMineKey(s, shipped) is { } key ? Of(s, key).Mine : c.Mine;   // 내 설정 적용
+        ClassProfile display = m.UseMineDisplay ? mine : m;
+        var colors = m.UseMineColor ? MineColors(mine) : ColorsBy(g => m.Color switch
         {
             ColorSource.Received => look?.Colors.GetValueOrDefault(g),
             ColorSource.Personal => m.Colors.GetValueOrDefault(g),
@@ -337,11 +356,11 @@ public static class ClassProfiles
         }
     }
 
-    static IReadOnlyDictionary<SlotGroup, string> MineColors(ClassSettings c) => ColorsBy(g =>
-        (c.Mine.Color == ColorSource.Personal ? c.Mine.Colors.GetValueOrDefault(g) : null) ?? BuiltIn[g]);
+    static IReadOnlyDictionary<SlotGroup, string> MineColors(MineProfile mine) => ColorsBy(g =>
+        (mine.Color == ColorSource.Personal ? mine.Colors.GetValueOrDefault(g) : null) ?? BuiltIn[g]);
 
     static Dictionary<SlotGroup, string> ColorsBy(Func<SlotGroup, string> colour) =>
         Enum.GetValues<SlotGroup>().ToDictionary(g => g, colour);
 
-    static T Clone<T>(T profile) where T : ClassProfile => JsonSerializer.Deserialize<T>(JsonSerializer.SerializeToUtf8Bytes(profile))!;
+    internal static T Clone<T>(T profile) where T : ClassProfile => JsonSerializer.Deserialize<T>(JsonSerializer.SerializeToUtf8Bytes(profile))!;
 }
