@@ -24,10 +24,14 @@ public sealed partial class Engine : IDisposable
     /// <param name="CoreWatches">코어 빌드, worked out when the config is built: the slots to read on every frame after a cast (null: none).
     /// A hidden, unsent slot (<see cref="ReadPlan.Skip"/>) is never read: as the target its reset isn't tracked, and as the trigger its cast is
     /// never seen, so nothing starts.</param>
+    /// <param name="Judgment">단심 (설정 → 기타), when on for <paramref name="Character"/>: what to read it from (null: off).</param>
+    /// <param name="StackSkills">The slots <paramref name="Character"/> has shown a stack count on (Settings.StackSkills): known before
+    /// the first cast, so its re-use lockout's "1s" isn't taken for a 1 s cooldown (null: none, or another class on screen).</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
         GaugeReadMode ReadMode = GaugeReadMode.Agreed, string? Character = null, Raid Raid = Raid.없음, int DebuffSize = 100, double? ManualHud = null,
-        ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null)
+        ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null,
+        IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -62,6 +66,9 @@ public sealed partial class Engine : IDisposable
     /// (<see cref="CopyIcons"/>), once per slot at its first ready read. Never while the HUD is hidden or the bar is greyed.
     /// The int is the run it was read in (<see cref="CopyIcons"/>'s result), so a read posted before a new run can be dropped.</summary>
     public event Action<SlotId, Image, int>? IconSeen;
+    /// <summary>A slot of the character ("클래스 · 직업각인") showed a stack count: at 스킬창 맞추기 while ready, or in play
+    /// (<see cref="StackLearner"/>). Raised for a slot not yet in <see cref="Config.StackSkills"/>.</summary>
+    public event Action<string, SlotId>? StackSkillLearned;
     public event Action<DebugRow>? Debug;
     /// <summary>Like <see cref="Debug"/>, for the buff and debuff boxes and the boss's counts (only while the debug window is open).</summary>
     public event Action<ExtraDebugRow>? ExtraDebug;
@@ -98,6 +105,8 @@ public sealed partial class Engine : IDisposable
     readonly GaugeGainsStore _gainStore = new(GaugeGainsStore.DefaultPath);
     Dictionary<string, IReadOnlyDictionary<string, Gain>>? _savedGains;   // gains.json, read at the first character
     string? _gainsFor;
+    readonly StackLearner _stackLearner = new();
+    string? _stacksFor;   // whose casts _stackLearner counts
     int _gainsSaved;   // _gains.Version last written
     TimeSpan _gainsSavedAt = TimeSpan.MinValue;
     static readonly TimeSpan GainsSaveEvery = TimeSpan.FromMinutes(1);
@@ -239,6 +248,8 @@ public sealed partial class Engine : IDisposable
         var gaugeDef = config.Reads.Gauge ? config.Gauge : null;
         if (config.Gauge != _gaugeFrom) { (_gaugeFrom, _gauge) = (config.Gauge, null); _gaugeFilter.Reset(); _spender.Reset(); }   // another character: not its value
         if (config.Character != _gainsFor) SwitchGains(config.Character);
+        if (config.Character != _stacksFor) { _stacksFor = config.Character; _stackLearner.Reset(); }
+        SwitchJudgment(config, now);
         _gaugeFilter.Mode = config.ReadMode;
         // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
         if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
@@ -250,7 +261,9 @@ public sealed partial class Engine : IDisposable
         bool debuffs = poll && _debuffsOn, boss = debuffs && Elapsed(now, _lastBoss, BossEvery);
         if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
         bool preview = _previewing && Elapsed(now, _lastPreview, PreviewEvery);
-        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview)
+        var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, now);
+        bool judging = judgRow is not null || judgBand is not null;
+        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
             Thread.Sleep(4);
@@ -265,6 +278,9 @@ public sealed partial class Engine : IDisposable
         int debuffAt = rects.Count;
         if (debuffs) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize));
         if (boss) rects.Add(Geometry.BossRow(_vp, _fit!));
+        int judgAt = rects.Count;
+        if (judgRow is { } row) rects.Add(row);
+        if (judgBand is { } band) rects.Add(band);
         int previewAt = rects.Count;   // the debug window's pictures, in the same capture as the reads
         if (preview) { rects.Add(FitSolver.Band(_vp)); rects.Add(Geometry.BossBand(_vp)); }
 
@@ -279,7 +295,7 @@ public sealed partial class Engine : IDisposable
         var t = Clock.FromTimestamp(ts);
         bool changed = ReadSlots(slots, images, t, config) | _gaugeSpent;
         _gaugeSpent = false;
-        if (buffSize is not null || debuffs) _lastPoll = t;
+        if (buffSize is not null || debuffs || judging) _lastPoll = t;
         if (boss) _lastBoss = t;
         if (gaugeDef is not null) _lastGauge = t;
         if (gaugeDef is not null && _hud.Visible == true)   // loading screens and cutscenes would read as empty
@@ -293,6 +309,8 @@ public sealed partial class Engine : IDisposable
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
         if (buffSize is { } read) changed |= ReadBuffs(images[debuffAt - 1], read, t);
         if (debuffs) changed |= ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, t);
+        if (judging)
+            changed |= ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t);
         if (wantLabel)
         {
             _lastLabel = t;
@@ -336,8 +354,10 @@ public sealed partial class Engine : IDisposable
             else if (reading.Kind == ReadKind.Ready) uncalibratedReady.Add(i);   // slots on cooldown during the fit
 
             var prev = _states[(int)slot];
-            var next = CooldownTracker.Update(prev, reading);
+            bool known = config.StackSkills?.Contains(slot) == true;
+            var next = CooldownTracker.Update(known ? prev with { StackSkill = true } : prev, reading);
             if (next != prev) { _states[(int)slot] = next; changed = true; }
+            if (!known && !_testMode && config.Character is { } who && _stackLearner.Add(reading, next)) StackSkillLearned?.Invoke(who, slot);
             // A cast (ready → cooldown): a skill that spends the gauge arms it for its drop when the screen shows the
             // cast (no key is read), and the gauge learns what the cast adds (Cast). Not ready → dark (Unavailable):
             // a dark icon follows a spend.
@@ -451,6 +471,7 @@ public sealed partial class Engine : IDisposable
         {
             Buffs = _buffsOn ? [.. _buffs] : [],
             Debuffs = _debuffsOn ? _debuffs : null,
+            Judgment = _judgmentOn ? _judgment : null,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,
@@ -718,6 +739,10 @@ public sealed partial class Engine : IDisposable
                 {
                     SaveCalibration(slots[i], crops[i], trusted: true, _config);
                     ready++;
+                    // A count on a ready icon: a stack skill with uses left (no ordinary icon in the fixtures shows one). Not in
+                    // 테스트 모드: the video's 직업각인 or build may not be the active character's.
+                    if (!_testMode && _config.Character is { } who && _config.StackSkills?.Contains(slots[i]) != true && _digits!.ShowsCount(crops[i]))
+                        StackSkillLearned?.Invoke(who, slots[i]);
                 }
         return ready;
     }

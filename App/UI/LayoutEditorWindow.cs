@@ -27,7 +27,7 @@ public sealed partial class LayoutEditorWindow : Window
     readonly Border _view = new() { ClipToBounds = true, Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x1B, 0x1F)) };
     readonly Canvas _world = new();
     readonly System.Windows.Controls.Image _shot = new() { Stretch = Stretch.Fill };   // placed by ShowShot
-    readonly OverlayRenderer _mine, _buffs, _debuffs;
+    readonly OverlayRenderer _mine, _buffs, _debuffs, _judgment;
     readonly OverlayRenderer[] _peers;
     // ponytail: the primary screen stands for the game's; take the game window's monitor when a screenshot is linked (phase D)
     readonly Rect _screen = new(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
@@ -81,10 +81,12 @@ public sealed partial class LayoutEditorWindow : Window
         _buffs = Renderer(-1, buffs: true);
         _debuffs = Renderer(-1, buffs: false);
         _debuffs.DebuffsOnly = true;
+        _judgment = Renderer(-1, buffs: false);
+        _judgment.JudgmentOnly = true;
         _peers = [.. Enumerable.Range(0, _s.Party.ShowOthersBySlot.Count).Select(i => Renderer(i, buffs: false))];
         _world.Children.Add(_pick);
         _world.Children.Add(_grip);
-        _play = new PreviewPlayer(_mine, _buffs, _debuffs);
+        _play = new PreviewPlayer(_mine, _buffs, _debuffs, _judgment);
         _view.Child = _world;
         ShowSample();
         ShowShot();
@@ -168,10 +170,11 @@ public sealed partial class LayoutEditorWindow : Window
         var area = SystemParameters.WorkArea;
         static (double L, double T) Or((double L, double T) at, double left, double top) =>
             (double.IsNaN(left) ? at.L : left, double.IsNaN(top) ? at.T : top);
-        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.DebuffsOnly);
+        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.DebuffsOnly || r.JudgmentOnly);
         if (r == _mine) return Or(def, _s.Overlay.Left, _s.Overlay.Top);
         if (r == _buffs) return Or(def, _s.Buffs.Left, _s.Buffs.Top);
         if (r == _debuffs) return Or((def.Left + WindowDefaults.DebuffsRight, def.Top), _s.Debuffs.Left, _s.Debuffs.Top);   // as OverlayWindow.Replace
+        if (r == _judgment) return Or((def.Left + WindowDefaults.JudgmentRight, def.Top), _s.Judgment.Left, _s.Judgment.Top);
         if (!_s.Party.Together) return Or(def, _s.Party.ShowOthersBySlot[r.Peer].Left, _s.Party.ShowOthersBySlot[r.Peer].Top);
         if (r.Peer == 0) return Or(def, _s.Party.Left, _s.Party.Top);
         var above = _peers[r.Peer - 1];
@@ -186,6 +189,7 @@ public sealed partial class LayoutEditorWindow : Window
         if (r == _mine) (_s.Overlay.Left, _s.Overlay.Top) = (left, top);
         else if (r == _buffs) (_s.Buffs.Left, _s.Buffs.Top) = (left, top);
         else if (r == _debuffs) (_s.Debuffs.Left, _s.Debuffs.Top) = (left, top);
+        else if (r == _judgment) (_s.Judgment.Left, _s.Judgment.Top) = (left, top);
         else if (_s.Party.Together)
         {
             // the stack moves as one: the first window by as much as this one is dragged
@@ -203,8 +207,9 @@ public sealed partial class LayoutEditorWindow : Window
         _mine.Visibility = _showMine ? Visibility.Visible : Visibility.Collapsed;
         _buffs.Visibility = _showMine && _s.Buffs.Detached ? Visibility.Visible : Visibility.Collapsed;
         _debuffs.Visibility = _showMine && _s.Debuffs.Raid != Raid.없음 ? Visibility.Visible : Visibility.Collapsed;
+        _judgment.Visibility = _showMine && _s.Judgment.On(_s.ActiveCharacter) ? Visibility.Visible : Visibility.Collapsed;
         foreach (var p in _peers) p.Visibility = _showParty ? Visibility.Visible : Visibility.Collapsed;
-        OverlayRenderer[] all = [_mine, _buffs, _debuffs, .. _peers];
+        OverlayRenderer[] all = [_mine, _buffs, _debuffs, _judgment, .. _peers];
         foreach (var r in all)
         {
             r.Refresh();
@@ -223,7 +228,7 @@ public sealed partial class LayoutEditorWindow : Window
 
     // ── dragging ───────────────────────────────────────────────────────────────────
 
-    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _debuffs ? _s.Debuffs : _s.Overlay;
+    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : _s.Overlay;
 
     void OnDown(object sender, MouseButtonEventArgs e)
     {
@@ -349,7 +354,7 @@ public sealed partial class LayoutEditorWindow : Window
     /// <summary>The pointer is on a box's corner grip that a drag would resize (칸 옮기기 on).</summary>
     bool OverGrip(MouseEventArgs e)
     {
-        if (!_moveBoxes || _play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r.ShowsReceivedLayout) return false;
+        if (!_moveBoxes || _play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _judgment || r.ShowsReceivedLayout) return false;
         var at = e.GetPosition(r);
         if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
         return r.PartAt(at) is var (_, rect) && InGrip(rect, at);
@@ -419,7 +424,9 @@ public sealed partial class LayoutEditorWindow : Window
         p.Children.Add(Heading("내 오버레이"));
         p.Children.Add(Line(ColorButton("판 색", () => _s.Overlay.PlateColor, v => _s.Overlay.PlateColor = v),
             // ponytail: G3 모르둠 is the only raid; turning it on picks that one. Remember the last raid when a second one exists.
-            _debuffWindow = Check("디버프 창", _s.Debuffs.Raid != Raid.없음, v => _s.Debuffs.Raid = v ? Raid.모르둠 : Raid.없음)));
+            _debuffWindow = Check("디버프 창", _s.Debuffs.Raid != Raid.없음, v => _s.Debuffs.Raid = v ? Raid.모르둠 : Raid.없음),
+            // 단심 is on per 직업각인: this turns it on or off for the character the editor shows.
+            Check("단심 창", _s.Judgment.On(_s.ActiveCharacter), v => { if (_s.ActiveCharacter is { } key) _s.Judgment.Set(key, v); })));
         // The buff bars: on the plate or in a window of their own (설정 → 버프's 분리된 창), and which way they lie
         // (세로: upright side by side; on the plate, left of it).
         p.Children.Add(SubLabel("버프 막대"));

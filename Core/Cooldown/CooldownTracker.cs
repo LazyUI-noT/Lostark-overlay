@@ -88,9 +88,11 @@ public static class CooldownTracker
         // recharge timer (live_test2 E, live test Q). That "1s" isn't the cooldown: the cast is recorded with no
         // EndsAt (no sweep), and the recharge timer that follows continues it below.
         // The cast flash can streak "1s" into "11" for a few frames (live test Q), so the recharge value must hold for
-        // LockoutConfirm first.
+        // LockoutConfirm first. The count comes ~150 ms after the "1s" (live_test2 E 4.08 s, live test Q 3.05 s), so a
+        // slot already known to stack takes the "1s" as the lockout without it: otherwise it was a 1 s cooldown whose
+        // end was chased for half a second, the sweep jumping near full, then restarting at the timer (user, 2026-10-13).
         bool lockout = prev is { Phase: SlotPhase.Cooldown, EndsAt: null };
-        if (value == 1 && r.Stacked && (prev.Phase != SlotPhase.Cooldown || lockout))
+        if (value == 1 && (r.Stacked || prev.StackSkill) && (prev.Phase != SlotPhase.Cooldown || lockout))
             return new SlotState(prev.Slot, SlotPhase.Cooldown, null, null, false, lockout ? prev.ChangedAt : t);
         if (lockout && prev.UsedAt is null && !(prev.Pending is { } seen && seen.Value == value && t - FirstSeen(seen) >= LockoutConfirm))
             return prev.Pending is { } same && same.Value == value ? prev : prev with { Pending = (value, lo + ChaseLead) };

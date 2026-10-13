@@ -215,6 +215,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     {
         _clips.Clear();
         if (DebuffsOnly) return DebuffPanelSize();
+        if (JudgmentOnly) return JudgmentPanelSize();
         _layout = BuildLayout();
         return _layout is { } l ? new Size(l.Plate.Right + Bleed, l.Plate.Bottom + Bleed) : new Size(0, 0);
     }
@@ -516,6 +517,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         _moving = _animating = false;
 
         if (DebuffsOnly) DrawDebuffs(dc, now, ms, reduced);
+        else if (JudgmentOnly) DrawJudgment(dc, now);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         _frameMs = _animating ? FastFrameMs : SlowFrameMs;
         SetLoop(_moving || _animating);

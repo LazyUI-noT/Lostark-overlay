@@ -36,7 +36,7 @@ public sealed class DemoSnapshots
 
     static bool Same(Snapshot a, Snapshot b) =>
         a.Slots.SequenceEqual(b.Slots) && a.AwakeningChanged == b.AwakeningChanged && a.Gauge == b.Gauge && a.Groups.SetEquals(b.Groups)
-        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs;
+        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment;
 
     /// <summary>The buff bars: 뎀증 from 0 s (20 s), 공증 from 1 s (8 s), 아덴피증 from 3 s (12 s) and 초각스피증 from
     /// 5 s (10 s); absent otherwise.</summary>
@@ -129,7 +129,8 @@ public sealed class DemoSnapshots
             double total = 10 + i, left = total * (0.25 + 0.2 * (i % 4));
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
-        var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) } };
+        var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
+            Judgment = new JudgmentState(at - Sec(3)) };   // 심판 on: both parts of the bar and the line show
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),

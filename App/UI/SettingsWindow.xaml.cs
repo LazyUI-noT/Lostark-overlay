@@ -282,6 +282,7 @@ public partial class SettingsWindow : Window
             _ => "맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다." + (_s.Adjusts.Count == 0 ? " 수동 조정은 디버그 창에서 위치를 적용한 뒤 고를 수 있습니다." : ""),
         }), modes));
         p.Children.Add(HelpRow("게임의 버프 크기 (%)", "게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기는 버프 크기를 찾지 않습니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽습니다.", BuffSizeCombo()));
+        p.Children.Add(HelpRow("게임의 데미지 폰트 크기 (%)", "게임 설정의 데미지 폰트 크기와 같게 맞춰 주세요. 단심(기타 탭)이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다.", FontSizeCombo()));
         if (mode == FitMode.직접입력 && _s.ManualHud is { } hud)
         {
             var hudSize = Combo();
@@ -350,6 +351,7 @@ public partial class SettingsWindow : Window
         p.Children.Add(ResetButton("오버레이 표시 되돌리기", "이 화면의 표시, 불투명도, 시간 숫자, 쿨타임 표시, 초각기 표시, 금색 테두리를 되돌립니다. 위치, 크기, 판 색은 남습니다.",
             () => SettingsResets.Display(_s)));
         FillBuffs();
+        FillJudgment();
     }
 
     /// <summary>How every box shows its cooldown: 칸 불투명도, 남은 시간 숫자 (and its size), 쿨타임 표시 (and 채움 방향).

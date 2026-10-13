@@ -121,8 +121,9 @@ public partial class App : Application
     OverlayWindow[] _peers = [];   // one per party slot
     OverlayWindow _buffs = null!;  // 버프 막대 따로 두기: your buff bars on their own
     OverlayWindow _debuffs = null!;   // 디버프: the chosen raid's debuffs and the swap count
+    OverlayWindow _judgment = null!;   // 단심 (설정 → 기타): 심판's cycle
     /// <summary>The windows besides yours that follow it: the party slots and the buff bars'.</summary>
-    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs];
+    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment];
     SettingsWindow _settingsWindow = null!;
     DebugWindow _debug = null!;
     Tray _tray = null!;
@@ -139,6 +140,7 @@ public partial class App : Application
         _peers = [.. Enumerable.Range(0, Membership.MaxMembers - 1).Select(i => new OverlayWindow(settings, i))];
         _buffs = new OverlayWindow(settings, buffs: true);
         _debuffs = new OverlayWindow(settings, debuffs: true);
+        _judgment = new OverlayWindow(settings, judgment: true);
         _settingsWindow = new SettingsWindow(settings, characters);
         _debug = new DebugWindow();
         _tray = new Tray();
@@ -312,6 +314,7 @@ public partial class App : Application
         foreach (var w in _peers) w.Visibility = _overlay.Visibility;
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
         _debuffs.Visibility = _settings.Debuffs.Raid != Raid.없음 ? _overlay.Visibility : Visibility.Hidden;
+        _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }
         _tray.SetOverlayVisible(_settings.Overlay.Visible);
     }
@@ -520,7 +523,10 @@ public partial class App : Application
             engine.Configure(new Engine.Config(new Dictionary<string, Fit>(settings.Fits), characters.AdenSlots, _debug.IsVisible,
                 ClassProfiles.Reads(settings, characters.AdenSlots), characters.Gauge, characters.ActiveClass?.AdenRects, characters.AdenDark,
                 characters.GaugeRule, wrongClass ? GaugeReadMode.Agreed : settings.Gauge.ReadMode, wrongClass ? null : settings.ActiveCharacter,
-                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts(), wrongClass ? null : characters.CoreWatches));
+                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts(), wrongClass ? null : characters.CoreWatches,
+                wrongClass || settings.ActiveCharacter is not { } active ? null : settings.StackSkillsOf(active),
+                !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
+                    ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -535,6 +541,7 @@ public partial class App : Application
             _overlay.Update(mine is not null ? new Player("", mine) : null);
             _buffs.Update(mine is not null ? new Player("", mine) : null);
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
+            _judgment.Update(mine is not null ? new Player("", mine) : null);
             ShowPeers(peers);
         }
 
@@ -575,6 +582,13 @@ public partial class App : Application
             OnSettingsChanged();   // also saves a newly learned emblem
         });
         engine.IconSeen += (slot, icon, run) => Dispatcher.BeginInvoke(() => OnIcon(slot, icon, run));
+        // Remembered for that 직업각인 (not the one active by the time this runs, if it changed).
+        engine.StackSkillLearned += (character, slot) => Dispatcher.BeginInvoke(() =>
+        {
+            if (!settings.AddStackSkill(character, slot)) return;
+            Configure();
+            Save(now: true);
+        });
         // A character picked by hand (tray, 설정 or first run, all through CharacterService.Pick): its emblem is learned.
         characters.Picked += engine.RequestEmblem;
         _settingsWindow.GainsResetRequested += () => { engine.ResetGains(); _tray.Notify($"{settings.ActiveCharacter}의 배운 게이지 값을 지웠습니다."); };
@@ -921,6 +935,7 @@ public partial class App : Application
             _overlay.Update(self);
             _buffs.Update(self);
             _debuffs.Update(self);
+            _judgment.Update(self);
             ShowPeers(peers);
             var now = Clock.Now();
             foreach (var st in self.Snapshot.Slots)

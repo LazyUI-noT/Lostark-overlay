@@ -29,7 +29,7 @@ public partial class SettingsWindow
     // One panel per section, refilled by the Fill methods.
     // Each a CardStack: its rows in Windows 11 setting cards, headings between them.
     readonly CardStack _secCharacter = new(), _secFit = new();
-    readonly CardStack _secDisplay = new(), _secSkills = new(), _secGauge = new(), _secBuffs = new(), _secPlace = new(), _secCopy = new();
+    readonly CardStack _secDisplay = new(), _secSkills = new(), _secGauge = new(), _secBuffs = new(), _secOther = new(), _secPlace = new(), _secCopy = new();
     readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
     readonly CardStack _secKeys = new(), _secHotkeys = new();
     readonly StackPanel _context = new();   // 편집 중: the class the class sections edit
@@ -87,7 +87,7 @@ public partial class SettingsWindow
             new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬창을 맞춥니다.",
                 ("캐릭터", _secCharacter), ("스킬창", _secFit)),
             new(AreaOverlay, "보고 싶은 요소를 고르고 미리보기로 확인하세요. 미리보기의 칸이나 게이지를 누르면 그 설정으로 갑니다.",
-                ("전체", _secDisplay), (SecSkills, _secSkills), ("아덴 게이지", _secGauge), (SecBuffs, _secBuffs), ("배치", _secPlace), ("복사", _secCopy)),
+                ("전체", _secDisplay), (SecSkills, _secSkills), ("아덴 게이지", _secGauge), (SecBuffs, _secBuffs), ("기타", _secOther), ("배치", _secPlace), ("복사", _secCopy)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
                 ("연결", _secConnect), (SecMembers, _secMembers), ("순서", _secOrder), ("보내기·받기", _secSend)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.",

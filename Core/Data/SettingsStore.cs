@@ -72,6 +72,14 @@ public sealed class SettingsStore(string path)
                     s.Cores ??= [];
                     foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
                         if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
+                    s.Judgment ??= new();
+                    s.Judgment.Characters ??= [];
+                    if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
+                    s.Judgment.Opacity = double.IsFinite(s.Judgment.Opacity) ? Math.Clamp(s.Judgment.Opacity, JudgmentSettings.MinOpacity, 1) : 1;
+                    s.StackSkills ??= [];
+                    foreach (var (key, slots) in s.StackSkills.ToList())   // a hand edit: null, or a name that isn't a slot
+                        if (slots is null) s.StackSkills.Remove(key);
+                        else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
                     (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
                     if (s.Overlay.AwakeningChangedColor.Equals("#FF7F27", StringComparison.OrdinalIgnoreCase))
                         s.Overlay.AwakeningChangedColor = new OverlaySettings().AwakeningChangedColor;   // 1.x default → red

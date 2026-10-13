@@ -81,6 +81,8 @@ public static class Geometry
     // HUD 110) and buff_gameplay.mp4 (120): the pitch is 22.25, 25.5, 28.75, 32, 35 — linear in the size but not
     // proportional to it — and the icon bottom rises 15 buff px above the baseline (930 at 80 to 924 at 120).
     public const int BuffBoxCount = 7, DebuffBoxCount = 5;
+    /// <summary>심판's icon can sit further along the row than the party buffs (user, 2026-10-13).</summary>
+    public const int JudgmentBoxCount = 10;
     const double RefBuffRight = 845, BuffBottomAboveBaseline = 15;
     // The baseline sits RefBuffBaseline (HUD-scaled) plus BuffBaselineFixed (viewport-scaled only) from the bottom: 941.6 at HUD
     // 110, and 1.32 px per HUD % (HUD{80..105}_buff120.png: box 0's bottom 964, 950, 937, 931; 924 at 110), not the 1.26 a fully
@@ -143,12 +145,25 @@ public static class Geometry
     public static (int[] Columns, int IconBottom) RowGrid(IReadOnlyList<BuffBox> boxes) =>
         ([.. boxes.Select(b => b.Timer.X).Append(boxes.Max(b => b.Timer.Right)).Distinct().Order()], boxes[0].Icon.Bottom);
 
-    /// <summary>The one rect to capture for the buff row: every box and timer.</summary>
-    public static PixelRect BuffArea(Viewport vp, Fit fit, int buffSize)
+    /// <summary>The one rect to capture for the buff row: every box and timer, of the first <paramref name="count"/> boxes.</summary>
+    public static PixelRect BuffArea(Viewport vp, Fit fit, int buffSize, int count = BuffBoxCount)
     {
-        var b = BuffBoxes(vp, fit, buffSize);
+        var b = BuffBoxes(vp, fit, buffSize, count);
         int x = b.Min(r => r.Timer.X), y = b.Min(r => r.Icon.Y);
         return new(x, y, b.Max(r => r.Timer.Right) - x, b.Max(r => r.Timer.Bottom) - y);
+    }
+
+    // ── 단심's text (the white "심판" over the character) ─────────────────────────────────────────────────────────────
+    // The camera keeps the character at the screen's centre: at 1080p its HP bar sat near (923, 373) and the text under it,
+    // 75–300% (단심75%.mp4 … 단심300%.mp4), within 440×300 from (740, 320).
+    const double JudgmentBandLeft = 220, JudgmentBandUp = 220, JudgmentBandWidth = 440, JudgmentBandHeight = 300;
+
+    /// <summary>The rect round the character where "심판" is written, in screen pixels; it scales with the viewport only.</summary>
+    public static PixelRect JudgmentBand(Viewport vp)
+    {
+        double k = vp.Height / ReferenceHeight;
+        return new((int)Math.Round(vp.X + vp.Width / 2.0 - JudgmentBandLeft * k), (int)Math.Round(vp.Y + vp.Height / 2.0 - JudgmentBandUp * k),
+            (int)Math.Round(JudgmentBandWidth * k), (int)Math.Round(JudgmentBandHeight * k));
     }
 
     // ── Debuff row and boss counts (PLAN §4 디버프) ───────────────────────────────────────────────────────────────────

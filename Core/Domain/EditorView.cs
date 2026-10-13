@@ -47,6 +47,7 @@ public static class WindowDefaults
     public const double PeerOffsetX = 160, PeerRow = 96;   // party slot i: left edge right of the centre, stacked
     public const double BuffsBelow = 40;            // the buff window's top this far under your default spot's bottom
     public const double DebuffsRight = 260;         // the debuff window this far right of the buff window's default spot
+    public const double JudgmentRight = -260;       // the 단심 window this far left of it
 
     /// <param name="width">The window's width (yours: to centre it).</param>
     /// <param name="height">The window's height (yours: its bottom sits <see cref="AboveBottom"/> up).</param>

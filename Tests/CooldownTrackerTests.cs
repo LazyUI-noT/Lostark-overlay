@@ -130,6 +130,41 @@ public class CooldownTrackerTests
     }
 
     [Fact]
+    public void A_known_stack_skills_lockout_is_one_cast_even_before_its_count_shows()
+    {
+        // live_test2 E 4.08 s, live test Q 3.05 s: the count beside "1s" comes ~150 ms after the cast. Without it the "1s"
+        // was taken for a 1 s cooldown whose end was chased 50 ms at a time: the sweep jumped between 80 and 97 % for half a
+        // second, then restarted at the recharge timer (user, 2026-10-13). A slot known to stack waits for the timer.
+        var s = ReadyAt(-1) with { StackSkill = true };
+        int casts = 0;
+        double last = 0;
+        for (int k = 0; k * Frame <= 2.5; k++)
+        {
+            double t = k * Frame;
+            var r = t < 0.6 ? Sec(1, t) with { Stacked = t >= 0.15 } : Game(t, 9.3) with { Stacked = true };
+            var next = CooldownTracker.Update(s, r);
+            if (IsNewCast(s, next)) casts++;
+            s = next;
+            if (t < 0.6) Assert.Null(s.Progress(S(t)));
+            else if (s.Progress(S(t)) is { } p)
+            {
+                Assert.True(p >= last - 1e-9, $"sweep went back at {t:0.000}");
+                last = p;
+            }
+        }
+        Assert.Equal(1, casts);
+        Assert.Equal(TimeSpan.Zero, s.ChangedAt);
+        Near(9.3, s.EndsAt);
+    }
+
+    [Fact]
+    public void An_unknown_slots_1s_without_a_count_is_still_an_ordinary_cooldown()
+    {
+        var s = CooldownTracker.Update(ReadyAt(-1), Sec(1, 0));
+        Assert.NotNull(s.EndsAt);   // a real last second of a skill not known to stack
+    }
+
+    [Fact]
     public void A_lockout_that_turns_unreadable_ends_on_the_timer()
     {
         var s = CooldownTracker.Update(ReadyAt(-1), Sec(1, 0) with { Stacked = true });

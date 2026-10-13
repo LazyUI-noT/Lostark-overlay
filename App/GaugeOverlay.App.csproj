@@ -20,7 +20,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>GaugeOverlay.App</RootNamespace>
     <AssemblyName>GaugeOverlay</AssemblyName>
-    <Version>0.9.1</Version>
+    <Version>0.10.0</Version>
   </PropertyGroup>
 
   <!-- WinForms is only here for NotifyIcon; keep its names out of the global namespace. -->

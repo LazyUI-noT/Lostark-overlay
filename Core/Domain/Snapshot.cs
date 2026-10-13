@@ -26,6 +26,9 @@ public sealed record Snapshot(
     /// <summary>Your debuffs and the boss's counts (PLAN §4 디버프); yours only, null when no raid is chosen.</summary>
     public DebuffStatus? Debuffs { get; init; }
 
+    /// <summary>단심's cycle (yours only); null when it is off for the active character.</summary>
+    public JudgmentState? Judgment { get; init; }
+
     public SlotState this[SlotId slot] => Slots[(int)slot];
 
     public static Snapshot Empty(TimeSpan at) => new(

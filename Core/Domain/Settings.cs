@@ -27,6 +27,7 @@ public sealed class Settings
     public PartySettings Party { get; set; } = new();
     public BuffSettings Buffs { get; set; } = new();
     public DebuffSettings Debuffs { get; set; } = new();
+    public JudgmentSettings Judgment { get; set; } = new();
     public UpdateSettings Updates { get; set; } = new();
     /// <summary>설정's colour theme (the window only; the overlay's colours are its own).</summary>
     public UiTheme Theme { get; set; } = UiTheme.DeepTeal;
@@ -61,6 +62,24 @@ public sealed class Settings
 
     /// <summary>Saves <paramref name="choice"/> (digits clamped to 1–3) for <paramref name="characterKey"/> only.</summary>
     public void SetCore(string characterKey, CoreChoice choice) => Cores[characterKey] = choice.Clamped();
+
+    /// <summary>Slots learned as stack skills per "클래스 · 직업각인" (<see cref="CharacterKey"/>): a count seen at 스킬창 맞추기 or
+    /// beside timers in play. Never forgotten; a stack can come from the skill, a tripod or a core (user, 2026-10-13).
+    /// Slot names, not SlotId: a name that isn't one (a hand edit) is skipped, where an enum would fail the whole file.</summary>
+    public Dictionary<string, List<string>> StackSkills { get; set; } = [];
+
+    public IReadOnlyList<SlotId> StackSkillsOf(string characterKey) =>
+        [.. (StackSkills.GetValueOrDefault(characterKey) ?? []).Select(n => Enum.TryParse<SlotId>(n, out var s) && s.ToString() == n ? s : (SlotId?)null)
+            .OfType<SlotId>().Distinct()];
+
+    /// <summary>Remembers <paramref name="slot"/> as a stack skill of <paramref name="characterKey"/>; false if it was known.</summary>
+    public bool AddStackSkill(string characterKey, SlotId slot)
+    {
+        var known = StackSkillsOf(characterKey);
+        if (known.Contains(slot)) return false;
+        StackSkills[characterKey] = [.. known.Append(slot).Select(s => s.ToString())];
+        return true;
+    }
 
     /// <summary>The 직업각인 last played per class (picked by hand or read off the bar): a class detected with one takes it
     /// and its 직업각인 isn't read again until asked (직업각인 다시 감지).</summary>
@@ -211,7 +230,7 @@ public sealed class Settings
         o.ReadyCountColor = e.ReadyCountColor;
         (o.GoldColor, o.GoldThickness, o.AwakeningChangedColor, o.LayoutSnap, o.LayoutLinkSizes) =
             (e.GoldColor, e.GoldThickness, e.AwakeningChangedColor, e.LayoutSnap, e.LayoutLinkSizes);
-        (Buffs, Debuffs, Gauge, GaugeBars) = (edited.Buffs, edited.Debuffs, edited.Gauge, edited.GaugeBars);
+        (Buffs, Debuffs, Judgment, Gauge, GaugeBars) = (edited.Buffs, edited.Debuffs, edited.Judgment, edited.Gauge, edited.GaugeBars);
         var (p, ep) = (Party, edited.Party);
         (p.Together, p.Left, p.Top, p.PlateColor) = (ep.Together, ep.Left, ep.Top, ep.PlateColor);
         for (int i = 0; i < Math.Min(p.ShowOthersBySlot.Count, ep.ShowOthersBySlot.Count); i++)

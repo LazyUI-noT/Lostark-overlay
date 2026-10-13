@@ -123,6 +123,10 @@ $lt = Join-Path $VideoDir 'live test.mp4'
 Cut 'lt_6_초각스' $lt '초각스' 110 11.62 0.016
 Cut 'lt_3_초각스' $lt '초각스' 110 14.62 0.016
 Cut 'lt_1_일반1' $lt '일반1' 110 14.44 0.016
+# A stack skill's first cast, every frame for 1.2 s: "1s" without its count for ~150 ms, the count, then the recharge timer
+# (E 4.08 s, Q 3.05 s). The sweep must not jump in it (CooldownTracker: a known stack skill's "1s" is the lockout).
+Cut 'lt2_lockout_일반3' $lt2 '일반3' 110 4.0 1.2
+Cut 'lt_lockout_일반1' $lt '일반1' 110 3.0 1.2
 # gameplay.mp4 (HUD 100) just after S is cast: the white sweep line at 12 o'clock over "8s" matched a tens '1'
 # overlapping the 8, so it read 18 for three frames.
 Cut 'gameplay_8_일반6' (Join-Path $VideoDir 'gameplay.mp4') '일반6' 100 23.24 0.016
@@ -418,3 +422,41 @@ $chain = Join-Path $ref 'chainSkill.mp4'
 Cut 'chain_W_1' $chain '일반2' 110 1.4 2.2
 Cut 'chain_W_2' $chain '일반2' 110 7.0 2.0
 Cut 'chain_Q' $chain '일반1' 110 13.2 1.6
+
+# 단심 (단죄/심판 rune; 1080p, HUD 110, buff 120% like buff_gameplay). The buff row's right end, boxes 0–3: 심판 replaces
+# 단죄 in box 0 at 48.2 s ("5초", "4초" from 49.15 s) to the clip's end (53.4 s); 10 fps.
+# 단죄여려번.mp4: 단죄 many times and an unrelated blue spear buff (~8 s) beside it, no 심판; 4 fps.
+function CutFps($name, $src, $slot, $hud, $r, $fps, $start = $null, $duration = $null) {
+  $ffArgs = @('-v', 'info', '-y')
+  if ($null -ne $start) { $ffArgs += @('-ss', "$start") }
+  if ($null -ne $duration) { $ffArgs += @('-t', "$duration") }
+  $ffArgs += @('-i', $src, '-vf', "fps=$fps,format=bgra,crop=$($r[2]):$($r[3]):$($r[0]):$($r[1]),showinfo", '-f', 'rawvideo', '-pix_fmt', 'bgra', (Join-Path $out "$name.bgra"))
+  $log = & ffmpeg @ffArgs 2>&1 | Out-String
+  $pts = [regex]::Matches($log, 'pts_time:([0-9.]+)') | ForEach-Object { [double]$_.Groups[1].Value + [double]($start ?? 0) }
+  [ordered]@{ source = (Split-Path $src -Leaf); slot = $slot; hud = $hud; rect = $r; width = $r[2]; height = $r[3]; pts = @($pts) } |
+    ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM (Join-Path $out "$name.json")
+  Write-Host "$name  $($pts.Count) frame(s)  rect $($r -join ',')"
+}
+$jd = Join-Path $ref '단죄 폰트 변경 + 심판 효과 at 100%.mp4'
+$dz = Join-Path $ref '단죄여려번.mp4'
+CutFps 'judg_row' $jd 'buffs' 110 @(700, 886, 150, 60) 10 47.5 8.0
+CutFps 'dz_row' $dz 'buffs' 110 @(700, 886, 150, 60) 4
+# The text over the character (the player's orange bar near (923, 373), 440×300 under it). 심판 fades in at 48.18 s, large,
+# and settles by 48.4 s; 10 fps. Single frames of 단죄 at each 데미지 폰트 size the clip switches to, and 슈퍼차지.
+$tb = @(740, 320, 440, 300)
+CutFps 'judg_text' $jd 'text' 110 $tb 10 48.0 1.6
+foreach ($f in @(@('dz_text_100a', 2.24), @('dz_text_200b', 15.41), @('dz_text_150', 15.92), @('dz_text_200', 24.51),
+    @('dz_text_300a', 37.0), @('dz_text_300b', 37.25), @('dz_text_100b', 46.69), @('super_text', 47.69))) {
+  CutRect $f[0] $jd 'text' 110 $tb $f[1] 0.016
+}
+# 단심75%.mp4 … 단심300%.mp4 (the same setup, one 심판 each at that 데미지 폰트 size): 1.6 s round it at 5 fps, and 단죄 at 75%.
+foreach ($f in @(@('judg_text_75', '단심75%.mp4', 2.0), @('judg_text_150', '단심150%.mp4', 2.0), @('judg_text_200', '단심 200%.mp4', 2.3),
+    @('judg_text_300', '단심300%.mp4', 2.8))) {
+  CutFps $f[0] (Join-Path $ref $f[1]) 'text' 110 $tb 5 $f[2] 1.6
+}
+CutRect 'dz_text_75' (Join-Path $ref '단심75%.mp4') 'text' 110 $tb 1.25 0.016
+# Busy combat round the character (damage numbers at every size, 헤드 어택, 65, effects), no 심판: negatives.
+foreach ($f in @(@('busy_300a', '단심300%.mp4', 0.6), @('busy_300b', '단심300%.mp4', 1.2), @('busy_200', '단심 200%.mp4', 0.8),
+    @('busy_150', '단심150%.mp4', 1.0), @('busy_100a', '단죄 폰트 변경 + 심판 효과 at 100%.mp4', 33.6), @('busy_100b', '단죄 폰트 변경 + 심판 효과 at 100%.mp4', 34.8))) {
+  CutRect $f[0] (Join-Path $ref $f[1]) 'text' 110 $tb $f[2] 0.016
+}

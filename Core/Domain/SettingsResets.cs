@@ -22,6 +22,14 @@ public static class SettingsResets
         s.Buffs = new() { Left = b.Left, Top = b.Top, Width = b.Width, Height = b.Height };
     }
 
+    /// <summary>내 오버레이 → 기타 → 단심: how it is read and shown; the 직업각인 it is on for, the game's 데미지 폰트 크기 and
+    /// the window's place and size stay.</summary>
+    public static void Judgment(Settings s)
+    {
+        var j = s.Judgment;
+        s.Judgment = new() { Characters = j.Characters, FontSize = j.FontSize, Left = j.Left, Top = j.Top, Width = j.Width, Height = j.Height };
+    }
+
     /// <summary>내 오버레이 → 버프/디버프 → 디버프: the 디버프 칸 크기; the raid chosen and the window's place and size stay.</summary>
     public static void Debuffs(Settings s) => s.Debuffs.Boxes.Clear();
 
@@ -61,6 +69,7 @@ public static class SettingsResets
         Display(s);
         Buffs(s);
         Debuffs(s);
+        Judgment(s);
         Gauge(s);
         Classes(s);
         Party(s);

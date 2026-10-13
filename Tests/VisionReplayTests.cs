@@ -107,6 +107,35 @@ public class VisionReplayTests(ITestOutputHelper log)
         }
     }
 
+    // A stack skill's first cast, every recorded frame: "1s" without its count for ~150 ms, then with it, then the recharge
+    // timer. Known to stack, the slot shows no sweep in the lockout and one that never goes back after it (the sweep had
+    // jumped 84 times in the first 1.2 s of these casts, user 2026-10-13).
+    [Theory]
+    [InlineData("lt2_lockout_일반3")]
+    [InlineData("lt_lockout_일반1")]
+    public void A_known_stack_skills_first_cast_sweeps_without_jumps(string name)
+    {
+        var f = Fixture.Load(name);
+        var slot = Enum.Parse<SlotId>(f.Slot);
+        var digits = new DigitReader(1);
+        var s = new SlotState(slot, SlotPhase.Ready, null, null, false, f.Pts[0] - TimeSpan.FromSeconds(1), StackSkill: true);
+        double? last = null;
+        int casts = 0;
+        for (int i = 0; i < f.Frames.Count; i++)
+        {
+            var r = SlotClassifier.Read(slot, f.Frames[i], f.Pts[i], null, digits);
+            var next = Core.Cooldown.CooldownTracker.Update(Core.Cooldown.CooldownTracker.Advance(s, f.Pts[i]), r);
+            if (next.Phase == SlotPhase.Cooldown && (s.Phase != SlotPhase.Cooldown || next.ChangedAt != s.ChangedAt)) casts++;
+            s = next;
+            var p = s.Phase == SlotPhase.Cooldown ? s.Progress(f.Pts[i]) : null;
+            if (r is { Kind: ReadKind.Seconds, Value: 1 }) Assert.True(p is null, $"sweep {p:0.00} in the lockout at {f.Pts[i].TotalSeconds:0.000}");
+            if (p is { } now && last is { } before) Assert.True(now >= before - 1e-9, $"sweep went back at {f.Pts[i].TotalSeconds:0.000}");
+            if (p is not null) last = p;
+        }
+        Assert.Equal(1, casts);
+        Assert.NotNull(last);   // the recharge timer was reached and swept
+    }
+
     // A stack skill recharging with a use left shows its count ("1") beside the timer; ordinary cooldowns show none.
     [Theory]
     [InlineData("lt2_stack1_일반3", true)]
