@@ -80,6 +80,14 @@ public class UpdateCheckTests
     public void Only_a_higher_version_is_an_update(string latest, string current, bool newer) =>
         Assert.Equal(newer, UpdateCheck.IsNewer(Version.Parse(latest), Version.Parse(current)));
 
+    // A.B changes: the party can't mix it with this version, so the update button warns (user, 2026-10-13).
+    [Theory]
+    [InlineData("0.11.2", "0.11.1.0", false)]
+    [InlineData("0.12.0", "0.11.1.0", true)]
+    [InlineData("1.0.0", "0.11.1.0", true)]
+    public void A_major_or_minor_change_breaks_the_party(string latest, string current, bool breaks) =>
+        Assert.Equal(breaks, UpdateCheck.BreaksParty(Version.Parse(latest), Version.Parse(current)));
+
     [Fact]
     public void The_zip_must_match_its_sha256_file()
     {

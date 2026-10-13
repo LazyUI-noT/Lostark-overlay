@@ -62,7 +62,32 @@ public partial class SettingsWindow
     public void SetUpdateBusy(bool busy)
     {
         _update.IsEnabled = !busy;
-        _update.Content = busy ? "업데이트 받는 중…" : _release is { } r ? $"{r.Tag} 받기" : "업데이트 확인";
+        _update.Content = busy ? "업데이트 받는 중…" : _release is { } r ? UpdateLabel(r) : "업데이트 확인";
+        _update.ToolTip = !busy && _release is { } b && UpdateCheck.BreaksParty(b.Version, Updater.Current)
+            ? "큰 업데이트입니다. 업데이트하면 이전 버전을 쓰는 파티원과 파티를 함께 할 수 없으니, 파티원도 모두 업데이트해야 합니다." : null;
+    }
+
+    /// <summary>"vX 받기", with a yellow warning triangle in front when the update changes A or B of A.B.x (user, 2026-10-13).</summary>
+    static object UpdateLabel(Release r)
+    {
+        var text = $"{r.Tag} 받기";
+        if (!UpdateCheck.BreaksParty(r.Version, Updater.Current)) return text;
+        const double Size = 14;
+        var sign = new Grid { Width = Size, Height = Size, Margin = new(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        sign.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 7,0.5 L 13.5,13 L 0.5,13 Z"), Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xC8, 0x00)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x80, 0x60, 0x00)), StrokeThickness = 0.8, StrokeLineJoin = PenLineJoin.Round,
+        });
+        sign.Children.Add(new TextBlock
+        {
+            Text = "!", FontWeight = FontWeights.Bold, FontSize = 10, Foreground = Brushes.Black,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(0, 0, 0, 0.5),
+        });
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(sign);
+        row.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        return row;
     }
 
     /// <summary>The answer to 업데이트 확인: a newer release turns the button into "vX 받기"; otherwise it says 최신 버전입니다

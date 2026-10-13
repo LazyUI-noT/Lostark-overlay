@@ -72,7 +72,8 @@ public sealed class DemoSnapshots
 
         double gauge = t < 20 ? Math.Floor(t * 2) / 40 : 0.2;
         SlotState Lit(SlotId id) => State(id) with { Gold = id is SlotId.일반3 or SlotId.일반4 && t is >= 12 and < 18 };   // gold frame
-        return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist) };
+        return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist),
+            Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)) };   // 심판 at 1 s: its 6 s, then the 24 s cooldown
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap

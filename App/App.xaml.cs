@@ -825,17 +825,24 @@ public partial class App : Application
         if (settings.Updates.Check) _ = CheckForUpdate();
         ShowWhatsNew();
 
-        // The first start after an update: what changed, once. Dropped if this isn't the version that was installed.
+        // The first start after an update: 설정 opens again, as it was when the update was started from it (user, 2026-10-13),
+        // with what changed over it, once. The notes are dropped if this isn't the version that was installed.
         void ShowWhatsNew()
         {
             var (tag, notes) = (settings.Updates.WhatsNewTag, settings.Updates.WhatsNew);
             if (tag.Length == 0) return;
             (settings.Updates.WhatsNewTag, settings.Updates.WhatsNew) = ("", "");
             Save(now: true);
-            if (!Version.TryParse(tag.TrimStart('v'), out var installed) || UpdateCheck.IsNewer(installed, Updater.Current) || UpdateCheck.IsNewer(Updater.Current, installed)) return;
-            Dispatcher.BeginInvoke(() => MessageBox.Show(
-                notes.Length > 0 ? $"{tag}(으)로 업데이트했습니다.\n\n{notes}" : $"{tag}(으)로 업데이트했습니다.",
-                "GaugeOverlay 업데이트", MessageBoxButton.OK, MessageBoxImage.Information), DispatcherPriority.ApplicationIdle);
+            bool installed = Version.TryParse(tag.TrimStart('v'), out var version)
+                && !UpdateCheck.IsNewer(version, Updater.Current) && !UpdateCheck.IsNewer(Updater.Current, version);
+            Dispatcher.BeginInvoke(() =>
+            {
+                _settingsWindow.Show();
+                _settingsWindow.Activate();
+                if (installed)
+                    MessageBox.Show(_settingsWindow, notes.Length > 0 ? $"{tag}(으)로 업데이트했습니다.\n\n{notes}" : $"{tag}(으)로 업데이트했습니다.",
+                        "GaugeOverlay 업데이트", MessageBoxButton.OK, MessageBoxImage.Information);
+            }, DispatcherPriority.ApplicationIdle);
         }
 
         async Task CheckForUpdate()
@@ -915,7 +922,14 @@ public partial class App : Application
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",
         };
         settings.ActiveCharacter = "워로드 · 고독한기사";
+        if (args.Contains("--judgment")) { settings.Judgment.Set("워로드 · 고독한기사", true); (settings.Judgment.Left, settings.Judgment.Top) = (828, 588); }   // above the demo overlay
         if (args.Contains("--cores")) settings.SetCore("워로드 · 고독한기사", new CoreChoice { Apply = true, Sun = 3 }.WithSlot("버스트 캐넌", SlotId.일반3));
+        if (Flag("cores") == "전투태세")   // 전투태세 active, 해 2 with 방패 돌진 on R (일반4)
+        {
+            settings.Characters["워로드 · 전투태세"] = new CharacterSettings { ClassFamily = "워리어", Class = "워로드", Subclass = "전투태세" };
+            settings.ActiveCharacter = "워로드 · 전투태세";
+            settings.SetCore("워로드 · 전투태세", new CoreChoice { Apply = true, Sun = 2 }.WithSlot("방패 돌진", SlotId.일반4));
+        }
         if (args.Contains("--bar"))
         {
             var bar = GaugeBar.Edit(settings, "워로드", "고독한기사");
@@ -953,6 +967,8 @@ public partial class App : Application
         UpdateVisibility();
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
+        if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
+            _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
         if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);
         if (args.Contains("--first-run")) { var first = ShowFirstRun(ApplyUi); first.FitRequested += () => first.SetFitResult(true, demoFit); }
         if (args.Contains("--debug") || args.Contains("--adjust")) { _debug.Capturable = true; _debug.Show(); }

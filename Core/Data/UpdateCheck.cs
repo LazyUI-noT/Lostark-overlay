@@ -46,6 +46,10 @@ public static class UpdateCheck
     /// <summary>Compares major.minor.build only: the exe's version carries a revision (1.0.5.0), a tag doesn't (v1.0.5).</summary>
     public static bool IsNewer(Version latest, Version current) => Plain(latest) > Plain(current);
 
+    /// <summary>True when <paramref name="latest"/> changes A or B of A.B.x: parties need the same A.B, so after it this version
+    /// can't party with those who don't update.</summary>
+    public static bool BreaksParty(Version latest, Version current) => latest.Major != current.Major || latest.Minor != current.Minor;
+
     static Version Plain(Version v) => new(v.Major, v.Minor, Math.Max(v.Build, 0));
 
     /// <summary>Release notes as plain lines for the "what's new" message: "### 새 기능" headings become "[새 기능]" with a blank

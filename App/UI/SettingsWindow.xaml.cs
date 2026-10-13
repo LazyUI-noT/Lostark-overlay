@@ -626,73 +626,79 @@ public partial class SettingsWindow : Window
         return p;
     }
 
-    /// <summary>캐릭터: 직업군 → 클래스 → 직업각인. Picking the 직업각인 makes that "클래스 · 직업각인" character active, as the tray does;
-    /// 직업군 <see cref="Default"/> is 기본, no class.</summary>
+    /// <summary>캐릭터 (user, 2026-10-13: fewer picks): one 클래스 list, <see cref="Default"/> (기본, no class) then every class under
+    /// its 직업군 heading as in the tray, then 직업각인. Picking a class picks the 직업각인 last used for it
+    /// (<see cref="Settings.SubclassHistory"/>), or opens the 직업각인 list when there is none. Picking the 직업각인 makes that
+    /// "클래스 · 직업각인" character active, as the tray does.</summary>
     internal static UIElement BuildCharacterPanel(Settings s, CharacterService chars, Action changed)
     {
-        var classes = chars.ClassTree.ToDictionary(f => f.Family, f => f.Classes.ToDictionary(c => c.Class, c => c.Subclasses));
-        var family = Combo();
+        var tree = chars.ClassTree.Select(f => (f.Family, Classes: f.Classes.ToList())).ToList();
+        var family = tree.SelectMany(f => f.Classes.Select(c => (c.Class, f.Family))).ToDictionary(x => x.Class, x => x.Family);
+        var subsOf = tree.SelectMany(f => f.Classes).ToDictionary(c => c.Class, c => c.Subclasses);
         var cls = Combo();
         var sub = Combo();
         var p = new StackPanel();
-        var hint = Note("직업군 → 클래스 → 직업각인 순서로 고르세요. 직업각인까지 골라야 이 캐릭터로 저장됩니다.");
+        var hint = Note("직업각인까지 골라야 이 캐릭터로 저장됩니다.");
         p.Children.Add(hint);
-        p.Children.Add(Row("직업군", family));
         p.Children.Add(Row("클래스", cls));
         p.Children.Add(Row("직업각인", sub));
 
         // The choice in progress; nothing is stored until a 직업각인 is picked, which goes through CharacterService.Pick as
         // the tray does: that character becomes active (added the first time) and the others, with their emblems, stay.
         var cur = s.ActiveCharacter is { } k && s.Characters.TryGetValue(k, out var found) ? found : null;
-        string? pickedFamily = cur?.ClassFamily, pickedClass = cur?.Class;
+        string? pickedClass = cur?.Class;
         bool sync = false;
 
-        void Set(ComboBox cb, IEnumerable<object> items, Func<object, bool> selected)
+        // 직업군 headings are items that can't be picked.
+        var items = new List<object> { Default };
+        foreach (var (fam, classes) in tree)
+        {
+            items.Add(new ComboBoxItem { Content = $"── {fam} ──", IsEnabled = false, Opacity = 0.7 });
+            items.AddRange(classes.Select(c => c.Class));
+        }
+
+        void Set(ComboBox cb, IEnumerable<object> list, Func<object, bool> selected)
         {
             sync = true;
-            cb.ItemsSource = items.ToList();
+            cb.ItemsSource = list.ToList();
             cb.SelectedItem = cb.Items.Cast<object>().FirstOrDefault(selected);
             sync = false;
         }
-        IReadOnlyList<string> Subs() => pickedFamily is { } f && classes.TryGetValue(f, out var fc) && pickedClass is { } c
-            && fc.TryGetValue(c, out var subs) ? subs : [];
-        void FillClasses() => Set(cls, pickedFamily is { } f && classes.TryGetValue(f, out var fc) ? fc.Keys : [], o => (string)o == pickedClass);
         void FillSubs()
         {
-            bool same = cur is not null && cur.ClassFamily == pickedFamily && cur.Class == pickedClass;
-            Set(sub, Subs(), o => same && (string)o == cur!.Subclass);
-            hint.Visibility = sub.SelectedItem is null ? Visibility.Visible : Visibility.Collapsed;
+            bool same = cur is not null && cur.Class == pickedClass;
+            Set(sub, pickedClass is { } c && subsOf.TryGetValue(c, out var subs) ? subs : [], o => same && (string)o == cur!.Subclass);
+            hint.Visibility = pickedClass is not null && sub.SelectedItem is null ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        family.SelectionChanged += (_, _) =>
-        {
-            if (sync || family.SelectedItem is not string f) return;
-            (pickedFamily, pickedClass) = (f, null);
-            FillClasses(); FillSubs();
-            if (f != Default) return;
-            chars.PickDefault();   // no class: 기본 at once, nothing further to pick
-            cur = null;
-            hint.Visibility = Visibility.Collapsed;
-            changed();
-        };
         cls.SelectionChanged += (_, _) =>
         {
             if (sync || cls.SelectedItem is not string v) return;
+            if (v == Default)
+            {
+                pickedClass = null;
+                FillSubs();
+                chars.PickDefault();   // no class: 기본 at once, nothing further to pick
+                cur = null;
+                changed();
+                return;
+            }
             pickedClass = v;
             FillSubs();
+            if (s.SubclassHistory.TryGetValue(v, out var last) && sub.Items.Contains(last)) sub.SelectedItem = last;   // picks it
+            else sub.Dispatcher.BeginInvoke(() => sub.IsDropDownOpen = true);
         };
         sub.SelectionChanged += (_, _) =>
         {
-            if (sync || sub.SelectedItem is not string v || pickedFamily is null || pickedClass is null) return;
-            chars.Pick(pickedFamily, pickedClass, v);
+            if (sync || sub.SelectedItem is not string v || pickedClass is null) return;
+            chars.Pick(family[pickedClass], pickedClass, v);
             cur = s.Characters[s.ActiveCharacter!];
             hint.Visibility = Visibility.Collapsed;
             changed();
         };
 
-        Set(family, [Default, .. classes.Keys], o => (string)o == (pickedFamily ?? Default));
-        FillClasses(); FillSubs();
-        if (cur is null) hint.Visibility = Visibility.Collapsed;
+        Set(cls, items, o => o is string c && c == (pickedClass ?? Default));
+        FillSubs();
         return p;
     }
 
