@@ -75,51 +75,59 @@ public sealed partial class OverlayRenderer
         double Font(Rect r) => Math.Round(r.Height * DebuffTextShare / TimerFontStep) * TimerFontStep;
         Rect Cell(int i) => cells[i];
 
+        bool hide = Settings.Debuffs.HideWhenEmpty;   // 비었을 때 숨기기: a box with nothing on it
         var mine = d.Colour;
-        if (mine is { } sigil)
+        Faint(dc, hide && mine is null, () =>
         {
-            bool red = sigil == DebuffKind.빨강;
-            dc.DrawImage(SigilIcons[red ? 1 : 0], Cell(0));   // the game's own icon
-            var edge = Cell(0);
-            edge.Inflate(-SigilOutline / 2, -SigilOutline / 2);   // the stroke stays inside the box
-            dc.DrawRectangle(null, new Pen(Solid(red ? DebuffRed : DebuffBlue), SigilOutline), edge);
-        }
-        else
-        {
-            dc.DrawRectangle(Solid(DebuffEmpty), null, Cell(0));
-            DrawOutlined(dc, Cell(0), "?", Font(Cell(0)));
-        }
-
+            if (mine is { } sigil)
+            {
+                bool red = sigil == DebuffKind.빨강;
+                dc.DrawImage(SigilIcons[red ? 1 : 0], Cell(0));   // the game's own icon
+                var edge = Cell(0);
+                edge.Inflate(-SigilOutline / 2, -SigilOutline / 2);   // the stroke stays inside the box
+                dc.DrawRectangle(null, new Pen(Solid(red ? DebuffRed : DebuffBlue), SigilOutline), edge);
+            }
+            else
+            {
+                dc.DrawRectangle(Solid(DebuffEmpty), null, Cell(0));
+                DrawOutlined(dc, Cell(0), "?", Font(Cell(0)));
+            }
+        });
         var swap = Cell(1);
-        if (d.Swap is null) dc.DrawRectangle(Solid(DebuffEmpty), null, swap);   // the advice shows only while the swap is on you
-        else if (mine is { } m && DebuffAdvice.Bring(m, d.BossRed, d.BossBlue) is { } b)
+        Faint(dc, hide && d.Swap is null, () =>
         {
-            // The whole box in the colour to bring, outlined in the other colour, the count in white.
-            bool red = b.Colour == DebuffKind.빨강;
-            var inside = swap;
-            inside.Inflate(-SwapOutline / 2, -SwapOutline / 2);   // the stroke stays inside the box
-            dc.DrawRectangle(Solid(red ? DebuffRed : DebuffBlue), new Pen(Solid(red ? DebuffBlue : DebuffRed), SwapOutline), inside);
-            DrawOutlined(dc, swap, b.Count.ToString(CultureInfo.InvariantCulture), Font(swap), Colors.White);
-        }
-        else
-        {
-            dc.DrawRectangle(Solid(DebuffEmpty), null, swap);
-            DrawOutlined(dc, swap, "?", Font(swap));
-        }
-
+            if (d.Swap is null) dc.DrawRectangle(Solid(DebuffEmpty), null, swap);   // the advice shows only while the swap is on you
+            else if (mine is { } m && DebuffAdvice.Bring(m, d.BossRed, d.BossBlue) is { } b)
+            {
+                // The whole box in the colour to bring, outlined in the other colour, the count in white.
+                bool red = b.Colour == DebuffKind.빨강;
+                var inside = swap;
+                inside.Inflate(-SwapOutline / 2, -SwapOutline / 2);   // the stroke stays inside the box
+                dc.DrawRectangle(Solid(red ? DebuffRed : DebuffBlue), new Pen(Solid(red ? DebuffBlue : DebuffRed), SwapOutline), inside);
+                DrawOutlined(dc, swap, b.Count.ToString(CultureInfo.InvariantCulture), Font(swap), Colors.White);
+            }
+            else
+            {
+                dc.DrawRectangle(Solid(DebuffEmpty), null, swap);
+                DrawOutlined(dc, swap, "?", Font(swap));
+            }
+        });
         var bolt = Cell(2);
         var duel = DuelPhase.At(d.Duelist, now);
-        if (d.Lightning is null && duel.Stage != DuelStage.None) DrawDuelist(dc, bolt, duel, ms, reduced, Font(bolt));
-        else if (d.Lightning is { } l)
+        Faint(dc, hide && d.Lightning is null && duel.Stage == DuelStage.None, () =>
         {
-            _animating |= !reduced;   // keeps the render loop running for the flash and the countdown
-            // Yellow with a black number, then black with a yellow one; steady yellow under reduced motion.
-            bool bright = reduced || ms % FlashMs < FlashMs / 2;
-            dc.DrawRectangle(Solid(bright ? LightningColor : Colors.Black), null, bolt);
-            DrawOutlined(dc, bolt, l.Seconds(now) is { } s ? s.ToString(CultureInfo.InvariantCulture) : "!", Font(bolt),
-                bright ? Colors.Black : LightningColor);
-        }
-        else dc.DrawRectangle(Solid(DebuffEmpty), null, bolt);
+            if (d.Lightning is null && duel.Stage != DuelStage.None) DrawDuelist(dc, bolt, duel, ms, reduced, Font(bolt));
+            else if (d.Lightning is { } l)
+            {
+                _animating |= !reduced;   // keeps the render loop running for the flash and the countdown
+                // Yellow with a black number, then black with a yellow one; steady yellow under reduced motion.
+                bool bright = reduced || ms % FlashMs < FlashMs / 2;
+                dc.DrawRectangle(Solid(bright ? LightningColor : Colors.Black), null, bolt);
+                DrawOutlined(dc, bolt, l.Seconds(now) is { } s ? s.ToString(CultureInfo.InvariantCulture) : "!", Font(bolt),
+                    bright ? Colors.Black : LightningColor);
+            }
+            else dc.DrawRectangle(Solid(DebuffEmpty), null, bolt);
+        });
     }
 
     /// <summary>The 결투자 in its box: the icon; during the countdown a white (then black) flash over it with the number

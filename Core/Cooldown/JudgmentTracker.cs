@@ -13,7 +13,7 @@ public static class JudgmentTracker
     {
         // A cycle that has run out is ready again, and wasn't read through its cooldown: what was seen before it is gone. A hidden
         // HUD shows nothing.
-        if (prev.TriggeredAt is { } end && now - end >= JudgmentState.Cycle) prev = JudgmentState.Ready;
+        if (prev.TriggeredAt is { } end && now - end >= JudgmentState.Cycle) prev = JudgmentState.Ready with { Previous = end };
         if (!hudVisible) prev = prev with { IconSeen = false, TextSince = null, TextTaken = false, Timer = null };
         if (!hudVisible) return prev;
         double? timer = read.Icon && read.Seconds is { } sec and > 0 and <= 6 ? sec : null;

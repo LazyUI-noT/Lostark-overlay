@@ -31,10 +31,15 @@ public class JudgmentSettingsTests
             s.Judgment.FontSize = 150;
             s.Judgment.Display = JudgmentDisplay.ReadyIcon;
             s.Judgment.OneColor = true;
+            (s.Judgment.Side, s.Judgment.HideWhenEmpty, s.Judgment.IconCooldown) = (true, true, true);
+            (s.Buffs.HideWhenEmpty, s.Debuffs.HideWhenEmpty) = (true, true);
             new SettingsStore(path).Save(s);
             var back = new SettingsStore(path).Load(out _).Judgment;
             Assert.True(back.On("워로드 · 고독한 기사"));
             Assert.Equal((JudgmentSource.Icon, 150, JudgmentDisplay.ReadyIcon, true), (back.Source, back.FontSize, back.Display, back.OneColor));
+            Assert.Equal((true, true, true), (back.Side, back.HideWhenEmpty, back.IconCooldown));
+            var all = new SettingsStore(path).Load(out _);
+            Assert.Equal((true, true), (all.Buffs.HideWhenEmpty, all.Debuffs.HideWhenEmpty));
 
             File.WriteAllText(path, """{ "FirstRunDone": true, "Judgment": { "FontSize": 120, "Characters": null } }""");
             var old = new SettingsStore(path).Load(out bool reset).Judgment;

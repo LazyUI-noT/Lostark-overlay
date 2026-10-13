@@ -382,6 +382,8 @@ public partial class SettingsWindow : Window
         p.Children.Add(Row("게임의 버프 크기 (%)", BuffSizeCombo()));
         p.Children.Add(HelpRow("막대 위치", "분리된 창: 버프 막대가 오버레이 판에서 빠져 자기 창에 그려지고, 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (판과 함께면 판 왼쪽 바깥). 끄면 눕혀 위아래로 쌓습니다 (판과 함께면 칸 아래에 두 개씩).", Check("분리된 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (시간 숫자 없음)", b.Side, v => b.Side = v, Changed)));
         p.Children.Add(Row("줄어듦", Check("남은 시간만큼 줄어듦", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")));
+        p.Children.Add(Row("비었을 때", Check("숨기기", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
+            "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
         foreach (var k in Enum.GetValues<BuffKind>())
         {
             var i = b.Of(k);
@@ -404,6 +406,8 @@ public partial class SettingsWindow : Window
         var sizes = new CardStack { Visibility = Shown(_s.Debuffs.Raid != Raid.없음) };
         p.Children.Add(Row("레이드", EnumCombo([.. Enum.GetValues<Raid>().Select(r => (r, Tray.RaidName(r)))], _s.Debuffs.Raid,
             v => { _s.Debuffs.Raid = v; sizes.Visibility = Shown(v != Raid.없음); })));
+        sizes.Children.Add(Row("비었을 때", Check("숨기기", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,
+            "디버프가 없는 칸(색을 아직 모를 때, 교체·번개·결투자가 없을 때)을 숨깁니다. 다른 칸은 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
         sizes.Children.Add(SubHeading("칸 크기", "칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " + "레이아웃 편집기에서 칸을 눌러 바꾸거나, 칸 옮기기를 켜고 칸의 오른쪽 아래 모서리를 끌어도 됩니다."));
         for (int i = 0; i < DebuffSettings.BoxCount; i++)
             foreach (var row in DebuffSizeSliders(i, DebuffNames[i] + " ")) sizes.Children.Add(row);

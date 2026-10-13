@@ -11,7 +11,7 @@ namespace GaugeOverlay.App.UI;
 /// While the 레이아웃 편집기 is open, the preview steps aside for it.</summary>
 public partial class SettingsWindow
 {
-    OverlayRenderer? _quick, _quickBuffs, _quickDebuffs;   // the buff and debuff windows under yours, while they are shown
+    OverlayRenderer? _quick, _quickBuffs, _quickDebuffs, _quickJudgment;   // the buff, debuff and 단심 windows under yours, while they are shown
     PreviewPlayer? _quickPlay;
     StackPanel? _quickBlock;   // placed by ShowBody: pinned on the right, or above the form
     readonly StackPanel _quickShown = new();
@@ -25,15 +25,18 @@ public partial class SettingsWindow
     void BuildQuick()
     {
         var quick = _quick = new OverlayRenderer { Settings = _s, ShowHidden = true, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(8) };
-        var buffs = _quickBuffs = new OverlayRenderer { Settings = _s, BuffsOnly = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
-        var debuffs = _quickDebuffs = new OverlayRenderer { Settings = _s, DebuffsOnly = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
-        var play = _quickPlay = new PreviewPlayer(quick, buffs, debuffs);
+        // Parts that 비었을 때 숨기기 hides show faintly here, to be seen while setting them up.
+        var buffs = _quickBuffs = new OverlayRenderer { Settings = _s, BuffsOnly = true, ShowHidden = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
+        var debuffs = _quickDebuffs = new OverlayRenderer { Settings = _s, DebuffsOnly = true, ShowHidden = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
+        var judgment = _quickJudgment = new OverlayRenderer { Settings = _s, JudgmentOnly = true, ShowHidden = true, Margin = new(8, 0, 8, 8), VerticalAlignment = VerticalAlignment.Top };
+        var play = _quickPlay = new PreviewPlayer(quick, buffs, debuffs, judgment);
         buffs.MouseLeftButtonDown += (_, e) =>
         {
             if (buffs.PartAt(e.GetPosition(buffs))?.Part is { } used) play.Click(used, 1);
             Go(AreaOverlay, SecBuffs);
         };
         debuffs.MouseLeftButtonDown += (_, _) => Go(AreaOverlay, SecBuffs);
+        judgment.MouseLeftButtonDown += (_, _) => Go(AreaOverlay, "기타");
         quick.MouseLeftButtonDown += (_, e) =>
         {
             var part = quick.PartAt(e.GetPosition(quick))?.Part;
@@ -58,7 +61,7 @@ public partial class SettingsWindow
         // Shrinks to fit the pinned column; clicks still land on the right part.
         p.Children.Add(new Border
         {
-            Child = new Viewbox { Child = Stack(quick, new StackPanel { Orientation = Orientation.Horizontal, Children = { buffs, debuffs } }), StretchDirection = StretchDirection.DownOnly, HorizontalAlignment = HorizontalAlignment.Left },
+            Child = new Viewbox { Child = Stack(quick, new StackPanel { Orientation = Orientation.Horizontal, Children = { buffs, debuffs, judgment } }), StretchDirection = StretchDirection.DownOnly, HorizontalAlignment = HorizontalAlignment.Left },
             Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2C, 0x33)), CornerRadius = new(4), MinHeight = 120,
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 8, 0, 0) };
@@ -84,10 +87,11 @@ public partial class SettingsWindow
     /// <summary>Redraws the preview after a change, the buff window shown with 분리된 창 and the debuff window with a raid, as in game.</summary>
     void QuickRefresh()
     {
-        if (_quick is null || _quickBuffs is null || _quickDebuffs is null) return;
+        if (_quick is null || _quickBuffs is null || _quickDebuffs is null || _quickJudgment is null) return;
         _quickBuffs.Visibility = Shown(_s.Buffs.Detached);
         _quickDebuffs.Visibility = Shown(_s.Debuffs.Raid != Raid.없음);
-        foreach (var r in new[] { _quick, _quickBuffs, _quickDebuffs }) r.Refresh();
+        _quickJudgment.Visibility = Shown(_s.Judgment.On(_s.ActiveCharacter));
+        foreach (var r in new[] { _quick, _quickBuffs, _quickDebuffs, _quickJudgment }) r.Refresh();
     }
 
     /// <summary>The preview's sample, for the class active now or the 직업각인 picked in 편집 중.</summary>

@@ -517,7 +517,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         _moving = _animating = false;
 
         if (DebuffsOnly) DrawDebuffs(dc, now, ms, reduced);
-        else if (JudgmentOnly) DrawJudgment(dc, now);
+        else if (JudgmentOnly) DrawJudgment(dc, now, reduced);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         _frameMs = _animating ? FastFrameMs : SlowFrameMs;
         SetLoop(_moving || _animating);
@@ -583,8 +583,9 @@ public sealed partial class OverlayRenderer : FrameworkElement
             if (key >= (int)FreeLayout.FirstBuff)
             {
                 var kind = (BuffKind)(key - (int)FreeLayout.FirstBuff);
-                DrawBuff(dc, r, c, s.Buffs.IsDefaultOrEmpty ? null : s.Buffs[(int)kind], Settings.Buffs.Of(kind).ShowLabel,
-                    Settings.Buffs.EndFlash(kind), now, reduced);
+                var st = s.Buffs.IsDefaultOrEmpty ? null : s.Buffs[(int)kind];
+                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true },
+                    () => DrawBuff(dc, r, c, st, Settings.Buffs.Of(kind).ShowLabel, Settings.Buffs.EndFlash(kind), now, reduced));
                 continue;
             }
             if (key == ChangedKey)
@@ -930,6 +931,17 @@ public sealed partial class OverlayRenderer : FrameworkElement
         string text = sec >= 1 ? $"{Math.Floor(sec).ToString(CultureInfo.InvariantCulture)}s"
             : $"{(Math.Floor(sec * 10) / 10).ToString("0.0", CultureInfo.InvariantCulture)}s";
         DrawOutlined(dc, r, text, Math.Floor((r.Height - 2) / DigitPair.Height / TimerFontStep) * TimerFontStep);
+    }
+
+    /// <summary>Draws a part that 비었을 때 숨기기 hides while <paramref name="hidden"/>: not at all, or faintly where hidden parts
+    /// are shown anyway (<see cref="ShowHidden"/>: 편집 모드, 미리보기, the 레이아웃 편집기), to be seen and placed.</summary>
+    void Faint(DrawingContext dc, bool hidden, Action draw)
+    {
+        if (!hidden) { draw(); return; }
+        if (!ShowHidden) return;
+        dc.PushOpacity(HiddenOpacity);
+        draw();
+        dc.Pop();
     }
 
     void DrawEndFlash(DrawingContext dc, Rect r, bool upright, double rem, bool reduced)

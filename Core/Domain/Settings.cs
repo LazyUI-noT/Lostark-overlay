@@ -414,6 +414,8 @@ public sealed class BuffSettings : IWindowPlace
     public bool Side { get; set; }
     /// <summary>버프 막대 줄어듦: the bar drains as the buff runs out; off, it stays full while the buff is on.</summary>
     public bool Drain { get; set; } = true;
+    /// <summary>비었을 때 숨기기 (user, 2026-10-13): a bar disappears while its buff isn't on; the others keep their place.</summary>
+    public bool HideWhenEmpty { get; set; }
     /// <summary>Only the indicators changed from <see cref="Default"/>; read through <see cref="Of"/>.</summary>
     public Dictionary<BuffKind, BuffIndicator> Indicators { get; set; } = [];
 
@@ -438,6 +440,8 @@ public sealed class BuffSettings : IWindowPlace
 public sealed class DebuffSettings : IWindowPlace
 {
     public Raid Raid { get; set; } = Raid.없음;
+    /// <summary>비었을 때 숨기기 (user, 2026-10-13): a box disappears while nothing is on it; the others keep their place.</summary>
+    public bool HideWhenEmpty { get; set; }
     public double Left { get; set; } = double.NaN;
     public double Top { get; set; } = double.NaN;
     public double Width { get; set; } = 1.0;
