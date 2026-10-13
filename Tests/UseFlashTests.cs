@@ -15,7 +15,7 @@ public class UseFlashTests
     static Reading Ready(double t, bool flash = false) => new(W, ReadKind.Ready, 0, S(t), Flash: flash);
     static Reading Sec(int v, double t) => new(W, ReadKind.Seconds, v, S(t));
     static SlotState ReadyAt(double t) => new(W, SlotPhase.Ready, null, null, false, S(t));
-    static SlotState Feed(SlotState s, params Reading[] rs) => rs.Aggregate(s, CooldownTracker.Update);
+    static SlotState Feed(SlotState s, params Reading[] rs) => rs.Aggregate(s, (st, r) => CooldownTracker.Update(st, r));
 
     [Fact]
     public void A_flash_on_a_ready_skill_is_a_cooldown_without_a_number()

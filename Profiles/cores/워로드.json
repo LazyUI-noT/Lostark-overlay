@@ -5,6 +5,12 @@
       "effects": [
         { "requires": { "해": 3 }, "trigger": "버스트 캐넌", "effect": "cooldown_reset", "target": "아덴2", "watchSeconds": 1.0, "tag": "CURRENT", "source": "owner 2026-10-12" }
       ]
+    },
+    "전투태세": {
+      "effects": [
+        { "_why": "증오의 함성이 30초 동안 충전 1개를 주고, 그 안에 쓴 방패 돌진은 바로 다시 준비된다. 방패 돌진 칸만 고른다.",
+          "requires": { "해": 2 }, "trigger": "방패 돌진", "effect": "cooldown_reset", "target": "self", "watchSeconds": 1.0, "tag": "CURRENT", "source": "owner 2026-10-13, 전태_해_2.mp4" }
+      ]
     }
   }
 }

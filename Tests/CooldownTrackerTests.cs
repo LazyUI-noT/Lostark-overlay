@@ -480,4 +480,36 @@ public class CooldownTrackerTests
         Assert.Equal(TimeSpan.Zero, s.Remaining(S(6)));
         Assert.Equal(SlotPhase.Ready, CooldownTracker.Update(s, R(ReadKind.Ready, 6)).Phase);
     }
+
+    // 코어 빌드 "self" (워로드 전투태세 해 2, user 2026-10-13): 방패 돌진 used with a 증오의 함성 charge is ready again at
+    // once. A cast flash otherwise holds the slot as used for UseHold (chain skills), so its Ready reads were ignored.
+    [Fact]
+    public void A_slot_that_resets_on_use_is_ready_once_the_flash_is_gone()
+    {
+        var s = CooldownTracker.Update(ReadyAt(0), R(ReadKind.Ready, 1.0) with { Flash = true }, resetOnUse: true);
+        Assert.Equal(SlotPhase.Cooldown, s.Phase);
+        s = CooldownTracker.Update(s, R(ReadKind.Ready, 1.1) with { Flash = true }, resetOnUse: true);
+        s = CooldownTracker.Update(s, R(ReadKind.Ready, 1.15), resetOnUse: true);
+        Assert.Equal(SlotPhase.Cooldown, s.Phase);   // a frame after the flash: could still be before the number
+        s = CooldownTracker.Update(s, R(ReadKind.Ready, 1.1 + CooldownTracker.ResetHold.TotalSeconds), resetOnUse: true);
+        Assert.Equal(SlotPhase.Ready, s.Phase);
+    }
+
+    [Fact]
+    public void A_slot_that_resets_on_use_still_takes_its_number_after_a_normal_cast()
+    {
+        var s = CooldownTracker.Update(ReadyAt(0), R(ReadKind.Ready, 1.0) with { Flash = true }, resetOnUse: true);
+        s = CooldownTracker.Update(s, Sec(15, 1.03) with { Flash = true }, resetOnUse: true);
+        s = CooldownTracker.Update(s, Sec(15, 1.5), resetOnUse: true);
+        Assert.Equal(SlotPhase.Cooldown, s.Phase);
+        Assert.NotNull(s.EndsAt);
+    }
+
+    [Fact]
+    public void Other_slots_keep_the_use_hold()
+    {
+        var s = CooldownTracker.Update(ReadyAt(0), R(ReadKind.Ready, 1.0) with { Flash = true });
+        s = CooldownTracker.Update(s, R(ReadKind.Ready, 2.0));
+        Assert.Equal(SlotPhase.Cooldown, s.Phase);
+    }
 }

@@ -460,3 +460,10 @@ foreach ($f in @(@('busy_300a', '단심300%.mp4', 0.6), @('busy_300b', '단심30
     @('busy_150', '단심150%.mp4', 1.0), @('busy_100a', '단죄 폰트 변경 + 심판 효과 at 100%.mp4', 33.6), @('busy_100b', '단죄 폰트 변경 + 심판 효과 at 100%.mp4', 34.8))) {
   CutRect $f[0] (Join-Path $ref $f[1]) 'text' 110 $tb $f[2] 0.016
 }
+
+# 워로드 전투태세 with 해 2 (전태_해_2.mp4, HUD 110, 60 fps): R (일반4) used right after F (일반8) is reset at once, so it
+# flashes as cast and stays ready. F is cast at about 1.0 s (16s), R at about 1.8 s (no cooldown), R again later (15s).
+# war2_R2: F at about 22.3 s, R at about 22.8 s (reset, ready after it).
+Cut 'war2_R' (Join-Path $ref '전태_해_2.mp4') '일반4' 110 0.6 2.8
+Cut 'war2_F' (Join-Path $ref '전태_해_2.mp4') '일반8' 110 0.6 2.8
+Cut 'war2_R2' (Join-Path $ref '전태_해_2.mp4') '일반4' 110 22.5 4.5

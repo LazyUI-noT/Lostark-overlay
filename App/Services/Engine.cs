@@ -355,7 +355,7 @@ public sealed partial class Engine : IDisposable
 
             var prev = _states[(int)slot];
             bool known = config.StackSkills?.Contains(slot) == true;
-            var next = CooldownTracker.Update(known ? prev with { StackSkill = true } : prev, reading);
+            var next = CooldownTracker.Update(known ? prev with { StackSkill = true } : prev, reading, CoreEffects.ResetsOnUse(config.CoreWatches, slot));
             if (next != prev) { _states[(int)slot] = next; changed = true; }
             if (!known && !_testMode && config.Character is { } who && _stackLearner.Add(reading, next)) StackSkillLearned?.Invoke(who, slot);
             // A cast (ready → cooldown): a skill that spends the gauge arms it for its drop when the screen shows the

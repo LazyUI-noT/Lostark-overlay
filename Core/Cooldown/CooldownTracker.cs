@@ -28,13 +28,19 @@ public static class CooldownTracker
     /// (chainSkill.mp4: up to 1.4 s from the first flash): ignored this long after the last flash.</summary>
     public static readonly TimeSpan UseHold = TimeSpan.FromSeconds(3);
 
+    /// <summary>The hold instead of <see cref="UseHold"/> for a slot whose cast may reset it (코어 빌드 "self": 워로드 전투태세 해 2's
+    /// 방패 돌진). Its number shows on the frame after the flash (전태_해_2.mp4), and after a reset it reads Ready from 0.03 s
+    /// after the flash, so Ready this long after the last flash is believed.</summary>
+    public static readonly TimeSpan ResetHold = TimeSpan.FromMilliseconds(150);
+
     private static readonly TimeSpan Second = TimeSpan.FromSeconds(1);
 
     /// <summary>Next state of the slot after reading <paramref name="r"/> (taken at <c>r.At</c>). The gold frame is
     /// what this frame shows; a flash hides it (kept), a slot that can't be read shows none. A stack count marks the slot
-    /// as a stack skill until it can't be read (a loading screen, perhaps before another character).</summary>
-    public static SlotState Update(SlotState prev, Reading r) =>
-        (Used(prev, r) ?? Next(prev, r)) with
+    /// as a stack skill until it can't be read (a loading screen, perhaps before another character).
+    /// <paramref name="resetOnUse"/>: the slot's cast may reset it (<see cref="ResetHold"/>).</summary>
+    public static SlotState Update(SlotState prev, Reading r, bool resetOnUse = false) =>
+        (Used(prev, r, resetOnUse ? ResetHold : UseHold) ?? Next(prev, r)) with
         {
             Gold = r.Kind switch { ReadKind.CooldownIllegible => prev.Gold, ReadKind.Unreadable => false, _ when r.Flash => prev.Gold, _ => r.Gold },
             StackSkill = r.Kind != ReadKind.Unreadable && (prev.StackSkill || r.Stacked),
@@ -43,7 +49,7 @@ public static class CooldownTracker
     /// <summary>A use flash on a ready slot (not one just out of a cooldown, whose end may flash) starts a cooldown without
     /// a number; an unreadable read carries no flash (a bright scene behind a hidden HUD). until the number shows, further flashes extend it and anything else within <see cref="UseHold"/> is ignored.
     /// Null when the reading goes through <see cref="Next"/>.</summary>
-    private static SlotState? Used(SlotState prev, Reading r)
+    private static SlotState? Used(SlotState prev, Reading r, TimeSpan hold)
     {
         if (r.Kind is ReadKind.Seconds or ReadKind.Minutes) return null;
         if (r.Flash && prev is { Phase: SlotPhase.Ready, EndsAt: null })
@@ -51,7 +57,7 @@ public static class CooldownTracker
         if (prev.UsedAt is not { } used) return null;
         if (r.Flash) return prev with { UsedAt = r.At, Estimated = false };
         // Unread: estimated like any cooldown, so Advance ends it UseHold after the last flash.
-        return r.Kind == ReadKind.Unreadable || r.At - used >= UseHold ? null : prev with { Estimated = false };
+        return r.Kind == ReadKind.Unreadable || r.At - used >= hold ? null : prev with { Estimated = false };
     }
 
     private static SlotState Next(SlotState prev, Reading r) => r.Kind switch

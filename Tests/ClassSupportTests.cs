@@ -138,10 +138,11 @@ public class ClassSupportTests
         var rows = Rows();
         var keys = ClassSupport.Keys(rows);
         Assert.Contains("워로드/고독한기사/코어", keys);
-        Assert.DoesNotContain(keys, k => k.StartsWith("워로드/전투태세/코어") || k.StartsWith("발키리/") && k.EndsWith("/코어"));
+        Assert.Contains("워로드/전투태세/코어", keys);
+        Assert.DoesNotContain(keys, k => k.StartsWith("발키리/") && k.EndsWith("/코어"));
 
         var seenBeforeCores = keys.Where(k => !k.EndsWith("/코어")).ToList();
-        Assert.Equal(["워로드/고독한기사/코어"], ClassSupport.New(rows, seenBeforeCores));
+        Assert.Equal(["워로드/고독한기사/코어", "워로드/전투태세/코어"], ClassSupport.New(rows, seenBeforeCores).Order());
         Assert.Empty(ClassSupport.New(rows, seen: null));
         Assert.Empty(ClassSupport.New(rows, keys));
     }

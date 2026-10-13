@@ -319,4 +319,29 @@ public sealed class CoreEffectsTests : IDisposable
         Assert.Empty(scheduler.Due(T(11.01), states));   // the watch (1.0 s from the frame time) is over
         Assert.Empty(CoreEffects.WatchesAfterCast(watches, SlotId.일반4, T(20)));   // another slot's cast starts none
     }
+
+    // --- "self": the trigger's own slot (워로드 전투태세 해 2) ---
+
+    static CoreEffect SelfReset() => CoreEffects.Parse("""
+        { "subclasses": { "a": { "effects": [
+            { "requires": { "해": 2 }, "effect": "cooldown_reset", "trigger": "방패 돌진", "target": "self" } ] } } }
+        """)["a"][0];
+
+    [Fact]
+    public void A_self_target_watches_and_resets_the_triggers_own_slot()
+    {
+        var e = SelfReset();
+        Assert.True(e.Tracks);
+        Assert.Null(e.Target);
+        var w = Assert.Single(CoreEffects.Watches(Chosen(sun: 2).WithSlot("방패 돌진", SlotId.일반4), Role.딜러, [e]));
+        Assert.Equal((SlotId.일반4, SlotId.일반4), (w.TriggerSlot, w.TargetSlot));
+        Assert.True(CoreEffects.ResetsOnUse([w], SlotId.일반4));
+        Assert.False(CoreEffects.ResetsOnUse([w], SlotId.일반8));
+        Assert.False(CoreEffects.ResetsOnUse([new CoreWatch(SlotId.일반4, SlotId.아덴2, TimeSpan.FromSeconds(1))], SlotId.일반4));
+        Assert.False(CoreEffects.ResetsOnUse(null, SlotId.일반4));
+    }
+
+    [Fact]
+    public void A_self_target_is_described_as_a_reset_on_use() =>
+        Assert.Equal("해 2: 방패 돌진을 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다", CoreEffects.Describe([SelfReset()]));
 }

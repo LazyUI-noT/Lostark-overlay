@@ -79,4 +79,14 @@ public class CoreDataTests
         Assert.Equal(("버스트 캐넌", CoreEffects.Reset, SlotId.아덴2, 1.0, "CURRENT"), (e.Trigger, e.Kind, e.Target, e.WatchSeconds, e.Tag));
         Assert.True(e.Tracks);
     }
+
+    /// <summary>From the owner (2026-10-13, 전태_해_2.mp4): 워로드 전투태세's 해 2: 증오의 함성 gives a charge for 30 s, and 방패 돌진
+    /// used with it is reset at once.</summary>
+    [Fact]
+    public void 전투태세_해2_is_in_the_data()
+    {
+        var e = Assert.Single(CoreEffects.Load(Profiles, "워로드")["전투태세"]);
+        Assert.Equal([(CoreType.해, 2)], e.Requires.Select(r => (r.Key, r.Value)));
+        Assert.Equal(("방패 돌진", CoreEffects.Reset, true, "CURRENT"), (e.Trigger, e.Kind, e.Self, e.Tag));
+    }
 }

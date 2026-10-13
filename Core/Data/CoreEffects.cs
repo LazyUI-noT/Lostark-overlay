@@ -8,12 +8,12 @@ namespace GaugeOverlay.Core.Data;
 /// <see cref="Requires"/> (only the cores it names count). <see cref="Kind"/> <see cref="CoreEffects.Reset"/> or
 /// <see cref="CoreEffects.Reduce"/> with a <see cref="Trigger"/> skill (its name, shown only) and a <see cref="Target"/> slot
 /// changes behaviour (<see cref="Tracks"/>): the target is read on every frame for <see cref="WatchSeconds"/> after the trigger's
-/// slot is cast. Any other kind is <see cref="Text"/> for the support table. <see cref="Tag"/> and <see cref="Source"/> say how
+/// slot is cast. <see cref="Self"/> ("target": "self"): the target is the trigger's own slot, which its cast may reset. Any other kind is <see cref="Text"/> for the support table. <see cref="Tag"/> and <see cref="Source"/> say how
 /// sure the fact is and who gave it. Compares by reference through <see cref="Requires"/>.</summary>
 public sealed record CoreEffect(IReadOnlyDictionary<CoreType, int> Requires, string Kind, string? Trigger, SlotId? Target,
-    double WatchSeconds, string? Text, string Tag, string Source)
+    double WatchSeconds, string? Text, string Tag, string Source, bool Self = false)
 {
-    public bool Tracks => Kind is CoreEffects.Reset or CoreEffects.Reduce && Trigger is not null && Target is not null;
+    public bool Tracks => Kind is CoreEffects.Reset or CoreEffects.Reduce && Trigger is not null && (Target is not null || Self);
 }
 
 /// <summary>Slot <see cref="TargetSlot"/> is to be read on every frame for <see cref="Duration"/> after <see cref="TriggerSlot"/> is cast.</summary>
@@ -24,6 +24,8 @@ public sealed record CoreWatch(SlotId TriggerSlot, SlotId TargetSlot, TimeSpan D
 public static class CoreEffects
 {
     public const string Reset = "cooldown_reset", Reduce = "cooldown_reduce", TextOnly = "text";
+    /// <summary>"target": the trigger's own slot (its cast may reset it).</summary>
+    const string SelfTarget = "self";
 
     /// <summary>The longest watch the data may ask for, in seconds (a read per frame costs a little).</summary>
     public const double MaxWatchSeconds = 5;
@@ -108,14 +110,15 @@ public static class CoreEffects
 
         string kind = Str("effect") is Reset or Reduce or TextOnly ? Str("effect")! : throw Bad(sub, "has an unknown \"effect\" (cooldown_reset, cooldown_reduce or text)");
         var (trigger, text) = (Str("trigger"), Str("text"));
-        SlotId? target = Str("target") is { } t ? (Named<SlotId>(t, out var slot) ? slot : throw Bad(sub, $"has an unknown target slot \"{t}\"")) : null;
-        if (kind != TextOnly && (string.IsNullOrWhiteSpace(trigger) || target is null)) throw Bad(sub, $"{kind} needs a \"trigger\" and a \"target\" slot");
+        bool self = Str("target") == SelfTarget;
+        SlotId? target = self ? null : Str("target") is { } t ? (Named<SlotId>(t, out var slot) ? slot : throw Bad(sub, $"has an unknown target slot \"{t}\"")) : null;
+        if (kind != TextOnly && (string.IsNullOrWhiteSpace(trigger) || target is null && !self)) throw Bad(sub, $"{kind} needs a \"trigger\" and a \"target\" slot");
         if (kind == TextOnly && text is null) throw Bad(sub, "text effect needs \"text\"");
 
         double seconds = e["watchSeconds"] is null ? DefaultWatchSeconds
             : e["watchSeconds"] is JsonValue w && w.TryGetValue<double>(out var d) && d > 0 && d <= MaxWatchSeconds ? d
             : throw Bad(sub, $"has a \"watchSeconds\" outside 0–{MaxWatchSeconds}");
-        return new CoreEffect(ParseRequires(sub, e["requires"]), kind, trigger, target, seconds, text, Str("tag") ?? "", Str("source") ?? "");
+        return new CoreEffect(ParseRequires(sub, e["requires"]), kind, trigger, target, seconds, text, Str("tag") ?? "", Str("source") ?? "", self);
     }
 
     static Dictionary<CoreType, int> ParseRequires(string sub, JsonNode? node)
@@ -148,7 +151,7 @@ public static class CoreEffects
         var watches = new List<CoreWatch>();
         foreach (var e in Active(choice, role, effects))
             if (e.Tracks && choice.Slots.TryGetValue(e.Trigger!, out var trigger))
-                watches.Add(new CoreWatch(trigger, e.Target!.Value, TimeSpan.FromSeconds(e.WatchSeconds)));
+                watches.Add(new CoreWatch(trigger, e.Self ? trigger : e.Target!.Value, TimeSpan.FromSeconds(e.WatchSeconds)));
         return watches;
     }
 
@@ -156,6 +159,11 @@ public static class CoreEffects
     /// frame, and until when (<c>at + Duration</c>), from the <paramref name="watches"/> the settings gave (null: none).</summary>
     public static IReadOnlyList<(SlotId Target, TimeSpan Until)> WatchesAfterCast(IReadOnlyList<CoreWatch>? watches, SlotId cast, TimeSpan at) =>
         watches is null ? [] : [.. watches.Where(w => w.TriggerSlot == cast).Select(w => (w.TargetSlot, at + w.Duration))];
+
+    /// <summary>True when <paramref name="slot"/>'s own cast may reset it (a "self" watch): the tracker then believes Ready soon
+    /// after its cast flash (<see cref="Cooldown.CooldownTracker.ResetHold"/>).</summary>
+    public static bool ResetsOnUse(IReadOnlyList<CoreWatch>? watches, SlotId slot) =>
+        watches?.Any(w => w.TriggerSlot == slot && w.TargetSlot == slot) == true;
 
     /// <summary>The engine's call when <paramref name="cast"/> is seen at frame time <paramref name="at"/>: hands each
     /// <see cref="WatchesAfterCast"/> pair to <paramref name="watch"/> (the scheduler's Watch).</summary>
@@ -169,7 +177,8 @@ public static class CoreEffects
     /// slot's own name when none is set, which then stands alone); null: the slot's name.</summary>
     public static string Describe(IEnumerable<CoreEffect> effects, Func<SlotId, string>? keyName = null) => string.Join(" / ", effects.Select(e =>
         $"{string.Join(", ", e.Requires.OrderBy(r => r.Key).Select(r => $"{r.Key} {r.Value}"))}: " +
-        (e.Text ?? $"{Josa.Object(e.Trigger!)} 쓰면 {Named(e.Target!.Value, keyName)} 쿨초를 빨리 읽습니다")));
+        (e.Text ?? (e.Self ? $"{Josa.Object(e.Trigger!)} 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다"
+            : $"{Josa.Object(e.Trigger!)} 쓰면 {Named(e.Target!.Value, keyName)} 쿨초를 빨리 읽습니다"))));
 
     static string Named(SlotId slot, Func<SlotId, string>? keyName) =>
         keyName?.Invoke(slot) is { } key && key != slot.ToString() ? $"{slot}({key})" : slot.ToString();
