@@ -223,10 +223,21 @@ public partial class SettingsWindow : Window
         string[] heads = ["직업각인", "직업각인 감지", "아덴 게이지", "아덴 스킬", "코어 빌드"];
         for (int c = 0; c < heads.Length; c++) Add(Cell(heads[c], false, head: true), 0, c);
         var active = _chars.Active;
-        for (int i = 0; i < rows.Count; i++)
+        // By 직업군, with rows that have anything new on top until the 캐릭터 tab has been seen (user, 2026-10-13).
+        int r = 0;
+        foreach (var (heading, group) in ClassSupport.Grouped(rows, fresh))
         {
-            var row = rows[i];
-            int r = i + 1;
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var title = Cell(heading, false, head: true);
+            title.Margin = new(4, 10, 8, 2);
+            if (heading == ClassSupport.NewHeading) title.Foreground = NewBrush;
+            Add(title, ++r, 0, heads.Length);
+            foreach (var row in group) AddRow(row, ++r);
+        }
+        return grid;
+
+        void AddRow(SupportRow row, int r)
+        {
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             bool mine = active is { } a && a.Class == row.Class && a.Subclass == row.Subclass;
             if (mine) Add(new Border { Background = MineBrush, CornerRadius = new(4) }, r, 0, heads.Length);
@@ -238,7 +249,6 @@ public partial class SettingsWindow : Window
             Add(Cell(row.Skills ?? "–", row.Skills is not null && New("스킬")), r, 3);
             Add(Cell(row.Cores ?? "–", row.HasCoreData && New("코어")), r, 4);
         }
-        return grid;
     }
 
     /// <summary>The 캐릭터 section was shown: what it lists counts as seen, so NEW is gone next time (it stays while on screen).</summary>

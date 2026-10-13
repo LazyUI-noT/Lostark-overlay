@@ -291,9 +291,9 @@ public sealed class CoreEffectsTests : IDisposable
     public void The_target_is_named_with_the_users_key_when_there_is_one()
     {
         var e = Reset(new() { [CoreType.해] = 3 });
-        Assert.Equal("해 3: 버스트 캐넌을 쓰면 아덴2(C) 쿨초를 빨리 읽습니다", CoreEffects.Describe([e], _ => "C"));
-        Assert.Equal("해 3: 버스트 캐넌을 쓰면 아덴2 쿨초를 빨리 읽습니다", CoreEffects.Describe([e], s => s.ToString()));   // no key set: the slot's name
-        Assert.Equal("해 3: 버스트 캐넌을 쓰면 아덴2 쿨초를 빨리 읽습니다", CoreEffects.Describe([e]));
+        Assert.Equal("3xx: 버스트 캐넌을 쓰면 아덴2(C) 쿨초를 빨리 읽습니다", CoreEffects.Describe([e], _ => "C"));
+        Assert.Equal("3xx: 버스트 캐넌을 쓰면 아덴2 쿨초를 빨리 읽습니다", CoreEffects.Describe([e], s => s.ToString()));   // no key set: the slot's name
+        Assert.Equal("3xx: 버스트 캐넌을 쓰면 아덴2 쿨초를 빨리 읽습니다", CoreEffects.Describe([e]));
     }
 
     // --- The worked example, from the shipped file to the scheduler ---
@@ -343,5 +343,30 @@ public sealed class CoreEffectsTests : IDisposable
 
     [Fact]
     public void A_self_target_is_described_as_a_reset_on_use() =>
-        Assert.Equal("해 2: 방패 돌진을 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다", CoreEffects.Describe([SelfReset()]));
+        Assert.Equal("2xx: 방패 돌진을 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다", CoreEffects.Describe([SelfReset()]));
+
+    // --- the core code (user, 2026-10-13): 해, 달, 별 in that order, x where the effect doesn't ask ---
+
+    [Theory]
+    [InlineData("해", 3, null, 0, "3xx")]
+    [InlineData("달", 2, null, 0, "x2x")]
+    [InlineData("별", 1, null, 0, "xx1")]
+    [InlineData("해", 1, "달", 3, "13x")]
+    public void The_core_code_puts_each_level_in_its_place(string a, int la, string? b, int lb, string code)
+    {
+        var requires = new Dictionary<CoreType, int> { [Enum.Parse<CoreType>(a)] = la };
+        if (b is not null) requires[Enum.Parse<CoreType>(b)] = lb;
+        Assert.Equal(code, CoreEffects.Code(requires));
+    }
+
+    // --- the slot rows (user, 2026-10-13): a skill's slot is asked only when its core is picked ---
+
+    [Fact]
+    public void A_triggers_slot_is_asked_only_at_the_levels_its_effect_needs()
+    {
+        var e = Reset(new() { [CoreType.해] = 3 });
+        Assert.Empty(CoreEffects.Triggers(Chosen(sun: 1), Role.딜러, [e]));
+        Assert.Equal([Burst], CoreEffects.Triggers(Chosen(sun: 3), Role.딜러, [e]));
+        Assert.Equal([Burst], CoreEffects.Triggers(Chosen(sun: 3, apply: false), Role.딜러, [e]));   // off: still shown, greyed in 설정
+    }
 }

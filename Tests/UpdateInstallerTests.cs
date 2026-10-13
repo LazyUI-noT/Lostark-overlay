@@ -65,6 +65,26 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(App, "Profiles.old")));
     }
 
+    // The user's log (2026-10-13): "[update] swap failed: The process cannot access the file because it is being used by another
+    // process": Profiles couldn't be moved while something (Explorer, a virus scan) had a file in it open. Files are replaced in place.
+    [Fact]
+    public void A_swap_works_while_a_Profiles_file_is_held_open_by_another_program()
+    {
+        using (File.Open(Path.Combine(App, "Profiles", "classes.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            Assert.Null(UpdateInstaller.Swap(App, New));
+        Assert.Equal("new exe", Read("GaugeOverlay.exe"));
+        Assert.Equal("new classes", Read("Profiles", "classes.json"));
+        Assert.Equal("new gauge", Read("Profiles", "aden", "gauge.json"));
+    }
+
+    [Fact]
+    public void A_file_the_update_no_longer_has_is_removed()
+    {
+        Write(Path.Combine(App, "Profiles", "gone"), "old.png", "x");
+        Assert.Null(UpdateInstaller.Swap(App, New));
+        Assert.False(File.Exists(Path.Combine(App, "Profiles", "gone", "old.png")));
+    }
+
     [Fact]
     public void Cleanup_removes_what_the_last_update_left()
     {

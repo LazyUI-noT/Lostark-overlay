@@ -12,6 +12,9 @@ public sealed record SupportRow(string Class, string Subclass, bool Detect, Gaug
 {
     public string Key => $"{Class}/{Subclass}";
 
+    /// <summary>The class's 직업군, the table's headings (<see cref="ClassSupport.Grouped"/>).</summary>
+    public string Family { get; init; } = "";
+
     /// <summary>The 직업각인 has 코어 빌드 effects in Profiles/cores.</summary>
     public bool HasCoreData => Cores is not null;
 
@@ -47,7 +50,7 @@ public static class ClassSupport
                 var slots = cls.AdenSlotsOf(sub);
                 string? skills = gauge is not null && slots.Count > 0 ? Skills(slots, cls.AdenDark(sub), keyName) : null;
                 string? coreLine = cores.GetValueOrDefault(sub) is { Count: > 0 } fx ? CoreEffects.Describe(fx, keyName) : null;
-                if (detect || gauge is not null) rows.Add(new(cls.Name, sub, detect, gauge, skills, coreLine));
+                if (detect || gauge is not null) rows.Add(new(cls.Name, sub, detect, gauge, skills, coreLine) { Family = cls.Family });
             }
         }
         return rows;
@@ -55,6 +58,19 @@ public static class ClassSupport
 
     /// <summary>Every key of <paramref name="rows"/>, for Settings.SeenSupport.</summary>
     public static List<string> Keys(IEnumerable<SupportRow> rows) => [.. rows.SelectMany(r => r.Keys())];
+
+    public const string NewHeading = "새로 추가됨";
+
+    /// <summary>The table's sections (user, 2026-10-13): rows with a key in <paramref name="fresh"/> (the row or one of its features)
+    /// first under <see cref="NewHeading"/>, so they stand out until seen; the rest under their 직업군, in <paramref name="rows"/>' order.</summary>
+    public static IReadOnlyList<(string Heading, IReadOnlyList<SupportRow> Rows)> Grouped(IReadOnlyList<SupportRow> rows, IReadOnlySet<string> fresh)
+    {
+        bool IsNew(SupportRow r) => r.Keys().Any(fresh.Contains);
+        var groups = new List<(string, IReadOnlyList<SupportRow>)>();
+        if (rows.Where(IsNew).ToList() is { Count: > 0 } added) groups.Add((NewHeading, added));
+        groups.AddRange(rows.Where(r => !IsNew(r)).GroupBy(r => r.Family).Select(g => (g.Key, (IReadOnlyList<SupportRow>)[.. g])));
+        return groups;
+    }
 
     /// <summary>The keys of <paramref name="rows"/> not in <paramref name="seen"/>; none when nothing was ever recorded (a first run,
     /// or an update from before the list), so only what arrives after it is new.</summary>

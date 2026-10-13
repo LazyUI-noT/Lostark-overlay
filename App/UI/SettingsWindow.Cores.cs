@@ -39,17 +39,26 @@ public partial class SettingsWindow
             foreach (var row in gated) row.IsEnabled = v;
         }, () => { }, "끄면 아래 선택은 그대로 두고 아무것도 적용하지 않습니다."));
 
+        // The skills' slots are asked only for the effects the picked levels switch on (user, 2026-10-13): refilled on a level change.
+        var slots = new StackPanel();
+        void FillSlots()
+        {
+            slots.Children.Clear();
+            var now = _s.CoreOf(key);
+            foreach (var trigger in CoreEffects.Triggers(now, _chars.Role, effects))
+                slots.Children.Add(HelpRow($"{Josa.Subject(trigger)} 있는 칸", "앱은 스킬 이름을 읽지 않습니다. 이 스킬을 어느 칸에 두었는지 고르세요. 그 칸이 쿨타임에 들어가는 것을 보면 효과를 적용합니다.",
+                    SlotCombo(now.Slots.TryGetValue(trigger, out var slot) ? slot : null, v => Edit(x => x.WithSlot(trigger, v)))));
+        }
+
         var levels = new List<UIElement>();
         foreach (var core in CoreEffects.Allowed(_chars.Role))
         {
             levels.Add(Label(core.ToString()));
-            levels.Add(LevelCombo($"{core} 레벨", choice.Of(core), n => Edit(x => x.With(core, n))));
+            levels.Add(LevelCombo($"{core} 레벨", choice.Of(core), n => { Edit(x => x.With(core, n)); FillSlots(); }));
         }
         p.Children.Add(Gate(HelpRow("코어 레벨", "딜러는 해와 달, 서포터는 별을 고릅니다.", [.. levels])));
-
-        foreach (var trigger in effects.Where(e => e.Tracks).Select(e => e.Trigger!).Distinct())
-            p.Children.Add(Gate(HelpRow($"{Josa.Subject(trigger)} 있는 칸", "앱은 스킬 이름을 읽지 않습니다. 이 스킬을 어느 칸에 두었는지 고르세요. 그 칸이 쿨타임에 들어가는 것을 보면 효과를 적용합니다.",
-                SlotCombo(choice.Slots.TryGetValue(trigger, out var slot) ? slot : null, v => Edit(x => x.WithSlot(trigger, v))))));
+        FillSlots();
+        p.Children.Add(Gate(slots));
 
         p.Children.Add(Note(effects.Count == 0 ? NoCoreEffects : "효과: " + CoreEffects.Describe(effects, SlotKeyName)));
     }

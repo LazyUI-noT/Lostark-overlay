@@ -68,7 +68,7 @@ public class ClassSupportTests
     {
         var row = Rows().Single(r => (r.Class, r.Subclass) == ("워로드", "고독한기사"));
         Assert.True(row.HasCoreData);
-        Assert.Equal("해 3: 버스트 캐넌을 쓰면 아덴2(C) 쿨초를 빨리 읽습니다", row.Cores);
+        Assert.Equal("3xx: 버스트 캐넌을 쓰면 아덴2(C) 쿨초를 빨리 읽습니다", row.Cores);
     }
 
     /// <summary>A temp profiles folder with a class 시험 whose 직업각인 가 and 나 both have a gauge, and a class 시험2 with one; the
@@ -102,7 +102,7 @@ public class ClassSupportTests
         try
         {
             var rows = ClassSupport.Rows(dir, classes, Key);
-            Assert.Equal(("해 2: 스킬을 쓰면 아덴1(Z) 쿨초를 빨리 읽습니다", true), (rows.Single(r => r.Subclass == "가" && r.Class == "시험").Cores, rows.Single(r => r.Subclass == "가" && r.Class == "시험").HasCoreData));
+            Assert.Equal(("2xx: 스킬을 쓰면 아덴1(Z) 쿨초를 빨리 읽습니다", true), (rows.Single(r => r.Subclass == "가" && r.Class == "시험").Cores, rows.Single(r => r.Subclass == "가" && r.Class == "시험").HasCoreData));
             Assert.Equal((null, false), (rows.Single(r => r.Subclass == "나").Cores, rows.Single(r => r.Subclass == "나").HasCoreData));   // the class has a file, this 직업각인 not
             Assert.Null(rows.Single(r => r.Class == "시험2").Cores);   // no file at all
         }
@@ -164,5 +164,27 @@ public class ClassSupportTests
         Assert.Contains("홀리나이트/심판자/감지", fresh);      // one feature of a row already seen
         Assert.DoesNotContain("홀리나이트/심판자", fresh);
         Assert.Empty(ClassSupport.New(rows, ClassSupport.Keys(rows)));
+    }
+
+    // --- the table's order (user, 2026-10-13): by 직업군, rows with anything new on top until seen ---
+
+    static SupportRow Row(string family, string cls, string sub) => new(cls, sub, true, null, null) { Family = family };
+
+    [Fact]
+    public void Rows_are_grouped_by_직업군_with_new_ones_on_top()
+    {
+        SupportRow a = Row("워리어", "워로드", "가"), b = Row("워리어", "발키리", "나"), c = Row("마법사", "바드", "다");
+        var groups = ClassSupport.Grouped([a, b, c], new HashSet<string> { c.Key, b.Key + "/감지" });
+        Assert.Equal(["새로 추가됨", "워리어"], groups.Select(g => g.Heading));
+        Assert.Equal([b, c], groups[0].Rows);   // a new feature counts as well as a new row
+        Assert.Equal([a], groups[1].Rows);
+    }
+
+    [Fact]
+    public void Seen_rows_stay_in_their_직업군()
+    {
+        SupportRow a = Row("워리어", "워로드", "가"), c = Row("마법사", "바드", "다");
+        var groups = ClassSupport.Grouped([a, c], new HashSet<string>());
+        Assert.Equal(["워리어", "마법사"], groups.Select(g => g.Heading));
     }
 }

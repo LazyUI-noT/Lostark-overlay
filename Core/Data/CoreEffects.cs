@@ -165,6 +165,16 @@ public static class CoreEffects
     public static bool ResetsOnUse(IReadOnlyList<CoreWatch>? watches, SlotId slot) =>
         watches?.Any(w => w.TriggerSlot == slot && w.TargetSlot == slot) == true;
 
+    /// <summary>The skills whose slot 설정 asks for (user, 2026-10-13): those of the effects <paramref name="choice"/>'s levels switch
+    /// on, whether or not 적용 is on (off, the rows are greyed). Another level's skills aren't asked.</summary>
+    public static IReadOnlyList<string> Triggers(CoreChoice choice, Role role, IEnumerable<CoreEffect> effects) =>
+        [.. Active(choice with { Apply = true }, role, effects).Where(e => e.Tracks).Select(e => e.Trigger!).Distinct()];
+
+    /// <summary>The cores an effect needs as the game writes a build (user, 2026-10-13): 해, 달 and 별 levels in that order, x where
+    /// it doesn't ask ("3xx" = 해 3; "x2x" = 달 2).</summary>
+    public static string Code(IReadOnlyDictionary<CoreType, int> requires) =>
+        string.Concat(Enum.GetValues<CoreType>().Select(c => requires.TryGetValue(c, out var n) ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "x"));
+
     /// <summary>The engine's call when <paramref name="cast"/> is seen at frame time <paramref name="at"/>: hands each
     /// <see cref="WatchesAfterCast"/> pair to <paramref name="watch"/> (the scheduler's Watch).</summary>
     public static void ApplyAfterCast(IReadOnlyList<CoreWatch>? watches, SlotId cast, TimeSpan at, Action<SlotId, TimeSpan> watch)
@@ -176,7 +186,7 @@ public static class CoreEffects
     /// 쓰면 아덴2(C) 쿨초를 빨리 읽습니다"); a text effect says its own text. <paramref name="keyName"/> names a slot by the user's key (the
     /// slot's own name when none is set, which then stands alone); null: the slot's name.</summary>
     public static string Describe(IEnumerable<CoreEffect> effects, Func<SlotId, string>? keyName = null) => string.Join(" / ", effects.Select(e =>
-        $"{string.Join(", ", e.Requires.OrderBy(r => r.Key).Select(r => $"{r.Key} {r.Value}"))}: " +
+        $"{Code(e.Requires)}: " +
         (e.Text ?? (e.Self ? $"{Josa.Object(e.Trigger!)} 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다"
             : $"{Josa.Object(e.Trigger!)} 쓰면 {Named(e.Target!.Value, keyName)} 쿨초를 빨리 읽습니다"))));
 
