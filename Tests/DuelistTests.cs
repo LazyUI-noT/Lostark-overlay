@@ -16,8 +16,11 @@ public class DuelistTests
     static TimeSpan At(double s) => T0 + TimeSpan.FromSeconds(s);
     static readonly DebuffReading Seen = new(DebuffKind.결투자, null);
 
-    static DebuffStatus Update(DebuffStatus prev, double s, bool seen = false, bool hud = true) =>
-        DebuffTracker.Update(prev, seen ? [Seen] : [], null, null, At(s), hud);
+    static readonly DebuffReading Sigil = new(DebuffKind.파랑, 30);
+
+    /// <summary>One read: <paramref name="seen"/> the 결투자 icon, <paramref name="sigil"/> a 파랑 sigil beside it.</summary>
+    static DebuffStatus Update(DebuffStatus prev, double s, bool seen = false, bool hud = true, bool sigil = false) =>
+        DebuffTracker.Update(prev, [.. seen ? [Seen] : Array.Empty<DebuffReading>(), .. sigil ? [Sigil] : Array.Empty<DebuffReading>()], null, null, At(s), hud);
 
     static DuelPhase Phase(DebuffStatus s, double at) => DuelPhase.At(s.Duelist, At(at));
 
@@ -157,7 +160,7 @@ public class DuelistTests
         Assert.Equal(DuelStage.None, DuelPhase.At(new DuelMark(At(5)), At(4)).Stage);
     }
 
-    // ── The 30 s are the app's own, whatever is read ──────────────────────────────────────────────────────────────
+    // ── The 30 s are the app's own, whatever is read ──
 
     [Fact]
     public void A_sighting_keeps_the_same_mark_while_it_is_read_again()
@@ -168,9 +171,9 @@ public class DuelistTests
     }
 
     [Fact]
-    public void The_icon_stays_after_it_is_gone_from_the_row_until_30_seconds()
+    public void Gone_from_the_row_with_no_sigil_either_the_icon_stays_until_30_seconds()
     {
-        // A cutscene: read at 0, never again.
+        // A cutscene or the phase's end: neither the sigil nor 결투자 is read.
         var s = Update(DebuffStatus.None, 0, seen: true);
         foreach (double t in new[] { 0.1, 0.7, 6, 20, 29.9 })
         {
@@ -178,7 +181,7 @@ public class DuelistTests
             Assert.Equal(DuelStage.Icon, Phase(s, Math.Max(t, 5)).Stage);
         }
         s = Update(s, 30);
-        Assert.Null(s.Duelist);
+        Assert.Equal(DuelStage.None, Phase(s, 30).Stage);
     }
 
     [Fact]
@@ -214,25 +217,6 @@ public class DuelistTests
     }
 
     [Fact]
-    public void A_hud_hidden_past_the_30_seconds_ends_the_cycle()
-    {
-        var s = Update(DebuffStatus.None, 0, seen: true);
-        s = Update(s, 31, hud: false);
-        Assert.Null(s.Duelist);
-    }
-
-    [Fact]
-    public void A_sighting_after_the_icon_was_absent_past_the_30_seconds_starts_a_new_cycle()
-    {
-        var s = Update(DebuffStatus.None, 0, seen: true);
-        s = Update(s, 31);                       // a read without it
-        Assert.Null(s.Duelist);
-        s = Update(s, 31.1, seen: true);
-        Assert.Equal(At(31.1), s.Duelist!.FirstSeenAt);
-        Assert.Equal(new DuelPhase(DuelStage.Countdown, 4), Phase(s, 31.1));
-    }
-
-    [Fact]
     public void The_30_second_boundary_is_exact()
     {
         var s = Update(DebuffStatus.None, 0, seen: true);
@@ -242,7 +226,22 @@ public class DuelistTests
         Assert.Equal(DuelStage.None, Phase(s, 30).Stage);
     }
 
-    // ── One appearance is one cycle: the 30 s is a hard cap ───────────────────────────────────────────────────────
+    // ── A cutscene never starts a second countdown (user, 2026-10-13) ──
+
+    [Theory]
+    [InlineData(true)]    // the HUD is hidden in the cutscene
+    [InlineData(false)]   // or the debuff row is just empty
+    public void A_cutscene_past_the_30_seconds_with_결투자_back_after_it_does_not_count_down_again(bool hudHidden)
+    {
+        // The game's debuff runs ~38 s: a cutscene at 33 s ends with the icon still there.
+        var s = DebuffStatus.None;
+        for (double t = 0; t <= 32; t += 0.5) s = Update(s, t, seen: true, sigil: true);
+        s = Update(s, 33, hud: !hudHidden);
+        s = Update(s, 36, hud: !hudHidden);
+        s = Update(s, 37, seen: true, sigil: true);
+        Assert.Equal(T0, s.Duelist!.FirstSeenAt);
+        Assert.Equal(DuelStage.None, Phase(s, 37).Stage);
+    }
 
     [Fact]
     public void Sightings_in_a_continuous_run_through_the_30_seconds_never_restart_the_cycle()
@@ -251,7 +250,7 @@ public class DuelistTests
         var s = DebuffStatus.None;
         for (double t = 0; t <= 45; t += 0.5)
         {
-            s = Update(s, t, seen: true);
+            s = Update(s, t, seen: true, sigil: true);
             if (t >= 30) Assert.Equal(DuelStage.None, Phase(s, t).Stage);
             Assert.Equal(T0, s.Duelist!.FirstSeenAt);
         }
@@ -265,50 +264,79 @@ public class DuelistTests
         var after = Update(s, 30, seen: true);
         Assert.NotEqual(s, after);
         Assert.Equal(after, Update(after, 30.1, seen: true));   // and then it stays
+        var unread = Update(s, 29.95);
+        Assert.NotEqual(unread, Update(unread, 30));            // also when the icon isn't read at 30 s
+    }
+
+    // ── The sigil without 결투자: the debuff is over ──
+
+    [Fact]
+    public void The_sigil_without_결투자_for_half_a_second_removes_it_from_the_overlay()
+    {
+        var s = Update(DebuffStatus.None, 0, seen: true, sigil: true);
+        s = Update(s, 10, sigil: true);
+        Assert.Equal(DuelStage.Icon, Phase(s, 10).Stage);   // one read could be the glare
+        s = Update(s, 10.4, sigil: true);
+        Assert.NotNull(s.Duelist);
+        s = Update(s, 10.5, sigil: true);
+        Assert.Null(s.Duelist);
     }
 
     [Fact]
-    public void One_read_without_the_icon_after_the_30_seconds_lets_the_next_sighting_start_a_new_cycle()
+    public void A_glare_hiding_결투자_for_a_frame_beside_the_sigil_changes_nothing()
     {
-        var s = Update(DebuffStatus.None, 0, seen: true);
-        for (double t = 0.5; t <= 33; t += 0.5) s = Update(s, t, seen: true);
-        s = Update(s, 33.5);                     // one read without it
-        s = Update(s, 36, seen: true);
-        Assert.Equal(At(36), s.Duelist!.FirstSeenAt);
-        Assert.Equal(new DuelPhase(DuelStage.Countdown, 4), Phase(s, 36));
-    }
-
-    [Theory]
-    [InlineData(false)]   // reads came every second
-    [InlineData(true)]    // no read between the last miss and the sighting
-    public void Absent_from_20_s_and_seen_again_at_35_s_starts_a_new_cycle(bool readsBetween)
-    {
-        // Ambiguous by nature: after our 30 s are over this cannot be told from a new debuff, so it is one.
-        var s = Update(DebuffStatus.None, 0, seen: true);
-        s = Update(s, 20);
-        if (readsBetween) foreach (double t in new[] { 25.0, 31, 34 }) s = Update(s, t);
-        s = Update(s, 35, seen: true);
-        Assert.Equal(At(35), s.Duelist!.FirstSeenAt);
-        Assert.Equal(new DuelPhase(DuelStage.Countdown, 4), Phase(s, 35));
+        var s = DebuffStatus.None;
+        for (int i = 0; i <= 340; i++) s = Update(s, i / 10.0, seen: true, sigil: true);
+        s = Update(s, 34.1, sigil: true);          // glare
+        s = Update(s, 34.2, seen: true, sigil: true);
+        Assert.Equal(T0, s.Duelist!.FirstSeenAt);
+        s = Update(s, 34.3, sigil: true);          // the half second starts again
+        s = Update(s, 34.7, sigil: true);
+        Assert.NotNull(s.Duelist);
     }
 
     [Fact]
-    public void A_sighting_at_exactly_30_s_after_a_miss_inside_the_30_seconds_starts_a_new_cycle()
+    public void A_glare_just_before_a_cutscene_does_not_shorten_the_half_second_after_it()
     {
-        var s = Update(DebuffStatus.None, 0, seen: true);
-        s = Update(s, 29.9);
-        s = Update(s, 30, seen: true);
-        Assert.Equal(At(30), s.Duelist!.FirstSeenAt);
+        // The half second must be one continuous run of sigil-without-결투자 reads: a cutscene in between restarts it.
+        var s = Update(DebuffStatus.None, 0, seen: true, sigil: true);
+        s = Update(s, 29.9, sigil: true);          // glare
+        s = Update(s, 30);                         // the cutscene starts: nothing read
+        s = Update(s, 37, sigil: true);            // it ends: the sigil is drawn a frame before 결투자
+        s = Update(s, 37.1, seen: true, sigil: true);
+        Assert.Equal(T0, s.Duelist!.FirstSeenAt);  // the same cycle: no second countdown
     }
 
     [Fact]
-    public void The_first_read_after_a_hidden_hud_past_the_30_seconds_is_a_gap_too()
+    public void After_the_sigil_showed_it_was_over_the_next_결투자_counts_down()
+    {
+        var s = Update(DebuffStatus.None, 0, seen: true, sigil: true);
+        for (int i = 0; i <= 10; i++) s = Update(s, 38 + i / 10.0, sigil: true);
+        Assert.Null(s.Duelist);
+        s = Update(s, 60, seen: true, sigil: true);
+        Assert.Equal(At(60), s.Duelist!.FirstSeenAt);
+        Assert.Equal(new DuelPhase(DuelStage.Countdown, 4), Phase(s, 60));
+    }
+
+    // ── A kept mark expires: the next pull counts down ──
+
+    [Fact]
+    public void A_mark_kept_without_any_read_expires_90_seconds_after_the_first_sighting()
     {
         var s = Update(DebuffStatus.None, 0, seen: true);
-        for (double t = 1; t <= 29; t++) s = Update(s, t, seen: true);
-        s = Update(s, 32, hud: false);
-        s = Update(s, 33, seen: true);
-        Assert.Equal(At(33), s.Duelist!.FirstSeenAt);
+        s = Update(s, 89.9);
+        Assert.NotNull(s.Duelist);
+        s = Update(s, 90);
+        Assert.Null(s.Duelist);
+    }
+
+    [Fact]
+    public void A_sighting_90_seconds_after_the_first_starts_a_new_cycle_even_with_no_read_between()
+    {
+        var s = Update(DebuffStatus.None, 0, seen: true);
+        s = Update(s, 95, seen: true, sigil: true);   // a wipe and the next pull, both shown at once
+        Assert.Equal(At(95), s.Duelist!.FirstSeenAt);
+        Assert.Equal(new DuelPhase(DuelStage.Countdown, 4), Phase(s, 95));
     }
 
     // ── The other debuffs are untouched ───────────────────────────────────────────────────────────────────────────

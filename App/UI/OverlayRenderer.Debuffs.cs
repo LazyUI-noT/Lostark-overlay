@@ -127,7 +127,7 @@ public sealed partial class OverlayRenderer
     void DrawDuelist(DrawingContext dc, Rect box, DuelPhase phase, double ms, bool reduced, double font)
     {
         // Redrawn while the number ticks down and the outline circles. Under reduced motion only the countdown moves; the
-        // end of the 30 s is picked up by the republish the tracker causes when the cycle ends (DuelMark.Ended).
+        // end of the 30 s is picked up by the republish the tracker causes when the 30 s end (DuelMark.Ended).
         _animating |= !reduced || phase.Stage == DuelStage.Countdown;
         dc.DrawImage(DuelistIcon, box);
         if (phase.Stage == DuelStage.Countdown)

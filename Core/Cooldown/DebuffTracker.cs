@@ -21,7 +21,7 @@ public static class DebuffTracker
                 Blue = prev.Blue is { } b ? b with { SeenAt = now } : null, Red = prev.Red is { } r ? r with { SeenAt = now } : null,
                 Lightning = prev.Lightning is { } l ? l with { SeenAt = now } : null, Swap = prev.Swap is { } w ? w with { SeenAt = now } : null,
                 BossSeenAt = prev.BossRed is null ? prev.BossSeenAt : now,
-                Duelist = Duel(prev.Duelist, false, now),
+                Duelist = Duel(prev.Duelist, false, false, now),
             };
 
         DebuffMark? Mark(DebuffKind kind, DebuffMark? was)
@@ -37,7 +37,7 @@ public static class DebuffTracker
         {
             Blue = Mark(DebuffKind.파랑, prev.Blue), Red = Mark(DebuffKind.빨강, prev.Red),
             Lightning = Mark(DebuffKind.번개, prev.Lightning), Swap = Mark(DebuffKind.교체, prev.Swap),
-            Duelist = Duel(prev.Duelist, reads.Any(r => r.Kind == DebuffKind.결투자), now),
+            Duelist = Duel(prev.Duelist, reads.Any(r => r.Kind == DebuffKind.결투자), reads.Any(r => r.Kind is DebuffKind.파랑 or DebuffKind.빨강), now),
         };
         // One sigil at a time: the one just seen replaces the other at once.
         if (reads.Any(r => r.Kind == DebuffKind.파랑) && !reads.Any(r => r.Kind == DebuffKind.빨강)) next = next with { Red = null };
@@ -53,16 +53,17 @@ public static class DebuffTracker
         return now - prev.BossSeenAt <= BossHold ? next : next with { BossRed = null, BossBlue = null };
     }
 
-    /// <summary>The 결투자 cycle: a running one is kept through misses, a hidden HUD and the icon's return until
-    /// <see cref="DuelMark.Hold"/> after its first sighting. After that it is kept as ended while the icon is read read
-    /// after read (the game's debuff outlasts our 30 s: no second cycle); a read without the icon drops it, and the next
-    /// sighting starts a new one. A sighting that follows a miss from before the 30 s were over starts one too: it cannot be
-    /// told from a new debuff.</summary>
-    static DuelMark? Duel(DuelMark? was, bool seen, TimeSpan now)
+    /// <summary>The 결투자 cycle (user, 2026-10-13): a sigil read without 결투자 for <see cref="DuelMark.Gone"/> means the
+    /// debuff is over, so it is removed and the next sighting counts down again. Both gone, or a hidden HUD, is most likely
+    /// a cutscene: the mark is kept, so the icon coming back is the same cycle (no second countdown), until
+    /// <see cref="DuelMark.Keep"/> after its first sighting. <paramref name="sigil"/>: a 파랑 or 빨강 sigil in this read.</summary>
+    static DuelMark? Duel(DuelMark? was, bool seen, bool sigil, TimeSpan now)
     {
-        if (was is null) return seen ? new DuelMark(now) : null;
-        if (was.IsActive(now)) return was with { InRow = seen };
-        if (!seen) return null;
-        return was.InRow ? was with { InRow = true, Ended = true } : new DuelMark(now);
+        if (was is null || now - was.FirstSeenAt >= DuelMark.Keep) return seen ? new DuelMark(now) : null;
+        var kept = was with { Ended = !was.IsActive(now) };
+        if (seen) return kept with { GoneSince = null };
+        if (!sigil) return kept with { GoneSince = null };   // the half second is one unbroken run of sigil-only reads
+        var since = was.GoneSince ?? now;
+        return now - since >= DuelMark.Gone ? null : kept with { GoneSince = since };
     }
 }

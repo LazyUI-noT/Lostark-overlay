@@ -101,7 +101,7 @@ public sealed partial class Engine : IDisposable
     int _gainsSaved;   // _gains.Version last written
     TimeSpan _gainsSavedAt = TimeSpan.MinValue;
     static readonly TimeSpan GainsSaveEvery = TimeSpan.FromMinutes(1);
-    IReadOnlyDictionary<SlotId, PixelRect>? _rectsFrom;   // the 아덴 rects the calibrations were loaded for
+    string? _adenFile;   // the 아덴2 calibration file the 아덴 calibrations were loaded for (class, spots, 수동 조정)
     readonly SlotCalibration?[] _cal = new SlotCalibration?[SlotInfo.All.Length];
     readonly Dictionary<PixelRect, Image> _buffers = [];
     ICaptureSource? _source;
@@ -240,7 +240,8 @@ public sealed partial class Engine : IDisposable
         if (config.Gauge != _gaugeFrom) { (_gaugeFrom, _gauge) = (config.Gauge, null); _gaugeFilter.Reset(); _spender.Reset(); }   // another character: not its value
         if (config.Character != _gainsFor) SwitchGains(config.Character);
         _gaugeFilter.Mode = config.ReadMode;
-        if (config.AdenRects != _rectsFrom) { _rectsFrom = config.AdenRects; ReloadAden(config); }   // another class: its own 아덴 spots
+        // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
+        if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
         (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, config.Raid != Raid.없음);
         // 위치 조정 tries a 버프 크기 live: both rows read at it until 적용 stores it in 설정 or the panel closes.
         int? previewSize = _previewing ? _previewBuffSize : null;
@@ -790,17 +791,14 @@ public sealed partial class Engine : IDisposable
 
     static DarkCue Dark(SlotId slot, Config config) => config.AdenSlots.Contains(slot) ? config.AdenDark : DarkCue.None;
 
-    /// <summary>A 아덴 slot a class moves (발키리) keeps its ready icon in a file of its own, so switching classes doesn't
-    /// overwrite the other's.</summary>
-    /// A 수동 조정's calibration has files of its own (…_adj), so 자동 and 직접 입력 keep theirs.
+    /// <summary>A 아덴 slot's ready icon is the class's own (its frame differs per class), so switching classes neither reads
+    /// nor overwrites another's; a 수동 조정's calibration has files of its own (…_adj). See <see cref="SlotCalibration.FileName"/>.</summary>
     string CalibrationFile(SlotId slot, Config config) => Path.Combine(CalibrationDir,
-        (config.AdenRects?.GetValueOrDefault(slot) is { Width: > 0 } r ? $"{slot}_{r.X}_{r.Y}" : slot.ToString()) + (_adjusted ? AdjustSuffix : "") + ".bgra");
-
-    const string AdjustSuffix = "_adj";
+        SlotCalibration.FileName(slot, config.AdenRects?.GetValueOrDefault(slot), config.Character, _adjusted));
 
     /// <summary>The calibration files of the fit in use: 수동 조정's (…_adj) or the others'.</summary>
     IEnumerable<string> OwnCalibrationFiles() => (Directory.Exists(CalibrationDir) ? Directory.GetFiles(CalibrationDir, "*.bgra") : [])
-        .Where(f => Path.GetFileNameWithoutExtension(f).EndsWith(AdjustSuffix, StringComparison.Ordinal) == _adjusted);
+        .Where(f => Path.GetFileNameWithoutExtension(f).EndsWith(SlotCalibration.AdjustSuffix, StringComparison.Ordinal) == _adjusted);
 
     void ReloadAden(Config config)
     {

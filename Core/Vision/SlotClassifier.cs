@@ -12,6 +12,21 @@ public sealed class SlotCalibration
     private const double LabelTop = 0.68, LabelMargin = 0.2;
     private readonly int[] _edges;   // grey gradients (dx, dy) of the ready crop
 
+    /// <summary>The saved file of 수동 조정's fit ends in this, so 자동 and 직접 입력 keep theirs.</summary>
+    public const string AdjustSuffix = "_adj";
+
+    /// <summary>The file a slot's ready look is saved in. The key-label strip matches on any character for the eight keys,
+    /// 각성기 and 초각스, but a 아덴 slot's frame is the class's own (워로드's shield against 도화가's hexagon: 0.01–0.04, all
+    /// Unreadable): its file is per class (<paramref name="character"/> "클래스 · 직업각인"; both 직업각인 share it), and per
+    /// place for a class that moves it (<paramref name="adenRect"/>, 발키리).</summary>
+    public static string FileName(SlotId slot, PixelRect? adenRect, string? character, bool adjusted)
+    {
+        bool aden = slot is SlotId.아덴1 or SlotId.아덴2;
+        var name = aden && adenRect is { Width: > 0 } r ? $"{slot}_{r.X}_{r.Y}" : slot.ToString();
+        if (aden && character?.Split(" · ")[0] is { Length: > 0 } cls) name += $"_{cls}";
+        return name + (adjusted ? AdjustSuffix : "") + ".bgra";
+    }
+
     public SlotCalibration(Image ready)
     {
         Ready = ready;

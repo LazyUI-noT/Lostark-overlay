@@ -19,12 +19,19 @@ public sealed record DebuffMark(TimeSpan SeenAt, TimeSpan? EndsAt)
 }
 
 /// <summary>The 결투자 cycle: when it was first seen. The 4 → 0 countdown and the 30 s hold run from that instant on the
-/// app's own clock (the game's "38초" is not read), whether or not the icon is still read after it. The 30 s are a hard
-/// cap: the game's own debuff lasts longer, so a mark whose time is over stays (<see cref="Ended"/>) while the icon is read
-/// without a gap, and only a read without it lets the next sighting start a new cycle.
-/// <paramref name="InRow"/>: the latest read had the icon. <paramref name="Ended"/>: the 30 s passed with the icon still read.</summary>
-public sealed record DuelMark(TimeSpan FirstSeenAt, bool InRow = true, bool Ended = false)
+/// app's own clock (the game's "38초" is not read), whether or not the icon is still read after it. The mark outlives the
+/// 30 s (the game's debuff lasts longer) so the icon coming back after a cutscene is the same cycle, not a new countdown.
+/// It ends only when a sigil is read without 결투자 for <see cref="Gone"/> (the debuff is over), or <see cref="Keep"/>
+/// after the first sighting (the next pull). <paramref name="GoneSince"/>: since when every read has shown a sigil without it.
+/// <paramref name="Ended"/>: the 30 s are over (a change of status, so the box is republished and cleared).</summary>
+public sealed record DuelMark(TimeSpan FirstSeenAt, TimeSpan? GoneSince = null, bool Ended = false)
 {
+    /// <summary>A sigil read without 결투자 this long means the debuff is over (one read could be the glare).</summary>
+    public static readonly TimeSpan Gone = TimeSpan.FromSeconds(0.5);
+    /// <summary>A mark kept through a cutscene or between phases ends this long after its first sighting, so the next pull
+    /// counts down even if its first read shows the sigil and 결투자 together.</summary>
+    public static readonly TimeSpan Keep = TimeSpan.FromSeconds(90);
+
     /// <summary>The countdown shows 4, 3, 2, 1, 0: <see cref="CountSteps"/> steps of <see cref="CountStep"/>.</summary>
     public const int CountSteps = 5;
     public static readonly TimeSpan CountStep = TimeSpan.FromSeconds(1);
