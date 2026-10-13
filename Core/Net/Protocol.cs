@@ -23,7 +23,7 @@ public static class Protocol
     /// the gold frame (0x20) and whether the slot is a stack skill (0x10) travel in the phase byte. 7: Colors and
     /// ColorsAck (a member's own box colours, for 파티원 설정 따르기). 8: they became Look and LookAck, which add the box
     /// size and free layout (파티원 크기 받기, 파티원 배치 받기). 9: the Hello ends with the joiner's app version (major,
-    /// minor, patch), and the host refuses any other (<see cref="Membership.AppRefusal"/>). 10: the Hello adds the
+    /// minor, patch), and the host refuses another major.minor (<see cref="Membership.AppRefusal"/>). 10: the Hello adds the
     /// joiner's device key and its signature (<see cref="DeviceIdentity"/>), and Pending says the host is deciding.</summary>
     public const byte Version = 10;
     const int Estimated = 0x80, Stacked = 0x40, Gold = 0x20, StackSkill = 0x10, PhaseBits = 0x0F;

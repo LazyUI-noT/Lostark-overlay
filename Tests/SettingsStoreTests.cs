@@ -618,7 +618,8 @@ public sealed class SettingsStoreTests : IDisposable
     private static Task HoldFor(string path, int ms)
     {
         var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        return Task.Delay(ms).ContinueWith(_ => fs.Dispose());
+        // Its own thread, not a pool continuation: a pool busy with the other tests released it after the store's retries.
+        return Task.Factory.StartNew(() => { Thread.Sleep(ms); fs.Dispose(); }, TaskCreationOptions.LongRunning);
     }
 
     [Fact]

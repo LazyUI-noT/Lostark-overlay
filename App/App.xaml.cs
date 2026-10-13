@@ -24,6 +24,8 @@ public partial class App : Application
         if (e.Args.Contains("--demo")) { StartDemo(e.Args); return; }
         if (e.Args.Contains("--party-test")) { PartySelfTest.Run(this); return; }
         if (e.Args.Contains("--build-gauge")) { BuildGauge(e.Args); Shutdown(); return; }
+        if (e.Args.Contains("--check-submission")) { CheckSubmission(e.Args); Shutdown(); return; }
+        if (e.Args.Contains("--trace-gauge")) { TraceGauge(e.Args); Shutdown(); return; }
 
         // --updated: started by the old version after an update, which may still be exiting: wait for its lock.
         if (!AcquireSingleInstance(e.Args.Contains("--updated") ? UpdateHandover : TimeSpan.Zero)) { Shutdown(); return; }
@@ -32,7 +34,7 @@ public partial class App : Application
 
     static readonly TimeSpan UpdateHandover = TimeSpan.FromSeconds(30);
 
-    /// <summary>--build-gauge &lt;shots&gt; &lt;out&gt; [--region=x,y,w,h]: empty.png and full.png in &lt;shots&gt; (screenshots of the
+    /// <summary>--build-gauge &lt;shots&gt; &lt;out&gt; [--region=x,y,w,h] [--no-ui]: gauge_empty.png and gauge_full.png (or empty.png, full.png) in &lt;shots&gt; (screenshots of the
     /// game at any resolution, HUD size or 21:9, resampled to the reference screen by <see cref="ReferenceShot"/>) → gauge.json,
     /// mask.png, emblem_empty.png and emblem_full.png in &lt;out&gt; (Profiles/aden/README.md). The search region, in reference
     /// pixels, defaults to the emblem and 40 px around it.</summary>
@@ -42,11 +44,11 @@ public partial class App : Application
         string message;
         try
         {
-            if (paths.Length != 2) throw new ArgumentException("사용법: --build-gauge <스크린샷 폴더> <출력 폴더> [--region=x,y,w,h]");
+            if (paths.Length != 2) throw new ArgumentException("사용법: --build-gauge <스크린샷 폴더> <출력 폴더> [--region=x,y,w,h] [--no-ui]");
             var e = Geometry.RefEmblem;
             var region = args.FirstOrDefault(a => a.StartsWith("--region="))?[9..].Split(',').Select(int.Parse).ToArray() is [var x, var y, var w, var h]
                 ? new PixelRect(x, y, w, h) : new PixelRect(e.X - 40, e.Y - 40, e.Width + 80, e.Height + 40);
-            var (empty, full, found) = ReferenceShot.Normalize(Png.Load(Path.Combine(paths[0], "empty.png")), Png.Load(Path.Combine(paths[0], "full.png")));
+            var (empty, full, found) = ReferenceShot.Normalize(Png.Load(Shot(paths[0], "empty")), Png.Load(Shot(paths[0], "full")));
             var (json, mask) = GaugeLoader.Build(empty, full, region);
             Directory.CreateDirectory(paths[1]);
             File.WriteAllText(Path.Combine(paths[1], GaugeLoader.JsonFile), json);
@@ -56,12 +58,16 @@ public partial class App : Application
             Png.Save(Path.Combine(paths[1], "emblem_full.png"), ReferenceShot.Emblem(full));
             message = $"{found}.\n{paths[1]}에 {GaugeLoader.JsonFile}, {GaugeLoader.MaskFile}({mask.Width}×{mask.Height}), emblem_empty.png, emblem_full.png를 만들었습니다.\n\n{json}";
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException or FormatException or OverflowException or NotSupportedException or UnauthorizedAccessException)
+        catch (Exception ex)   // a dev tool, also run by a script (--no-ui): reported, never a blocking crash dialog
         {
-            message = ex.Message;
+            message = $"{ex.GetType().Name}: {ex.Message}";
         }
-        MessageBox.Show(message, "GaugeOverlay --build-gauge");
+        Report(args, "GaugeOverlay --build-gauge", message);
     }
+
+    /// <summary>An intake folder's gauge_&lt;kind&gt;.png (_NEED.md), else the older &lt;kind&gt;.png.</summary>
+    static string Shot(string dir, string kind) =>
+        File.Exists(Path.Combine(dir, $"gauge_{kind}.png")) ? Path.Combine(dir, $"gauge_{kind}.png") : Path.Combine(dir, $"{kind}.png");
 
     Mutex? _instance;
     readonly List<IDisposable> _owned = [];

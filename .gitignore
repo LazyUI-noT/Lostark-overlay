@@ -10,4 +10,5 @@ reference/
 # Claude Code: the project's own rules are tracked; local settings and the ECC plugin's rule copies are not
 .claude/*
 !.claude/rules/
+!.claude/skills/
 .claude/rules/ecc/

@@ -11,7 +11,7 @@ public class ReferenceShotTests
 {
     /// <summary>A whole screenshot around a band fixture: the game area grey (not black, or it reads as a letterbox bar), black
     /// bars above and below it, and the band where it was captured, shifted by the game area's origin on that monitor.</summary>
-    static Image Screen(string band, int width, int height, Viewport game, int originX = 0, int originY = 0)
+    internal static Image Screen(string band, int width, int height, Viewport game, int originX = 0, int originY = 0)
     {
         var f = Fixture.Load(band);
         var img = new Image(width, height);

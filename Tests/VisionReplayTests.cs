@@ -7,6 +7,7 @@ namespace GaugeOverlay.Tests;
 
 /// <summary>The frames measured from gameplay.mp4 and 333.mp4 (PLAN §3), and the reference screenshots,
 /// through the real reader. Frame numbers are relative to each fixture's first frame.</summary>
+[Collection(nameof(VisionReplayTests))]   // alone: Slot_read_is_fast times itself and failed beside other tests
 public class VisionReplayTests(ITestOutputHelper log)
 {
     private static Reading[] Replay(string name, string calName, int calFrame)
@@ -260,3 +261,7 @@ public class VisionReplayTests(ITestOutputHelper log)
         return dst;
     }
 }
+
+
+[CollectionDefinition(nameof(VisionReplayTests), DisableParallelization = true)]
+public class VisionReplayCollection;

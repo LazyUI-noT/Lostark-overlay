@@ -16,6 +16,9 @@ public sealed record GaugeDef(PixelRect Ref, GaugeShape Shape, bool Pieces, int 
         return Pieces ? (double)GaugeReader.ReadPieces(img, Shape, Tolerance) / Shape.Pieces : GaugeReader.ReadContinuous(img, Shape, Tolerance);
     }
 
+    /// <summary>The fill on a whole screenshot whose game area and skill bar fit are <paramref name="vp"/>, <paramref name="fit"/>.</summary>
+    public double ReadOn(Image screen, Viewport vp, Fit fit) => Read(BuffReader.Crop(screen, Geometry.ToScreen(Ref, vp, fit)));
+
     /// <summary>Box-averaged down (or nearest up) to <paramref name="w"/> × <paramref name="h"/>.</summary>
     static Image Scale(Image src, int w, int h)
     {

@@ -252,14 +252,15 @@ public class ProtocolTests
     }
 
     [Fact]
-    public void Another_app_version_is_refused_naming_both_and_who_updates()
+    public void Another_minor_or_major_is_refused_naming_both_and_who_updates()
     {
-        Assert.Null(Membership.AppRefusal(new Version(1, 0, 8), new Version(1, 0, 8, 0)));   // a 4th part doesn't count
-        var older = Membership.AppRefusal(new Version(1, 0, 8), new Version(1, 0, 7));
-        Assert.Contains("호스트 v1.0.8", older);
-        Assert.Contains("내 버전 v1.0.7", older);
+        Assert.Null(Membership.AppRefusal(new Version(1, 4, 2), new Version(1, 4, 1)));   // a patch never changes what a party sends
+        Assert.Null(Membership.AppRefusal(new Version(1, 4, 1), new Version(1, 4, 9, 3)));
+        var older = Membership.AppRefusal(new Version(1, 5, 1), new Version(1, 4, 9));
+        Assert.Contains("호스트 v1.5.1", older);
+        Assert.Contains("내 버전 v1.4.9", older);
         Assert.Contains("업데이트 확인", older);
-        Assert.Contains("호스트가 업데이트", Membership.AppRefusal(new Version(1, 0, 7), new Version(1, 0, 8)));
+        Assert.Contains("호스트가 업데이트", Membership.AppRefusal(new Version(1, 4, 9), new Version(2, 0, 0)));
     }
 
     [Fact]

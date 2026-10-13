@@ -50,10 +50,10 @@ public sealed class PartySessionTests : IDisposable
     public void A_member_on_another_app_version_is_refused()
     {
         var host = Host();
-        var old = Start(host, "민수", At(2), new Version(1, 0, 6));
+        var old = Start(host, "민수", At(2), new Version(0, 9, 6));
         Deliver();
         Assert.True(old.Ended);
-        Assert.Contains("내 버전 v1.0.6", old.TakeChanges().Notice);
+        Assert.Contains("내 버전 v0.9.6", old.TakeChanges().Notice);
         Assert.Equal("호스트 중 (1/4)", host.Status);
     }
 
@@ -716,7 +716,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.False(d.CanRejoin);   // kicked
         Assert.False(e.CanRejoin);   // left
         Assert.False(f.CanRejoin);   // host ended it
-        var old = Start(Host(), "영희", At(8), new Version(1, 0, 6));
+        var old = Start(Host(), "영희", At(8), new Version(0, 9, 6));
         Deliver();
         Assert.True(old.Ended);
         Assert.False(old.CanRejoin);   // another version
@@ -743,16 +743,16 @@ public sealed class PartySessionTests : IDisposable
     public void Refusals_are_reported_once_per_joiner_per_reason_per_minute()
     {
         var host = Host();
-        Start(host, "영희", At(2), new Version(1, 0, 6));
+        Start(host, "영희", At(2), new Version(0, 9, 6));
         Deliver();
-        Start(host, "영희", At(2, 40001), new Version(1, 0, 6));
+        Start(host, "영희", At(2, 40001), new Version(0, 9, 6));
         Deliver();
         var refused = host.TakeChanges().Admission.Refused.Single();
         Assert.Contains("영희", refused);
-        Assert.Contains("v1.0.6", refused);
+        Assert.Contains("v0.9.6", refused);
 
         Wait(TimeSpan.FromSeconds(61));
-        Start(host, "영희", At(2, 40002), new Version(1, 0, 6));
+        Start(host, "영희", At(2, 40002), new Version(0, 9, 6));
         Deliver();
         Assert.Single(host.TakeChanges().Admission.Refused);
     }

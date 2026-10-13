@@ -21,12 +21,13 @@ public static class Membership
         return null;
     }
 
-    /// <summary>Null when the joiner runs the host's app version (major.minor.patch), else the refusal text shown to the
-    /// joiner, naming both versions and who should update.</summary>
+    /// <summary>Null when the joiner runs the host's major.minor (any patch: a patch never changes what a party sends or
+    /// shows; that takes a minor, see .claude/rules/repos.md), else the refusal text shown to the joiner, naming both versions
+    /// and who should update.</summary>
     public static string? AppRefusal(Version host, Version joiner)
     {
         Version h = Short(host), j = Short(joiner);
-        if (h == j) return null;
+        if ((h.Major, h.Minor) == (j.Major, j.Minor)) return null;
         var who = j < h ? "설정 → 업데이트 확인으로 업데이트한 뒤" : "호스트가 업데이트한 뒤";
         return $"버전이 다릅니다 (호스트 v{h}, 내 버전 v{j}). {who} 다시 참가해 주세요.";
     }
