@@ -80,22 +80,6 @@ public sealed class GlowAndCountTests : IDisposable
         Assert.NotSame(from.SlotPulseColors, to.SlotPulseColors);
     }
 
-    /// <summary>Before 빛 색 직접 고르기 a chosen glow colour always showed: a profile with one keeps showing it.</summary>
-    [Fact]
-    public void A_glow_colour_chosen_before_the_switch_turns_it_on()
-    {
-        var s = new Settings { Version = 3 };
-        ClassProfiles.Edit(s, null).Mine.PulseColor[SlotGroup.일반스킬] = "#ffffff";
-        ClassProfiles.Edit(s, "워로드").Mine.PulseColor[SlotGroup.초각스] = "#FF0000";
-        var store = new SettingsStore(Path.Combine(_dir, "settings.json"));
-        store.Save(s);
-
-        var back = store.Load(out _);
-        Assert.False(ClassProfiles.Of(back, null).Mine.CustomGlow);
-        Assert.True(ClassProfiles.Of(back, "워로드").Mine.CustomGlow);
-        Assert.Equal(Settings.CurrentVersion, back.Version);
-    }
-
     [Fact]
     public void The_ready_count_is_off_by_default_and_set_per_group_or_skill()
     {

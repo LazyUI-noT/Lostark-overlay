@@ -10,6 +10,8 @@ using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using Forms = System.Windows.Forms;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>설정: four areas of sections (<see cref="BuildShell"/>). Every change edits the <see cref="Settings"/> object at
@@ -18,7 +20,6 @@ public partial class SettingsWindow : Window
 {
     readonly Settings _s;
     readonly CharacterService _chars;
-    readonly bool _inEditor;   // the 레이아웃 편집기's hidden instance: only BoxTab and GaugeBox are shown, by the editor
     string? _lastActive;
 
     /// <summary>Raised after every edit (and after a reset).</summary>
@@ -31,9 +32,6 @@ public partial class SettingsWindow : Window
 
     /// <summary>내 오버레이 → 배치 → "편집 모드".</summary>
     public event Action? EditModeRequested;
-
-    /// <summary>레이아웃 편집기 열기.</summary>
-    public event Action? LayoutEditorRequested;
 
     /// <summary>파티 → "호스트 시작" / "참가" (with the pasted token) / "나가기" / "토큰 복사".</summary>
     public event Action? HostRequested, LeaveRequested, CopyTokenRequested;
@@ -107,24 +105,15 @@ public partial class SettingsWindow : Window
         FillFit();
     }
 
-    /// <param name="quickTab">The window as 설정, with its preview; off for the 레이아웃 편집기, which hosts
-    /// <see cref="BoxTab"/> and <see cref="GaugeBox"/> itself.</param>
-    public SettingsWindow(Settings settings, CharacterService characters, bool quickTab = true)
+    public SettingsWindow(Settings settings, CharacterService characters)
     {
         _s = settings;
         _chars = characters;
-        _inEditor = !quickTab;
         InitializeComponent();
         BuildShell();
-        if (quickTab)
-        {
-            BuildQuick();
-            _secSkills.Children.Add(_chips);
-            _secSkills.Children.Add(BoxTab);
-            _secSkills.Children.Add(_skillsClass);
-            (GaugeBox.Visibility, GaugeBox.Margin) = (Visibility.Visible, new());   // the editor's side margin; the card pads here
-            _secGauge.Children.Add(GaugeBox);
-        }
+        BuildUndo();
+        (GaugeBox.Visibility, GaugeBox.Margin) = (Visibility.Visible, new());   // the inspector pads it
+        BuildCanvasPage();
         IsVisibleChanged += (_, _) => { if (IsVisible) RefreshPick(reloadIcons: true); };   // its icons may have been read since
         BuildAll();
         ShowArea();
@@ -138,7 +127,8 @@ public partial class SettingsWindow : Window
 
     void Changed()
     {
-        QuickRefresh();
+        _canvas?.Relayout();
+        RecordChange();
         SettingsChanged?.Invoke();
     }
 
@@ -147,27 +137,42 @@ public partial class SettingsWindow : Window
 
     void BuildAll()
     {
+        StartCollecting();
+        try { FillSections(); }
+        finally { StopCollecting(); }
+        ShowProfileButtons();
+        ShowCanvasShot();   // the profile may be another one
+        _canvas?.Relayout();   // the windows as the settings now say (a raid picked in the tray, another profile)
+        RefreshInspector();
+        ResetBaseline();   // an edit from elsewhere (tray, first run, undo) is where the next step starts
+    }
+
+    void FillSections()
+    {
+        _canvas?.ReleaseMouseCapture();   // a drag must not carry on into another profile's spots
         string? active = ClassProfiles.ActiveKey(_s);
         if (active != _lastActive) (_classShown, _lastActive) = (null, active);   // a new character: edit its class
         RefreshPick();   // before the sections: they show what the pick means
         FillCharacter();
         FillFit();
         FillDisplay();
+        Collect(GaugeBox);
         FillGauge();
         FillConnect();
         FillOrder();
         FillSend();   // 파티원 모양 comes with the class sections
         FillKeys();
         FillHotkeys();
+        Collect(null);   // 편집 중's line is not a setting row
         FillClassSections();
-        FillChips();
+        Collect(null);   // the box options are one box's
         FillBox();
-        QuickRefresh();   // the buff and debuff windows as the settings now say (a raid picked in the tray)
     }
 
     /// <summary>Clears a section and starts it with its title and what it is for.</summary>
-    static StackPanel Refill(StackPanel p, string title, string? lead = null)
+    StackPanel Refill(StackPanel p, string title, string? lead = null)
     {
+        Collect(p);   // its rows go into the search registry (while BuildAll collects)
         p.Children.Clear();
         p.Children.Add(Heading(title, first: true, help: lead));   // what the section is for: in its ?
         return p;
@@ -291,15 +296,16 @@ public partial class SettingsWindow : Window
             FitMode.수동조정 => "디버그 창에서 옮기고 적용한 위치를 씁니다. 게임 화면 크기마다 따로 저장하며, 적용하지 않은 크기에서는 자동으로 맞춘 값을 씁니다.",
             _ => "맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다." + (_s.Adjusts.Count == 0 ? " 수동 조정은 디버그 창에서 위치를 적용한 뒤 고를 수 있습니다." : ""),
         }), modes));
-        p.Children.Add(HelpRow("게임의 버프 크기 (%)", "게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기는 버프 크기를 찾지 않습니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽습니다.", BuffSizeCombo()));
-        p.Children.Add(HelpRow("게임의 데미지 폰트 크기 (%)", "게임 설정의 데미지 폰트 크기와 같게 맞춰 주세요. 단심(기타 탭)이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다.", FontSizeCombo()));
+        p.Children.Add(SubHeading("게임 설정 값", "게임 설정 → 화면과 같은 값으로 맞춰 주세요. 다르면 스킬창, 버프, 단심을 엉뚱한 곳에서 읽습니다."));
+        p.Children.Add(HelpRow("버프 크기 (%)", "게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기는 버프 크기를 찾지 않습니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽습니다.", BuffSizeCombo()));
+        p.Children.Add(HelpRow("데미지 폰트 크기 (%)", "게임 설정의 데미지 폰트 크기와 같게 맞춰 주세요. 단심이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다.", FontSizeCombo()));
         if (mode == FitMode.직접입력 && _s.ManualHud is { } hud)
         {
             var hudSize = Combo();
             hudSize.ItemsSource = Settings.HudSizes;
             hudSize.SelectedItem = Settings.NearestHud(hud);
             hudSize.SelectionChanged += (_, _) => { if (hudSize.SelectedItem is int v && v != _s.ManualHud) { _s.ManualHud = v; Changed(); } };
-            p.Children.Add(Row("게임의 HUD 크기 (%)", hudSize));
+            p.Children.Add(Row("HUD 크기 (%)", hudSize));
             ScreenRows(p);
             var auto = new Button { Content = "자동으로 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
             auto.Click += (_, _) => { (_s.ManualHud, _s.ManualScreen) = (null, null); FillFit(); Changed(); RefitRequested?.Invoke(); };
@@ -326,7 +332,7 @@ public partial class SettingsWindow : Window
         p.Children.Add(new WrapPanel { Children = { submit, clear } });
         if (_chars.SameSkillsNote is not null) p.Children.Add(Note($"{_chars.ActiveClass!.Name}: 두 직업각인의 스킬이 같아 스킬로 고를 수 없으므로 등록하지 않습니다."));
         if (_skillsResult is { } skills) p.Children.Add(new TextBlock { Text = skills, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
-        p.Children.Add(ResetButton("스킬창 맞춤 지우기", "저장된 스킬창 맞춤을 모두 지웁니다. 다음 실행 때 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
+        p.Children.Add(ResetButton("맞춤 초기화", "저장된 스킬창 맞춤을 모두 지웁니다. 다음 실행 때 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
     }
 
     /// <summary>A hotkey as shown, or that there is none.</summary>
@@ -344,22 +350,22 @@ public partial class SettingsWindow : Window
     void FillDisplay()
     {
         var o = _s.Overlay;
-        var p = Refill(_secDisplay, "오버레이 표시");
-        p.Children.Add(Check("오버레이 표시", o.Visible, v => o.Visible = v, Changed, "끄면 내 오버레이와 파티원 창을 모두 숨깁니다. 트레이 메뉴나 '오버레이 표시/숨기기' 단축키로도 바꿀 수 있습니다. 이 설정 창이 열려 있는 동안에도 켜져 있어야 보입니다. 끄면 미리보기도 숨겨지니, 미리보기를 보려면 켜세요 (레이아웃 편집기가 열려 있을 때는 빼고)."));
+        var p = Refill(_secDisplay, "전체");
+        p.Children.Add(Check("오버레이", o.Visible, v => o.Visible = v, Changed, "끄면 게임 화면의 내 오버레이와 파티원 창을 모두 숨깁니다. 트레이 메뉴나 '오버레이 켜기/끄기' 단축키로도 바꿀 수 있습니다. 왼쪽 화면에는 그대로 보입니다."));
         UIElement? opacityRow = null;
-        p.Children.Add(Check("배경 판 표시", o.ShowPlate,
+        p.Children.Add(Check("배경 판", o.ShowPlate,
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤의 판입니다. 분리된 버프 창에는 판이 없습니다."));
-        p.Children.Add(opacityRow = SliderRow("배경 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
+        p.Children.Add(opacityRow = SliderRow("판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
         opacityRow.Visibility = Shown(o.ShowPlate);
-        CooldownLookRows(p);
-        p.Children.Add(Check("화면 캡처에서 숨기기", o.ExcludeFromCapture, v => o.ExcludeFromCapture = v, Changed, "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다."));
-        p.Children.Add(ColorRow(Label("초각기 표시 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true));
+        p.Children.Add(Check("방송·캡처에서 숨김", o.ExcludeFromCapture, v => o.ExcludeFromCapture = v, Changed, "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다."));
 
-        p.Children.Add(Heading("금색 테두리", help: "게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 테두리를 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 금색과 비슷한 칸 색은 스킬 칸의 색 항목에서 알려 줍니다."));
-        p.Children.Add(ColorRow(Label("테두리 색"), o.GoldColor, v => { o.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false));   // their warnings
-        p.Children.Add(SliderRow("테두리 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed));
-        p.Children.Add(ResetButton("오버레이 표시 되돌리기", "이 화면의 표시, 불투명도, 시간 숫자, 쿨타임 표시, 초각기 표시, 금색 테두리를 되돌립니다. 위치, 크기, 판 색은 남습니다.",
-            () => SettingsResets.Display(_s)));
+        // 칸 모양: how every box shows its cooldown, 초각스, 금테 (the skill inspector)
+        p = Refill(_secSkillLook, "칸 모양");
+        CooldownLookRows(p);
+        p.Children.Add(ColorRow(Label("초각스 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true));
+        p.Children.Add(Heading("금테 (게임 금색 테두리)", help: "게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 테두리를 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 금색과 비슷한 칸 색은 스킬 칸의 색 항목에서 알려 줍니다."));
+        p.Children.Add(ColorRow(Label("금테 색"), o.GoldColor, v => { o.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false));   // their warnings
+        p.Children.Add(SliderRow("금테 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed));
         FillBuffs();
         FillJudgment();
     }
@@ -369,17 +375,17 @@ public partial class SettingsWindow : Window
     void CooldownLookRows(Panel p)
     {
         var o = _s.Overlay;
-        p.Children.Add(SliderRow("칸 불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed));
+        p.Children.Add(SliderRow("불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed));
         double maxFont = Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(o.Width, o.Height));   // the box size is the editor's
         UIElement? fontRow = null, fromRow = null;
-        p.Children.Add(Check("남은 시간 숫자 표시", o.ShowTimer, v => { o.ShowTimer = v; fontRow!.Visibility = Shown(v); }, Changed));
-        p.Children.Add(fontRow = SliderRow("   숫자 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
+        p.Children.Add(Check("남은 쿨 (초)", o.ShowTimer, v => { o.ShowTimer = v; fontRow!.Visibility = Shown(v); }, Changed));
+        p.Children.Add(fontRow = SliderRow("남은 쿨 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
             OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed));
         fontRow.Visibility = Shown(o.ShowTimer);
-        p.Children.Add(Row(HelpLabel("쿨타임 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 합니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 표시됩니다."), EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
+        p.Children.Add(Row(HelpLabel("쿨 진행 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 합니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 표시됩니다."), EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
             (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")], o.CooldownStyle,
             v => { o.CooldownStyle = v; fromRow!.Visibility = Shown(v != CooldownStyle.Sweep); })));
-        p.Children.Add(fromRow = Row("   채움 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
+        p.Children.Add(fromRow = Row("진행 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
             o.FillFrom, v => o.FillFrom = v)));
         fromRow.Visibility = Shown(o.CooldownStyle != CooldownStyle.Sweep);
     }
@@ -389,26 +395,25 @@ public partial class SettingsWindow : Window
     {
         var b = _s.Buffs;
         var p = Refill(_secBuffs, "버프", "내 버프 줄에서 공증, 아덴 피증, 초각스 피증, 뎀증을 찾아 남은 시간을 막대로 보여 줍니다. 파티원에게는 보내지 않습니다. 모두 끄면 버프 줄을 읽지 않습니다.");
-        p.Children.Add(Row("게임의 버프 크기 (%)", BuffSizeCombo()));
-        p.Children.Add(HelpRow("막대 위치", "분리된 창: 버프 막대가 오버레이 판에서 빠져 자기 창에 그려지고, 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (판과 함께면 판 왼쪽 바깥). 끄면 눕혀 위아래로 쌓습니다 (판과 함께면 칸 아래에 두 개씩).", Check("분리된 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (시간 숫자 없음)", b.Side, v => b.Side = v, Changed)));
-        p.Children.Add(Row("줄어듦", Check("남은 시간만큼 줄어듦", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")));
-        p.Children.Add(Row("비었을 때", Check("숨기기", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
+        p.Children.Add(Note("버프 크기는 화면·인식 → 게임 설정 값에서 맞춥니다."));
+        p.Children.Add(HelpRow("위치", "분리된 창: 버프 막대가 오버레이 판에서 빠져 자기 창에 그려지고, 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (판과 함께면 판 왼쪽 바깥). 끄면 눕혀 위아래로 쌓습니다 (판과 함께면 칸 아래에 두 개씩).", Check("분리 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)));
+        p.Children.Add(Row("움직임", Check("유지시간 비례 감소", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")));
+        p.Children.Add(Row("비었을 때", Check("끊긴 버프 막대 숨김", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
             "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
         foreach (var k in Enum.GetValues<BuffKind>())
         {
             var i = b.Of(k);
             string name = k switch { BuffKind.아덴피증 => "아덴 피증", BuffKind.초각스피증 => "초각스 피증", _ => k.ToString() };
-            var label = Check("시간 표시", i.ShowLabel, v => b.Edit(k).ShowLabel = v, Changed);
-            var flash = Check("마지막 1초 깜빡임", b.EndFlash(k), v => b.Edit(k).EndFlash = v, Changed);
+            var label = Check("남은 초", i.ShowLabel, v => b.Edit(k).ShowLabel = v, Changed);
+            var flash = Check("끊기기 1초 전 깜빡임", b.EndFlash(k), v => b.Edit(k).EndFlash = v, Changed);
             flash.ToolTip = "남은 시간이 1초 아래로 내려가면 막대가 줄어드는 방향으로 빛이 지나갑니다.";
-            var more = Stack([ColorRow(Label("   색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k, "   ")]);
+            var more = Stack([ColorRow(Label("색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k)]);
             void Show(bool on) => label.Visibility = flash.Visibility = more.Visibility = Shown(on);
             Show(i.Visible);
             p.Children.Add(SubHeading(name));
             p.Children.Add(Row("", Check("표시", i.Visible, v => { b.Edit(k).Visible = v; Show(v); }, Changed), label, flash));
             p.Children.Add(more);
         }
-        p.Children.Add(ResetButton("버프 되돌리기", "버프 막대 설정을 되돌립니다. 분리된 창의 위치와 크기는 남습니다.", () => SettingsResets.Buffs(_s)));
 
         p.Children.Add(Divider());
         p.Children.Add(Heading("디버프", first: true, help: "레이드를 고르면 MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " + "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 번개 칸에는 결투자도 보입니다(4에서 0까지 카운트다운 뒤 아이콘, 처음 보인 뒤 30초 동안 유지). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " + "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
@@ -416,12 +421,11 @@ public partial class SettingsWindow : Window
         var sizes = new CardStack { Visibility = Shown(_s.Debuffs.Raid != Raid.없음) };
         p.Children.Add(Row("레이드", EnumCombo([.. Enum.GetValues<Raid>().Select(r => (r, Tray.RaidName(r)))], _s.Debuffs.Raid,
             v => { _s.Debuffs.Raid = v; sizes.Visibility = Shown(v != Raid.없음); })));
-        sizes.Children.Add(Row("비었을 때", Check("숨기기", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,
+        sizes.Children.Add(Row("비었을 때", Check("디버프 없을 때 숨김", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,
             "디버프가 없는 칸(색을 아직 모를 때, 교체·번개·결투자가 없을 때)을 숨깁니다. 다른 칸은 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
-        sizes.Children.Add(SubHeading("칸 크기", "칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " + "레이아웃 편집기에서 칸을 눌러 바꾸거나, 칸 옮기기를 켜고 칸의 오른쪽 아래 모서리를 끌어도 됩니다."));
+        sizes.Children.Add(SubHeading("칸 크기", "칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " + "화면에서 칸의 오른쪽 아래 모서리를 끌어도 됩니다."));
         for (int i = 0; i < DebuffSettings.BoxCount; i++)
             foreach (var row in DebuffSizeSliders(i, DebuffNames[i] + " ")) sizes.Children.Add(row);
-        sizes.Children.Add(ResetButton("디버프 칸 크기 되돌리기", "디버프 칸 크기를 되돌립니다. 고른 레이드와 창의 위치와 크기는 남습니다.", () => SettingsResets.Debuffs(_s)));
         p.Children.Add(sizes);
     }
 
@@ -452,7 +456,7 @@ public partial class SettingsWindow : Window
     void FillKeys()
     {
         var p = Refill(_secKeys, "게임 키");
-        p.Children.Add(BuildKeyPanel(_s, () => { Changed(); Dispatcher.BeginInvoke(() => { FillClassSections(); FillChips(); FillBox(); FillHotkeys(); FillCharacter(); }); }));
+        p.Children.Add(BuildKeyPanel(_s, () => { Changed(); Dispatcher.BeginInvoke(() => { FillClassSections(); FillBox(); FillHotkeys(); FillCharacter(); }); }));
         p.Children.Add(ResetButton("키를 게임 기본값으로", "스킬 키를 게임 기본값으로 되돌립니다.", () => SettingsResets.Keys(_s)));
     }
 
@@ -493,7 +497,7 @@ public partial class SettingsWindow : Window
             p.Children.Add(Clearable($"오버레이 프로필 {i + 1}", $"Profile{i + 1}", profiles[i].Item1, profiles[i].Item2));
         p.Children.Add(clash);
         Mark();
-        p.Children.Add(ResetButton("단축키 되돌리기", "단축키를 기본값으로 되돌립니다. 오버레이 프로필 단축키는 지워집니다.", () => SettingsResets.Hotkeys(_s)));
+        p.Children.Add(ResetButton("기본값", "단축키를 기본값으로 되돌립니다. 오버레이 프로필 단축키는 지워집니다.", () => SettingsResets.Hotkeys(_s)));
     }
 
     /// <summary>Inline two-step confirm (no modal): the first click relabels the button, a second click within
@@ -508,6 +512,7 @@ public partial class SettingsWindow : Window
             if (!timer.IsEnabled) { b.Content = "정말 되돌리기"; timer.Start(); return; }
             timer.Stop();
             b.Content = idle;
+            RecordStep();   // BuildAll moves the baseline past the reset: the state before it must be a step now
             reset();
             BuildAll();
             Changed();
@@ -515,10 +520,7 @@ public partial class SettingsWindow : Window
         return b;
     }
 
-    const string HexPattern = "^#[0-9A-Fa-f]{6}$";
     const string Default = "기본 (클래스 없음)";
-
-    static Color? ParseHex(string s) => Regex.IsMatch(s, HexPattern) ? (Color)ColorConverter.ConvertFromString(s) : null;
 
     /// <summary>A colour field with preview. <paramref name="swatch"/> shows a ready and a cooldown box; those rows
     /// (and <paramref name="warnDark"/> ones) warn when the colour is too dark to show the ready/cooldown step, and
@@ -532,10 +534,10 @@ public partial class SettingsWindow : Window
         {
             if (swatch) preview.Child = new System.Windows.Controls.Image { Source = OverlayRenderer.Swatch(c), Width = 64, Height = 34 };
             else preview.Background = new SolidColorBrush(c);
-            var hex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+            var hex = UiColor.ToHex(c);
             var problems = new List<string>();
             if ((swatch || warnDark) && OverlayRenderer.Lightness(c) < MinLightness) problems.Add("어두운 색은 준비/대기 구분이 약해집니다");
-            if (warnGold && ParseHex(_s.Overlay.GoldColor) is not null && Core.Vision.ColorDistance.CloseTo(_s.Overlay.GoldColor, hex))
+            if (warnGold && UiColor.TryParse(_s.Overlay.GoldColor) is not null && Core.Vision.ColorDistance.CloseTo(_s.Overlay.GoldColor, hex))
                 problems.Add("금테와 비슷함: 금색 테두리가 잘 보이지 않을 수 있습니다");
             warn.Text = string.Join(" · ", problems);
             warn.Visibility = problems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -543,7 +545,7 @@ public partial class SettingsWindow : Window
         var box = new TextBox { Text = value, Width = 96, VerticalContentAlignment = VerticalAlignment.Center };
         box.TextChanged += (_, _) =>
         {
-            if (ParseHex(box.Text) is not { } c)
+            if (UiColor.TryParse(box.Text) is not { } c)
             {
                 box.SetResourceReference(Control.BorderBrushProperty, CriticalBrushKey);
                 box.BorderThickness = new(2);
@@ -551,55 +553,17 @@ public partial class SettingsWindow : Window
             }
             box.ClearValue(Control.BorderBrushProperty);
             box.ClearValue(Control.BorderThicknessProperty);
-            set(box.Text.ToUpperInvariant());
+            set(UiColor.ToHex(c));
             Show(c);
             Changed();
         };
         var pick = new Button { Content = "색 선택…" };
         pick.Click += (_, _) =>
         {
-            var c = ParseHex(box.Text) ?? ParseHex(value) ?? Colors.Gray;
-            using var d = new Forms.ColorDialog { FullOpen = true, Color = System.Drawing.Color.FromArgb(c.R, c.G, c.B) };
-            if (d.ShowDialog() == Forms.DialogResult.OK) box.Text = $"#{d.Color.R:X2}{d.Color.G:X2}{d.Color.B:X2}";
+            if (UiColor.Pick(UiColor.TryParse(box.Text) is not null ? box.Text : value) is { } picked) box.Text = picked;
         };
-        Show(ParseHex(value) ?? Colors.Gray);
+        Show(UiColor.Parse(value, Colors.Gray));
         return Row(label, Stack(Wrap(preview, box, pick), warn));
-    }
-
-    // ── Shared builders (also used by FirstRunWindow) ────────────────────────────────
-
-    /// <summary>A key field: click it, then press the key or combination (Esc cancels). A modifier alone shows
-    /// "Ctrl+…" and is assigned only when released without another key, so Ctrl+Q can be entered.
-    /// Shows friendly names ("1", "`") but stores the <see cref="KeyNames"/> format.</summary>
-    internal static Button KeyField(Func<string> get, Action<string> set)
-    {
-        var f = new Button { MinWidth = 140 };
-        bool capturing = false, modifierDown = false;
-        void Show() { capturing = modifierDown = false; f.Content = get() == "" ? "(없음)" : KeyNames.Display(get()); }
-        void Assign(string key) { set(key); Show(); }
-        static Key Real(KeyEventArgs e) => e.Key switch { Key.System => e.SystemKey, Key.ImeProcessed => e.ImeProcessedKey, _ => e.Key };
-        static string Held() => KeyNames.Combo(Keyboard.Modifiers.HasFlag(ModifierKeys.Control),
-            Keyboard.Modifiers.HasFlag(ModifierKeys.Alt), Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), "");
-
-        f.Click += (_, _) => { capturing = true; modifierDown = false; f.Content = "키를 누르세요…"; f.Focus(); };
-        f.PreviewKeyDown += (_, e) =>
-        {
-            if (!capturing) return;
-            e.Handled = true;
-            var name = KeyNames.Of(Real(e));
-            if (name == nameof(Key.Escape) && Keyboard.Modifiers == ModifierKeys.None) Show();
-            else if (KeyNames.IsModifier(name)) { modifierDown = true; f.Content = Held() + "…"; }
-            else Assign(Held() + name);
-        };
-        f.PreviewKeyUp += (_, e) =>
-        {
-            if (!capturing || !modifierDown) return;
-            e.Handled = true;
-            if (KeyNames.Of(Real(e)) is var name && KeyNames.IsModifier(name)) Assign(name);
-        };
-        f.LostKeyboardFocus += (_, _) => { if (capturing) Show(); };
-        Show();
-        return f;
     }
 
     /// <summary>키 설정 rows (see <see cref="KeyField"/>). Keys used by more than one slot are highlighted.</summary>
@@ -733,82 +697,6 @@ public partial class SettingsWindow : Window
     /// <summary>The user's key for <paramref name="slot"/>, or the slot's own name when none is set (the table's and effect lines' wording).</summary>
     string SlotKeyName(SlotId slot) => KeyLabel(_s, slot) ?? slot.ToString();
 
-    internal static StackPanel Stack(params UIElement[] children)
-    {
-        var p = new StackPanel();
-        foreach (var c in children) p.Children.Add(c);
-        return p;
-    }
-
-    internal static TextBlock Heading(string text, bool first = false, string? help = null) =>
-        Break(Helped(new() { FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new(0, first ? 0 : 20, 0, 8) }, text, help));
-
-    /// <summary>A heading stands between setting cards, not in one.</summary>
-    static TextBlock Break(TextBlock t)
-    {
-        CardStack.SetBreak(t, true);
-        return t;
-    }
-
-    /// <summary>A heading inside a part of a section (a buff, 칸 크기), a step under <see cref="Heading"/>.</summary>
-    static TextBlock SubHeading(string text, string? help = null) =>
-        Break(Helped(new() { FontWeight = FontWeights.SemiBold, Opacity = 0.85, Margin = new(0, 12, 0, 6) }, text, help));
-
-    // ── 도움말 (?): the form shows the names; what each does is in the ? beside it ──────────────────
-
-    /// <summary>A small ? whose tooltip explains the setting beside it, on hover or keyboard focus (Tab reaches it).</summary>
-    internal static FrameworkElement HelpMark(string help)
-    {
-        var glyph = new TextBlock { Text = "?", FontSize = 11, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        var mark = new Border
-        {
-            Width = 16, Height = 16, CornerRadius = new(8), BorderThickness = new(1), Margin = new(5, 0, 0, 0), Opacity = 0.75,
-            Background = Brushes.Transparent, Child = glyph, Focusable = true, Cursor = Cursors.Help, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = new TextBlock { Text = help, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
-        };
-        mark.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding(nameof(TextBlock.Foreground)) { Source = glyph });
-        KeyboardNavigation.SetIsTabStop(mark, true);
-        ToolTipService.SetInitialShowDelay(mark, 100);
-        ToolTipService.SetShowDuration(mark, int.MaxValue);
-        ToolTipService.SetShowsToolTipOnKeyboardFocus(mark, true);
-        ToolTipService.SetShowOnDisabled(mark, true);   // rows greyed while a class follows 기본 still explain themselves
-        // Inside a check box's label: clicking the ? doesn't tick the box.
-        mark.PreviewMouseLeftButtonDown += (_, e) => { mark.Focus(); e.Handled = true; };
-        System.Windows.Automation.AutomationProperties.SetName(mark, "도움말");
-        System.Windows.Automation.AutomationProperties.SetHelpText(mark, help);
-        return mark;
-    }
-
-    /// <summary><paramref name="t"/> showing <paramref name="text"/>, then the ? when there is <paramref name="help"/>; it
-    /// follows the last word when the text wraps.</summary>
-    static TextBlock Helped(TextBlock t, string text, string? help)
-    {
-        if (help is null) { t.Text = text; return t; }
-        t.Inlines.Add(new System.Windows.Documents.Run(text));
-        t.Inlines.Add(new System.Windows.Documents.InlineUIContainer(HelpMark(help)) { BaselineAlignment = BaselineAlignment.Center });
-        System.Windows.Automation.AutomationProperties.SetName(t, text);   // read as the name, without the ?
-        return t;
-    }
-
-    /// <summary>A row label with its ?.</summary>
-    static TextBlock HelpLabel(string text, string? help) =>
-        Helped(new() { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap }, text, help);
-
-    internal static TextBlock Note(string text)
-    {
-        var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new(0, 0, 0, 10) };
-        CardStack.SetBreak(note, true);   // a status line, not a setting: it stands between the cards
-        return note;
-    }
-
-    static TextBlock Label(string text, double opacity = 1) =>
-        new() { Text = text, VerticalAlignment = VerticalAlignment.Center, Opacity = opacity, TextWrapping = TextWrapping.Wrap };
-
-    /// <summary>A row label with its ? saying what the row does.</summary>
-    static TextBlock Described(string label, string description) => HelpLabel(label, description);
-
-    static ComboBox Combo() => new() { MinWidth = 200 };
-
     /// <summary>The game's 해상도 list (게임 설정 → 화면); anything else is 커스텀 화면크기.</summary>
     static readonly (int W, int H)[] Resolutions = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1080), (2560, 1440), (3440, 1440), (3840, 1600), (3840, 2160), (5120, 2160)];
     const string Custom = "커스텀 화면크기";
@@ -847,7 +735,7 @@ public partial class SettingsWindow : Window
             }
             p.Children.Add(Row("화면 크기 (가로 × 세로)", Field(s => s.Width, (s, v) => s with { Width = v }), Field(s => s.Height, (s, v) => s with { Height = v })));
         }
-        p.Children.Add(Check("21:9 화면 비율 사용", screen.Wide, v => _s.ManualScreen = _s.ManualScreen! with { Wide = v }, () => { FillFit(); Changed(); }, "게임 설정의 21:9 화면 비율입니다. 더 좁은 화면에서는 위아래에 검은 띠가 생기고, 21:9보다 넓은 화면에서는 화면을 그대로 씁니다."));
+        p.Children.Add(Check("21:9", screen.Wide, v => _s.ManualScreen = _s.ManualScreen! with { Wide = v }, () => { FillFit(); Changed(); }, "게임 설정의 21:9 화면 비율입니다. 더 좁은 화면에서는 위아래에 검은 띠가 생기고, 21:9보다 넓은 화면에서는 화면을 그대로 씁니다."));
     }
 
     /// <summary>게임의 버프 크기, shown in 버프/디버프 and in 스킬창 맞추기 (every mode); either one changes the same setting.</summary>
@@ -860,9 +748,6 @@ public partial class SettingsWindow : Window
         return size;
     }
 
-    /// <summary>A row that only applies to some choices is hidden, not greyed, for the others.</summary>
-    static Visibility Shown(bool applies) => applies ? Visibility.Visible : Visibility.Collapsed;
-
     /// <summary>A combo box over <paramref name="items"/> showing <paramref name="value"/>; a pick calls <paramref name="set"/>, then saves.</summary>
     ComboBox EnumCombo<T>((T Value, string Text)[] items, T value, Action<T> set) where T : struct, Enum
     {
@@ -871,45 +756,5 @@ public partial class SettingsWindow : Window
         c.SelectedItem = c.Items.Cast<ComboBoxItem>().FirstOrDefault(i => value.Equals(i.Tag)) ?? c.Items[0];
         c.SelectionChanged += (_, _) => { if (c.SelectedItem is ComboBoxItem { Tag: T v }) { set(v); Changed(); } };
         return c;
-    }
-
-    /// <summary>Controls side by side, wrapping onto the next line when the form is narrow.</summary>
-    static WrapPanel Wrap(params UIElement[] controls)
-    {
-        var w = new WrapPanel();
-        foreach (var c in controls)
-        {
-            if (c is FrameworkElement f && f.Margin == default) f.Margin = new(0, 2, 8, 2);
-            w.Children.Add(c);
-        }
-        return w;
-    }
-
-    static FormRow Row(string label, params UIElement[] controls) => Row(Label(label), controls);
-
-    static FormRow HelpRow(string label, string help, params UIElement[] controls) => Row(HelpLabel(label, help), controls);
-
-    static FormRow Row(UIElement label, params UIElement[] controls) => new(label, Wrap(controls));
-
-    static CheckBox Check(string text, bool value, Action<bool> set, Action changed, string? help = null)
-    {
-        // A TextBlock, not the string: a long label wraps under itself instead of running off the card.
-        var c = new CheckBox { Content = Helped(new() { TextWrapping = TextWrapping.Wrap }, text, help), IsChecked = value, Margin = new(0, 2, 16, 2) };
-        if (help is not null) System.Windows.Automation.AutomationProperties.SetName(c, text);
-        c.Click += (_, _) => { set(c.IsChecked == true); changed(); };
-        return c;
-    }
-
-    static UIElement SliderRow(string label, double min, double max, double value, double step,
-        Func<double, string> format, Action<double> set, Action changed, string? help = null)
-    {
-        var text = new TextBlock { Text = format(value), Width = 44, VerticalAlignment = VerticalAlignment.Center };
-        var slider = new Slider
-        {
-            Minimum = min, Maximum = max, Value = value, Width = 180, MinWidth = 120, TickFrequency = step,
-            IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center,
-        };
-        slider.ValueChanged += (_, e) => { set(e.NewValue); text.Text = format(e.NewValue); changed(); };
-        return Row(HelpLabel(label, help), slider, text);
     }
 }

@@ -55,7 +55,7 @@ public static class SubclassMatcher
 
     /// <summary>How alike two 일반 slot crops look greyed out: the correlation of their greyed thumbnails, both whole (-1…1).</summary>
     public static double SkillScore(Image a, Image b) =>
-        BuffReader.Correlate(Thumb(Grey(a), new PixelRect(0, 0, a.Width, a.Height)), Thumb(Grey(b), new PixelRect(0, 0, b.Width, b.Height)));
+        ImageOps.Correlate(Thumb(Grey(a), new PixelRect(0, 0, a.Width, a.Height)), Thumb(Grey(b), new PixelRect(0, 0, b.Width, b.Height)));
 
     /// <summary>Every square of the slot the art may fill, with its thumbnail.</summary>
     static List<(PixelRect At, float[] Thumb)> Squares(Image slot)
@@ -77,7 +77,7 @@ public static class SubclassMatcher
         var best = (At: squares[0].At, Score: -2.0);
         foreach (var (at, thumb) in squares)
         {
-            double s = BuffReader.Correlate(thumb, icon);
+            double s = ImageOps.Correlate(thumb, icon);
             if (s > best.Score) best = (at, s);
         }
         return best;
@@ -113,14 +113,14 @@ public static class SubclassMatcher
             for (int x = 0; x < img.Width; x++)
             {
                 int s = y * img.Stride + x * 4, d = y * grey.Stride + x * 4;
-                byte l = (byte)Math.Round(ClassEmblemMatcher.Luma(img.Bgra, s));
+                byte l = (byte)Math.Round(ImageOps.LumaPerceptual(img.Bgra, s));
                 (grey.Bgra[d], grey.Bgra[d + 1], grey.Bgra[d + 2], grey.Bgra[d + 3]) = (l, l, l, 255);
             }
         return grey;
     }
 
     static double Hue(Image img, PixelRect r) =>
-        SlotClassifier.ColourStats(BuffReader.Crop(img, r with { Height = (int)(r.Height * Top) })).MeanHue;
+        SlotClassifier.ColourStats(ImageOps.Crop(img, r with { Height = (int)(r.Height * Top) })).MeanHue;
 
     static double HueDistance(double a, double b) { double d = Math.Abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 }

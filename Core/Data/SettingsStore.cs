@@ -45,45 +45,8 @@ public sealed class SettingsStore(string path)
             {
                 if (JsonSerializer.Deserialize<Settings>(text, Json) is { } s)
                 {
-                    int fileVersion = s.Version;
-                    s.Version = Settings.CurrentVersion;   // migrations from older versions go here
-                    if (s.Overlay.Scale is { } k)
-                    {
-                        var o = s.Overlay;
-                        (o.Width, o.Height, o.PartyWidth, o.PartyHeight, o.Scale) = (k, k, k, k, null);
-                    }
-                    RepairClasses(s);
-                    SplitPartyWindow(s);
-                    MoveIntoClassProfiles(s);
-                    MoveEffectsIntoClasses(s);
-                    if (fileVersion < 2) ClassProfiles.MarkOwnWhereDifferent(s);
-                    // Before the history the active character was the one last played: it starts the history.
-                    if (fileVersion < 3 && s.ActiveCharacter is { } a && s.Characters.GetValueOrDefault(a) is { Class: { Length: > 0 } cls, Subclass: { Length: > 0 } sub })
-                        s.SubclassHistory.TryAdd(cls, sub);
-                    // Before 빛 색 직접 고르기 a chosen glow colour always showed.
-                    if (fileVersion < 4)
-                        foreach (var c in s.Classes.Values)
-                            c.Mine.CustomGlow = c.Mine.PulseColor.Values.Any(v => !string.Equals(v, "#FFFFFF", StringComparison.OrdinalIgnoreCase));
-                    FiveProfiles(s);
-                    if (s.ManualHud is { } hud) s.ManualHud = Settings.NearestHud(hud);   // hand-edited, or saved by the old 70–130 slider
-                    foreach (var (key, f) in s.Adjusts.ToList())   // a hand edit the debug window couldn't have made
-                        if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
-                        else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
-                    s.Cores ??= [];
-                    foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
-                        if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
-                    s.Judgment ??= new();
-                    s.Judgment.Characters ??= [];
-                    if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
-                    s.Judgment.Opacity = double.IsFinite(s.Judgment.Opacity) ? Math.Clamp(s.Judgment.Opacity, JudgmentSettings.MinOpacity, 1) : 1;
-                    s.StackSkills ??= [];
-                    foreach (var (key, slots) in s.StackSkills.ToList())   // a hand edit: null, or a name that isn't a slot
-                        if (slots is null) s.StackSkills.Remove(key);
-                        else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
-                    (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
-                    if (s.Overlay.AwakeningChangedColor.Equals("#FF7F27", StringComparison.OrdinalIgnoreCase))
-                        s.Overlay.AwakeningChangedColor = new OverlaySettings().AwakeningChangedColor;   // 1.x default → red
-                    return s;
+                    s.Version = Settings.CurrentVersion;
+                    return Normalize(s);
                 }
             }
             catch (Exception e) when (e is JsonException or NotSupportedException) { }
@@ -109,101 +72,48 @@ public sealed class SettingsStore(string path)
     }
 
     /// <summary>A typed or remembered 해상도 a screen can have (the game's smallest is 1280×720; 16384 covers any monitor), else null.</summary>
+    /// <summary>A hand-edited ★ list: no blanks, each once, order kept.</summary>
+    static List<string> Distinct(List<string>? list) => [.. (list ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()];
+
     static ManualScreen? Screenable(ManualScreen? s) =>
         s is { Width: >= 640 and <= 16384, Height: >= 480 and <= 16384 } ? s : null;
 
-    /// <summary>About one party member's row at box height 1.0, so members moved out of 1.x's shared party window line
-    /// up where their rows were.</summary>
-    const double PartyRow = 60;
-
-    /// <summary>1.x drew every party member in one party window; each now has its own. The old window's size goes to
-    /// every member, its spot to the first, and the others stack below it.</summary>
-    static void SplitPartyWindow(Settings s)
+    /// <summary>The repairs every loaded file gets (hand edits, lists saved by older beta builds), pure. Files from
+    /// before the beta (settings version below 4) are no longer migrated: every beta release saved version 4.</summary>
+    internal static Settings Normalize(Settings s)
     {
-        var o = s.Overlay;
+        RepairClasses(s);
+        PeerSlots(s);
+        FiveProfiles(s);
+        if (s.ManualHud is { } hud) s.ManualHud = Settings.NearestHud(hud);   // hand-edited, or saved by the old 70–130 slider
+        foreach (var (key, f) in s.Adjusts.ToList())   // a hand edit the debug window couldn't have made
+            if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
+            else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
+        s.Cores ??= [];
+        foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
+            if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
+        s.Judgment ??= new();
+        s.Judgment.Characters ??= [];
+        if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
+        s.Judgment.Opacity = double.IsFinite(s.Judgment.Opacity) ? Math.Clamp(s.Judgment.Opacity, JudgmentSettings.MinOpacity, 1) : 1;
+        s.StackSkills ??= [];
+        foreach (var (key, slots) in s.StackSkills.ToList())   // a hand edit: null, or a name that isn't a slot
+            if (slots is null) s.StackSkills.Remove(key);
+            else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
+        (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
+        s.FavoriteClasses = Distinct(s.FavoriteClasses);
+        s.FavoriteSettings = Distinct(s.FavoriteSettings);
+        return s;
+    }
+
+    /// <summary>Exactly one entry per other party member. Files saved while the list was added to on load hold extra
+    /// entries; the first three are the latest.</summary>
+    static void PeerSlots(Settings s)
+    {
         var slots = s.Party.ShowOthersBySlot;
-        // Files saved while the list was added to on load hold extra entries; the first three are the latest.
         const int Peers = Net.Membership.MaxMembers - 1;
         if (slots.Count > Peers) slots.RemoveRange(Peers, slots.Count - Peers);
         while (slots.Count < Peers) slots.Add(new());
-        for (int i = 0; i < slots.Count; i++)
-        {
-            var d = slots[i];
-            if (o.PartyWidth is { } w) d.Width = w;
-            if (o.PartyHeight is { } h) d.Height = h;
-            if (o.PartyLeft is { } left) d.Left = left;
-            if (o.PartyTop is { } top) d.Top = top + i * PartyRow * (d.Height ?? 1);   // NaN stays NaN
-        }
-        (o.PartyLeft, o.PartyTop, o.PartyWidth, o.PartyHeight) = (null, null, null, null);
-    }
-
-    /// <summary>Before per-class settings, you had one display, layout and set of colours for all classes, and party
-    /// members one per slot with one colour mode. They become the template class (the first slot's for members), which
-    /// every class with settings starts from; colours set per class or per character go to that class's 개인 설정.</summary>
-    static void MoveIntoClassProfiles(Settings s)
-    {
-        var (o, party) = (s.Overlay, s.Party);
-        var first = party.ShowOthersBySlot.FirstOrDefault() ?? new();
-        if (party.SupportSlot is { } slot)
-            (party.SupportFixed, party.SupportNumber) = (slot >= 0, slot >= 0 ? PartySlots.Numbers(1)[Math.Min(slot, 2)] : 2);
-        bool old = o.GroupVisible is not null || o.GroupColor is not null || o.Layout is not null || o.HiddenSlots is not null
-            || party.ColorMode is not null || first.Groups is not null || first.Gauge is not null || first.Width is not null
-            || first.Layout is not null || s.Classes.Values.Any(c => c.Custom is not null) || s.Characters.Values.Any(c => c.Colors is not null);
-        if (old)
-        {
-            var t = ClassProfiles.Edit(s, ClassProfiles.Template);
-            foreach (var (g, v) in o.GroupVisible ?? []) t.Mine.Groups[g] = v;
-            t.Mine.HiddenSlots = o.HiddenSlots ?? [];
-            t.Mine.Layout = o.Layout;
-            Personal(t.Mine, (o.GroupColor ?? []).Where(c => !c.Value.Equals(ClassProfiles.BuiltIn.GetValueOrDefault(c.Key), StringComparison.OrdinalIgnoreCase)));
-            foreach (var (g, v) in first.Groups ?? []) t.Members.Groups[g] = v;
-            (t.Members.Gauge, t.Members.Width, t.Members.Height) = (first.Gauge ?? true, first.Width ?? 1, first.Height ?? 1);
-            t.Members.Layout = first.Layout ?? o.Layout;   // a member's window followed yours
-            t.Members.HiddenSlots = [.. t.Mine.HiddenSlots];
-            t.Members.Color = party.ColorMode switch { PeerColorMode.Class => ColorSource.Personal, PeerColorMode.Remote => ColorSource.Received, _ => ColorSource.Default };
-            foreach (var (name, c) in s.Classes.Where(c => c.Key != ClassProfiles.Template).ToList())
-            {
-                s.Classes.Remove(name);
-                Personal(ClassProfiles.Edit(s, name).Mine, c.Custom ?? []);
-            }
-            foreach (var c in s.Characters.Values.Where(c => c.Class.Length > 0))
-                Personal(ClassProfiles.Edit(s, c.Class).Mine, c.Colors ?? []);
-            foreach (var c in s.Classes.Values) c.Members.Colors = new(c.Mine.Colors);   // 클래스별 used your class colours
-        }
-        (o.GroupVisible, o.GroupColor, o.Layout, o.HiddenSlots, party.ColorMode, party.SupportSlot) = (null, null, null, null, null, null);
-        foreach (var d in party.ShowOthersBySlot) (d.Groups, d.Gauge, d.Width, d.Height, d.Colors, d.Layout) = (null, null, null, null, null, null);
-        foreach (var c in s.Classes.Values) c.Custom = null;
-        foreach (var c in s.Characters.Values) c.Colors = null;
-
-        static void Personal(ClassProfile p, IEnumerable<KeyValuePair<SlotGroup, string>> colours)
-        {
-            foreach (var (g, hex) in colours) p.Colors[g] = hex;
-            if (p.Colors.Count > 0) p.Color = ColorSource.Personal;
-        }
-    }
-
-    /// <summary>Before 2.0 the effects were one set for every class (OverlaySettings); they go into 기본 and every class
-    /// with settings, so nothing looks different after the update. 1.2's ShowShine = false is every group's NoShine.</summary>
-    static void MoveEffectsIntoClasses(Settings s)
-    {
-        var o = s.Overlay;
-        bool old = o.ShowShine is not null || o.NoShine is not null || o.Pulse is not null || o.PulseStyle is not null
-            || o.PulseColor is not null || o.Icons is not null || o.SlotShine is not null || o.SlotPulse is not null
-            || o.EndFlash is not null || o.SlotEndFlash is not null || o.KeyLetters is not null;
-        if (old)
-        {
-            var from = new MineProfile
-            {
-                NoShine = o.ShowShine == false ? [.. Enum.GetValues<SlotGroup>()] : o.NoShine ?? [],
-                Pulse = o.Pulse ?? [], PulseStyle = o.PulseStyle ?? [], PulseColor = o.PulseColor ?? [], Icons = o.Icons ?? [],
-                SlotShine = o.SlotShine ?? [], SlotPulse = o.SlotPulse ?? [], EndFlash = o.EndFlash ?? [],
-                SlotEndFlash = o.SlotEndFlash ?? [], KeyLetters = o.KeyLetters ?? [],
-            };
-            ClassProfiles.Entry(s, ClassProfiles.Template);
-            foreach (var c in s.Classes.Values) c.Mine.CopyEffects(from);
-        }
-        (o.ShowShine, o.NoShine, o.Pulse, o.PulseStyle, o.PulseColor, o.Icons) = (null, null, null, null, null, null);
-        (o.SlotShine, o.SlotPulse, o.EndFlash, o.SlotEndFlash, o.KeyLetters) = (null, null, null, null, null);
     }
 
     /// <summary>Exactly <see cref="OverlayProfile.Count"/> profiles, one of them active.</summary>

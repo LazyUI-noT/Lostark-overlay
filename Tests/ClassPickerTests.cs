@@ -128,4 +128,21 @@ public class ClassPickerTests
         Assert.Null(ClassPicker.SharedPartyNote(Made("가")));
         Assert.Null(ClassPicker.SharedPartyNote(null));
     }
+
+    static readonly string[] Picked = ["", "바드 · 진실된 용기", "워로드 · 전투태세", "워로드 · 고독한기사", "바드 · 절실한 구원"];
+
+    [Fact]
+    public void A_favourite_class_moves_all_its_직업각인_to_the_top_in_list_order()
+    {
+        Assert.Equal(["바드 · 진실된 용기", "바드 · 절실한 구원", "", Combat, Lone], ClassPicker.FavoritesFirst(Picked, ["바드"]));
+    }
+
+    [Fact]
+    public void A_favourite_직업각인_moves_only_that_entry() =>
+        Assert.Equal([Lone, "", "바드 · 진실된 용기", Combat, "바드 · 절실한 구원"], ClassPicker.FavoritesFirst(Picked, [Lone]));
+
+    [Fact]
+    public void An_unknown_favourite_changes_nothing() =>
+        Assert.Equal(Picked, ClassPicker.FavoritesFirst(Picked, ["없는 클래스", "바드 · 없는 각인"]));
 }
+

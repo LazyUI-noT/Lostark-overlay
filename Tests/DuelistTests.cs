@@ -59,12 +59,12 @@ public class DuelistTests
         PixelRect Scaled(PixelRect r, double f) => new((int)Math.Round(r.X * f), (int)Math.Round(r.Y * f), (int)Math.Round(r.Width * f), (int)Math.Round(r.Height * f));
         var shot = Fixture.Load("duelist").Frames[0];
         double fd = screen * buff / 110;
-        var duel = BuffReader.Resample(shot, new PixelRect(0, 0, shot.Width, shot.Height), fd);
+        var duel = ImageOps.Resample(shot, new PixelRect(0, 0, shot.Width, shot.Height), fd);
         Assert.Equal(DebuffKind.결투자, DebuffReader.Classify(duel, Scaled(DuelIcon, fd)));
 
         var row = Fixture.Load("debuffrow_3").Frames[0];
         double fr = screen * buff / 120;
-        var red = BuffReader.Resample(row, new PixelRect(0, 0, row.Width, row.Height), fr);
+        var red = ImageOps.Resample(row, new PixelRect(0, 0, row.Width, row.Height), fr);
         var box = Geometry.DebuffBoxes(Fhd, new Fit(110), 120)[2].Icon;
         Assert.Equal(DebuffKind.빨강, DebuffReader.Classify(red, Scaled(box with { X = box.X - 1060, Y = box.Y - 880 }, fr)));
     }

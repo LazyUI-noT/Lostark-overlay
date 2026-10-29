@@ -6,16 +6,17 @@ using GaugeOverlay.App.Services;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
-/// <summary>The window's frame: four areas, each with sections picked by buttons in a header that never scrolls, one
-/// section's form shown at a time, and in 내 오버레이 the overlay preview (pinned on the right when the window is wide,
-/// above the form when not). Every setting has one section; the Fill methods fill the sections' panels.</summary>
+/// <summary>The window's frame: the top bar (<see cref="BuildTopBar"/>), the rail of areas on the left, and the page of
+/// the area picked: 내 오버레이's canvas with the inspector (<see cref="BuildCanvasPage"/>), or another area's section
+/// buttons over one section's form. The Fill methods fill the sections' panels.</summary>
 public partial class SettingsWindow
 {
-    const string AreaCharacter = "캐릭터·인식", AreaOverlay = "내 오버레이", AreaParty = "파티", AreaKeys = "키·단축키";
-    const string SecSkills = "스킬 칸", SecBuffs = "버프/디버프", SecMembers = "파티원 모양";
-    const double WideNav = 760, WidePreview = 1040, PreviewWidth = 330;
+    const string AreaOverlay = "내 오버레이", AreaCharacter = "캐릭터", AreaParty = "파티", AreaFit = "화면·인식", AreaKeys = "키·단축키";
+    const string SecMembers = "파티원 모양";
     const string CardBrushKey = Themes.CardBrushKey, StrokeBrushKey = Themes.StrokeBrushKey;
 
     sealed class Area(string name, string lead, params (string Name, StackPanel Panel)[] sections)
@@ -23,19 +24,18 @@ public partial class SettingsWindow
         public string Name { get; } = name;
         public string Lead { get; } = lead;
         public (string Name, StackPanel Panel)[] Sections { get; } = sections;
-        public string Shown { get; set; } = sections[0].Name;
+        public string Shown { get; set; } = sections.Length > 0 ? sections[0].Name : "";
     }
 
     // One panel per section, refilled by the Fill methods.
     // Each a CardStack: its rows in Windows 11 setting cards, headings between them.
     readonly CardStack _secCharacter = new(), _secFit = new();
-    readonly CardStack _secDisplay = new(), _secSkills = new(), _secGauge = new(), _secBuffs = new(), _secOther = new(), _secPlace = new(), _secCopy = new();
+    readonly CardStack _secSkillLook = new(), _secDisplay = new(), _secBuffs = new(), _secOther = new(), _secPlace = new(), _secCopy = new();
     readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
     readonly CardStack _secKeys = new(), _secHotkeys = new();
-    readonly StackPanel _context = new();   // 편집 중: the class the class sections edit
+    readonly StackPanel _context = new() { Orientation = Orientation.Horizontal };   // 편집 중 (top bar): the class the class sections edit
     Area[] _areas = [];
     Area _area = null!;
-    bool _wide = true, _previewPinned;
 
     // 업데이트 (bottom left, under 모두 기본값으로 되돌리기): 업데이트 확인 asks GitHub; once a newer release is known it
     // becomes "vX 받기", and pressing that is the user's go-ahead to download and install.
@@ -109,32 +109,33 @@ public partial class SettingsWindow
         _checkMessage.Tick += (_, _) => { _checkMessage.Stop(); SetUpdateBusy(false); };
         _areas =
         [
-            new(AreaCharacter, "캐릭터를 고르고 게임 화면의 스킬창을 맞춥니다.",
-                ("캐릭터", _secCharacter), ("스킬창", _secFit)),
-            new(AreaOverlay, "보고 싶은 요소를 고르고 미리보기로 확인하세요. 미리보기의 칸이나 게이지를 누르면 그 설정으로 갑니다.",
-                ("전체", _secDisplay), (SecSkills, _secSkills), ("아덴 게이지", _secGauge), (SecBuffs, _secBuffs), ("기타", _secOther), ("배치", _secPlace), ("복사", _secCopy)),
+            new(AreaFavorites, "★를 단 설정을 한곳에서 바꿉니다. 설정 행을 오른쪽 클릭하거나, 검색 결과의 ☆로 답니다.", (AreaFavorites, _secFavorites)),
+            new(AreaOverlay, ""),
+            new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", ("캐릭터", _secCharacter)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
                 ("연결", _secConnect), (SecMembers, _secMembers), ("순서", _secOrder), ("보내기·받기", _secSend)),
-            new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.",
-                ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
+            new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 알려 줍니다.", ("스킬창", _secFit)),
+            new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
         ];
-        _area = _areas[1];
+        _area = _areas[1];   // 내 오버레이
 
         foreach (var area in _areas)
         {
+            if (area.Name == AreaFit) Nav.Children.Add(new TextBlock { Text = "가끔", Opacity = 0.6, Margin = new(12, 14, 0, 6) });
             var b = Toggle(area.Name, "area", area == _area);
-            // Full width with an icon: the four areas read as one list, not as buttons of four widths.
+            // Full width with an icon: the areas read as one list, not as buttons of different widths.
             (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (area.Name, AreaLabel(area.Name), HorizontalAlignment.Left, HorizontalAlignment.Stretch);
             System.Windows.Automation.AutomationProperties.SetName(b, area.Name);   // read as the area, not the icon glyph
             b.Checked += (_, _) => { if (_area != area) Go(area.Name); };
             Nav.Children.Add(b);
         }
-        var theme = EnumCombo([(UiTheme.DeepTeal, "딥 틸"), (UiTheme.System, "Windows 설정 따름"), (UiTheme.Light, "밝게"), (UiTheme.Dark, "어둡게")],
+        var theme = EnumCombo([(UiTheme.LostArk, "로스트아크"), (UiTheme.DeepTeal, "딥 틸"), (UiTheme.Graphite, "그래파이트"), (UiTheme.ArkesiaNight, "아크라시아 밤"),
+            (UiTheme.Light, "밝게"), (UiTheme.Dark, "어둡게"), (UiTheme.System, "Windows 설정 따름")],
             _s.Theme, v => { _s.Theme = v; ApplyTheme(); });
         theme.MinWidth = 150;
         NavFoot.Children.Add(Wrap(Label("테마"), theme));
         NavFoot.Children.Add(_navNote);
-        NavFoot.Children.Add(ResetButton("모두 기본값으로 되돌리기",
+        NavFoot.Children.Add(ResetButton("전체 초기화",
             "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
             + "캐릭터, 오버레이 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
@@ -146,13 +147,14 @@ public partial class SettingsWindow
             CheckRequested?.Invoke();
         };
         NavFoot.Children.Add(_update);
-        NavFoot.Children.Add(Check("시작할 때 업데이트 확인", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
+        NavFoot.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
-        SizeChanged += (_, _) => Relayout();
+        BuildTopBar();
+        BuildSearch();
         // Opened on the 캐릭터 section: it is seen now (ShowBody only marks it while the window is up).
-        IsVisibleChanged += (_, _) => { if (IsVisible && _area.Name == AreaCharacter && _area.Shown == "캐릭터") MarkSupportSeen(); };
+        IsVisibleChanged += (_, _) => { if (IsVisible && _area.Name == AreaCharacter) MarkSupportSeen(); };
         ApplyTheme();
     }
 
@@ -165,7 +167,7 @@ public partial class SettingsWindow
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaCharacter] = "", [AreaOverlay] = "", [AreaParty] = "", [AreaKeys] = "",
+        [AreaFavorites] = "\uE734", [AreaOverlay] = "\uE7B3", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaFit] = "\uE7C5", [AreaKeys] = "\uE765",
     };
 
     static StackPanel AreaLabel(string name)
@@ -194,8 +196,19 @@ public partial class SettingsWindow
         ShowArea();
     }
 
+    string? _shownArea;
+
     void ShowArea()
     {
+        // 즐겨찾기 edits through its own copies of the rows: the sections show the new values only once rebuilt
+        if (_shownArea == AreaFavorites && _area.Name != AreaFavorites) BuildAll();
+        _shownArea = _area.Name;
+        bool canvas = _area.Name == AreaOverlay && _canvas is not null;
+        CanvasPage.Visibility = Shown(canvas);
+        SectionPage.Visibility = Shown(!canvas);
+        if (canvas) { RefreshInspector(); return; }
+        StopPlay();
+        if (_area.Name == AreaFavorites) FillFavorites();
         ShowHeader();
         ShowBody();
         Body.ScrollToTop();
@@ -203,39 +216,28 @@ public partial class SettingsWindow
 
     void ShowHeader()
     {
-        Detach(_context);
         Header.Children.Clear();
         Header.Children.Add(new TextBlock { Text = _area.Name, FontSize = 22, FontWeight = FontWeights.SemiBold });
         Header.Children.Add(Note(_area.Lead));
-        if (ContextShown) Header.Children.Add(_context);
-        var sections = new WrapPanel { Margin = new(0, 4, 0, 0) };
-        foreach (var (name, _) in _area.Sections)
+        if (_area.Sections.Length > 1)
         {
-            var b = Toggle(name, "section", name == _area.Shown);
-            b.Checked += (_, _) => { if (_area.Shown == name) return; _area.Shown = name; ShowArea(); };
-            sections.Children.Add(b);
+            var sections = new WrapPanel { Margin = new(0, 4, 0, 0) };
+            foreach (var (name, _) in _area.Sections)
+            {
+                var b = Toggle(name, "section", name == _area.Shown);
+                b.Checked += (_, _) => { if (_area.Shown == name) return; _area.Shown = name; ShowArea(); };
+                sections.Children.Add(b);
+            }
+            Header.Children.Add(sections);
         }
-        Header.Children.Add(sections);
         Header.Children.Add(Divider(4, 0));
     }
-
-    /// <summary>The class line shows where class settings are edited: 내 오버레이 and 파티 → 파티원 모양.</summary>
-    bool ContextShown => _area.Name == AreaOverlay || _area.Name == AreaParty && _area.Shown == SecMembers;
 
     void ShowBody()
     {
         var panel = _area.Sections.First(s => s.Name == _area.Shown).Panel;
         if (panel == _secCharacter && IsVisible) MarkSupportSeen();
-        bool preview = _area.Name == AreaOverlay && _quickBlock is not null;
-        _previewPinned = preview && _wide && ActualWidth >= WidePreview;
-        PreviewColumn.Width = new(_previewPinned ? PreviewWidth : 0);
-        // The preview stays where it is when that's still its place: this runs from its own click.
-        object? place = !preview ? null : _previewPinned ? PreviewHost : Form;
-        if (_quickBlock?.Parent != place) Detach(_quickBlock);
-        for (int i = Form.Children.Count - 1; i >= 0; i--)
-            if (Form.Children[i] != _quickBlock) Form.Children.RemoveAt(i);
-        if (place == PreviewHost) PreviewHost.Content = _quickBlock;
-        else if (place == Form && _quickBlock!.Parent is null) Form.Children.Add(_quickBlock);
+        Form.Children.Clear();
         Detach(panel);
         Form.Children.Add(panel);   // its own cards (CardStack)
     }
@@ -265,24 +267,6 @@ public partial class SettingsWindow
             case ContentControl c: c.Content = null; break;
             case Decorator d: d.Child = null; break;
         }
-    }
-
-    /// <summary>Narrow windows: the areas become a row across the top and the preview goes above the form.</summary>
-    void Relayout()
-    {
-        bool wide = ActualWidth >= WideNav;
-        bool pin = _area.Name == AreaOverlay && _quickBlock is not null && wide && ActualWidth >= WidePreview;
-        if (wide == _wide && pin == _previewPinned) return;
-        _wide = wide;
-        NavColumn.Width = new(wide ? 200 : 0);
-        Grid.SetRow(NavHost, wide ? 1 : 0);
-        Grid.SetColumnSpan(NavHost, wide ? 1 : 2);
-        NavHost.BorderThickness = wide ? new(0, 0, 1, 0) : new(0, 0, 0, 1);
-        NavHost.Padding = wide ? new(10, 16, 10, 12) : new(12, 8, 12, 2);
-        Nav.Orientation = wide ? Orientation.Vertical : Orientation.Horizontal;
-        _navNote.Visibility = Shown(wide);   // the row across the top keeps 테마 and 모두 되돌리기
-        NavFoot.Orientation = wide ? Orientation.Vertical : Orientation.Horizontal;
-        ShowBody();
     }
 
     /// <summary>--demo --tab: opens the area, or the section, with this name.</summary>

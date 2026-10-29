@@ -34,8 +34,16 @@ public static class Themes
             "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "AccentButtonBackground", "AccentButtonBackgroundPointerOver",
             "TextControlFocusedBorderBrush", "ComboBoxItemPillFillBrush",
         ]),
+        (UiPalette.Text, ["TextFillColorPrimaryBrush"]),
+        (UiPalette.Muted, ["TextFillColorSecondaryBrush", "TextFillColorTertiaryBrush"]),
         (UiPalette.OnAccent, ["TextOnAccentFillColorPrimaryBrush", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPressed", "AccentButtonForeground"]),
     ];
+
+    /// <summary>The settings windows' text font (bundled, OFL); 맑은 고딕 where a glyph is missing.</summary>
+    public static readonly FontFamily Pretendard = new(new Uri("pack://application:,,,/"), "./Assets/Fonts/#Pretendard, Malgun Gothic");
+
+    /// <summary>The wordmark's font (bundled, OFL): Roman capitals like the official site's titles.</summary>
+    public static readonly FontFamily Cinzel = new(new Uri("pack://application:,,,/"), "./Assets/Fonts/#Cinzel");
 
     /// <summary>Sets <paramref name="theme"/> on <paramref name="window"/>; <paramref name="root"/>, when given, takes the
     /// theme's background.</summary>
@@ -49,9 +57,10 @@ public static class Themes
 #pragma warning restore WPF0001
         foreach (var (key, brushes) in Brushes)
             foreach (var brush in brushes)
-                if (palette.Colors.TryGetValue(key, out var hex) && ColorConverter.ConvertFromString(hex) is Color c)
+                if (palette.Colors.TryGetValue(key, out var hex) && UiColor.TryParse(hex) is { } c)
                     window.Resources[brush] = new SolidColorBrush(c);
                 else window.Resources.Remove(brush);
+        window.FontFamily = Pretendard;
         root?.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
     }
 
@@ -60,7 +69,7 @@ public static class Themes
     public static Color PanelColor(UiTheme theme)
     {
         if (SystemParameters.HighContrast) return SystemColors.WindowColor;
-        if (UiPalette.Of(theme).Colors.TryGetValue(UiPalette.Card, out var hex) && ColorConverter.ConvertFromString(hex) is Color card) return card;
+        if (UiPalette.Of(theme).Colors.TryGetValue(UiPalette.Card, out var hex) && UiColor.TryParse(hex) is { } card) return card;
         bool dark = theme == UiTheme.Dark || theme == UiTheme.System && AppsDark();
         return dark ? Color.FromRgb(0x2B, 0x2B, 0x2B) : Color.FromRgb(0xF9, 0xF9, 0xF9);
     }

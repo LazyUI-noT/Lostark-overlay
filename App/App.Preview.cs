@@ -16,7 +16,7 @@ public partial class App
         UpdateVisibility();
     }
 
-    bool PreviewOn => _settingsWindow.IsVisible && _editor is null;
+    bool PreviewOn => _settingsWindow.IsVisible;
 
     /// <summary>My window shows the picked 직업각인's sample while previewing, else the live data. Never in edit mode: dragging
     /// there moves the character's own spot, which must be what is drawn.</summary>

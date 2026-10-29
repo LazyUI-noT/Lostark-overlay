@@ -10,6 +10,14 @@ public static class ClassPicker
     public static IReadOnlyList<string> PickerEntries(IEnumerable<ClassInfo> classes) =>
         [ClassProfiles.Template, .. classes.SelectMany(c => c.Subclasses.Keys.Select(sub => Settings.CharacterKey(c.Name, sub)))];
 
+    /// <summary><paramref name="entries"/> with the ★ ones first (a class name stars all its 직업각인), each group in its
+    /// own order. Favourites not in the list change nothing.</summary>
+    public static IReadOnlyList<string> FavoritesFirst(IReadOnlyList<string> entries, IReadOnlyCollection<string> favorites)
+    {
+        bool Starred(string e) => favorites.Contains(e) || (ClassProfiles.Parent(e) is { } p && p != ClassProfiles.Template && favorites.Contains(p));
+        return [.. entries.Where(Starred), .. entries.Where(e => !Starred(e))];
+    }
+
     /// <summary>The entry to show for <paramref name="shown"/> (null = nothing picked yet): itself while it is in
     /// <paramref name="entries"/> (<see cref="PickerEntries"/>), else, for an old class-alone or unknown key, the active
     /// character's entry (<see cref="ClassProfiles.ActiveKey"/>) when listed, else 기본.</summary>

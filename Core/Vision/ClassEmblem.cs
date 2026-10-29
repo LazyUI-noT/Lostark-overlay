@@ -1,5 +1,7 @@
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.Core.Vision.ImageOps;
+
 namespace GaugeOverlay.Core.Vision;
 
 /// <summary>A class's centre piece of the skill bar (Geometry.RefEmblem: its 아덴 gauge art, which differs per class) from
@@ -32,7 +34,7 @@ public sealed class ClassEmblem
             for (int c = 0; c < 3; c++) diff = Math.Max(diff, Math.Abs(empty.Bgra[p + c] - full.Bgra[p + c]));
             int x = i % Width;
             Static[i] = diff <= MaxStaticDiff && x >= SideMargin && x < Width - SideMargin;
-            Grey[i] = (ClassEmblemMatcher.Luma(empty.Bgra, p) + ClassEmblemMatcher.Luma(full.Bgra, p)) / 2;
+            Grey[i] = (LumaPerceptual(empty.Bgra, p) + LumaPerceptual(full.Bgra, p)) / 2;
         }
     }
 
@@ -44,7 +46,7 @@ public sealed class ClassEmblem
         lock (_blurred)
         {
             if (!_blurred.TryGetValue((w, h), out var g))
-                _blurred[(w, h)] = g = ClassEmblemMatcher.Resample(ClassEmblemMatcher.Resample(Grey, Width, Height, w, h), w, h, Width, Height);
+                _blurred[(w, h)] = g = Resample(Resample(Grey, Width, Height, w, h), w, h, Width, Height);
             return g;
         }
     }
@@ -86,8 +88,6 @@ public static class ClassEmblemMatcher
     }
 
 
-    internal static float Luma(byte[] bgra, int p) => 0.114f * bgra[p] + 0.587f * bgra[p + 1] + 0.299f * bgra[p + 2];
-
     /// <summary>How alike <paramref name="crop"/> (any size; scaled to the reference) is to <paramref name="emblem"/>'s
     /// frame: the best correlation over the searched shifts, 0..1.</summary>
     public static double Score(Image crop, ClassEmblem emblem)
@@ -120,24 +120,8 @@ public static class ClassEmblemMatcher
     static float[] Luma(Image img)
     {
         var g = new float[img.Width * img.Height];
-        for (int i = 0; i < g.Length; i++) g[i] = Luma(img.Bgra, i * 4);
+        for (int i = 0; i < g.Length; i++) g[i] = LumaPerceptual(img.Bgra, i * 4);
         return g;
     }
 
-    // Bilinear resample of a <paramref name="sw"/>×<paramref name="sh"/> grey image to w×h.
-    internal static float[] Resample(float[] src, int sw, int sh, int w, int h)
-    {
-        var dst = new float[w * h];
-        double kx = (double)sw / w, ky = (double)sh / h;
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                double fx = Math.Clamp((x + 0.5) * kx - 0.5, 0, sw - 1), fy = Math.Clamp((y + 0.5) * ky - 0.5, 0, sh - 1);
-                int x0 = (int)fx, y0 = (int)fy, x1 = Math.Min(x0 + 1, sw - 1), y1 = Math.Min(y0 + 1, sh - 1);
-                double tx = fx - x0, ty = fy - y0;
-                float L(int px, int py) => src[py * sw + px];
-                dst[y * w + x] = (float)((L(x0, y0) * (1 - tx) + L(x1, y0) * tx) * (1 - ty) + (L(x0, y1) * (1 - tx) + L(x1, y1) * tx) * ty);
-            }
-        return dst;
-    }
 }

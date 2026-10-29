@@ -101,27 +101,6 @@ public class SubclassHistoryTests
     }
 
     [Fact]
-    public void Settings_from_before_the_history_start_it_from_the_active_character()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "GaugeOverlayTests", Guid.NewGuid().ToString("N"));
-        try
-        {
-            var store = new SettingsStore(Path.Combine(dir, "settings.json"));
-            var old = new Settings { Version = 2 };
-            old.PickCharacter("전사", "워로드", "고독한 기사");
-            store.Save(old);
-            Assert.Equal("고독한 기사", store.Load(out _).SubclassHistory["워로드"]);
-
-            // A file written since: an empty history stays empty (its 직업각인 may be detection's unread placeholder).
-            var now = new Settings();
-            now.PickCharacter("전사", "워로드", "전투 태세");
-            store.Save(now);
-            Assert.Empty(store.Load(out _).SubclassHistory);
-        }
-        finally { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
-    }
-
-    [Fact]
     public void The_redetect_hotkey_is_unset_by_default()
     {
         var h = new HotkeySettings();

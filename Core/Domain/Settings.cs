@@ -9,7 +9,7 @@ public enum FitMode { 자동, 직접입력, 수동조정 }
 
 /// <summary>Everything the user sets. One JSON file (%APPDATA%\GaugeOverlay\settings.json).
 /// Adding a setting = adding a property with a default here; loading fills missing properties with defaults.</summary>
-public sealed class Settings
+public sealed class Settings : IJsonOnDeserializing
 {
     /// <summary>2 = 2.0: the effects moved into each class, and a class follows 기본 unless 개별 (<see cref="ClassSettings.Own"/>).</summary>
     public const int CurrentVersion = 4;
@@ -29,8 +29,26 @@ public sealed class Settings
     public DebuffSettings Debuffs { get; set; } = new();
     public JudgmentSettings Judgment { get; set; } = new();
     public UpdateSettings Updates { get; set; } = new();
-    /// <summary>설정's colour theme (the window only; the overlay's colours are its own).</summary>
-    public UiTheme Theme { get; set; } = UiTheme.DeepTeal;
+    /// <summary>설정's colour theme (the window only; the overlay's colours are its own). New installs start on 로스트아크;
+    /// a file without one was saved while 딥 틸 was the default (<see cref="OnDeserializing"/>).</summary>
+    [JsonIgnore] public UiTheme Theme { get; set; } = UiTheme.LostArk;
+
+    /// <summary>"Theme" in the file: one of the four themes 0.11.x knows, so going back to it keeps the settings (it can't
+    /// read a name it doesn't know). A newer theme saves 딥 틸 here and itself in <see cref="Palette"/>.</summary>
+    [JsonPropertyName("Theme")]
+    public UiTheme SavedTheme { get => Theme > UiTheme.Dark ? UiTheme.DeepTeal : Theme; set => Theme = value; }
+
+    /// <summary>A theme newer than 0.11.x (로스트아크, 그래파이트, 아크라시아 밤), read after "Theme"; null for the four it knows.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UiTheme? Palette { get => Theme > UiTheme.Dark ? Theme : null; set { if (value is { } v) Theme = v; } }
+
+    /// <summary>Tray → 표시's memory for this session (fields: never saved): what turning a part off hid, which turning it
+    /// on brings back (<see cref="TrayToggles"/>).</summary>
+    internal (string? Key, SlotGroup[] Groups)? TrayHiddenGroups;
+    internal BuffKind[]? TrayHiddenBars;
+
+    /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.</summary>
+    void IJsonOnDeserializing.OnDeserializing() => Theme = UiTheme.DeepTeal;
     /// <summary>The 아덴 게이지 bar per "클래스/직업각인" (GaugeBar.Key): only the ones changed in the 게이지 tab; the
     /// rest use the classes.json default.</summary>
     public Dictionary<string, GaugeBarSettings> GaugeBars { get; set; } = [];
@@ -53,6 +71,34 @@ public sealed class Settings
     /// <summary>The key of a character in <see cref="Characters"/>, <see cref="Cores"/>: "클래스 · 직업각인".</summary>
     public static string CharacterKey(string className, string subclass) => $"{className} · {subclass}";
 
+    /// <summary>What an undo leaves as it is (<see cref="CopyFrom"/>): what the app writes on its own (detection, fits,
+    /// learned stacks, first run, update checks), as <see cref="ApplyLayoutFrom"/> does, and the theme, a choice for the
+    /// whole window seen at once.</summary>
+    static readonly HashSet<string> AppWritten =
+    [
+        nameof(Theme),
+        nameof(FirstRunDone), nameof(Updates), nameof(Characters), nameof(ActiveCharacter), nameof(Cores), nameof(StackSkills),
+        nameof(SubclassHistory), nameof(SeenSupport), nameof(Fits), nameof(DetectedScreen), nameof(Adjusts),
+    ];
+
+    /// <summary>설정's undo: the live object, which the windows hold, takes <paramref name="other"/>'s values — every public
+    /// read-write property, so a new setting needs nothing here — except what the app wrote meanwhile (<see cref="AppWritten"/>,
+    /// and the party's 신뢰한 기기).</summary>
+    public void CopyFrom(Settings other)
+    {
+        var trusted = Party.TrustedDevices;
+        var shots = Profiles.Select(p => p.Shot).ToList();   // a screenshot is a file, kept or removed at once: no undo step
+        foreach (var p in typeof(Settings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            if (p is { CanRead: true, CanWrite: true } && p.GetIndexParameters().Length == 0 && !AppWritten.Contains(p.Name) && !SavedForms.Contains(p.Name))
+                p.SetValue(this, p.GetValue(other));
+        Party.TrustedDevices = trusted;
+        for (int i = 0; i < Math.Min(shots.Count, Profiles.Count); i++) Profiles[i].Shot = shots[i];
+    }
+
+    /// <summary>Properties that only spell another one out for the file (<see cref="SavedTheme"/>, <see cref="Palette"/>:
+    /// <see cref="Theme"/>): copied through it.</summary>
+    static readonly HashSet<string> SavedForms = [nameof(SavedTheme), nameof(Palette)];
+
     /// <summary>코어 빌드 per "클래스 · 직업각인" (<see cref="CharacterKey"/>): kept when the character changes, one for all three
     /// 프로필 and apart from the active character. Read through <see cref="CoreOf"/>, set through <see cref="SetCore"/>.</summary>
     public Dictionary<string, CoreChoice> Cores { get; set; } = [];
@@ -67,6 +113,12 @@ public sealed class Settings
     /// beside timers in play. Never forgotten; a stack can come from the skill, a tripod or a core (user, 2026-10-13).
     /// Slot names, not SlotId: a name that isn't one (a hand edit) is skipped, where an enum would fail the whole file.</summary>
     public Dictionary<string, List<string>> StackSkills { get; set; } = [];
+
+    /// <summary>★ classes: a class name stars all its 직업각인, a "클래스 · 직업각인" entry stars that one. Listed first in the pickers.</summary>
+    public List<string> FavoriteClasses { get; set; } = [];
+
+    /// <summary>★ settings (<see cref="SettingEntry.Id"/>), shown on 즐겨찾기 in the order starred.</summary>
+    public List<string> FavoriteSettings { get; set; } = [];
 
     public IReadOnlyList<SlotId> StackSkillsOf(string characterKey) =>
         [.. (StackSkills.GetValueOrDefault(characterKey) ?? []).Select(n => Enum.TryParse<SlotId>(n, out var s) && s.ToString() == n ? s : (SlotId?)null)
@@ -183,9 +235,6 @@ public sealed class Settings
     public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile())];
     public int ActiveProfile { get; set; }
 
-    /// <summary>레이아웃 편집기의 패널 hidden from its 패널 tray (편집, 클래스, 칸 옵션, 전체 화면).</summary>
-    public HashSet<string> EditorHidden { get; set; } = [];
-
     /// <summary>The 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the one shared by a character with no listed 직업각인.</summary>
     public string? PlaceKey { get; set; }
 
@@ -287,15 +336,6 @@ public sealed class OverlaySettings : IWindowPlace
     // Box width and height, each 0.3 – 2.0. A party member's window has its own (PeerDisplay).
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
-    /// <summary>1.x's one party window for every member; SettingsStore moves them into each
-    /// <see cref="PartySettings.ShowOthersBySlot"/> entry and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? PartyLeft { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? PartyTop { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? PartyWidth { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? PartyHeight { get; set; }
-    /// <summary>1.0's single size for both windows; SettingsStore moves it into the sizes above and clears it.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public double? Scale { get; set; }
     public double Opacity { get; set; } = 0.9;        // plate
     /// <summary>배경 판 표시: the plate behind your boxes and party members'; off, only the boxes, gauge and names are drawn.
     /// The detached buff window never has one.</summary>
@@ -308,20 +348,6 @@ public sealed class OverlaySettings : IWindowPlace
     public double TimerFont { get; set; } = 14;      // DIP; drawn capped at what fits the box (OverlayRenderer.MaxTimerFont)
     /// <summary>쿨 돈 뒤 지난 시간's number colour (#RRGGBB), outlined in white, or black for a light colour.</summary>
     public string ReadyCountColor { get; set; } = "#000000";
-    /// <summary>1.2's one switch for 준비되면 반짝임; SettingsStore turns false into every group's NoShine.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? ShowShine { get; set; }
-    /// <summary>Before 2.0 the effects (<see cref="MineProfile"/>) were one set for every class; SettingsStore moves them
-    /// into 기본 and every class, and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotGroup>? NoShine { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotGroup>? Pulse { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, ReadyGlowStyle>? PulseStyle { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, string>? PulseColor { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotGroup>? Icons { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotId, bool>? SlotShine { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotId, bool>? SlotPulse { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotGroup>? EndFlash { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotId, bool>? SlotEndFlash { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotId>? KeyLetters { get; set; }
     public CooldownStyle CooldownStyle { get; set; } = CooldownStyle.Sweep;
     public FillFrom FillFrom { get; set; } = FillFrom.Bottom;
     /// <summary>Border drawn on a box while the game shows its gold frame on that skill (#RRGGBB), and its width in
@@ -329,19 +355,12 @@ public sealed class OverlaySettings : IWindowPlace
     public string GoldColor { get; set; } = "#FFD24A";
     public double GoldThickness { get; set; } = 2;
 
-    public string AwakeningChangedColor { get; set; } = "#FF4D4D";   // red, as in the game (1.x: #FF7F27, migrated)
+    public string AwakeningChangedColor { get; set; } = "#FF4D4D";   // red, as in the game
 
     /// <summary>While placing boxes: snap to the other boxes (Shift turns it off for a drag), and resize a set of boxes
     /// together (FreeLayout.Linked).</summary>
     public bool LayoutSnap { get; set; } = true;
     public bool LayoutLinkSizes { get; set; } = true;
-
-    /// <summary>Before per-class settings (<see cref="ClassProfile"/>): the groups and slots shown, the colours for all
-    /// classes and the free layout. SettingsStore moves them into the template class and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, bool>? GroupVisible { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, string>? GroupColor { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<Part, Cell>? Layout { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public HashSet<SlotId>? HiddenSlots { get; set; }
 
     /// <summary>Hide the overlay from screen capture (needed when it overlaps the skill bar; also hides it from OBS/Discord).</summary>
     public bool ExcludeFromCapture { get; set; } = true;
@@ -583,11 +602,6 @@ public sealed class PartySettings
     public bool SupportFixed { get; set; }
     public int SupportNumber { get; set; } = 2;
 
-    /// <summary>Before per-class settings: the 파티원 색 mode and the support slot (0–2, -1 = none). SettingsStore moves
-    /// them into <see cref="ClassSettings.Members"/> and <see cref="SupportFixed"/> and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public PeerColorMode? ColorMode { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? SupportSlot { get; set; }
-
     /// <summary>Size of the class icon beside a party member's boxes, 0.5 – 2.0.</summary>
     public double IconScale { get; set; } = 1.0;
     /// <summary>이름 길이: members' names are cut to this many units on your screen (한글 2, 영문 1; PlayerName).</summary>
@@ -606,10 +620,6 @@ public enum PeerLabel { IconAndName, Name, Icon }
 
 public enum Role { 딜러, 서포터 }
 
-/// <summary>Before per-class settings, how party members' boxes were coloured; only read to move it
-/// (<see cref="PartySettings.ColorMode"/>).</summary>
-public enum PeerColorMode { Role, Class, Same, Slot, Remote }
-
 public sealed class ClassSettings
 {
     /// <summary>개별: the class uses its own <see cref="Mine"/> and <see cref="Members"/>; off, 기본's (kept for when it
@@ -619,9 +629,6 @@ public sealed class ClassSettings
     public MineProfile Mine { get; set; } = new();
     /// <summary>파티원: a party member's boxes while they play this class.</summary>
     public MemberProfile Members { get; set; } = new();
-    /// <summary>Before per-class settings: the colours set for the class. SettingsStore moves them into
-    /// <see cref="Mine"/> and <see cref="Members"/> and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, string>? Custom { get; set; }
 }
 
 /// <summary>One party slot's window spot; what it shows follows its member's class.</summary>
@@ -629,14 +636,6 @@ public sealed class PeerDisplay
 {
     public double Left { get; set; } = double.NaN;
     public double Top { get; set; } = double.NaN;
-    /// <summary>Before per-class settings: what this slot showed, its size, colours and layout. SettingsStore moves the
-    /// first slot's into the template class (<see cref="ClassSettings.Members"/>) and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, bool>? Groups { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? Gauge { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Width { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Height { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, string>? Colors { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<Part, Cell>? Layout { get; set; }
 }
 
 public sealed class CharacterSettings
@@ -646,7 +645,4 @@ public sealed class CharacterSettings
     public string Subclass { get; set; } = "";      // 직업각인
     /// <summary>Emblem crop learned on first pick, BGRA, for auto-detection. Base64.</summary>
     public string? EmblemBgra { get; set; }
-    /// <summary>Before per-class settings: colours for this character only. SettingsStore moves them into its class
-    /// (<see cref="ClassSettings.Mine"/>) and clears them.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Dictionary<SlotGroup, string>? Colors { get; set; }
 }

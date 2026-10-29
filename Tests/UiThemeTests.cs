@@ -8,9 +8,47 @@ namespace GaugeOverlay.Tests;
 public class UiThemeTests
 {
     [Fact]
-    public void The_default_theme_is_딥_틸()
+    public void New_settings_default_to_로스트아크() => Assert.Equal(UiTheme.LostArk, new Settings().Theme);
+
+    /// <summary>A file from before the 로스트아크 theme was saved while 딥 틸 was the default: it stays 딥 틸.</summary>
+    [Fact]
+    public void A_file_without_a_theme_loads_as_딥_틸()
     {
-        Assert.Equal(UiTheme.DeepTeal, new Settings().Theme);
+        string dir = Path.Combine(Path.GetTempPath(), "go-theme-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """{ "Version": 4 }""");
+            Assert.Equal(UiTheme.DeepTeal, new SettingsStore(Path.Combine(dir, "settings.json")).Load(out _).Theme);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    public static TheoryData<UiTheme> Themes() => [.. Enum.GetValues<UiTheme>()];
+
+    /// <summary>Every theme that sets its own text colours keeps small text readable on its panels (WCAG 4.5:1).</summary>
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void Every_theme_text_passes_contrast(UiTheme theme)
+    {
+        var c = UiPalette.Of(theme).Colors;
+        Rgb At(string key) => HexColor.TryParse(c[key], out var v) ? v : throw new InvalidOperationException(key);
+        foreach (var key in new[] { UiPalette.Text, UiPalette.Muted, UiPalette.Gold })
+            if (c.ContainsKey(key) && c.ContainsKey(UiPalette.Card))
+                Assert.True(HexColor.Contrast(At(key), At(UiPalette.Card)) >= 4.5, $"{theme} {key}: {HexColor.Contrast(At(key), At(UiPalette.Card)):0.00}");
+    }
+
+    [Theory]
+    [InlineData(UiTheme.LostArk, "#2A2C35", "#C9A472")]
+    [InlineData(UiTheme.Graphite, "#25272B", "#8AB4F8")]
+    [InlineData(UiTheme.ArkesiaNight, "#1F2433", "#D9B46A")]
+    public void The_new_dark_themes_set_their_tokens(UiTheme theme, string card, string mark)
+    {
+        var p = UiPalette.Of(theme);
+        Assert.True(p.Dark);
+        Assert.Equal(card, p.Colors[UiPalette.Card]);
+        Assert.Contains(mark, p.Colors.Values);
+        Assert.All(UiPalette.Keys, k => Assert.Matches("^#[0-9A-F]{6}$", p.Colors[k]));
     }
 
     [Fact]

@@ -70,14 +70,14 @@ public static class DebuffReader
     static readonly (int Digit, float[] Luma)[] Digits = [.. DebuffTemplates.Digits.Select(d =>
     {
         var img = Image.FromBytes(Convert.FromBase64String(d.Glyph))!;
-        return (d.Digit - '0', BuffReader.Luma(img, new PixelRect(0, 0, img.Width, img.Height)));
+        return (d.Digit - '0', ImageOps.LumaFast(img, new PixelRect(0, 0, img.Width, img.Height)));
     })];
 
     /// <summary>The boss's red and blue counts in <paramref name="row"/> (<see cref="Geometry.BossRow"/>, captured at
     /// <paramref name="scale"/> screen pixels per reference pixel); null for a sigil not found or a count not read.</summary>
     public static (int? Red, int? Blue) BossCounts(Image row, double scale)
     {
-        var r = Math.Abs(scale - 1) < 0.01 ? row : BuffReader.Resample(row, new PixelRect(0, 0, row.Width, row.Height), 1 / scale);
+        var r = Math.Abs(scale - 1) < 0.01 ? row : ImageOps.Resample(row, new PixelRect(0, 0, row.Width, row.Height), 1 / scale);
         return (Count(r, DebuffKind.빨강), Count(r, DebuffKind.파랑));
     }
 
@@ -105,7 +105,7 @@ public static class DebuffReader
     static float[] XGlyph()
     {
         var img = Image.FromBytes(Convert.FromBase64String(DebuffTemplates.CountX))!;
-        return BuffReader.Luma(img, new PixelRect(0, 0, img.Width, img.Height));
+        return ImageOps.LumaFast(img, new PixelRect(0, 0, img.Width, img.Height));
     }
 
     /// <summary>How much the spot of a count's "X" over <paramref name="icon"/> looks like one, best over the search.</summary>
@@ -115,7 +115,7 @@ public static class DebuffReader
         for (int y = icon.Y + CountDy - CountSearch; y <= icon.Y + CountDy + CountSearch; y++)
             for (int x = icon.X + XDx - CountSearch; x <= icon.X + XDx + CountSearch; x++)
                 if (x >= 0 && y >= 0 && x + XW <= row.Width && y + GlyphH <= row.Height)
-                    best = Math.Max(best, BuffReader.Correlate(BuffReader.Luma(row, new PixelRect(x, y, XW, GlyphH)), XLuma));
+                    best = Math.Max(best, ImageOps.Correlate(ImageOps.LumaFast(row, new PixelRect(x, y, XW, GlyphH)), XLuma));
         return best;
     }
 
@@ -128,9 +128,9 @@ public static class DebuffReader
             for (int x = icon.X + CountDx - CountSearch; x <= icon.X + CountDx + CountSearch; x++)
             {
                 if (x < 0 || y < 0 || x + GlyphW > row.Width || y + GlyphH > row.Height) continue;
-                var luma = BuffReader.Luma(row, new PixelRect(x, y, GlyphW, GlyphH));
+                var luma = ImageOps.LumaFast(row, new PixelRect(x, y, GlyphW, GlyphH));
                 foreach (var (d, g) in Digits)
-                    if (BuffReader.Correlate(luma, g) is var s && s > best.Score) best = (d, s);
+                    if (ImageOps.Correlate(luma, g) is var s && s > best.Score) best = (d, s);
             }
         return (best.Score >= MinCount ? best.Digit : null, best.Score);
     }

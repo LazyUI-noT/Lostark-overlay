@@ -57,15 +57,15 @@ public class BuffTimerTests
                 for (int i = 0; i < cell.Length; i++) s.Sum[i] += cell[i];
                 sums[ch] = (s.Sum, w, s.N + 1);
             }
-            var text = BuffReader.Resample(img, new PixelRect(timer.X, timer.Y - Margin, timer.Width, timer.Height + 2 * Margin), Enlarge[size]);
+            var text = ImageOps.Resample(img, new PixelRect(timer.X, timer.Y - Margin, timer.Width, timer.Height + 2 * Margin), Enlarge[size]);
             var (cx, cy) = BuffReader.Find(text, new PixelRect(0, 0, text.Width, text.Height), seed, ChoW, H);
-            Add('초', BuffReader.Luma(text, new PixelRect(cx, cy, ChoW, H)), ChoW);
+            Add('초', ImageOps.LumaFast(text, new PixelRect(cx, cy, ChoW, H)), ChoW);
             int x = cx;
             foreach (char ch in Text(seconds).Reverse())
             {
                 x -= ch == '.' ? DotW : DigitW;
                 if (x < 0) break;
-                Add(ch, BuffReader.Luma(text, new PixelRect(x, cy, ch == '.' ? DotW : DigitW, H)), ch == '.' ? DotW : DigitW);
+                Add(ch, ImageOps.LumaFast(text, new PixelRect(x, cy, ch == '.' ? DotW : DigitW, H)), ch == '.' ? DotW : DigitW);
             }
         }
         var sb = new StringBuilder();

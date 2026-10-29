@@ -238,14 +238,6 @@ public static class ClassProfiles
     public static ClassProfile BoxesShown(Settings s, string? className, bool member) =>
         member ? EditShown(s, className).Members : EditShown(s, className).Mine;
 
-    /// <summary>Settings from before 개별: a class is 개별 only where its boxes differ from 기본's.</summary>
-    public static void MarkOwnWhereDifferent(Settings s)
-    {
-        var t = s.Classes.GetValueOrDefault(Template) ?? new ClassSettings();
-        foreach (var (name, c) in s.Classes.Where(c => c.Key != Template))
-            c.Own = !(Same(c.Mine, t.Mine) && Same(c.Members, t.Members));
-    }
-
     static bool Same<T>(T a, T b) where T : ClassProfile =>
         JsonSerializer.SerializeToUtf8Bytes(a).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(b));
 

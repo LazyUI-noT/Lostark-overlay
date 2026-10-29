@@ -1,6 +1,8 @@
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>편집 중's pick as the rest of the app sees it: while 설정 is open, a 직업각인 other than the character's shows its
@@ -36,22 +38,23 @@ public partial class SettingsWindow
         }
     }
 
-    /// <summary>The entry the 칸 옵션 edit: the character's in the 레이아웃 편집기, else the pick (null = 기본).</summary>
-    string? BoxKey => _inEditor ? ClassProfiles.ActiveKey(_s) : ShownClass == ClassProfiles.Template ? null : ShownClass;
+    /// <summary>The entry the 칸 옵션 edit: the pick (null = 기본).</summary>
+    string? BoxKey => ShownClass == ClassProfiles.Template ? null : ShownClass;
 
     /// <summary>The 아덴 slots of <see cref="BoxKey"/>: the character's, the pick's own, or none for 기본.</summary>
     IReadOnlyCollection<SlotId> BoxAdenSlots =>
-        _inEditor || ShownClass == ActiveOrTemplate ? _chars.AdenSlots : PreviewTarget?.AdenSlots ?? [];
+        ShownClass == ActiveOrTemplate ? _chars.AdenSlots : PreviewTarget?.AdenSlots ?? [];
 
     /// <summary>Picks <paramref name="key"/> (an entry of <see cref="ClassPicker.PickerEntries"/>) in 편집 중, as the user does.</summary>
     internal void PickEntry(string key)
     {
-        if (key != ShownClass) _box = null;   // a slot of the 직업각인 left must not stay selected
+        if (key != ShownClass) { RecordStep(); _box = null; }   // a slot of the 직업각인 left must not stay selected
         _classShown = key;
+        ResetBaseline();
         RefreshPick();
         Dispatcher.BeginInvoke(() =>
         {
-            FillClassSections(); FillChips(); FillBox();
+            FillClassSections(); FillBox(); RefreshInspector();
             _pickCombo?.Focus();   // the rebuild replaced the combo the keyboard was on
         });
     }
@@ -61,14 +64,13 @@ public partial class SettingsWindow
     /// The icons are read again only for another target, or with <paramref name="reloadIcons"/> (설정 opened: they may have been read since).</summary>
     void RefreshPick(bool reloadIcons = false)
     {
-        PreviewTarget = _inEditor ? null : PreviewTarget.Decide(ShownClass, ClassProfiles.ActiveKey(_s), _chars.Classes);
+        PreviewTarget = PreviewTarget.Decide(ShownClass, ClassProfiles.ActiveKey(_s), _chars.Classes);
         if (PreviewTarget?.Key != _iconsKey || reloadIcons)
         {
             _iconsKey = PreviewTarget?.Key;
             PreviewIcons = PreviewTarget is { } t ? _iconStore.Load(t.Class, t.Subclass) : new Dictionary<SlotId, Image>();
         }
-        _quick?.SetTarget(PreviewTarget);
-        QuickSample();
+        _canvas?.SetTarget(PreviewTarget);
         PickedChanged?.Invoke();
     }
 }

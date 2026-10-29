@@ -81,7 +81,7 @@ public class DebuffTests
         // and enlarged again, a glyph can fall under the strict MinCount (bossrow_61's 6): unknown then, which shows "?", but
         // never a wrong count.
         double s = Geometry.BossScale(Fhd, new Fit(80));
-        var small = BuffReader.Resample(row, new PixelRect(0, 0, row.Width, row.Height), s);
+        var small = ImageOps.Resample(row, new PixelRect(0, 0, row.Width, row.Height), s);
         var (r80, b80) = DebuffReader.BossCounts(small, s);
         Assert.True(r80 is null || r80 == red, $"red {r80}");
         Assert.True(b80 is null || b80 == blue, $"blue {b80}");
@@ -101,10 +101,10 @@ public class DebuffTests
     {
         foreach (var (fixture, cell, digit) in Glyphs)
         {
-            var own = BuffReader.Luma(Fixture.Load(fixture).Frames[0], cell);
+            var own = ImageOps.LumaFast(Fixture.Load(fixture).Frames[0], cell);
             foreach (var (f2, c2, d2) in Glyphs.Where(g => g.Digit != digit))
             {
-                double s = BuffReader.Correlate(own, BuffReader.Luma(Fixture.Load(f2).Frames[0], c2));
+                double s = ImageOps.Correlate(own, ImageOps.LumaFast(Fixture.Load(f2).Frames[0], c2));
                 Assert.True(s < DebuffReader.MinCount, $"{digit} against {d2}: {s:0.00}");
             }
         }
@@ -256,7 +256,7 @@ public class DebuffTests
             var img = Fixture.Load(c.Fixture).Frames[0];
             var inner = BuffReader.Interior(c.Icon);
             var cut = BuffReaderTests.Crop(img, inner);
-            if (inner.Width != IconSide) cut = BuffReader.Resample(cut, new PixelRect(0, 0, cut.Width, cut.Height), (double)IconSide / inner.Width);
+            if (inner.Width != IconSide) cut = ImageOps.Resample(cut, new PixelRect(0, 0, cut.Width, cut.Height), (double)IconSide / inner.Width);
             sb.AppendLine($"        \"{Convert.ToBase64String(cut.ToBytes())}\",   // {c.Kind}");
         }
         sb.AppendLine("    ];");

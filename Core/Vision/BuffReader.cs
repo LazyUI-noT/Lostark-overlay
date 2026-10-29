@@ -1,5 +1,7 @@
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.Core.Vision.ImageOps;
+
 namespace GaugeOverlay.Core.Vision;
 
 /// <summary>Finds the four party buffs (PLAN §4 버프) in the buff row and reads their timers. A box counts as a buff
@@ -194,71 +196,24 @@ public sealed class BuffReader
             for (int y = Math.Max(0, y0); y <= Math.Min(img.Height - g.H, y1); y++)
                 for (int x = Math.Max(0, x0); x <= Math.Min(img.Width - g.W, x1); x++)
                 {
-                    double s = Correlate(Luma(img, new PixelRect(x, y, g.W, g.H)), g.Luma);
+                    double s = Correlate(LumaFast(img, new PixelRect(x, y, g.W, g.H)), g.Luma);
                     if (s > best.Item4) best = (g, x, y, s);
                 }
         return best;
     }
 
     // ── Pixels ────────────────────────────────────────────────────────────────────────────────────────────────────
-    internal static Image Crop(Image img, PixelRect r)
-    {
-        var dst = new Image(r.Width, r.Height);
-        for (int y = 0; y < r.Height; y++) img.Row(r.Y + y).Slice(r.X * 4, r.Width * 4).CopyTo(dst.Bgra.AsSpan(y * dst.Stride));
-        return dst;
-    }
-
-    /// <summary><paramref name="r"/> of <paramref name="img"/> scaled by <paramref name="f"/> (bilinear; pixels past the
-    /// edge repeat it).</summary>
-    internal static Image Resample(Image img, PixelRect r, double f)
-    {
-        int w = Math.Max(1, (int)Math.Round(r.Width * f)), h = Math.Max(1, (int)Math.Round(r.Height * f));
-        var dst = new Image(w, h);
-        for (int y = 0; y < h; y++)
-        {
-            double sy = Math.Clamp(r.Y + (y + 0.5) / f - 0.5, 0, img.Height - 1);
-            int y0 = (int)sy, y1 = Math.Min(img.Height - 1, y0 + 1);
-            double fy = sy - y0;
-            for (int x = 0; x < w; x++)
-            {
-                double sx = Math.Clamp(r.X + (x + 0.5) / f - 0.5, 0, img.Width - 1);
-                int x0 = (int)sx, x1 = Math.Min(img.Width - 1, x0 + 1);
-                double fx = sx - x0;
-                for (int c = 0; c < 4; c++)
-                {
-                    double t = img.Bgra[y0 * img.Stride + x0 * 4 + c] * (1 - fx) + img.Bgra[y0 * img.Stride + x1 * 4 + c] * fx;
-                    double b = img.Bgra[y1 * img.Stride + x0 * 4 + c] * (1 - fx) + img.Bgra[y1 * img.Stride + x1 * 4 + c] * fx;
-                    dst.Bgra[y * dst.Stride + x * 4 + c] = (byte)Math.Round(t * (1 - fy) + b * fy);
-                }
-            }
-        }
-        return dst;
-    }
-
-    /// <summary>Luminance of <paramref name="r"/> in <paramref name="img"/>, row by row.</summary>
-    internal static float[] Luma(Image img, PixelRect r)
-    {
-        var v = new float[r.Width * r.Height];
-        for (int y = 0; y < r.Height; y++)
-            for (int x = 0; x < r.Width; x++)
-            {
-                int i = (r.Y + y) * img.Stride + (r.X + x) * 4;
-                v[y * r.Width + x] = (img.Bgra[i] * 29 + img.Bgra[i + 1] * 150 + img.Bgra[i + 2] * 77) >> 8;
-            }
-        return v;
-    }
-
     // Timer text is green-grey or gold with a dark outline. On a bright gold floor (공증bug.mp4) the green-grey fill has
     // the floor's luminance and only the outline shows, so a timer plain luminance can't read is read again with red
     // over green taken off (ReadTimer): the gold floor (R − G about 28) darkens, the green-grey fill (about −30) brightens.
     const int RedOverGreen = 2;
 
-    /// <summary>A grey copy of <paramref name="img"/>: its <see cref="Luma"/> less <see cref="RedOverGreen"/> × (R − G),
+    /// <summary>A grey copy of <paramref name="img"/>: its <see cref="ImageOps.LumaFast"/> less <see cref="RedOverGreen"/> × (R − G),
     /// clamped to 0..255, the timer text's own brightness against a gold floor.</summary>
     static Image TextGrey(Image img)
     {
         var dst = new Image(img.Width, img.Height);
-        var v = Luma(img, new PixelRect(0, 0, img.Width, img.Height));
+        var v = LumaFast(img, new PixelRect(0, 0, img.Width, img.Height));
         for (int k = 0; k < v.Length; k++)
         {
             int i = k / img.Width * img.Stride + k % img.Width * 4, o = k / img.Width * dst.Stride + k % img.Width * 4;
@@ -266,17 +221,6 @@ public sealed class BuffReader
             (dst.Bgra[o], dst.Bgra[o + 1], dst.Bgra[o + 2], dst.Bgra[o + 3]) = (g, g, g, 255);
         }
         return dst;
-    }
-
-    /// <summary>Plain correlation of two equal-length vectors, −1..1.</summary>
-    internal static double Correlate(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
-    {
-        double ma = 0, mb = 0;
-        for (int i = 0; i < a.Length; i++) { ma += a[i]; mb += b[i]; }
-        ma /= a.Length; mb /= b.Length;
-        double sab = 0, saa = 0, sbb = 0;
-        for (int i = 0; i < a.Length; i++) { double da = a[i] - ma, db = b[i] - mb; sab += da * db; saa += da * da; sbb += db * db; }
-        return saa < 1e-6 || sbb < 1e-6 ? 0 : sab / Math.Sqrt(saa * sbb);
     }
 
     /// <summary>Top-left of the best match of a <paramref name="w"/>×<paramref name="h"/> luminance template inside
@@ -287,7 +231,7 @@ public sealed class BuffReader
         for (int y = Math.Max(0, within.Y - 2); y + h <= Math.Min(img.Height, within.Bottom + 2); y++)
             for (int x = Math.Max(0, within.X); x + w <= Math.Min(img.Width, within.Right); x++)
             {
-                double s = Correlate(Luma(img, new PixelRect(x, y, w, h)), template);
+                double s = Correlate(LumaFast(img, new PixelRect(x, y, w, h)), template);
                 if (s > best.S) best = (x, y, s);
             }
         return (best.X, best.Y);

@@ -15,7 +15,7 @@ public static class EmblemMatcher
         Span<float> ta = stackalloc float[Grid * Grid], tb = stackalloc float[Grid * Grid];
         Thumb(a, ta);
         Thumb(b, tb);
-        return Ncc(ta, tb);
+        return Math.Max(0, ImageOps.Correlate(ta, tb));   // clamped to 0..1
     }
 
     /// <summary>Shrinks <paramref name="img"/> to a √(dst.Length)² grid of mean min(R,G,B) values.</summary>
@@ -38,18 +38,4 @@ public static class EmblemMatcher
         }
     }
 
-    /// <summary>Pearson correlation of two equal-length vectors, clamped to 0..1.</summary>
-    private static double Ncc(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
-    {
-        double ma = 0, mb = 0;
-        for (int i = 0; i < a.Length; i++) { ma += a[i]; mb += b[i]; }
-        ma /= a.Length; mb /= b.Length;
-        double sab = 0, saa = 0, sbb = 0;
-        for (int i = 0; i < a.Length; i++)
-        {
-            double da = a[i] - ma, db = b[i] - mb;
-            sab += da * db; saa += da * da; sbb += db * db;
-        }
-        return saa < 1e-6 || sbb < 1e-6 ? 0 : Math.Max(0, sab / Math.Sqrt(saa * sbb));
-    }
 }

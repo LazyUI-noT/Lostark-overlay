@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>아덴 게이지 and 막대: shown once the gauge is clicked, under the 오버레이 tab's preview or on the 레이아웃
@@ -16,8 +18,6 @@ public partial class SettingsWindow
     {
         GaugeBox.Children.Clear();
         GaugeBox.Children.Add(GaugePanel());
-        GaugeBox.Children.Add(ResetButton("아덴 게이지 되돌리기", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛남)을 기본값으로 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.",
-            () => SettingsResets.Gauge(_s)));
     }
 
     UIElement GaugePanel()
@@ -29,21 +29,18 @@ public partial class SettingsWindow
             p.Children.Add(Note("현재 직업각인은 아덴 게이지를 추적하지 않습니다 (나중에 추가 예정)."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
-        p.Children.Add(ColorRow(Label("채움 색"), g.Fill, v => g.Fill = v, swatch: false));
-        p.Children.Add(ColorRow(Label("빈 칸 색"), g.Empty, v => g.Empty = v, swatch: false));
+        p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
+        p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));
         p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));
         p.Children.Add(SliderRow("불투명도", 0.2, 1, g.Opacity, 0.05, v => $"{v * 100:0}%", v => g.Opacity = v, Changed));
-        p.Children.Add(HelpRow("게이지 읽기", "기본: 같은 값이 5번 연속 읽히면 반영합니다. 작은 상승: 조금 오른 값은 2번 일치하면 반영합니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 쓸 때마다 배워, 그만큼 오르는 값은 2번 일치하면 바로 반영합니다. 스킬마다 10번쯤 쓴 뒤부터 적용되고, 배운 값은 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 아덴스킬로 게이지를 쓰는 양은 배우지 않고 클래스 규칙으로 바로 반영합니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다.", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
+        p.Children.Add(HelpRow("읽기 방식", "기본: 같은 값이 5번 연속 읽히면 반영합니다. 작은 상승: 조금 오른 값은 2번 일치하면 반영합니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 쓸 때마다 배워, 그만큼 오르는 값은 2번 일치하면 바로 반영합니다. 스킬마다 10번쯤 쓴 뒤부터 적용되고, 배운 값은 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 이어집니다. 아덴스킬로 게이지를 쓰는 양은 배우지 않고 클래스 규칙으로 바로 반영합니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다.", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
             (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], g.ReadMode, v => g.ReadMode = v)));
         // Shown for every reading: gains learned under 스킬별 예측 stay saved after switching to another reading, and are used again on
-        // switching back. Not in the editor: its copy has no engine to forget them.
-        if (!_inEditor)
-        {
-            var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 8),
-                ToolTip = "스킬별 예측에서 배운 게이지 값을 지웁니다. 스킬창의 스킬을 바꿨을 때 쓰세요." };
-            forget.Click += (_, _) => GainsResetRequested?.Invoke();
-            p.Children.Add(forget);
-        }
+        // switching back.
+        var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 8),
+            ToolTip = "스킬별 예측에서 배운 게이지 값을 지웁니다. 스킬창의 스킬을 바꿨을 때 쓰세요." };
+        forget.Click += (_, _) => GainsResetRequested?.Invoke();
+        p.Children.Add(forget);
         BarRows(p);
         return p;
     }
@@ -89,16 +86,16 @@ public partial class SettingsWindow
         var add = new Button { Content = "구분선 추가", ToolTip = "가장 넓은 구간의 가운데에 구분선을 넣습니다." };
         add.Click += (_, _) => { var (from, to) = bar.Segments.MaxBy(s => s.To - s.From); SetSplits(bar.Splits.Append(Math.Round((from + to) / 2, 3))); };
         splits.Children.Add(add);
-        p.Children.Add(Row(Label("구분선"), splits));
+        p.Children.Add(Row(Label("칸 구분선"), splits));
         p.Children.Add(SliderRow("구분선 두께", 0, 6, bar.SplitThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => Edit().SplitThickness = v, Changed));
         p.Children.Add(ColorRow(Label("구분선 색"), bar.SplitColor, v => Edit().SplitColor = v, swatch: false));
 
-        p.Children.Add(Check("모든 구간 같은 색 (채움 색)", set.UnifiedColor, v => { Edit().UnifiedColor = v; Rebuild(); }, () => { }));
+        p.Children.Add(Check("구간 색 통일", set.UnifiedColor, v => { Edit().UnifiedColor = v; Rebuild(); }, () => { }));
         if (!set.UnifiedColor)
             for (int i = 0; i < bar.SegmentColors.Count; i++)
             {
                 int n = i;
-                p.Children.Add(ColorRow(Label($"   {n + 1}번째 구간"), bar.SegmentColors[n], v =>
+                p.Children.Add(ColorRow(Label($"{n + 1}번째 구간"), bar.SegmentColors[n], v =>
                 {
                     var colors = Edit().SegmentColors;
                     while (colors.Count <= n) colors.Add(bar.Fill);
@@ -108,8 +105,8 @@ public partial class SettingsWindow
         if (shown.Rule?.Colors is not null)
         {
             // 바드: gold while a section fills, blue once full (the game's colours by default).
-            p.Children.Add(ColorRow(Label("다 찬 구간 색"), bar.Fill, v => { Edit().FullColor = v; Rebuild(); }, swatch: false));   // the rows below default from it
-            p.Children.Add(ColorRow(Label("채우는 중인 구간 색"), bar.FillingColor ?? bar.Fill, v => Edit().FillingColor = v, swatch: false));
+            p.Children.Add(ColorRow(Label("완충 구간"), bar.Fill, v => { Edit().FullColor = v; Rebuild(); }, swatch: false));   // the rows below default from it
+            p.Children.Add(ColorRow(Label("충전 중 구간"), bar.FillingColor ?? bar.Fill, v => Edit().FillingColor = v, swatch: false));
         }
 
         if (shown.Rule is { Ramp.Count: > 0 } rule)
@@ -119,7 +116,7 @@ public partial class SettingsWindow
             {
                 int from = rule.Ramp.ToList().IndexOf(level) + 1;
                 string when = level == rule.Ramp[^1] ? $"{from}칸 이상" : $"{from}칸";
-                return ColorRow(Label($"   {"약중강"[level - 1]} ({when} 참)"), bar.RampColors[level - 1], v =>
+                return ColorRow(Label($"{"약중강"[level - 1]} ({when} 참)"), bar.RampColors[level - 1], v =>
                 {
                     var b = Edit();
                     var defs = GaugeBar.Resolve(_s, shown.Class, shown.Sub, shown.Rule).RampColors;   // from the class's full colour
@@ -129,16 +126,16 @@ public partial class SettingsWindow
                 }, swatch: false);
             })]);
             ramp.Visibility = Shown(set.Ramp);
-            p.Children.Add(Check("구간이 찰수록 진해짐 (이 직업각인만)", set.Ramp, v => { Edit().Ramp = v; ramp.Visibility = Shown(v); }, Changed));
+            p.Children.Add(Check("충전량 따라 진해짐", set.Ramp, v => { Edit().Ramp = v; ramp.Visibility = Shown(v); }, Changed));
             p.Children.Add(ramp);
         }
 
         var glow = Stack(
-            Row("빛나는 방식", EnumCombo([(GlowStyle.Pulse, "밝아졌다 어두워짐"), (GlowStyle.Shine, "빛이 지나감"), (GlowStyle.Outline, "테두리")],
+            Row("발광 방식", EnumCombo([(GlowStyle.Pulse, "밝아졌다 어두워짐"), (GlowStyle.Shine, "빛이 지나감"), (GlowStyle.Outline, "테두리")],
                 set.GlowStyle, v => Edit().GlowStyle = v)),
-            SliderRow("빛나는 주기", 0.4, 3, set.GlowPeriod, 0.1, v => $"{v:0.0}초", v => Edit().GlowPeriod = v, Changed));
+            SliderRow("발광 주기", 0.4, 3, set.GlowPeriod, 0.1, v => $"{v:0.0}초", v => Edit().GlowPeriod = v, Changed));
         glow.Visibility = Shown(set.GlowEnabled);
-        p.Children.Add(Check("빛남", set.GlowEnabled, v => { Edit().GlowEnabled = v; glow.Visibility = Shown(v); }, Changed));
+        p.Children.Add(Check("완충 발광", set.GlowEnabled, v => { Edit().GlowEnabled = v; glow.Visibility = Shown(v); }, Changed));
         p.Children.Add(glow);
         var reset = new Button { Content = "기본값으로", IsEnabled = _s.GaugeBars.ContainsKey(key),
             ToolTip = "이 직업각인의 막대 설정을 지우고 기본값(classes.json)으로 되돌립니다." };

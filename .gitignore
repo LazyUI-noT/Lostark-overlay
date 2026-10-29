@@ -12,3 +12,6 @@ reference/
 !.claude/rules/
 !.claude/skills/
 .claude/rules/ecc/
+
+# brainstorm mockups and plan-execution scratch
+.superpowers/

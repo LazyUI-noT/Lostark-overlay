@@ -15,15 +15,22 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _icon;
     readonly ContextMenuStrip _menu = new();
     readonly ToolStripMenuItem _overlay, _edit, _test, _character, _refit, _detectSubclass, _rereadIcons, _party, _host, _join, _copyToken, _leave;
-    readonly ToolStripMenuItem _profiles, _raid, _testFront, _testOff;
+    readonly ToolStripMenuItem _profiles, _raid, _testFront, _testOff, _parts;
+    readonly Dictionary<OverlayPart, ToolStripMenuItem> _partItems = [];
+
+    /// <summary>표시 ▸'s names, in menu order (보스 줄 수 창 and DPS 미터기 come with their projects).</summary>
+    static readonly (OverlayPart Part, string Name)[] PartNames =
+        [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Judgment, "단심 창"), (OverlayPart.Debuffs, "디버프 창")];
     readonly ToolStripMenuItem[] _profileItems;
     bool _gameRunning = true, _partyActive;
 
-    public event Action? ToggleOverlay, ToggleEditMode, ToggleTestMode, HostParty, JoinParty, CopyToken, LeaveParty, Refit, DetectSubclass, SubmitSkills, RereadIcons, OpenSettings, OpenLayoutEditor, OpenDebug, Exit;
+    public event Action? ToggleOverlay, ToggleEditMode, ToggleTestMode, HostParty, JoinParty, CopyToken, LeaveParty, Refit, DetectSubclass, SubmitSkills, RereadIcons, OpenSettings, OpenDebug, Exit;
     /// <summary>직업군, 클래스, 직업각인 picked from the 캐릭터 menu.</summary>
     public event Action<string, string, string>? CharacterPicked;
     /// <summary>기본 (no class) picked from the 캐릭터 menu.</summary>
     public event Action? DefaultPicked;
+    /// <summary>표시 ▸: a part turned on (true) or off.</summary>
+    public event Action<OverlayPart, bool>? PartToggled;
     /// <summary>오버레이 프로필 picked (0-based).</summary>
     public event Action<int>? ProfileChosen;
     /// <summary>The 테스트 모드 submenu is opening: answer with <see cref="SetTestWindows"/>.</summary>
@@ -47,7 +54,7 @@ public sealed class Tray : IDisposable
             return i;
         }
 
-        _overlay = Item("오버레이 표시", () => ToggleOverlay?.Invoke());
+        _overlay = Item("오버레이 켜기/끄기", () => ToggleOverlay?.Invoke());
         _overlay.Checked = true;
         _edit = Item("편집 모드", () => ToggleEditMode?.Invoke());
         _test = new ToolStripMenuItem("테스트 모드");
@@ -57,13 +64,21 @@ public sealed class Tray : IDisposable
         _test.DropDownItems.Add(_testFront);
         _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
         _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
-        _profiles = new ToolStripMenuItem("오버레이 프로필");
+        _profiles = new ToolStripMenuItem("프로필");
         _profiles.DropDownItems.AddRange(_profileItems);
+        _parts = new ToolStripMenuItem("표시");
+        foreach (var (part, name) in PartNames)
+        {
+            var item = new ToolStripMenuItem(name);
+            item.Click += (_, _) => PartToggled?.Invoke(part, !item.Checked);
+            _partItems[part] = item;
+            _parts.DropDownItems.Add(item);
+        }
         _character = new ToolStripMenuItem("캐릭터: 없음");
         _raid = new ToolStripMenuItem();
         foreach (var r in Enum.GetValues<Raid>()) _raid.DropDownItems.Add(Item(RaidName(r), () => RaidChosen?.Invoke(r)));
         SetRaid(Raid.없음);
-        _refit = Item("스킬창 다시 맞추기", () => Refit?.Invoke());
+        _refit = Item("스킬창 재맞춤 (+캐릭터 감지)", () => Refit?.Invoke());
         _detectSubclass = Item("직업각인 다시 감지", () => DetectSubclass?.Invoke());
         var submitSkills = Item("스킬 등록", () => SubmitSkills?.Invoke());
         _rereadIcons = Item("아이콘 다시 읽기", () => RereadIcons?.Invoke());
@@ -87,12 +102,12 @@ public sealed class Tray : IDisposable
         _menu.Items.AddRange(
         [
             settings,
-            Item("레이아웃 편집기", () => OpenLayoutEditor?.Invoke()),
             new ToolStripSeparator(),
             _overlay,
             _edit,
             _test,
             _profiles,
+            _parts,
             new ToolStripSeparator(),
             _character,
             _raid,
@@ -142,6 +157,12 @@ public sealed class Tray : IDisposable
 
     /// <summary>Checkmark on "오버레이 표시".</summary>
     public void SetOverlayVisible(bool visible) => _overlay.Checked = visible;
+
+    /// <summary>표시 ▸'s ticks as the settings say.</summary>
+    public void SetParts(Func<OverlayPart, bool> shown)
+    {
+        foreach (var (part, item) in _partItems) item.Checked = shown(part);
+    }
 
     /// <summary>Checkmark on the active 오버레이 프로필.</summary>
     public void SetProfile(int active)
@@ -209,14 +230,24 @@ public sealed class Tray : IDisposable
 
     /// <summary>Character submenu: 기본 (no class), then every class (직업군 apart by separators) with its 직업각인; the
     /// active one checked.</summary>
+    /// <param name="favorites">★ in 설정 (a class, or "클래스 · 직업각인"): listed again at the top for a quick pick.</param>
     public void SetCharacters(IEnumerable<(string Family, IEnumerable<(string Class, IReadOnlyList<string> Subclasses)> Classes)> tree,
-        string? active)
+        string? active, IReadOnlyCollection<string> favorites)
     {
         _character.Text = $"캐릭터: {active ?? "기본"}";
         _character.DropDownItems.Clear();
         var none = new ToolStripMenuItem("기본 (클래스 없음)") { Checked = active is null };
         none.Click += (_, _) => DefaultPicked?.Invoke();
         _character.DropDownItems.Add(none);
+        var starred = tree.SelectMany(f => f.Classes.SelectMany(c => c.Subclasses.Select(sub => (f.Family, c.Class, Sub: sub))))
+            .Where(x => favorites.Contains(x.Class) || favorites.Contains($"{x.Class} · {x.Sub}")).ToList();
+        if (starred.Count > 0) _character.DropDownItems.Add(new ToolStripSeparator());
+        foreach (var (family, cls, sub) in starred)
+        {
+            var s = new ToolStripMenuItem($"★ {cls} · {sub}") { Checked = active == $"{cls} · {sub}" };
+            s.Click += (_, _) => CharacterPicked?.Invoke(family, cls, sub);
+            _character.DropDownItems.Add(s);
+        }
         foreach (var (family, classes) in tree)
         {
             _character.DropDownItems.Add(new ToolStripSeparator());

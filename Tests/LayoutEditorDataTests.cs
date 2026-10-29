@@ -99,23 +99,6 @@ public class LayoutEditorDataTests
         Assert.Same(ClassProfiles.EditShown(s, Bard).Mine, ClassProfiles.BoxesShown(s, Bard, member: false));
     }
 
-    /// <summary>Settings from before 개별 existed: a class is 개별 only where it differs from 기본 (learning made an
-    /// entry for nearly every class, so having an entry says nothing).</summary>
-    [Fact]
-    public void Loading_old_settings_makes_개별_only_the_classes_that_differ_from_기본()
-    {
-        var s = WithCharacter();
-        ClassProfiles.Edit(s, ClassProfiles.Template);
-        ClassProfiles.Edit(s, Warlord);
-        ClassProfiles.Edit(s, Bard).Mine.Gauge = false;
-        s.Version = 1;
-        var json = JsonSerializer.Serialize(s, SettingsStore.Json).Replace("\"Own\": true", "\"Own\": false");
-
-        var back = LoadText(json);
-        Assert.False(ClassProfiles.IsOwn(back, Warlord));
-        Assert.True(ClassProfiles.IsOwn(back, Bard));
-    }
-
     // ── effects per class ────────────────────────────────────────────────────────────
 
     /// <summary>준비되면 반짝임, 계속 빛남, 쿨 돌기 직전 깜빡임, 아이콘 and 키 표시 are set per class now.</summary>
@@ -126,43 +109,6 @@ public class LayoutEditorDataTests
         ClassProfiles.Edit(s, Warlord).Mine.Pulse.Add(SlotGroup.각성기);
         Assert.True(ClassProfiles.Mine(s).Effects!.Pulses(SlotGroup.각성기));
         Assert.False(ClassProfiles.Of(s, Bard).Mine.Pulses(SlotGroup.각성기));
-    }
-
-    /// <summary>The effects were one set for every class: loading moves them into 기본 and into every class that already
-    /// has settings of its own, so nothing looks different after the update.</summary>
-    [Fact]
-    public void Loading_old_settings_moves_the_effects_into_every_class()
-    {
-        var json = """
-            {
-              "Version": 1,
-              "Overlay": { "ShowShine": false, "Pulse": [ "각성기" ], "PulseStyle": { "각성기": "Outline" },
-                           "EndFlash": [ "일반스킬" ], "SlotEndFlash": { "일반1": false }, "KeyLetters": [ "일반2" ], "Icons": [ "초각스" ] },
-              "Classes": { "": {}, "워로드": { "Mine": { "Gauge": false } } }
-            }
-            """;
-        var s = LoadText(json);
-        foreach (var cls in new[] { ClassProfiles.Template, Warlord })
-        {
-            var fx = ClassProfiles.Of(s, cls).Mine;
-            Assert.All(Enum.GetValues<SlotGroup>(), g => Assert.False(fx.Shines(g)));
-            Assert.True(fx.Pulses(SlotGroup.각성기));
-            Assert.Equal(ReadyGlowStyle.Outline, fx.PulseStyleOf(SlotGroup.각성기));
-            Assert.Equal((false, true), (fx.EndFlashes(SlotId.일반1, SlotGroup.일반스킬), fx.EndFlashes(SlotId.일반2, SlotGroup.일반스킬)));
-            Assert.Contains(SlotId.일반2, fx.KeyLetters);
-            Assert.True(fx.ShowsIcon(SlotGroup.초각스));
-        }
-        Assert.True(ClassProfiles.IsOwn(s, Warlord));
-        Assert.Null(s.Overlay.Pulse);
-        Assert.Null(s.Overlay.ShowShine);
-    }
-
-    /// <summary>The old 1.x "Custom" colours object still loads (the 개별 switch has its own name).</summary>
-    [Fact]
-    public void A_class_with_the_old_Custom_colours_still_loads()
-    {
-        var s = LoadText("""{ "Version": 1, "Classes": { "워로드": { "Custom": { "각성기": "#010203" } } } }""");
-        Assert.Equal("#010203", ClassProfiles.Of(s, Warlord).Mine.Colors[SlotGroup.각성기]);
     }
 
     // ── overlay profiles ─────────────────────────────────────────────────────────────
@@ -273,7 +219,6 @@ public class LayoutEditorDataTests
         var live = WithCharacter();
         var edited = RoundTrip(live);
         edited.SyncPlace();   // as the editor's Relayout does
-        edited.EditorHidden.Add("편집");   // a panel hidden: saved at once, not by 적용
         edited.PickCharacter("전사", Bard, "절실한구원");   // only previewed
 
         Assert.False(live.LayoutDiffers(edited));

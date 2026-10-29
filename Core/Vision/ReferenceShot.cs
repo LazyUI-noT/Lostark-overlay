@@ -14,9 +14,9 @@ public static class ReferenceShot
     public static (Viewport Vp, Fit Fit)? Find(Image shot)
     {
         var client = new PixelRect(0, 0, shot.Width, shot.Height);
-        var vp = Letterbox.Viewport(client, BuffReader.Crop(shot, Letterbox.Probe(client)));
+        var vp = Letterbox.Viewport(client, ImageOps.Crop(shot, Letterbox.Probe(client)));
         var band = FitSolver.Band(vp);
-        return FitSolver.Solve(BuffReader.Crop(shot, band), band, vp) is { } fit ? (vp, fit) : null;
+        return FitSolver.Solve(ImageOps.Crop(shot, band), band, vp) is { } fit ? (vp, fit) : null;
     }
 
     /// <summary>The shot as it would look at 1920×1080, HUD 110%: each reference pixel sampled (bilinear) where
@@ -53,7 +53,7 @@ public static class ReferenceShot
 
     /// <summary>The class emblem (<see cref="Geometry.RefEmblem"/>) of a reference shot: Profiles/aden/*/emblem_empty.png and
     /// emblem_full.png, which tell another gauge class on screen.</summary>
-    public static Image Emblem(Image reference) => BuffReader.Crop(reference, Geometry.RefEmblem);
+    public static Image Emblem(Image reference) => ImageOps.Crop(reference, Geometry.RefEmblem);
 
     /// <summary>The empty and full shots on the reference screen, with a note of what was found for the user. Both use one fit
     /// when they're the same size (the same session: their gauge pixels then line up exactly), the empty shot's if it has a

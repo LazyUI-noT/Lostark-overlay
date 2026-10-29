@@ -13,7 +13,11 @@ sealed class TrayRenderer : ToolStripProfessionalRenderer
     sealed record Colors(Color Back, Color Hover, Color Line, Color Text, Color Dim, Color Check);
 
     // 딥 틸: the 설정 card, stroke and accent colours (UiPalette). 어둡게: Windows 11's dark menu greys.
-    static readonly Colors DeepTeal = new(Hex("#1B2734"), Hex("#2A3A4C"), Hex("#2A3A4C"), Hex("#E6EDF3"), Hex("#7D8B99"), Hex("#83E6E0"));
+    // Dimmed text is #8A98A6 (4.5:1 and up on the card); #7D8B99 was 4.3:1.
+    static readonly Colors DeepTeal = new(Hex("#1B2734"), Hex("#2A3A4C"), Hex("#2A3A4C"), Hex("#E6EDF3"), Hex("#8A98A6"), Hex("#83E6E0"));
+    static readonly Colors LostArk = new(Hex("#2A2C35"), Hex("#353845"), Hex("#1C1F2A"), Hex("#F1EEE8"), Hex("#B3AFA8"), Hex("#C9A472"));
+    static readonly Colors Graphite = new(Hex("#25272B"), Hex("#34363C"), Hex("#34363C"), Hex("#ECECEE"), Hex("#9A9CA3"), Hex("#8AB4F8"));
+    static readonly Colors ArkesiaNight = new(Hex("#1F2433"), Hex("#2E3446"), Hex("#2E3446"), Hex("#EDE7DA"), Hex("#A39C8E"), Hex("#D9B46A"));
     static readonly Colors Dark = new(Hex("#2B2B2B"), Hex("#3D3D3D"), Hex("#454545"), Hex("#FFFFFF"), Hex("#8A8A8A"), Hex("#FFFFFF"));
 
     readonly Colors _c;
@@ -24,6 +28,9 @@ sealed class TrayRenderer : ToolStripProfessionalRenderer
     public static ToolStripRenderer For(UiTheme theme) => SystemInformation.HighContrast ? new ToolStripSystemRenderer() : theme switch
     {
         UiTheme.DeepTeal => new TrayRenderer(DeepTeal),
+        UiTheme.LostArk => new TrayRenderer(LostArk),
+        UiTheme.Graphite => new TrayRenderer(Graphite),
+        UiTheme.ArkesiaNight => new TrayRenderer(ArkesiaNight),
         UiTheme.Dark => new TrayRenderer(Dark),
         UiTheme.System when Themes.AppsDark() => new TrayRenderer(Dark),
         _ => new ToolStripProfessionalRenderer(),

@@ -3,6 +3,8 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>클래스별: per 직업각인, your boxes (나), and per class party members' (파티원): what is shown, where, in what
@@ -45,24 +47,35 @@ public partial class SettingsWindow
     {
         string cls = ShownClass;
         _context.Children.Clear();
-        var pick = _pickCombo = PickCombo(PickerEntries, cls, PickEntry);
-        pick.MinWidth = 200;
+        _contextNotes.Children.Clear();
+        var pick = _pickCombo = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), cls, PickEntry);
+        pick.MinWidth = 220;
         AutomationProperties.SetName(pick, "편집 중");
-        var line = Wrap(new TextBlock { Text = "편집 중", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center }, pick);
+        _context.Children.Add(new TextBlock { Text = "편집 중", Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) });
+        _context.Children.Add(pick);
         if (cls == ActiveOrTemplate && cls != ClassProfiles.Template)
-            line.Children.Add(new TextBlock { Text = "· 지금 캐릭터", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 16, 0) });
-        line.Margin = new(0, 8, 0, 4);
-        _context.Children.Add(line);
+            _context.Children.Add(new TextBlock { Text = "· 지금 캐릭터", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 0, 0, 0) });
+        if (cls != ClassProfiles.Template)
+        {
+            bool starred = _s.FavoriteClasses.Contains(cls);
+            var star = new Button { Content = starred ? "★" : "☆", MinWidth = 0, Padding = new(8, 2, 8, 2), Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = starred ? "즐겨찾기에서 빼기" : "즐겨찾는 직업각인: 목록과 트레이 메뉴의 맨 위에 둡니다" };
+            star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); };
+            _context.Children.Add(star);
+        }
+        var copy = new Button { Content = "다른 직업각인에 복사…", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        copy.Click += (_, _) => ShowCopy();
+        _context.Children.Add(copy);
         if (cls == ClassProfiles.Template)
         {
-            _context.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원이 쓰는 설정입니다. 새로 생기는 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 보이고, 아덴 게이지와 아덴스킬은 보이지 않습니다."
+            _contextNotes.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원이 쓰는 설정입니다. 새로 생기는 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 보이고, 아덴 게이지와 아덴스킬은 보이지 않습니다."
                 + (ClassProfiles.ActiveKey(_s) is null ? "" : " 모든 직업각인이 자기 설정을 가지므로, 기본을 바꿔도 지금 오버레이에는 보이지 않습니다.")));
             return;
         }
-        _context.Children.Add(Note("이 직업각인의 내 칸과 내 창의 위치·크기는 따로 저장됩니다. 파티원 설정은 클래스의 것입니다."
+        _contextNotes.Children.Add(Note("이 직업각인의 내 칸과 내 창의 위치·크기는 따로 저장됩니다. 파티원 설정은 클래스의 것입니다."
             + (PreviewTarget is null ? "" : " 설정을 닫을 때까지 화면의 내 오버레이도 이 직업각인의 예시로 바뀝니다.")));
         if (PreviewTarget is not null && PreviewTarget.IconsMissing(ClassProfiles.Of(_s, cls).Mine, PreviewIcons))
-            _context.Children.Add(Note(NoSavedIconsNote));
+            _contextNotes.Children.Add(Note(NoSavedIconsNote));
     }
 
     /// <summary>The picked 직업각인 shows icons, but none are saved for it: its boxes are drawn in colour on screen.</summary>
@@ -71,15 +84,11 @@ public partial class SettingsWindow
     /// <summary>배치: the 레이아웃 편집기, 편집 모드 and the class's 나 layout.</summary>
     void FillPlace(ClassSettings read, Func<ClassSettings> edit)
     {
-        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치, 판 색, 오버레이 프로필은 레이아웃 편집기에서 게임 화면 위에 놓고 바꿉니다. 편집 모드는 게임 안에서 판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿉니다.");
-        var editor = new Button { Content = "레이아웃 편집기 열기",
-            ToolTip = "게임 화면(스크린샷) 위에서 오버레이와 칸의 위치·크기, 판 색, 오버레이 프로필을 바꿉니다." };
-        editor.Click += (_, _) => LayoutEditorRequested?.Invoke();
-        Themes.Primary(editor);   // 배치's one action: everything else is done in the editor
-        var mode = new Button { Content = "편집 모드" };
+        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어 바꿉니다. 편집 모드는 게임 안에서 판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿉니다.");
+        var mode = new Button { Content = "편집 모드", ToolTip = "게임 화면 위에서 판을 끌어 옮깁니다." };
         mode.Click += (_, _) => EditModeRequested?.Invoke();
-        p.Children.Add(Wrap(editor, mode));
-        PlacementRow(p, read.Mine, () => edit().Mine, "레이아웃 편집기에서 내 칸을 끌어 옮기면 지금 캐릭터의 배치가 바뀝니다. 다른 직업각인의 배치는 그 캐릭터로 접속해 바꿉니다.");
+        p.Children.Add(Wrap(mode));
+        PlacementRow(p, read.Mine, () => edit().Mine, "화면에서 내 칸을 끌어 옮기면 지금 캐릭터의 배치가 바뀝니다. 다른 직업각인의 배치는 그 캐릭터로 접속해 바꿉니다.");
     }
 
     void MinePart(Panel p, ClassSettings read, Func<ClassSettings> edit)
@@ -88,7 +97,7 @@ public partial class SettingsWindow
         DisplayRows(p, mine, () => edit().Mine, enabled: true);
         p.Children.Add(HelpRow("색", "칸 하나의 색은 위의 칸 옵션에서 바꿉니다 (바꾸면 개인 설정이 됩니다).", EnumCombo([(ColorSource.Default, "기본"), (ColorSource.Personal, "개인 설정")],
             mine.Color, v => { edit().Mine.Color = v; Dispatcher.BeginInvoke(FillClassSections); })));
-        var autoDim = Check("쿨타임 색 자동 (어둡게)", mine.AutoDim, v => { edit().Mine.AutoDim = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed);
+        var autoDim = Check("쿨 중 색 자동 (어둡게)", mine.AutoDim, v => { edit().Mine.AutoDim = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed);
         autoDim.ToolTip = "끄면 색마다 쿨타임 동안의 색을 고릅니다. 처음에는 지금 자동으로 어둡게 한 색입니다.";
         autoDim.Visibility = Shown(mine.Color == ColorSource.Personal);
         p.Children.Add(autoDim);
@@ -131,12 +140,12 @@ public partial class SettingsWindow
             Check("크기", m.UseMineSize, v => { edit().Members.UseMineSize = v; Refill(); }, Changed),
             copyMine));
         DisplayRows(p, m, () => edit().Members, enabled: !m.UseMineDisplay);
-        PlacementRow(p, m, () => edit().Members, "레이아웃 편집기에서 파티원 판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
+        PlacementRow(p, m, () => edit().Members, "화면에서 파티원 판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
 
         if (!m.UseMineSize)
         {
-            p.Children.Add(SliderRow("가로 크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "보내기·받기의 '파티원 크기 받기'나 '파티원 배치 받기'를 켜면, 받은 크기와 배치를 이 크기 안에 비율을 지켜 맞춥니다. 이보다 커지지 않습니다."));
-            p.Children.Add(SliderRow("세로 크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Height, 0.05, v => $"{v * 100:0}%", v => edit().Members.Height = v, Changed));
+            p.Children.Add(SliderRow("너비", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "보내기·받기의 '파티원 크기 받기'나 '파티원 배치 받기'를 켜면, 받은 크기와 배치를 이 크기 안에 비율을 지켜 맞춥니다. 이보다 커지지 않습니다."));
+            p.Children.Add(SliderRow("높이", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Height, 0.05, v => $"{v * 100:0}%", v => edit().Members.Height = v, Changed));
         }
         if (m.UseMineColor) return;
 
@@ -223,15 +232,15 @@ public partial class SettingsWindow
     /// <summary>쿨타임 색 of a colour row: the chosen one, else <paramref name="colour"/> dimmed as the overlay does it
     /// automatically, which is where the picker starts.</summary>
     UIElement DimRow(string colour, string? chosen, Action<string> set) =>
-        ColorRow(Label("      쿨타임"), chosen ?? (ParseHex(colour) is { } c && OverlayRenderer.Level(c, CooldownLook.CooldownLevel) is var d
-            ? $"#{d.R:X2}{d.G:X2}{d.B:X2}" : colour), set, swatch: true);
+        ColorRow(Label("쿨 중 색"), chosen ?? (UiColor.TryParse(colour) is { } c && OverlayRenderer.Level(c, CooldownLook.CooldownLevel) is var d
+            ? UiColor.ToHex(d) : colour), set, swatch: true);
 
     /// <summary>일반스킬 모두 같은 색: on, the one 일반스킬 row of <see cref="ColorRows"/>; off, the eight skills each with its
     /// own row (yours only, not sent to the party), shown with its key, one not set in the group's colour.</summary>
     void SkillColorRows(Panel p, ClassProfile read, Func<ClassProfile> edit, bool enabled)
     {
         var rows = new StackPanel { Visibility = Shown(enabled) };
-        rows.Children.Add(Check("일반스킬 모두 같은 색", read.SkillsOneColor,
+        rows.Children.Add(Check("일반 스킬 색 통일", read.SkillsOneColor,
             v => { edit().SkillsUnified = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed, "끄면 스킬마다 색을 정합니다. 스킬마다의 색은 내 화면에만 쓰입니다."));
         p.Children.Add(rows);
         if (read.SkillsOneColor) return;
@@ -240,7 +249,7 @@ public partial class SettingsWindow
         {
             var id = SlotId.일반1 + i;
             string colour = read.SlotColors.GetValueOrDefault(id) ?? group;
-            rows.Children.Add(ColorRow(Label($"   {SlotWithKey(_s, id)}"), colour, v => edit().SlotColors[id] = v, swatch: true, warnGold: true));
+            rows.Children.Add(ColorRow(Label(SlotWithKey(_s, id)), colour, v => edit().SlotColors[id] = v, swatch: true, warnGold: true));
             if (!read.AutoDim)   // a skill's own cooldown colour goes with its own colour
                 rows.Children.Add(DimRow(colour, read.SlotDimColors.GetValueOrDefault(id),
                     v => { var e = edit(); e.SlotColors.TryAdd(id, colour); e.SlotDimColors[id] = v; }));

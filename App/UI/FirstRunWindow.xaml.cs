@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using GaugeOverlay.App.Services;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>First start (PLAN.md §6): 키 설정 → 캐릭터 → 스킬창 맞추기. Edits the settings object like 설정 does.</summary>
@@ -32,11 +34,11 @@ public partial class FirstRunWindow : Window
         void Changed() => SettingsChanged?.Invoke();
         _pages =
         [
-            ("키 설정", SettingsWindow.Stack(
-                SettingsWindow.Note("게임의 기본 키가 채워져 있습니다. 게임에서 다르게 쓰는 키만 바꾸세요."),
+            ("키 설정", Stack(
+                Note("게임의 기본 키가 채워져 있습니다. 게임에서 다르게 쓰는 키만 바꾸세요."),
                 SettingsWindow.BuildKeyPanel(settings, Changed))),
-            ("캐릭터", SettingsWindow.Stack(
-                SettingsWindow.Note("지금 플레이할 캐릭터를 고르세요. 캐릭터를 바꾸면 게임 화면의 엠블럼으로 자동 전환되고, 트레이 메뉴에서도 고를 수 있습니다."),
+            ("캐릭터", Stack(
+                Note("지금 플레이할 캐릭터를 고르세요. 캐릭터를 바꾸면 게임 화면의 엠블럼으로 자동 전환되고, 트레이 메뉴에서도 고를 수 있습니다."),
                 SettingsWindow.BuildCharacterPanel(settings, characters, Changed))),
             ("스킬창 맞추기", FitPage()),
         ];
@@ -90,15 +92,15 @@ public partial class FirstRunWindow : Window
     {
         var fit = _fit;
         fit.Click += (_, _) => FitRequested?.Invoke();
-        return SettingsWindow.Stack(
-            SettingsWindow.Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
+        return Stack(
+            Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
             Step("1", "게임에서 수련장에 들어갑니다."),
             Step("2", "수련장에서 쿨초해 모든 스킬이 쿨 돈 상태로 둡니다."),
             Step("3", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),
             fit,
             _fitResult,
-            SettingsWindow.Heading("트레이 아이콘"),
-            SettingsWindow.Note("GaugeOverlay는 창을 닫아도 작업 표시줄 오른쪽의 알림 영역에서 계속 실행됩니다. 아이콘이 보이지 않으면 시계 옆의 ^ 안에 있습니다. 아이콘을 시계 옆으로 끌어다 놓으면 항상 보입니다."));
+            Heading("트레이 아이콘"),
+            Note("GaugeOverlay는 창을 닫아도 작업 표시줄 오른쪽의 알림 영역에서 계속 실행됩니다. 아이콘이 보이지 않으면 시계 옆의 ^ 안에 있습니다. 아이콘을 시계 옆으로 끌어다 놓으면 항상 보입니다."));
     }
 
     static UIElement Step(string n, string text)

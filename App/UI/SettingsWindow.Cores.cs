@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>코어 빌드 in 설정 → 캐릭터, under the character picker: the active 직업각인's choice (Settings.Cores), which the engine reads

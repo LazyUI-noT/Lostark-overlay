@@ -17,7 +17,7 @@ public sealed record GaugeDef(PixelRect Ref, GaugeShape Shape, bool Pieces, int 
     }
 
     /// <summary>The fill on a whole screenshot whose game area and skill bar fit are <paramref name="vp"/>, <paramref name="fit"/>.</summary>
-    public double ReadOn(Image screen, Viewport vp, Fit fit) => Read(BuffReader.Crop(screen, Geometry.ToScreen(Ref, vp, fit)));
+    public double ReadOn(Image screen, Viewport vp, Fit fit) => Read(ImageOps.Crop(screen, Geometry.ToScreen(Ref, vp, fit)));
 
     /// <summary>Box-averaged down (or nearest up) to <paramref name="w"/> × <paramref name="h"/>.</summary>
     static Image Scale(Image src, int w, int h)
@@ -60,13 +60,13 @@ public static class GaugeLoader
         if (region.X < 0 || region.Y < 0 || region.Width <= 0 || region.Height <= 0 || (long)region.X + region.Width > Math.Min(empty.Width, full.Width)
             || (long)region.Y + region.Height > Math.Min(empty.Height, full.Height))
             throw new InvalidDataException($"--build-gauge: the region {region} is not inside the {full.Width}×{full.Height} shots.");
-        var all = GaugeReader.Mask(BuffReader.Crop(empty, region), BuffReader.Crop(full, region), threshold);
+        var all = GaugeReader.Mask(ImageOps.Crop(empty, region), ImageOps.Crop(full, region), threshold);
         int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
         for (int y = 0; y < all.Height; y++)
             for (int x = 0; x < all.Width; x++)
                 if (all.Bgra[y * all.Stride + x * 4 + 3] != 0) (x0, y0, x1, y1) = (Math.Min(x0, x), Math.Min(y0, y), Math.Max(x1, x), Math.Max(y1, y));
         if (x1 < 0) throw new InvalidDataException("--build-gauge: nothing differs between the empty and full shots in the search area.");
-        var mask = BuffReader.Crop(all, new PixelRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1));
+        var mask = ImageOps.Crop(all, new PixelRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1));
         bool pieces = GaugeReader.FromMask(mask).Pieces > 1;
         var json = new JsonObject
         {

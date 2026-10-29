@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using GaugeOverlay.Core.Domain;
 
+using static GaugeOverlay.App.UI.UiBuild;
+
 namespace GaugeOverlay.App.UI;
 
 /// <summary>파티: 연결, 파티원 모양 (the class picked's 파티원 part and how members are labelled), 순서, 보내기·받기.</summary>
@@ -65,7 +67,7 @@ public partial class SettingsWindow
         name.TextChanged += (_, _) => { party.DisplayName = PlayerName.Clip(name.Text); Changed(); };
         name.LostKeyboardFocus += (_, _) => name.Text = party.DisplayName;
         p.Children.Add(Row(Described("표시 이름", "한글 7자, 영문 14자까지. 파티원 화면에서 클래스 아이콘 아래에 보입니다."), name));
-        p.Children.Add(ResetButton("파티 설정 되돌리기", "파티의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
+        p.Children.Add(ResetButton("기본값", "파티의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
             () => SettingsResets.Party(_s)));
     }
 
@@ -74,8 +76,8 @@ public partial class SettingsWindow
     {
         var party = _s.Party;
         p.Children.Add(Heading("참가 요청"));
-        p.Children.Add(Check("참가 요청 승인", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
-        if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰한 기기", Label("없음", 0.7)));
+        p.Children.Add(Check("참가 승인제", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
+        if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰 기기", Label("없음", 0.7)));
         foreach (var trusted in party.TrustedDevices.ToList())
         {
             var remove = new Button { Content = "삭제", ToolTip = "이 기기가 다음에 참가할 때 다시 묻습니다." };
@@ -85,14 +87,14 @@ public partial class SettingsWindow
                 Changed();
                 Dispatcher.BeginInvoke(FillConnect);
             };
-            p.Children.Add(Row("신뢰한 기기", Label($"{trusted.Name} ({trusted.Device[..8]})"), remove));
+            p.Children.Add(Row("신뢰 기기", Label($"{trusted.Name} ({trusted.Device[..8]})"), remove));
         }
         if (!_isHost) return;
         foreach (var (device, name) in _partyBlocked)
         {
             var allow = new Button { Content = "다시 허용", ToolTip = "이 세션에 다시 참가할 수 있게 합니다." };
             allow.Click += (_, _) => UnblockRequested?.Invoke(device);
-            p.Children.Add(Row("내보낸 기기", Label($"{name} ({device[..8]})"), allow));
+            p.Children.Add(Row("차단 기기", Label($"{name} ({device[..8]})"), allow));
         }
     }
 
@@ -110,10 +112,10 @@ public partial class SettingsWindow
         p.Children.Add(HelpRow("칸 왼쪽", "클래스를 고르지 않은 파티원은 아이콘 자리에 '?'가 표시됩니다.", EnumCombo([(PeerLabel.IconAndName, "클래스 아이콘 + 이름"), (PeerLabel.Name, "이름"), (PeerLabel.Icon, "클래스 아이콘")],
             party.Label, v => party.Label = v)));
         p.Children.Add(SliderRow("아이콘 크기", 0.5, 2, party.IconScale, 0.1, v => $"{v * 100:0}%", v => party.IconScale = v, Changed));
-        p.Children.Add(SliderRow("이름 길이", PlayerName.MinUnits, PlayerName.MaxUnits, party.NameLength, 1,
+        p.Children.Add(SliderRow("닉네임 길이", PlayerName.MinUnits, PlayerName.MaxUnits, party.NameLength, 1,
             v => $"{v:0}", v => party.NameLength = (int)v, Changed, "파티원 이름을 내 화면에서 이 길이까지만 보여 줍니다. 영문은 1, 한글은 2로 셉니다 (14 = 한글 7자, 6 = 한글 3자)."));
 
-        p.Children.Add(Heading("기본 역할 색", help: "파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 한눈에 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
+        p.Children.Add(Heading("딜러 / 서포터 기본 색", help: "파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 한눈에 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
         foreach (var role in Enum.GetValues<Role>())
             p.Children.Add(ColorRow(Label(role.ToString()), party.RoleColor.GetValueOrDefault(role, "#808080"),
                 v => party.RoleColor[role] = v, swatch: true, warnGold: true));
@@ -162,7 +164,7 @@ public partial class SettingsWindow
         p.Children.Add(Row("바꾸기", [.. swaps]));
         bool iAmSupport = _chars.Role == Role.서포터;
         var supportNumber = NumberCombo(PartySlots.Numbers(mine), party.SupportNumber, v => party.SupportNumber = v);
-        var fixSupport = Check("서포터 고정", party.SupportFixed, v => { party.SupportFixed = v; supportNumber.Visibility = Shown(v); }, Changed);
+        var fixSupport = Check("서폿 자리 고정", party.SupportFixed, v => { party.SupportFixed = v; supportNumber.Visibility = Shown(v); }, Changed);
         supportNumber.Visibility = Shown(party.SupportFixed);
         fixSupport.IsEnabled = supportNumber.IsEnabled = !iAmSupport;
         p.Children.Add(HelpRow("서포터", "켜면 첫 서포터가 고른 번호에 옵니다.", fixSupport, supportNumber));
@@ -185,7 +187,7 @@ public partial class SettingsWindow
 
         p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에 씁니다. 크기와 배치는 아래를 켤 때만 쓰고, 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창이 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));
-        p.Children.Add(Check("파티원 배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
+        p.Children.Add(Check("배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
     }
 
     /// <summary>A combo box over party numbers (1–4).</summary>

@@ -10,7 +10,7 @@ public static class SettingsResets
         var o = s.Overlay;
         s.Overlay = new()
         {
-            Left = o.Left, Top = o.Top, Width = o.Width, Height = o.Height, Scale = o.Scale, PlateColor = o.PlateColor,
+            Left = o.Left, Top = o.Top, Width = o.Width, Height = o.Height, PlateColor = o.PlateColor,
             LayoutSnap = o.LayoutSnap, LayoutLinkSizes = o.LayoutLinkSizes,
         };
     }

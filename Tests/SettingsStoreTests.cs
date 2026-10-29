@@ -227,22 +227,17 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(store.Load(out _).Overlay.Visible);
     }
 
-    /// <summary>준비되면 반짝임 per group: all on by default; 1.2's single switch turned off becomes every group off.</summary>
+    /// <summary>준비되면 반짝임 per group: all on by default, and a group turned off is kept.</summary>
     [Fact]
-    public void Shine_is_set_per_group_and_the_old_switch_carries_over()
+    public void Shine_is_set_per_group()
     {
         Assert.True(Enum.GetValues<SlotGroup>().All(new MineProfile().Shines));
-        Directory.CreateDirectory(_dir);
-        File.WriteAllText(FilePath, """{ "Overlay": { "ShowShine": false } }""");
         var store = new SettingsStore(FilePath);
-        var s = store.Load(out _);
-        Assert.DoesNotContain(Enum.GetValues<SlotGroup>(), g => Fx(s).Shines(g));
-
+        var s = new Settings();
         ClassProfiles.Edit(s, null).Mine.NoShine = [SlotGroup.일반스킬];
         store.Save(s);
         s = store.Load(out _);
         Assert.Equal([false, true], new[] { SlotGroup.일반스킬, SlotGroup.초각스 }.Select(Fx(s).Shines));
-        Assert.DoesNotContain("ShowShine", File.ReadAllText(FilePath));
     }
 
     /// <summary>버프 막대 줄어듦: on by default (the bar drains), and off is kept.</summary>
@@ -388,40 +383,6 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(s.FirstRunDone);
     }
 
-    /// <summary>Before one window per party member, all of them shared one party window: its size goes to every member,
-    /// its spot to the first, and the others line up below it.</summary>
-    [Fact]
-    public void The_one_party_window_becomes_one_window_per_member()
-    {
-        Directory.CreateDirectory(_dir);
-        File.WriteAllText(FilePath, """
-            { "Overlay": { "PartyLeft": 100, "PartyTop": 200, "PartyWidth": 0.8, "PartyHeight": 0.7 } }
-            """);
-        var store = new SettingsStore(FilePath);
-
-        var s = store.Load(out _);
-
-        var slots = s.Party.ShowOthersBySlot;
-        var members = ClassProfiles.Of(s, ClassProfiles.Template).Members;
-        Assert.Equal((0.8, 0.7), (members.Width, members.Height));
-        Assert.Equal((100.0, 200.0), (slots[0].Left, slots[0].Top));
-        Assert.All(slots, d => Assert.Equal(100.0, d.Left));
-        Assert.True(slots[0].Top < slots[1].Top && slots[1].Top < slots[2].Top);
-        store.Save(s);
-        Assert.DoesNotMatch("\"Party(Left|Top|Width|Height)\"", File.ReadAllText(FilePath));
-    }
-
-    /// <summary>The 초각기 표시 box turned red; a file still holding the old orange default gets it, a chosen colour stays.</summary>
-    [Theory]
-    [InlineData("#FF7F27", "#FF4D4D")]
-    [InlineData("#123456", "#123456")]
-    public void The_old_orange_변화_default_becomes_red(string saved, string loaded)
-    {
-        Directory.CreateDirectory(_dir);
-        File.WriteAllText(FilePath, $$"""{ "Overlay": { "AwakeningChangedColor": "{{saved}}" } }""");
-        Assert.Equal(loaded, new SettingsStore(FilePath).Load(out _).Overlay.AwakeningChangedColor);
-    }
-
     /// <summary>Loading used to add the saved slots after the three defaults, so files grew by three per save with the
     /// latest edits first.</summary>
     [Fact]
@@ -435,47 +396,6 @@ public sealed class SettingsStoreTests : IDisposable
         var slots = new SettingsStore(FilePath).Load(out _).Party.ShowOthersBySlot;
 
         Assert.Equal([1.0, 2.0, 3.0], slots.Select(d => d.Left));
-    }
-
-    /// <summary>Before per-class settings: one display, layout and colour mode for you and one per party slot, colours per
-    /// class, per character and for all classes, and a support slot 0–2.</summary>
-    [Fact]
-    public void Settings_from_before_per_class_profiles_move_into_them()
-    {
-        Directory.CreateDirectory(_dir);
-        File.WriteAllText(FilePath, """
-            {
-              "ActiveCharacter": "a",
-              "Characters": { "a": { "Class": "워로드", "Colors": { "초각스": "#030303" } } },
-              "Classes": { "바드": { "Custom": { "일반스킬": "#010101" }, "Learned": { "각성기": "#020202" } } },
-              "Overlay": { "HiddenSlots": [ "일반8" ], "GroupVisible": { "아덴스킬": false } },
-              "Party": { "ColorMode": "Remote", "SupportSlot": 1,
-                         "ShowOthersBySlot": [ { "Groups": { "초각스": false }, "Gauge": false, "Width": 0.6, "Left": 5 } ] }
-            }
-            """);
-        var store = new SettingsStore(FilePath);
-
-        var s = store.Load(out _);
-
-        var bard = s.Classes["바드"];
-        Assert.Equal((ColorSource.Personal, "#010101"), (bard.Mine.Color, bard.Mine.Colors[SlotGroup.일반스킬]));
-        Assert.Equal("#010101", bard.Members.Colors[SlotGroup.일반스킬]);
-        Assert.Equal(ColorSource.Received, bard.Members.Color);   // 파티원 설정 따르기
-        Assert.Equal("#030303", s.Classes["워로드"].Mine.Colors[SlotGroup.초각스]);   // the character's colours
-        Assert.Contains(SlotId.일반8, bard.Mine.HiddenSlots);
-        Assert.False(bard.Mine.Groups[SlotGroup.아덴스킬]);
-        Assert.False(bard.Members.Groups[SlotGroup.초각스]);
-        Assert.False(bard.Members.Gauge);
-        Assert.Equal(0.6, bard.Members.Width);
-        Assert.Equal(5.0, s.Party.ShowOthersBySlot[0].Left);
-        Assert.Equal((true, 3), (s.Party.SupportFixed, s.Party.SupportNumber));   // slot 1 was shown as the second member: 3
-
-        store.Save(s);
-        string json = File.ReadAllText(FilePath);
-        Assert.DoesNotContain("\"Custom\"", json);
-        Assert.DoesNotContain("\"ColorMode\"", json);
-        Assert.DoesNotContain("\"SupportSlot\"", json);
-        Assert.Null(store.Load(out _).Overlay.HiddenSlots);
     }
 
     [Fact]
@@ -497,16 +417,35 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Single(back.Party.TrustedDevices);
     }
 
+    /// <summary>The repairs a hand-edited file gets on load, without a file.</summary>
+    [Fact]
+    public void Normalize_repairs_a_hand_edited_v4_file()
+    {
+        var s = new Settings { ManualHud = 87.3 };
+        s.Cores["워로드 · 고독한기사"] = null!;
+        s.Judgment.FontSize = 113;
+        s.FavoriteClasses = ["바드", "", "바드", " "];
+        s.FavoriteSettings = ["slot", "slot", ""];
+
+        var n = SettingsStore.Normalize(s);
+
+        Assert.Equal(Settings.NearestHud(87.3), n.ManualHud);
+        Assert.Empty(n.Cores);
+        Assert.Equal(100, n.Judgment.FontSize);
+        Assert.Equal(["바드"], n.FavoriteClasses);
+        Assert.Equal(["slot"], n.FavoriteSettings);
+    }
+
     [Fact]
     public void Missing_properties_keep_defaults()
     {
         Directory.CreateDirectory(_dir);
         File.WriteAllText(FilePath, """
             {
-              "Version": 0,
+              "Version": 4,
               "FirstRunDone": true,
               "Keys": { "일반1": "Shift" },
-              "Overlay": { "Scale": 1.5, "GroupColor": { "각성기": "#000000" } },
+              "Overlay": { "Width": 1.5 },
               "Characters": { "워로드 · 고독한기사": { "Class": "워로드", "Build": "333", "TriggerSlots": { "trigger1": "일반3" } } }
             }
             """);
@@ -519,17 +458,10 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal("Shift", s.Keys[SlotId.일반1]);
         Assert.Equal("W", s.Keys[SlotId.일반2]);                       // missing dictionary entry
         Assert.Equal(SlotInfo.All.Length, s.Keys.Count);
-        // 1.0 had one size for both windows; it becomes the width and height of each (and of each party member's).
-        Assert.Equal((1.5, 1.5), (s.Overlay.Width, s.Overlay.Height));
+        Assert.Equal((1.5, 1.0), (s.Overlay.Width, s.Overlay.Height));    // missing property beside a given one
         var template = ClassProfiles.Of(s, ClassProfiles.Template);
-        Assert.Equal((1.5, 1.5), (template.Members.Width, template.Members.Height));
-        Assert.Null(s.Overlay.Scale);
         Assert.Equal(0.9, s.Overlay.Opacity);                          // missing property
         Assert.Equal(("#FFD24A", 2.0), (s.Overlay.GoldColor, s.Overlay.GoldThickness));
-        // A colour set for all classes becomes every class's own (개인 설정); one left at the built-in colour doesn't.
-        Assert.Equal((ColorSource.Personal, "#000000"), (template.Mine.Color, template.Mine.Colors[SlotGroup.각성기]));
-        Assert.False(template.Mine.Colors.ContainsKey(SlotGroup.일반스킬));
-        Assert.Equal("#000000", s.Classes["워로드"].Mine.Colors[SlotGroup.각성기]);
         Assert.Equal(Enum.GetValues<SlotGroup>().Length, template.Mine.Groups.Count);
         Assert.Equal("Ctrl+Shift+E", s.Hotkeys.EditMode);             // missing object
         Assert.Equal("Ctrl+Shift+D", s.Hotkeys.DetectCharacter);
