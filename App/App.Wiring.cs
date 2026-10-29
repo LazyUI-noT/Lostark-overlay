@@ -64,7 +64,6 @@ public partial class App
                 UpdateVisibility();
             }
         };
-        _settingsWindow.TakeShot = _takeShot;
 
         Snapshot? latest = null;
         IReadOnlyList<Player> peers = [];
@@ -78,6 +77,7 @@ public partial class App
         bool copyingIcons = false, rereadingIcons = false, iconSaveFailed = false;
         int iconRun = 0;   // the engine's copy run now (Engine.CopyIcons); icons of an earlier run are dropped
         BuildUi(settings, characters, OnSettingsChanged);
+        _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
 
         // A failed write (file locked, disk full) is logged and left pending, so the timer retries it.
         void Write()
