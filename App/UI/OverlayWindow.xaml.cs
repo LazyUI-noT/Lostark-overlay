@@ -24,6 +24,8 @@ public partial class OverlayWindow : Window
     readonly bool _buffs;   // the buff bars' own window (버프 막대 따로 두기)
     readonly bool _debuffs;   // the debuff window (디버프)
     readonly bool _judgment;   // the 단심 window (설정 → 기타)
+    readonly bool _raid;   // the 줄 수 창 (설정 → 레이드)
+    readonly bool _meter;   // the DPS 미터기
     Player? _player, _shown;   // live data; what is drawn (sample data in edit mode and preview)
     bool _editMode, _preview;
     enum Drag { None, Move, Scale }
@@ -39,28 +41,33 @@ public partial class OverlayWindow : Window
     /// <param name="buffs">Your buff bars alone, in a window of their own (버프 막대 따로 두기).</param>
     /// <param name="debuffs">The debuff window: your raid debuffs and the swap count (PLAN §4 디버프).</param>
     /// <param name="judgment">The 단심 window: 심판's 30 s cycle, or its icon while ready.</param>
-    public OverlayWindow(Settings settings, int peer = -1, bool buffs = false, bool debuffs = false, bool judgment = false)
+    /// <param name="raid">The 줄 수 창: the boss bar count, glowing at the gate's alerts (설정 → 레이드).</param>
+    public OverlayWindow(Settings settings, int peer = -1, bool buffs = false, bool debuffs = false, bool judgment = false, bool raid = false, bool meter = false)
     {
         _settings = settings;
         _peer = peer;
         InitializeComponent();
-        (_buffs, _debuffs, _judgment) = (buffs, debuffs, judgment);
+        (_buffs, _debuffs, _judgment, _raid, _meter) = (buffs, debuffs, judgment, raid, meter);
         if (peer >= 0) Title = $"GaugeOverlay - 파티원 {peer + 1}";
         if (buffs) Title = "GaugeOverlay - 버프";
         if (debuffs) Title = "GaugeOverlay - 디버프";
         if (judgment) Title = "GaugeOverlay - 단심";
+        if (raid) Title = "GaugeOverlay - 레이드";
+        if (meter) Title = "GaugeOverlay - DPS 미터기";
         Renderer.Settings = settings;
         Renderer.Peer = peer;
         Renderer.BuffsOnly = buffs;
         Renderer.DebuffsOnly = debuffs;
         Renderer.JudgmentOnly = judgment;
+        Renderer.RaidOnly = raid;
+        Renderer.MeterOnly = meter;
         Loaded += (_, _) => PlaceInitially();
 
     }
 
     /// <summary>This window's spot and size. Looked up each time: a reset replaces the settings objects. A party
     /// member's window stands where its slot's does, at the size set for the class of whoever is shown in it.</summary>
-    IWindowPlace Place => _judgment ? _settings.Judgment : _debuffs ? _settings.Debuffs : _buffs ? _settings.Buffs : _peer < 0 ? _settings.Overlay : new MemberPlace(_settings, _peer, ShownClass);
+    IWindowPlace Place => _meter ? _settings.Meter : _raid ? _settings.Raids : _judgment ? _settings.Judgment : _debuffs ? _settings.Debuffs : _buffs ? _settings.Buffs : _peer < 0 ? _settings.Overlay : new MemberPlace(_settings, _peer, ShownClass);
 
     /// <summary>The class of the member drawn here (sample data included); null while unknown or for yourself.</summary>
     string? ShownClass => _peer < 0 ? null : Emblems.Class(_shown?.Snapshot.ClassId ?? 0)?.Name;
@@ -123,7 +130,7 @@ public partial class OverlayWindow : Window
     /// (null), which brings back the live data and the character's own icons.</summary>
     public void SetPreviewTarget(PreviewTarget? target, IReadOnlyDictionary<SlotId, Image>? icons = null)
     {
-        if (_peer >= 0 || _buffs || _debuffs || _judgment) return;
+        if (_peer >= 0 || _buffs || _debuffs || _judgment || _raid || _meter) return;
         _target = target;
         Renderer.SetTarget(target, icons);
         ShowLabel();
@@ -171,7 +178,7 @@ public partial class OverlayWindow : Window
         // The timer font was only capped while resizing, so a shrink and grow restores it; now the cap sticks.
         // Never below MinTimerFont: at the smallest sizes the cap is under it, and committing that would hide the
         // timer for good. Party members' boxes have no timer.
-        if (_peer < 0 && !_buffs && !_debuffs && !_judgment)
+        if (_peer < 0 && !_buffs && !_debuffs && !_judgment && !_raid && !_meter)
             _settings.Overlay.TimerFont = Math.Min(_settings.Overlay.TimerFont,
                 Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(_settings.Overlay.Width, _settings.Overlay.Height)));
         LayoutCommitted?.Invoke();
@@ -180,7 +187,7 @@ public partial class OverlayWindow : Window
     void ShowLabel()
     {
         EditLabel.Visibility = Sample ? Visibility.Visible : Visibility.Collapsed;
-        string who = _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
+        string who = _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
         EditLabelText.Text = _editMode
             ? $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기"
             : _target is { } t ? $"미리보기 · {t.Key} (예시 데이터)"
@@ -210,9 +217,12 @@ public partial class OverlayWindow : Window
     {
         var p = Place;
         var area = SystemParameters.WorkArea;
-        var (left, top) = WindowDefaults.Place(area.Left, area.Width, area.Bottom, ActualWidth, ActualHeight, _peer, _buffs || _debuffs || _judgment);
+        var (left, top) = WindowDefaults.Place(area.Left, area.Width, area.Bottom, ActualWidth, ActualHeight, _peer, _buffs || _debuffs || _judgment || _raid || _meter);
         if (_debuffs) left += WindowDefaults.DebuffsRight;
         if (_judgment) left += WindowDefaults.JudgmentRight;
+        if (_meter) (left, top) = (area.Left + area.Width - ActualWidth - WindowDefaults.MeterFromRight,
+            area.Bottom - WindowDefaults.AboveBottom - ActualHeight - WindowDefaults.MeterAbove);
+        if (_raid) (left, top) = (area.Left + (area.Width - ActualWidth) / 2 + WindowDefaults.RaidRight, area.Top + WindowDefaults.RaidTop);
         Left = double.IsNaN(p.Left) ? left : p.Left;
         Top = double.IsNaN(p.Top) ? top : p.Top;
         _lastSize = (double.NaN, double.NaN);   // not a gauge change: don't shift the window

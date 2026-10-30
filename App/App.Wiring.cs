@@ -24,6 +24,9 @@ public partial class App
         var settings = store.Load(out bool wasReset);
         var debounce = new SaveDebounce();
         var characters = new CharacterService(settings, CharacterService.DefaultProfilesDir);
+        var raidGates = RaidData.Load(CharacterService.DefaultProfilesDir);   // 설정 → 레이드's gates and their boss names, read once
+        var bossNames = BossName.LoadTemplates(CharacterService.DefaultProfilesDir, raidGates);
+        _raidGates = raidGates;
         // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
         if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
         // 설정 → 캐릭터 marks what was added since: the first run of a version with the list records what ships now.
@@ -38,6 +41,7 @@ public partial class App
         var foreground = new ForegroundWatcher();
         var device = DeviceKeyFile.Load(DeviceKeyFile.DefaultPath);
         var party = new PartyService(device);
+        _partyService = party;
         _owned.AddRange([party, device, foreground, engine]);
         _gameForeground = foreground.IsGameForeground;
         engine.GameForeground = _gameForeground;   // calibration pictures and 스킬창 맞추기 only while the game is in front
@@ -66,6 +70,46 @@ public partial class App
         };
 
         Snapshot? latest = null;
+        var meterHistory = new MeterHistory();
+        var meterAlign = new MeterAlign();   // the party's figures on one 전분 second
+        (MeterStatus? From, MeterView? View) meterView = (null, null);   // built once per engine meter step (1 Hz)
+        var recorder = new FightRecorder();   // 전투 기록: the fight the meter follows
+        HiddenHpState? hidden = null;   // 종막 EX 2-3: its HP shows ???, estimated from the party's damage
+        var hiddenBar = BarCountState.None;
+        RaidStatus? hiddenStatus = null;   // the 줄 수 창 while it is estimated
+        var records = new RecordStore(RecordStore.DefaultDir);
+        var testRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "test"));   // 테스트 모드's fights: apart, own count
+        RecordStore StoreNow() => GameWindow.TestMode ? testRecords : records;
+        Task lastSave = Task.CompletedTask;
+        // --record-test (dev): with no 전분 reader yet, a stand-in clock (seconds since start) runs the recorder over what the
+        // overlay reads while 테스트 모드 is on (footage), one record per test-mode run, saved when it is turned off. No figures,
+        // so the DPS lines stay empty.
+        bool recordTest = Environment.GetCommandLineArgs().Contains("--record-test");
+        if (recordTest)
+        {
+            var standIn = FightClockState.None;
+            var start = Clock.Now();
+            new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal, (_, _) =>
+            {
+                var now = Clock.Now();
+                if (!GameWindow.TestMode)
+                {
+                    if (recorder.Finish() is { } done)
+                    {
+                        Trace.WriteLine($"[record-test] saved: {done.Duration:0} s, {done.Events.Count} events");
+                        SaveRecord(done);
+                    }
+                    (standIn, start) = (FightClockState.None, now);
+                    return;
+                }
+                if (standIn.Timer is null) Trace.WriteLine("[record-test] 테스트 모드 on: recording");
+                standIn = FightClock.Update(standIn, (int)(now - start).TotalSeconds, now);
+                (recorder.Me, recorder.MyClass, recorder.MySubclass) = (PartyName(), characters.ClassId, characters.Active?.Subclass);
+                recorder.InRaid = true;   // the stand-in clock records whatever is on screen
+                if (recorder.Step(MeterStatus.None with { Clock = standIn }, [], [new(PartyName(), characters.ClassId, null, 1)], 0, "녹화 시험",
+                    now, DateTime.Now) is { } fight) SaveRecord(fight);
+            }, Dispatcher).Start();
+        }
         IReadOnlyList<Player> peers = [];
         string? colorsFor = settings.ActiveCharacter;   // the character whose look was last sent
         int pending = 0;   // coalesces snapshot posts so at most one waits on the UI thread
@@ -78,6 +122,16 @@ public partial class App
         int iconRun = 0;   // the engine's copy run now (Engine.CopyIcons); icons of an earlier run are dropped
         BuildUi(settings, characters, OnSettingsChanged);
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
+        _settingsWindow.Records = records;
+        _settingsWindow.TestRecords = testRecords;
+        _settingsWindow.RefreshRecords();
+        _settingsWindow.GameArea = () => engine.GameAreaKey;
+        _settingsWindow.PartyMove = (id, p) =>
+        {
+            bool done = party.SetParty(id, p);
+            if (!done) _tray.Notify("그 파티는 이미 4명입니다.");
+            return done;
+        };
 
         // A failed write (file locked, disk full) is logged and left pending, so the timer retries it.
         void Write()
@@ -94,7 +148,13 @@ public partial class App
             if (now) { debounce.Flush(); Write(); }
             else debounce.Changed(Clock.Now());
         }
-        _flush = () => Save(now: true);
+        _flush = () =>
+        {
+            Save(now: true);
+            try { lastSave.Wait(SaveOnExit); }   // a fight saved just before closing finishes writing
+            catch (AggregateException ex) { Trace.WriteLine($"[records] save before exit failed: {ex.InnerException?.Message}"); }
+            if (recorder.Finish() is { } fight) StoreNow().Save(Named(fight), settings.RecordKeep);   // the fight under way when the app closes
+        };
         string PartyName() => string.IsNullOrWhiteSpace(settings.Party.DisplayName) ? "플레이어" : settings.Party.DisplayName.Trim();
 
         // Your colours, box size and layout as you see them, for members who receive them.
@@ -203,13 +263,15 @@ public partial class App
             bool wrongClass = ClassWarning();   // another class on screen: its gauge is not this character's to learn from
             LoadIcons();
             UpdateIconCopy();   // also when 아이콘으로 표시 was just turned on for a group with nothing saved, or the class put right
-            engine.Configure(new Engine.Config(new Dictionary<string, Fit>(settings.Fits), characters.AdenSlots, _debug.IsVisible,
+            engine.Configure(new Engine.Config(new Dictionary<string, Fit>(settings.Fits), characters.AdenSlots, _settingsWindow.DiagnosticsShown,
                 ClassProfiles.Reads(settings, characters.AdenSlots), characters.Gauge, characters.ActiveClass?.AdenRects, characters.AdenDark,
                 characters.GaugeRule, wrongClass ? GaugeReadMode.Agreed : settings.Gauge.ReadMode, wrongClass ? null : settings.ActiveCharacter,
-                settings.Debuffs.Raid, settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts(), wrongClass ? null : characters.CoreWatches,
+                settings.Buffs.Size, settings.ManualHud, settings.ManualScreen, settings.ActiveAdjusts(), wrongClass ? null : characters.CoreWatches,
                 wrongClass || settings.ActiveCharacter is not { } active ? null : settings.StackSkillsOf(active),
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
-                    ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null));
+                    ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
+                settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels)));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -221,11 +283,144 @@ public partial class App
             // The engine doesn't know the class: yours is added here, for the party and for your own gauge's glow rule.
             var mine = latest is { } s ? s with { ClassId = characters.ClassId } : null;
             if (mine is not null) party.Publish(mine, PartyName(), settings.Party.SendGroups(), settings.Party.SendGauge);
+            if (mine?.Meter is { } status && !ReferenceEquals(status, meterView.From)) meterView = (status, StepMeter(status));
+            else if (mine?.Meter is null && meterView.From is not null) (meterHistory, meterAlign, meterView) = (new(), new(), (null, null));   // off: graphs start over
+            if (mine is not null && mine.Meter is not null) mine = mine with { MeterView = meterView.View };
+            if (mine?.Meter is not null || recordTest && mine is not null)
+            {
+                var now = Clock.Now();
+                recorder.ObserveMine(mine, now);
+            }
+            else if (recorder.Finish() is { } fight) SaveRecord(fight);   // the meter went off
             _overlay.Update(mine is not null ? new Player("", mine) : null);
             _buffs.Update(mine is not null ? new Player("", mine) : null);
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
             _judgment.Update(mine is not null ? new Player("", mine) : null);
+            _raid.Update(mine is not null ? new Player("", hiddenStatus is not null && mine.Meter is not null ? mine with { Raid = hiddenStatus } : mine) : null);
+            _meter.Update(mine is not null ? new Player("", mine) : null);
             ShowPeers(peers);
+        }
+
+        // The meter's second: my figures to the party (내 피해량 보내기), then the view from mine and everyone's.
+        MeterView StepMeter(MeterStatus status)
+        {
+            var role = characters.Role == Role.서포터 ? MeterRole.서포터 : MeterRole.딜러;
+            if (settings.Meter.Send && MeterTracker.Mine(status, role) is { } own) party.SendMeter(own with { ClassId = characters.ClassId, AtkBuffed = meterHistory.MyAtkBuffed });   // my own 공증, for 버프 분배
+            var (samples, me, host) = party.Meter();
+            if (!settings.Meter.Send) samples = [];   // not sharing: nobody else's figures, in the meter or the record
+            _meter.Renderer.MeterMe = me;
+            int myParty = party.Members.FirstOrDefault(m => m.Id == me)?.Party ?? 1;
+            var view = MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs);
+            RecordStep(status, role, samples, me, myParty, view.BossTaken);
+            StepHidden(status, Everyone(status, role, samples, me, myParty), myParty);
+            return view;
+        }
+
+        // Everyone's figures this second: the party's, and mine from this PC under my party name and party.
+        List<MeterSample> Everyone(MeterStatus status, MeterRole role, IReadOnlyList<MeterSample> samples, ulong me, int myParty)
+        {
+            string myName = party.Members.FirstOrDefault(m => m.Id == me)?.Name ?? PartyName();
+            var all = samples.Where(s => s.Id != me).ToList();
+            if (MeterTracker.Mine(status, role) is { } own) all.Add(own with { Id = me, Name = myName, ClassId = characters.ClassId, Party = myParty });
+            return all;
+        }
+
+        // 종막 EX 2-3's estimated HP (HiddenHp) into the 줄 수 창, while its gate's 줄 수 창 is on: "≈62% 1.2조", glowing at its % alerts.
+        void StepHidden(MeterStatus status, List<MeterSample> all, int myParty)
+        {
+            var r = settings.Raids;
+            foreach (var (gateId, p, assist) in HiddenHp.Calibration(raidGates, status, all))   // 2-1 cleared: its 조력 피해량 per party
+            {
+                var target = r.Gate(gateId);
+                if (Math.Abs((p == 1 ? target.Assist1 : target.Assist2) - assist) < 0.05) continue;
+                if (p == 1) target.Assist1 = assist; else target.Assist2 = assist;
+                Trace.WriteLine($"[raid] {gateId}: 2-1 조력 피해량 {p}파티 {assist:0.#}억");
+                Save(now: false);
+                _settingsWindow.RefreshRaid();
+            }
+            // The ??? gate this fight may reach (its row's figures): the one under way, else any (only EX 2-3 is one).
+            var gate23 = hidden?.Gate ?? raidGates.FirstOrDefault(g => g.HiddenHp.Count > 0);
+            var row = gate23 is null ? null : r.Gates.GetValueOrDefault(gate23.Id);
+            // The 조력 비율: what 2-1 shows (both parties' figures and its 에스더 plan) at this difficulty (2-2's HP gives it), else the user's.
+            double share = gate23 is null ? r.AssistShare
+                : HiddenHp.Share(raidGates, gate23, hidden?.Difficulty ?? RaidData.ByHp(raidGates, status.Boss.Max)?.Difficulty, r);
+            var options = new HiddenHpOptions(share, r.OtherParty, row?.Esthers ?? [], row?.Assist1 ?? 0, row?.Assist2 ?? 0);
+            var now = Clock.Now();
+            var was = hidden;
+            hidden = HiddenHp.Step(hidden, raidGates, status,
+                HiddenHp.RaidDamage(all, myParty, share, r.OtherParty, options.Assist1, options.Assist2), options, now);
+            if (was is null != hidden is null) Trace.WriteLine(hidden is { } on ? $"[raid] {on.Gate.Id} ({on.Difficulty}): HP estimated" : "[raid] HP estimate ended");
+            if (hidden is not { } est || r.Gates.GetValueOrDefault(est.Gate.Id) is not { CountWindow: true })
+            {
+                (hiddenStatus, hiddenBar) = (null, BarCountState.None);
+                return;
+            }
+            hiddenBar = BarAlert.Update(hiddenBar, (int)Math.Ceiling(est.Percent), now, BarAlert.Thresholds(r.AlertsOf(est.Gate), r.OffsetOf(est.Gate.Id)));
+            bool glow = r.Glow && BarAlert.Glowing(hiddenBar, r.GlowUntil, r.GlowSeconds, r.GlowBars, now);
+            string left = est.Left >= 1_000_000_000_000 ? $"{est.Left / 1e12:0.00}조" : $"{est.Left / 1e8:0}억";
+            string gimmick = est.Phase is GimmickPhase.Waiting or GimmickPhase.Paused ? " 기믹" : "";   // at 25%: waiting for the 10% jump
+            hiddenStatus = new RaidStatus(est.Gate, null, glow, null, est.Base is null ? "≈?" : $"≈{est.Percent:0}% {left}{gimmick}");
+        }
+
+        // 전투 기록's second: everyone's figures (mine from this PC, as the meter shows them) and who is in the fight.
+        void RecordStep(MeterStatus status, MeterRole role, IReadOnlyList<MeterSample> samples, ulong me, int myParty, long bossTaken)
+        {
+            if (!settings.Meter.Record) { recorder.Finish(); return; }   // 전투 기록 off: a fight under way is dropped, not saved
+            recorder.InRaid = latest?.Dungeon?.Kind == DungeonKind.Raid;   // records start only in a raid (the dungeon panel)
+            recorder.PauseLimit = TimeSpan.FromSeconds(Math.Clamp(settings.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause));
+            // My name as the party knows it (a taken name gets a number there), so no member's lane is mine.
+            string myName = party.Members.FirstOrDefault(m => m.Id == me)?.Name ?? PartyName();
+            (recorder.Me, recorder.MyClass, recorder.MySubclass) = (myName, characters.ClassId, characters.Active?.Subclass);
+            var all = Everyone(status, role, samples, me, myParty);
+            List<RecordMember> members =
+            [
+                new(myName, characters.ClassId, null, myParty),
+                .. party.Members.Where(m => m.Id != me).Select(m => new RecordMember(m.Name, peers.FirstOrDefault(p => p.Name == m.Name)?.Snapshot.ClassId ?? 0, null, m.Party)),
+            ];
+            string? gate = RaidData.Find(raidGates, _raidSeen) is { } g ? RaidData.Label(g) : null;
+            if (recorder.Step(status, all, members, bossTaken, gate, Clock.Now(), DateTime.Now) is { } fight) SaveRecord(fight);
+        }
+
+        // Written once, off the UI thread, when a fight ends (spec § D Cost budget).
+        // The class played, for the file name and the list.
+        FightRecord Named(FightRecord fight) => fight with { MyClassName = characters.Active?.Class };
+
+        // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
+        // content and aren't kept.
+        void SaveRecord(FightRecord fight)
+        {
+            var dungeon = latest?.Dungeon;
+            if (dungeon?.Kind == DungeonKind.Guardian) { Trace.WriteLine("[records] guardian raid: not saved"); return; }
+            long? hp = BossBook.FightHp(fight.Boss);   // one per gate and difficulty: names the fight once learned
+            if (RaidData.ByHp(raidGates, hp) is var (shipped, level))   // a gate raids.json knows by HP: its own name
+            {
+                Store(fight with { Gate = RaidData.Label(shipped), Difficulty = level });
+                return;
+            }
+            // A video's fight names nothing for the game: boss names are learned only from real fights.
+            if (!GameWindow.TestMode && BossBook.ToLearn(settings.BossBook, hp, dungeon) is { } learned)
+            {
+                settings.BossBook[hp!.Value] = learned;
+                Trace.WriteLine($"[records] boss HP {hp} learned as {learned.Name} [{learned.Difficulty}]");
+                Save(now: false);
+            }
+            var (name, difficulty) = BossBook.Resolve(settings.BossBook, hp, dungeon, fight.Gate);
+            Store(fight with { Gate = name, Difficulty = difficulty });
+        }
+
+        void Store(FightRecord fight)
+        {
+            var store = StoreNow();   // read now: test mode may end before the save runs
+            lastSave = Task.Run(() =>
+            {
+                try
+                {
+                    if (settings.RecordAutoSave) store.Save(Named(fight), settings.RecordKeep);
+                    else store.Hold(Named(fight));   // 자동 저장 off: only the last fight, until 보관 or the next one
+                    _settingsWindow.RefreshRecords();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] save failed: {ex.Message}"); }
+            });
         }
 
         void OnSettingsChanged() { Configure(); Save(now: false); }
@@ -235,22 +430,29 @@ public partial class App
         {
             latest = s;
             if (Interlocked.Exchange(ref pending, 1) == 0)
-                Dispatcher.BeginInvoke(() => { Interlocked.Exchange(ref pending, 0); Draw(); });
+                Dispatcher.BeginInvoke(() => { Interlocked.Exchange(ref pending, 0); Perf.Run("앱 처리 (미터 · 기록 · 파티 보내기)", Draw); });
         };
-        engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() => _tray.SetGameRunning(running));
+        engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() => { _tray.SetGameRunning(running); _settingsWindow.SetGameRunning(running); });
+        engine.RaidRecognised += id => Dispatcher.BeginInvoke(() =>
+        {
+            _raidSeen = id;
+            _tray.SetRaid(settings.Raids, raidGates, id);
+            _settingsWindow.SetRaidSeen(id);
+        });
         engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() => { _hudVisible = visible; UpdateVisibility(); });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
             if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 수련장에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
         });
-        engine.FitFinished += (vp, fit, message, detected, test) => Dispatcher.BeginInvoke(() =>
+        engine.FitFinished += (vp, fit, message, detected, test, canRevert) => Dispatcher.BeginInvoke(() =>
         {
             // 테스트 모드 (as the engine ran the fit, not as the flag is now: it may have been switched meanwhile): a fit of the
             // video in front is the engine's alone (memory); the game's saved fits stay as they are.
             if (detected is not null && !test) settings.DetectedScreen = detected;   // 직접 입력 starts from it
             if (fit is not null && !test) { settings.Fits[Geometry.ViewportKey(vp)] = fit; Configure(); Save(now: true); }
-            var text = (test ? "테스트 모드: " : "") + FitText(vp, fit, message);
-            _settingsWindow.SetFitResult(text);
+            // A 테스트 모드 fit request says what its fine-tune did ("자동 맞춤 82.5% · +3, −1 px"), and 되돌리기 what it put back.
+            var text = (test ? "테스트 모드: " : "") + (test && fit is not null ? message : FitText(vp, fit, message));
+            _settingsWindow.SetFitResult(text, canRevert);
             first?.SetFitResult(fit is not null, text);
             _tray.Notify(text);
         });
@@ -271,6 +473,15 @@ public partial class App
             if (!settings.AddStackSkill(character, slot)) return;
             Configure();
             Save(now: true);
+        });
+        // 전분 위치 찾기: a spot the engine found is kept for that game-area size (설정 → DPS 미터기 shows it).
+        engine.MeterPanelFound += (key, spot) => Dispatcher.BeginInvoke(() =>
+        {
+            if (settings.Meter.Panels.TryGetValue(key, out var was) && Math.Abs(was.X - spot.X) <= 2 && Math.Abs(was.Y - spot.Y) <= 2 && was.Width == spot.Width) return;   // the same spot, a pixel off
+            settings.Meter.Panels[key] = spot;
+            Configure();
+            Save(now: true);
+            _settingsWindow.Reload();
         });
         // A character picked by hand (tray, 설정 or first run, all through CharacterService.Pick): its emblem is learned.
         characters.Picked += engine.RequestEmblem;
@@ -295,7 +506,7 @@ public partial class App
             {
                 Interlocked.Exchange(ref debugPending, 0);
                 foreach (var slot in debugRows.Keys.ToList())
-                    if (debugRows.TryRemove(slot, out var r)) _debug.Update(r.Slot, r.Crop, r.Reading, r.State);
+                    if (debugRows.TryRemove(slot, out var r)) _settingsWindow.UpdateDiagnostics(r.Slot, r.Crop, r.Reading, r.State);
             });
         };
 
@@ -310,7 +521,7 @@ public partial class App
             {
                 Interlocked.Exchange(ref extraPending, 0);
                 foreach (var key in extraRows.Keys.ToList())
-                    if (extraRows.TryRemove(key, out var r)) _debug.UpdateExtra(r.Key, r.Crop, r.Reading, r.State);
+                    if (extraRows.TryRemove(key, out var r)) _settingsWindow.UpdateDiagnostics(r.Key, r.Crop, r.Reading, r.State);
             });
         };
 
@@ -359,7 +570,7 @@ public partial class App
                 if (MessageBox.Show("수동 조정을 버리고 스킬창을 다시 맞출까요?\n\n아니요: 수동 조정은 그대로 두고 클래스와 직업각인만 다시 확인합니다.",
                         "GaugeOverlay", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
                 {
-                    GameWindow.Activate();
+                    FrontForRead(engine);
                     engine.RequestDetect();
                     return;
                 }
@@ -368,19 +579,21 @@ public partial class App
                 Save(now: true);
                 _settingsWindow.Reload();
             }
-            GameWindow.Activate(); engine.RequestFit(); engine.RequestDetect();
+            FrontForRead(engine); engine.RequestFit(); engine.RequestDetect();
         }
         _settingsWindow.RefitRequested += Refit;
+        _settingsWindow.RevertFitRequested += () => { FrontForRead(engine); engine.RevertTestFit(); };   // recalibrated off the video in front
         WireAdjust(engine, settings, Configure, () => Save(now: true));
         _overlay.LayoutCommitted += () => { Save(now: true); _settingsWindow.Reload(); };   // 숫자 크기 range follows the box size
         foreach (var w in Others) w.LayoutCommitted += () => Save(now: true);
-        _debug.IsVisibleChanged += (_, _) => Configure();
+        _settingsWindow.DiagnosticsShownChanged += Configure;   // the table's rows are sent only while it is on screen
+        _settingsWindow.IsVisibleChanged += (_, _) => Configure();
         _tray.Refit += Refit;
         // 직업각인 다시 감지 (tray, 설정, hotkey): the 초각스 is read again past the history (CharacterService.RedetectSubclass).
         void RedetectSubclass()
         {
             if (characters.RedetectSubclass() is { } why) { _tray.Notify(why); return; }
-            GameWindow.Activate();
+            FrontForRead(engine);
             engine.RequestSubclass();
             _tray.Notify("직업각인을 다시 읽습니다. 게임에서 초각스가 준비되면 읽습니다.");
         }
@@ -399,7 +612,7 @@ public partial class App
             skillsWait?.Stop();
             skillsWait = new DispatcherTimer(TimeSpan.FromSeconds(3), DispatcherPriority.Normal,
                 (_, _) => SkillsResult("스킬창이 보이지 않습니다. 게임 화면에 스킬창이 보일 때 다시 눌러 주세요."), Dispatcher);
-            GameWindow.Activate();
+            FrontForRead(engine);
             engine.RequestSkills();
         }
         engine.SkillsCaptured += ready => Dispatcher.BeginInvoke(() => { if (skillsWait is not null) SkillsResult(characters.SubmitSkills(ready)); });
@@ -466,7 +679,7 @@ public partial class App
         if (!settings.FirstRunDone)
         {
             first = ShowFirstRun(OnSettingsChanged);
-            first.FitRequested += () => { GameWindow.Activate(); engine.RequestFit(); };   // as Refit: the game in front
+            first.FitRequested += () => { FrontForRead(engine); engine.RequestFit(); };   // as Refit: the game in front
             first.Completed += () => Save(now: true);
         }
 

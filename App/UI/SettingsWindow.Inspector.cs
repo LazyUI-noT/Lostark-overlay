@@ -143,6 +143,8 @@ public partial class SettingsWindow
             case { Kind: "Debuff", Debuff: { } d }:
                 ShowDebuffBox(d);
                 return ("디버프", "보스 디버프 칸입니다.", [BoxTab, _secBuffs]);
+            case { Kind: "Raid" }:
+                return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 설정은 왼쪽의 레이드에서 바꿉니다.", []);
             case { Kind: "Judgment" }:
                 return ("단심", "단죄·심판 룬의 심판 시간입니다.", [_secOther]);
             case { Kind: "Party" }:

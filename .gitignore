@@ -15,3 +15,5 @@ reference/
 
 # brainstorm mockups and plan-execution scratch
 .superpowers/
+graphify-out/
+.worktrees/

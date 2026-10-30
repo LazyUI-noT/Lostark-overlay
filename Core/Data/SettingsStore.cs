@@ -101,6 +101,15 @@ public sealed class SettingsStore(string path)
             if (slots is null) s.StackSkills.Remove(key);
             else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
         (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
+        s.Buffs.Count = Math.Clamp(s.Buffs.Count, Vision.Geometry.MinBuffBoxCount, Vision.Geometry.MaxBuffBoxCount);   // a hand edit
+        if (s.Debuffs.BossIconSize is < Vision.FitAdjust.MinBuffSize or > Vision.FitAdjust.MaxBuffSize) s.Debuffs.BossIconSize = Vision.Geometry.RefBossSize;
+        s.Raids ??= new();
+        s.Raids.Normalize(s.Debuffs);
+        s.Meter ??= new();
+        s.Meter.Normalize();
+        s.BossBook ??= [];
+        foreach (var (hp, e) in s.BossBook.ToList())   // a hand edit: no name, or a null entry
+            if (e is null || string.IsNullOrWhiteSpace(e.Name)) s.BossBook.Remove(hp);
         s.FavoriteClasses = Distinct(s.FavoriteClasses);
         s.FavoriteSettings = Distinct(s.FavoriteSettings);
         return s;
@@ -111,7 +120,7 @@ public sealed class SettingsStore(string path)
     static void PeerSlots(Settings s)
     {
         var slots = s.Party.ShowOthersBySlot;
-        const int Peers = Net.Membership.MaxMembers - 1;
+        const int Peers = Net.Membership.PartySize - 1;
         if (slots.Count > Peers) slots.RemoveRange(Peers, slots.Count - Peers);
         while (slots.Count < Peers) slots.Add(new());
     }

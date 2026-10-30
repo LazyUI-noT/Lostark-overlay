@@ -30,7 +30,7 @@ public sealed partial class OverlayCanvas : Border
     readonly CharacterService _chars;
     readonly Canvas _world = new();
     readonly System.Windows.Controls.Image _shot = new() { Stretch = Stretch.Fill };   // placed by ShowPicture
-    readonly OverlayRenderer _mine, _buffs, _debuffs, _judgment;
+    readonly OverlayRenderer _mine, _buffs, _debuffs, _judgment, _raid;
     readonly OverlayRenderer[] _peers;
     // ponytail: the primary screen stands for the game's; take the game window's monitor when a screenshot is linked (phase D)
     readonly Rect _screen = new(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
@@ -40,7 +40,6 @@ public sealed partial class OverlayCanvas : Border
     int? _pickedDebuff;   // a debuff box picked instead
     EditorView? _v, _beforeFull;
     bool _showMine = true, _showParty = true;
-    OverlayRenderer? _lastPlate;   // whose boxes were dragged last, which ResetBoxes resets
 
     /// <summary>Something was picked (null: nothing), by a click or <see cref="Select"/>.</summary>
     public event Action<CanvasBox?>? Selected;
@@ -70,10 +69,12 @@ public sealed partial class OverlayCanvas : Border
         _debuffs.DebuffsOnly = true;
         _judgment = Renderer(-1, buffs: false);
         _judgment.JudgmentOnly = true;
+        _raid = Renderer(-1, buffs: false);
+        _raid.RaidOnly = true;
         _peers = [.. Enumerable.Range(0, _s.Party.ShowOthersBySlot.Count).Select(i => Renderer(i, buffs: false))];
         _world.Children.Add(_pick);
         _world.Children.Add(_grip);
-        Play = new PreviewPlayer(_mine, _buffs, _debuffs, _judgment);
+        Play = new PreviewPlayer(_mine, _buffs, _debuffs, _judgment, _raid);
         Child = _world;
         ShowSample();
 
@@ -159,11 +160,13 @@ public sealed partial class OverlayCanvas : Border
         var area = SystemParameters.WorkArea;
         static (double L, double T) Or((double L, double T) at, double left, double top) =>
             (double.IsNaN(left) ? at.L : left, double.IsNaN(top) ? at.T : top);
-        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.DebuffsOnly || r.JudgmentOnly);
+        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.DebuffsOnly || r.JudgmentOnly || r.RaidOnly);
         if (r == _mine) return Or(def, _s.Overlay.Left, _s.Overlay.Top);
         if (r == _buffs) return Or(def, _s.Buffs.Left, _s.Buffs.Top);
         if (r == _debuffs) return Or((def.Left + WindowDefaults.DebuffsRight, def.Top), _s.Debuffs.Left, _s.Debuffs.Top);   // as OverlayWindow.Replace
         if (r == _judgment) return Or((def.Left + WindowDefaults.JudgmentRight, def.Top), _s.Judgment.Left, _s.Judgment.Top);
+        if (r == _raid)   // as OverlayWindow.Replace
+            return Or((area.Left + (area.Width - r.DesiredSize.Width) / 2 + WindowDefaults.RaidRight, area.Top + WindowDefaults.RaidTop), _s.Raids.Left, _s.Raids.Top);
         if (!_s.Party.Together) return Or(def, _s.Party.ShowOthersBySlot[r.Peer].Left, _s.Party.ShowOthersBySlot[r.Peer].Top);
         if (r.Peer == 0) return Or(def, _s.Party.Left, _s.Party.Top);
         var above = _peers[r.Peer - 1];
@@ -179,6 +182,7 @@ public sealed partial class OverlayCanvas : Border
         else if (r == _buffs) (_s.Buffs.Left, _s.Buffs.Top) = (left, top);
         else if (r == _debuffs) (_s.Debuffs.Left, _s.Debuffs.Top) = (left, top);
         else if (r == _judgment) (_s.Judgment.Left, _s.Judgment.Top) = (left, top);
+        else if (r == _raid) (_s.Raids.Left, _s.Raids.Top) = (left, top);
         else if (_s.Party.Together)
         {
             // the stack moves as one: the first window by as much as this one is dragged
@@ -195,10 +199,11 @@ public sealed partial class OverlayCanvas : Border
         _s.SyncPlace();   // the class picked may have a spot of its own
         _mine.Visibility = Shown(_showMine);
         _buffs.Visibility = Shown(_showMine && _s.Buffs.Detached);
-        _debuffs.Visibility = Shown(_showMine && _s.Debuffs.Raid != Raid.없음);
+        _debuffs.Visibility = Shown(_showMine && _s.Raids.DebuffShown());
+        _raid.Visibility = Shown(_showMine && _s.Raids.CountShown());
         _judgment.Visibility = Shown(_showMine && _s.Judgment.On(_s.ActiveCharacter));
         foreach (var p in _peers) p.Visibility = Shown(_showParty);
-        OverlayRenderer[] all = [_mine, _buffs, _debuffs, _judgment, .. _peers];
+        OverlayRenderer[] all = [_mine, _buffs, _debuffs, _judgment, _raid, .. _peers];
         foreach (var r in all)
         {
             r.Refresh();
@@ -227,6 +232,7 @@ public sealed partial class OverlayCanvas : Border
             case null: Pick(null, null); break;
             case { Kind: "Debuff", Debuff: { } d }: PickDebuff(d); break;
             case { Kind: "Judgment" } b: Pick(_judgment, b.Part); break;
+            case { Kind: "Raid" } b: Pick(_raid, b.Part); break;
             case { Kind: "BuffBar" } b when _s.Buffs.Detached: Pick(_buffs, b.Part); break;
             case { Kind: not "Party" } b: Pick(_mine, b.Part); break;
         }
@@ -234,6 +240,7 @@ public sealed partial class OverlayCanvas : Border
 
     CanvasBox Box(OverlayRenderer r, Part? part) =>
         r == _judgment ? new("Judgment", part, null)
+        : r == _raid ? new("Raid", part, null)
         : r.Peer >= 0 ? new("Party", part, null)
         : part is null ? new("Plate", null, null)
         : part == Part.게이지 ? new("Gauge", part, null)
@@ -270,34 +277,12 @@ public sealed partial class OverlayCanvas : Border
         (_pick.Width, _pick.Height) = (b.Width + 4, b.Height + 4);
         Canvas.SetLeft(_pick, Canvas.GetLeft(on) + b.X - 2);
         Canvas.SetTop(_pick, Canvas.GetTop(on) + b.Y - 2);
-        if (on == _buffs || on == _judgment || on.ShowsReceivedLayout || Previewing(on)) return;
+        if (on == _buffs || on == _judgment || on == _raid || on.ShowsReceivedLayout || Previewing(on)) return;
         double g = GripSize(b);
         (_grip.Width, _grip.Height, _grip.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
         Canvas.SetLeft(_grip, Canvas.GetLeft(on) + b.Right - g);
         Canvas.SetTop(_grip, Canvas.GetTop(on) + b.Bottom - g);
         _grip.Visibility = Visibility.Visible;
-    }
-
-    // ── 기본 배치 ────────────────────────────────────────────────────────────────────
-
-    /// <summary>기본 배치's label: whose boxes <see cref="ResetBoxes"/> resets, yours or a party member's class (기본 while it follows 기본).</summary>
-    internal string ResetLabel
-    {
-        get
-        {
-            var r = _lastPlate ?? _mine;
-            string cls = ClassProfiles.IsOwn(_s, r.ClassName) ? r.ClassName! : "기본";
-            return r.Peer < 0 ? "기본 배치 (나)" : $"기본 배치 (파티: {cls})";
-        }
-    }
-
-    /// <summary>The boxes of the plate dragged last (yours at first) back to the fixed layout.</summary>
-    internal void ResetBoxes()
-    {
-        GestureStarted?.Invoke();
-        Boxes(_lastPlate ?? _mine).Layout = null;
-        Relayout();
-        Changed?.Invoke();
     }
 
     /// <summary>The boxes <paramref name="r"/> draws: yours for the class shown, or a party member's for theirs; 기본's

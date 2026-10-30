@@ -1,0 +1,42 @@
+namespace GaugeOverlay.Core.Domain;
+
+/// <summary>What happened at an event: a skill used (a slot going ready → cooldown), or one of my buffs starting or ending.</summary>
+public enum RecordEventKind { 사용, 버프시작, 버프끝 }
+
+/// <summary>A player in a record (spec § D): name, class, role (null: did not share figures), and 1·2파티.</summary>
+public sealed record RecordMember(string Name, int ClassId, MeterRole? Role, int Party);
+
+/// <summary>A player's figures at fight second <paramref name="T"/> (피해량, or 조력 피해량 for a support).</summary>
+public sealed record RecordSample(double T, string Name, long Damage, long Dps);
+
+/// <summary>The boss at fight second <paramref name="T"/>: the damage taken (the meter's one boss figure) and its HP bar, when read.</summary>
+public sealed record RecordBoss(double T, long Taken, long? Current, long? Max);
+
+/// <summary>An event at fight second <paramref name="T"/> in <paramref name="Name"/>'s lane; <paramref name="What"/> is the
+/// <see cref="SlotId"/> for 사용, the <see cref="BuffKind"/> for a buff.</summary>
+public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, int What);
+
+/// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
+/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (the boss's last HP under 10,000; null: never read), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
+public sealed record FightRecord(
+    DateTime StartedAt,
+    string? Gate,
+    double Duration,
+    IReadOnlyList<double> Phases,
+    string Me,
+    int MyClass,
+    string? MySubclass,
+    IReadOnlyList<RecordMember> Members,
+    IReadOnlyList<RecordSample> Samples,
+    IReadOnlyList<RecordBoss> Boss,
+    IReadOnlyList<RecordEvent> Events,
+    bool Kept = false,
+    string? MyClassName = null,
+    string? Difficulty = null,
+    bool? Cleared = null)
+{
+    /// <summary>My share at the end (my last figure over the last boss figure); null under the meter's dash rule.</summary>
+    public double? MyShare =>
+        Samples.LastOrDefault(s => s.Name == Me) is { Damage: >= MeterMath.DashUnder } mine && Boss.LastOrDefault() is { Taken: >= MeterMath.DashUnder } boss
+            ? (double)mine.Damage / boss.Taken : null;
+}

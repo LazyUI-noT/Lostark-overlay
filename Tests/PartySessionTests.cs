@@ -40,7 +40,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.Equal("민수,지현", Names(host));
         Assert.Equal("지현,호스트", Names(a));
         Assert.Equal("민수,호스트", Names(b));
-        Assert.Equal(("호스트 중 (3/4)", "참가 중 (3/4)"), (host.Status, a.Status));
+        Assert.Equal(("호스트 중 (3/8)", "참가 중 (3/8)"), (host.Status, a.Status));
         Assert.Equal(t0 + TimeSpan.FromSeconds(10), EndsAt(a, "호스트"));
         Assert.Equal(t0 + TimeSpan.FromSeconds(15), EndsAt(b, "민수"));   // relayed by the host
         Assert.Equal(t0 + TimeSpan.FromSeconds(20), EndsAt(host, "지현"));
@@ -54,18 +54,18 @@ public sealed class PartySessionTests : IDisposable
         Deliver();
         Assert.True(old.Ended);
         Assert.Contains("내 버전 v0.9.6", old.TakeChanges().Notice);
-        Assert.Equal("호스트 중 (1/4)", host.Status);
+        Assert.Equal("호스트 중 (1/8)", host.Status);
     }
 
     [Fact]
-    public void A_fifth_member_is_refused()
+    public void A_ninth_member_is_refused()
     {
         var host = Host();
-        var joined = Enumerable.Range(2, 3).Select(i => Join(host, $"p{i}", At(i))).ToList();
-        var fifth = Join(host, "영희", At(9));
-        Assert.All(joined, j => Assert.Equal("참가 중 (4/4)", j.Status));
-        Assert.True(fifth.Ended);
-        Assert.Equal(Membership.Full, fifth.TakeChanges().Notice);
+        var joined = Enumerable.Range(2, 7).Select(i => Join(host, $"p{i}", At(i))).ToList();
+        var ninth = Join(host, "영희", At(19));
+        Assert.All(joined, j => Assert.Equal("참가 중 (8/8)", j.Status));
+        Assert.True(ninth.Ended);
+        Assert.Equal(Membership.Full, ninth.TakeChanges().Notice);
     }
 
     /// <summary>A join in progress doesn't hold a slot, so the host checks again when it confirms.</summary>
@@ -73,16 +73,15 @@ public sealed class PartySessionTests : IDisposable
     public void The_last_slot_goes_to_whoever_confirms_first()
     {
         var host = Host();
-        Join(host, "p2", At(2));
-        Join(host, "p3", At(3));
-        var d = Start(host, "d", At(4));   // both Hellos reach the host before either confirms
-        var e = Start(host, "e", At(5));
+        foreach (int i in Enumerable.Range(2, 6)) Join(host, $"p{i}", At(i));
+        var d = Start(host, "d", At(14));   // both Hellos reach the host before either confirms
+        var e = Start(host, "e", At(15));
         Deliver();
 
-        Assert.Equal("참가 중 (4/4)", d.Status);
+        Assert.Equal("참가 중 (8/8)", d.Status);
         Assert.True(e.Ended);
         Assert.Equal(Membership.Full, e.TakeChanges().Notice);
-        Assert.Equal(("호스트 중 (4/4)", "d,p2,p3"), (host.Status, Names(host)));
+        Assert.Equal("호스트 중 (8/8)", host.Status);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public sealed class PartySessionTests : IDisposable
         var b = Join(host, "지현", At(3));
         b.Leave();
         Deliver();
-        Assert.Equal(("민수", "호스트", "참가 중 (2/4)"), (Names(host), Names(a), a.Status));
+        Assert.Equal(("민수", "호스트", "참가 중 (2/8)"), (Names(host), Names(a), a.Status));
 
         host.Leave();
         Deliver();
@@ -146,7 +145,7 @@ public sealed class PartySessionTests : IDisposable
             Forge(key, a.Id, MessageType.Bye, [], HostAt);
             Forge(key, a.Id, MessageType.State, Protocol.State(a.Id, Cooling(99), All, true, _now), HostAt);
             Forge(key, host.Id, MessageType.Bye, [], At(3));
-            Forge(key, host.Id, MessageType.Roster, Protocol.Roster([(host.Id, "호스트"), (b.Id, "지현")]), At(3));
+            Forge(key, host.Id, MessageType.Roster, Protocol.Roster([(host.Id, "호스트", 1), (b.Id, "지현", 1)]), At(3));
         }
         Deliver();
 
@@ -170,7 +169,7 @@ public sealed class PartySessionTests : IDisposable
         _wire.Enqueue((rogue.Crypto.Seal(rogue.Crypto.Group, (byte)MessageType.Welcome, welcome), rogue.At, At(4)));
         Deliver();
 
-        Assert.Equal(("참가 중 (2/4)", "호스트"), (c.Status, Names(c)));
+        Assert.Equal(("참가 중 (2/8)", "호스트"), (c.Status, Names(c)));
         Assert.Equal("철수", Names(host));
     }
 
@@ -188,7 +187,7 @@ public sealed class PartySessionTests : IDisposable
         Deliver();
 
         var c = Join(host, "철수", At(3));
-        Assert.Equal("참가 중 (3/4)", c.Status);
+        Assert.Equal("참가 중 (3/8)", c.Status);
         Assert.Equal("민수,철수", Names(host));
         Assert.Equal(2, _delivered.Count(p => p.From.Equals(HostAt) && p.To.Address.Equals(At(66).Address)));
     }
@@ -391,7 +390,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.Equal(PartySession.Kicked, a.TakeChanges().Notice);
         Assert.Equal("지현", Names(host));
         Assert.Equal("호스트", Names(b));
-        Assert.Equal("호스트 중 (2/4)", host.Status);
+        Assert.Equal("호스트 중 (2/8)", host.Status);
     }
 
     [Fact]
@@ -416,7 +415,7 @@ public sealed class PartySessionTests : IDisposable
         Approve(host);
         var a = Join(host, "민수", At(2));
         Approve(host);
-        Assert.Equal("참가 중 (3/4)", a.Status);
+        Assert.Equal("참가 중 (3/8)", a.Status);
         host.TakeChanges();
 
         host.Kick("민수");
@@ -441,7 +440,7 @@ public sealed class PartySessionTests : IDisposable
 
         host.Unblock(Fingerprint("민수"));
         Assert.Empty(host.Blocked);
-        Assert.Equal("참가 중 (3/4)", Join(host, "민수", At(2, 40001)).Status);
+        Assert.Equal("참가 중 (3/8)", Join(host, "민수", At(2, 40001)).Status);
 
         host.Kick("민수");
         Deliver();
@@ -483,7 +482,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.Equal(("민수", App, Fingerprint("민수")), (asked.Name, asked.App, asked.Device));
         Assert.Equal("승인 기다리는 중…", a.Status);
         Assert.Equal("", Names(host));
-        Assert.Equal("호스트 중 (1/4)", host.Status);
+        Assert.Equal("호스트 중 (1/8)", host.Status);
         int hellos = _delivered.Count(p => p.From.Equals(At(2)) && p.Data[0] == (byte)MessageType.Hello);
         int pendings = _delivered.Count(p => p.To.Equals(At(2)) && p.Data[0] == (byte)MessageType.Pending);
         Assert.Equal(hellos, pendings);
@@ -498,7 +497,7 @@ public sealed class PartySessionTests : IDisposable
         Deliver();
         Approve(host);
 
-        Assert.Equal("참가 중 (2/4)", a.Status);
+        Assert.Equal("참가 중 (2/8)", a.Status);
         Assert.Equal("민수", Names(host));
         Assert.Equal([new TrustedDevice(Fingerprint("민수"), "민수")], host.TakeChanges().Admission.Trusted);
     }
@@ -549,7 +548,7 @@ public sealed class PartySessionTests : IDisposable
         Assert.True(a.Ended);
         Assert.Contains("같은 기기", a.TakeChanges().Notice);
         Assert.False(a.CanRejoin);
-        Assert.Equal("참가 중 (3/4)", b.Status);
+        Assert.Equal("참가 중 (3/8)", b.Status);
     }
 
     [Fact]
@@ -576,7 +575,7 @@ public sealed class PartySessionTests : IDisposable
     {
         var host = Host(approve: true, Fingerprint("민수"));
         var a = Join(host, "민수", At(2));
-        Assert.Equal("참가 중 (2/4)", a.Status);
+        Assert.Equal("참가 중 (2/8)", a.Status);
         Assert.Empty(host.TakeChanges().Admission.Asked);
     }
 
@@ -584,7 +583,7 @@ public sealed class PartySessionTests : IDisposable
     public void Approval_off_lets_anyone_in_without_trusting()
     {
         var host = Host();
-        Assert.Equal("참가 중 (2/4)", Join(host, "민수", At(2)).Status);
+        Assert.Equal("참가 중 (2/8)", Join(host, "민수", At(2)).Status);
         var changes = host.TakeChanges().Admission;
         Assert.Empty(changes.Asked);
         Assert.Empty(changes.Trusted);
@@ -619,7 +618,7 @@ public sealed class PartySessionTests : IDisposable
         Wait(PartySession.JoinTimeout + Step);
 
         Assert.Equal("민수", Names(host));
-        Assert.Equal("호스트 중 (2/4)", host.Status);
+        Assert.Equal("호스트 중 (2/8)", host.Status);
     }
 
     [Fact]
@@ -646,7 +645,7 @@ public sealed class PartySessionTests : IDisposable
 
         var back = Start(host, "민수", At(2, 40001), rejoin: true);
         Deliver();
-        Assert.Equal("참가 중 (3/4)", back.Status);
+        Assert.Equal("참가 중 (3/8)", back.Status);
         Assert.Equal("민수,지현", Names(host));
     }
 
@@ -658,12 +657,12 @@ public sealed class PartySessionTests : IDisposable
         Join(host, "지현", At(3));
         Join(host, "철수", At(4));
         var a = Join(host, "민수", At(2));
-        Assert.Equal("호스트 중 (4/4)", host.Status);
+        Assert.Equal("호스트 중 (4/8)", host.Status);
         Silence(At(2), a);
 
         var back = Start(host, "민수", At(2, 40001), rejoin: true);
         Deliver();
-        Assert.Equal("참가 중 (4/4)", back.Status);
+        Assert.Equal("참가 중 (4/8)", back.Status);
     }
 
     /// <summary>A settings refresh during the session (SetAdmission with the saved list) keeps what the host decided in
@@ -786,7 +785,7 @@ public sealed class PartySessionTests : IDisposable
         Deliver();
 
         Assert.False(a.Ended);
-        Assert.Equal("참가 중 (2/4)", a.Status);
+        Assert.Equal("참가 중 (2/8)", a.Status);
     }
 
     /// <summary>A heartbeat answered more than 5 s late (a stalled PC) carries a stamp too old to measure with. It is
@@ -986,4 +985,96 @@ public sealed class PartySessionTests : IDisposable
     /// <summary>A packet claiming to be from <paramref name="asId"/>, with a counter far ahead of anything real.</summary>
     void Forge(PacketKey key, ulong asId, MessageType type, byte[] body, IPEndPoint to) =>
         _wire.Enqueue((key.Seal(asId, ulong.MaxValue - 1, (byte)type, body), At(66), to));
+
+    // ── 공대 (8) and the meter ─────────────────────────────────────────────────────────
+
+    static MeterSample Sample(ulong id, long damage, int party = 1) =>
+        new(id, "", 0, MeterRole.딜러, party, damage, damage / 60, 60, true, 1, 100_000_000_000);
+
+    [Fact]
+    public void Members_past_four_join_the_second_party_and_windows_show_only_mine()
+    {
+        var host = Host();
+        var joined = Enumerable.Range(2, 5).Select(i => Join(host, $"p{i}", At(i))).ToList();
+        Wait(Step * 2);
+        Assert.Equal("p2,p3,p4", Names(host));                  // 1파티: the host and the first three
+        Assert.Equal("p6", Names(joined[3]));                     // 2파티: p5 and p6
+        Assert.Equal([1, 1, 1, 1, 2, 2], host.Members.Select(m => m.Party));
+        Assert.Equal([1, 1, 1, 1, 2, 2], joined[4].Members.Select(m => m.Party));
+    }
+
+    [Fact]
+    public void The_host_moves_a_member_to_the_other_party()
+    {
+        var host = Host();
+        var a = Join(host, "민수", At(2));
+        var b = Join(host, "지현", At(3));
+        Assert.True(host.SetParty(a.Id, 2));
+        Wait(Step * 2);
+        Assert.Equal([1, 2, 1], b.Members.Select(m => m.Party));
+        Assert.Equal("지현", Names(host));
+        Assert.False(a.SetParty(b.Id, 2));   // a peer can't
+    }
+
+    [Fact]
+    public void Meter_samples_reach_everyone_through_the_host_with_the_hosts_party()
+    {
+        var host = Host();
+        var a = Join(host, "민수", At(2));
+        var b = Join(host, "지현", At(3));
+        a.SendMeter(Sample(a.Id, 5_000_000_000, party: 2), _now);   // claims 2파티: the host's word wins
+        host.SendMeter(Sample(host.Id, 7_000_000_000), _now);
+        Wait(Step * 2);
+        var seen = b.MeterSamples(_now).ToDictionary(s => s.Id);
+        Assert.Equal((5_000_000_000L, 1, "민수"), (seen[a.Id].Damage, seen[a.Id].Party, seen[a.Id].Name));
+        Assert.Equal(7_000_000_000L, seen[host.Id].Damage);
+        Assert.Equal(2, host.MeterSamples(_now).Count);
+    }
+
+    [Fact]
+    public void A_member_cannot_send_a_meter_sample_for_someone_else()
+    {
+        var host = Host();
+        var a = Join(host, "민수", At(2));
+        var rogue = JoinRogue(host, At(66));
+        Send(rogue, MessageType.Meter, Protocol.Meter(Sample(a.Id, 9_000_000_000)));   // a member's packet claiming a's id
+        Send(rogue, MessageType.Meter, Protocol.Meter(Sample(rogue.Crypto.SenderId, 9_000_000_000) with { Damage = -5 }));
+        Wait(Step * 2);
+        Assert.Empty(host.MeterSamples(_now));
+        Assert.Empty(a.MeterSamples(_now));
+    }
+
+    [Fact]
+    public void Old_meter_samples_drop_out()
+    {
+        var host = Host();
+        var a = Join(host, "민수", At(2));
+        a.SendMeter(Sample(a.Id, 5_000_000_000), _now);
+        Wait(Step * 2);
+        Assert.Single(host.MeterSamples(_now));
+        Assert.Empty(host.MeterSamples(_now + PartySession.MeterStale + Step));
+    }
+
+    [Fact]
+    public void A_flood_of_meter_samples_is_relayed_at_most_twice_a_second()
+    {
+        var host = Host();
+        Join(host, "민수", At(2));
+        var rogue = JoinRogue(host, At(66));
+        int before = MetersTo(At(2));
+        for (int i = 0; i < 20; i++) Send(rogue, MessageType.Meter, Protocol.Meter(Sample(rogue.Crypto.SenderId, 5_000_000_000 + i)));
+        Deliver();
+        Assert.Equal(1, MetersTo(At(2)) - before);
+    }
+
+    [Fact]
+    public void A_party_holds_at_most_four()
+    {
+        var host = Host();
+        var joined = Enumerable.Range(2, 5).Select(i => Join(host, $"p{i}", At(i))).ToList();
+        Assert.False(host.SetParty(joined[3].Id, 1));   // 1파티 is full
+        Assert.True(host.SetParty(joined[0].Id, 2));
+    }
+
+    int MetersTo(IPEndPoint to) => _delivered.Count(p => p.To.Equals(to) && p.Data.Length > 0 && p.Data[0] == (byte)MessageType.Meter);
 }

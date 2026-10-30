@@ -70,7 +70,14 @@ public partial class App
         if (args.Contains("--receive")) (settings.Party.ReceiveSize, settings.Party.ReceiveLayout) = (true, true);
         if (args.Contains("--side-buffs")) settings.Buffs.Side = true;
         if (args.Contains("--detach-buffs")) settings.Buffs.Detached = true;
-        if (args.Contains("--debuffs") || args.Contains("--duelist")) settings.Debuffs.Raid = Raid.모르둠;
+        if (args.Contains("--debuffs") || args.Contains("--duelist"))
+        {
+            settings.Raids.Gate(RaidSettings.MordumGate).DebuffWindow = true;
+            settings.Raids.SyncDebuffRaid(settings.Debuffs);
+        }
+        if (args.Contains("--meter")) (settings.Meter.On, settings.Meter.Scope) = (true, MeterScope.파티별);
+        if (Enum.TryParse<MeterLook>(Flag("meter-look"), out var look)) (settings.Meter.Look, settings.Meter.Graph) = (look, true);
+        if (args.Contains("--raid")) (settings.Raids.Gate(RaidSettings.MordumGate).CountWindow, settings.Raids.Gate(RaidSettings.MordumGate).CountAuto) = (true, false);
         OverlayRenderer.DemoReducedMotion = args.Contains("--reduced");
         if (args.Contains("--bound-party")) settings.Party.Together = true;
         if (args.Contains("--glow"))
@@ -109,11 +116,24 @@ public partial class App
         var demoCharacters = new CharacterService(settings, CharacterService.DefaultProfilesDir);
         ClassProfileMigration.EnsureOwn(settings, demoCharacters.Classes);   // as at the real start
         BuildUi(settings, demoCharacters, ApplyUi);
+        if (args.Contains("--saved-icons"))   // the active 직업각인's saved icons (IconStore), as the live start draws them
+            foreach (var (slot, icon) in new IconStore(IconStore.DefaultDir).Load(settings.Characters[settings.ActiveCharacter].Class, settings.Characters[settings.ActiveCharacter].Subclass))
+                _overlay.Renderer.SetIcon(slot, icon);
+        if (args.Contains("--records"))   // two made-up fights in a folder of their own, never the real records
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-records");
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            var store = new RecordStore(dir);
+            foreach (var r in DemoSnapshots.DemoRecords()) store.Save(r);
+            _settingsWindow.Records = store;
+            _settingsWindow.RefreshRecords();
+        }
         _tray.SetParty("호스트 중 (3/4)");
         var demoFit = FitText(new Viewport(0, 0, 1920, 1080), new Fit(100), "");
         _settingsWindow.RefitRequested += () => _settingsWindow.SetFitResult(demoFit);
 
         var demo = new DemoSnapshots(args.Contains("--duelist"));
+        _meter.Renderer.MeterMe = 1;   // DemoSnapshots' meter: "나" is id 1
         void Push()
         {
             if (!demo.TryNext(out var self, out var peers)) return;
@@ -121,12 +141,14 @@ public partial class App
             _buffs.Update(self);
             _debuffs.Update(self);
             _judgment.Update(self);
+            _raid.Update(self);
+            _meter.Update(self);
             ShowPeers(peers);
             var now = Clock.Now();
             foreach (var st in self.Snapshot.Slots)
             {
                 var (crop, reading) = DemoSnapshots.DebugRow(st, now);
-                _debug.Update(st.Slot, crop, reading, st);
+                _settingsWindow.UpdateDiagnostics(st.Slot, crop, reading, st);
             }
         }
         Push();
@@ -142,8 +164,13 @@ public partial class App
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
         if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);
         if (args.Contains("--first-run")) { var first = ShowFirstRun(ApplyUi); first.FitRequested += () => first.SetFitResult(true, demoFit); }
-        if (args.Contains("--debug") || args.Contains("--adjust")) { _debug.Capturable = true; _debug.Show(); }
-        if (args.Contains("--adjust")) _debug.ShowAdjust();
+        if (args.Contains("--debug")) _settingsWindow.ShowDiagnostics();
+        if (args.Contains("--adjust"))   // the layer over the primary screen, as over a 1920×1080 game at HUD 100 (no engine: edits go nowhere)
+        {
+            _layer.Capturable = true;
+            _layer.Open(1, new Viewport(0, 0, (int)SystemParameters.PrimaryScreenWidth, (int)SystemParameters.PrimaryScreenHeight), new Fit(100), 120, false,
+                settings.Buffs.Count, settings.Debuffs.BossIconSize);
+        }
         if (args.Contains("--edit")) SetEditMode(true);
         if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.ShowBox(picked, plate: false);
         if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);

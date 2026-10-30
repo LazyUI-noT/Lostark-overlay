@@ -1,0 +1,303 @@
+using System.Windows;
+using System.Windows.Media;
+using GaugeOverlay.Core.Domain;
+
+namespace GaugeOverlay.App.UI;
+
+/// <summary>The DPS 미터기 window (spec § C Display): a header (전분 timer, boss damage), then the members as 행 (a row per member,
+/// its share as the row's background bar, ▲▼ over 10 s, the number, DPS), 세로 막대, 선 그래프, 한 줄 막대 or 파티 비교 (1파티
+/// from the left, 2파티 from the right); 서포터 · 찬조 and 기타 under the dealers, an optional DPS graph, and 버프 적용률 (how much
+/// of my damage fell under 공증 / 아덴 피증 / 초각스 피증) as three bars at the bottom. The panel keeps one
+/// size per scope (4 rows, 8 for the 공대), so rows coming and going don't move the window.</summary>
+public sealed partial class OverlayRenderer
+{
+    const double MeterWidth = 6.2, MeterRow = 0.5, MeterGraph = 1.4;   // × a skill box, × the window's 너비 / 높이
+    static readonly Color MeterMine = Color.FromRgb(0xFF, 0xC8, 0x3C), MeterDealer = Color.FromRgb(0x5B, 0x8D, 0xEF),
+        MeterSupport = Color.FromRgb(0x5B, 0xD1, 0x8B), MeterOtherColor = Color.FromRgb(0x6B, 0x72, 0x80);
+
+    /// <summary>The DPS 미터기 alone.</summary>
+    public bool MeterOnly { get; set; }
+
+    /// <summary>My row's id (drawn in my colour); 0 alone.</summary>
+    public ulong MeterMe { get; set; }
+
+    (double W, double Row) MeterUnit => (BoxSize(Settings.Meter.Width, MeterWidth), BoxSize(Settings.Meter.Height, MeterRow));
+
+    int MeterRows => Settings.Meter.Scope switch { MeterScope.나 => 1, MeterScope.파티 => 4, _ => 8 };
+
+    Size MeterPanelSize()
+    {
+        var (w, row) = MeterUnit;
+        var m = Settings.Meter;
+        double body = m.ShownLook switch
+        {
+            MeterLook.한줄막대 or MeterLook.파티비교 => row * 3,
+            MeterLook.세로막대 or MeterLook.선그래프 => row * 6,
+            _ => row * (MeterRows + (m.Support ? 1 : 0) + (m.Other ? 1 : 0)),
+        };
+        double graph = m.Graph && m.ShownLook == MeterLook.행 ? BoxSize(m.Height, MeterGraph) : 0;
+        return new(w + 2 * Bleed, row + body + graph + (BuffBarsShown ? row * BuffBarRows : 0) + 2 * Bleed);
+    }
+
+    void DrawMeter(DrawingContext dc)
+    {
+        var m = Settings.Meter;
+        var size = MeterPanelSize();
+        var (w, row) = MeterUnit;
+        var panel = new Rect(Bleed, Bleed, w, size.Height - 2 * Bleed);
+        dc.PushOpacity(Math.Clamp(m.Opacity, 0.1, 1));
+        dc.DrawRoundedRectangle(Solid(UiColor.Parse(m.Background, Color.FromArgb(0xCC, 0x10, 0x14, 0x18))), null, panel, 4, 4);
+        var view = _player?.Snapshot.MeterView;
+        MeterHeader(dc, new Rect(panel.X + 6, panel.Y, w - 12, row), view);
+        double bars = BuffBarsShown ? row * BuffBarRows : 0;
+        var body = new Rect(panel.X + 6, panel.Y + row, w - 12, panel.Height - row - 4 - bars);
+        if (bars > 0) MeterBuffBars(dc, new Rect(body.X, body.Bottom + 2, body.Width, bars - 2), view);
+        if (view is null || !view.PanelFound && view.Rows.Count == 0)
+            MeterText(dc, body.TopLeft, "전분 없음 · 전투 중에 전분 창을 찾습니다", row * 0.42, 0.75);
+        else
+            switch (m.ShownLook)
+            {
+                case MeterLook.세로막대: MeterColumns(dc, body, view); break;
+                case MeterLook.선그래프: MeterLines(dc, body, view); break;
+                case MeterLook.한줄막대: MeterStrip(dc, body, view); break;
+                case MeterLook.파티비교: MeterTug(dc, body, view); break;
+                default: MeterRowsDraw(dc, body, view, row); break;
+            }
+        if (view is { PanelFound: false, Rows.Count: > 0 })   // lost for now: the last figures stay, marked
+            MeterText(dc, new(panel.X + w * 0.32, panel.Y + row * 0.25), "전분 가려짐", row * 0.4, 0.7);
+        dc.Pop();
+    }
+
+    void MeterHeader(DrawingContext dc, Rect r, MeterView? v)
+    {
+        string timer = v?.Timer is { } t ? $"{t / 60:00}:{t % 60:00}" : "--:--";
+        string state = v is null ? "" : v.Running ? "▶" : "■";
+        MeterText(dc, new(r.X, r.Y + r.Height * 0.2), $"{state} {timer}", r.Height * 0.5, 1);
+        if (v is { BossTaken: > 0 }) MeterTextRight(dc, new(r.Right, r.Y + r.Height * 0.2), $"보스 {Eok(v.BossTaken)}", r.Height * 0.45, 0.8);
+    }
+
+    Color MeterColor(MeterRow r)
+    {
+        var m = Settings.Meter;
+        if (r.Id == MeterMe) return UiColor.TryParse(m.MyColor) ?? MeterMine;
+        return r.Role == MeterRole.서포터 ? UiColor.TryParse(m.SupportColor) ?? MeterSupport : UiColor.TryParse(m.DealerColor) ?? MeterDealer;
+    }
+
+    void MeterRowsDraw(DrawingContext dc, Rect body, MeterView v, double row)
+    {
+        var m = Settings.Meter;
+        double y = body.Y;
+        var supports = v.Rows.Where(r => r.Role == MeterRole.서포터).ToList();
+        foreach (var r in v.Rows.Where(r => r.Role == MeterRole.딜러).Take(MeterRows))
+        {
+            MeterRowDraw(dc, new Rect(body.X, y, body.Width, row - 2), r, row);
+            y += row;
+        }
+        if (m.Support && supports.Count > 0)
+        {
+            MeterText(dc, new(body.X, y + row * 0.15), "서포터 · 찬조", row * 0.38, 0.6);
+            double each = body.Width * 0.62 / supports.Count;
+            for (int i = 0; i < supports.Count; i++)
+            {
+                var s = supports[i];
+                var cell = new Rect(body.X + body.Width * 0.38 + i * each, y + row * 0.15, each - 4, row * 0.7);
+                dc.DrawRectangle(Solid(Color.FromArgb(0x60, 0, 0, 0)), null, cell);
+                if (s.Share is { } sh) dc.DrawRectangle(Solid(MeterColor(s)), null, cell with { Width = cell.Width * Math.Clamp(sh, 0, 1) });
+                MeterText(dc, new(cell.X + 3, cell.Y), $"{s.Name} {Value(s)}", row * 0.36, 1);
+            }
+            y += row;
+        }
+        if (m.Other && v.Other is { } o)
+        {
+            var cell = new Rect(body.X, y, body.Width, row - 2);
+            dc.DrawRectangle(Solid(UiColor.TryParse(m.OtherColor) ?? MeterOtherColor), null, cell with { Width = cell.Width * Math.Clamp(o, 0, 1) });
+            MeterText(dc, new(cell.X + 4, cell.Y + row * 0.18), "기타", row * 0.45, 0.85);
+            MeterTextRight(dc, new(cell.Right - 4, cell.Y + row * 0.18), $"{o * 100:0.0}%", row * 0.45, 0.85);
+            y += row;
+        }
+        if (m.Graph) MeterLines(dc, new Rect(body.X, y + 2, body.Width, Math.Max(0, body.Bottom - y - 2)), v);
+    }
+
+    void MeterRowDraw(DrawingContext dc, Rect cell, MeterRow r, double row)
+    {
+        var c = MeterColor(r);
+        dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, cell);
+        if (r.Share is { } s) dc.DrawRectangle(Solid(Color.FromArgb(0xB0, c.R, c.G, c.B)), null, cell with { Width = cell.Width * Math.Clamp(s, 0, 1) });
+        string party = r.Party == 2 && Settings.Meter.Scope == MeterScope.파티별 ? "2 · " : "";
+        MeterText(dc, new(cell.X + 4, cell.Y + row * 0.16), party + r.Name, row * 0.46, 1);
+        if (Emblems.Class(r.ClassId)?.Name is { } cls) MeterText(dc, new(cell.X + cell.Width * 0.36, cell.Y + row * 0.24), cls, row * 0.34, 0.6);
+        string arrow = r.Trend > 0 ? "▲ " : r.Trend < 0 ? "▼ " : "";
+        MeterTextRight(dc, new(cell.Right - 4, cell.Y + row * 0.1), arrow + Value(r), row * 0.55, 1);
+        if (r.Damage >= MeterMath.DashUnder)
+            MeterTextRight(dc, new(cell.Right - cell.Width * 0.3, cell.Y + row * 0.24), $"{Eok(r.Dps)}/초", row * 0.32, 0.65);
+    }
+
+    /// <summary>The row's number as 수치 says: % with one decimal, or 피해량 / DPS in 억; "–" under the dash rule.</summary>
+    string Value(MeterRow r) => Settings.Meter.Value switch
+    {
+        MeterValue.피해량 => r.Damage >= MeterMath.DashUnder ? Eok(r.Damage) : "–",
+        MeterValue.DPS => r.Damage >= MeterMath.DashUnder ? Eok(r.Dps) : "–",
+        _ => r.Share is { } s ? $"{s * 100:0.0}%" : "–",
+    };
+
+    static string Eok(long v) => v >= 1_000_000_000_000 ? $"{v / 1e12:0.0}조" : $"{v / 1e8:0.0}억";
+
+    void MeterColumns(DrawingContext dc, Rect body, MeterView v)
+    {
+        var rows = v.Rows.Take(MeterRows).ToList();
+        if (rows.Count == 0) return;
+        double each = body.Width / rows.Count, label = body.Height * 0.25;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            double h = (body.Height - label) * Math.Clamp(r.Share ?? 0, 0, 1);
+            dc.DrawRectangle(Solid(MeterColor(r)), null, new Rect(body.X + i * each + 2, body.Bottom - label - h, Math.Max(0, each - 4), h));
+            MeterText(dc, new(body.X + i * each + 2, body.Bottom - label), r.Name, label * 0.4, 1);
+            MeterText(dc, new(body.X + i * each + 2, body.Bottom - label * 0.5), Value(r), label * 0.38, 0.8);
+        }
+    }
+
+    void MeterStrip(DrawingContext dc, Rect body, MeterView v)
+    {
+        double x = body.X, h = body.Height * 0.45;
+        foreach (var r in v.Rows.Where(r => r.Role == MeterRole.딜러 && r.Share is not null))
+        {
+            double w = body.Width * Math.Clamp(r.Share!.Value, 0, 1);
+            dc.DrawRectangle(Solid(MeterColor(r)), new Pen(Solid(Colors.Black), 1), new Rect(x, body.Y, w, h));
+            if (w > h * 2) MeterText(dc, new(x + 3, body.Y + h * 0.2), $"{r.Name} {Value(r)}", h * 0.4, 1);
+            x += w;
+        }
+        if (v.Other is { } o)
+            dc.DrawRectangle(Solid(UiColor.TryParse(Settings.Meter.OtherColor) ?? MeterOtherColor), null, new Rect(x, body.Y, Math.Max(0, Math.Min(body.Right - x, body.Width * o)), h));
+    }
+
+    /// <summary>파티 비교: 1파티 from the left, 2파티 from the right, in % or 피해량.</summary>
+    void MeterTug(DrawingContext dc, Rect body, MeterView v)
+    {
+        double Sum(int party) => v.Rows.Where(r => r.Party == party && r.Role == MeterRole.딜러)
+            .Sum(r => Settings.Meter.CompareAsShare ? r.Share ?? 0 : r.Damage);
+        double a = Sum(1), b = Sum(2), total = a + b, h = body.Height * 0.45;
+        if (total <= 0) return;
+        double split = body.Width * a / total;
+        dc.DrawRectangle(Solid(MeterDealer), null, new Rect(body.X, body.Y, split, h));
+        dc.DrawRectangle(Solid(MeterSupport), null, new Rect(body.X + split, body.Y, body.Width - split, h));
+        string Fmt(double x) => Settings.Meter.CompareAsShare ? $"{x * 100:0.0}%" : Eok((long)x);
+        MeterText(dc, new(body.X + 4, body.Y + h * 0.2), $"1파티 {Fmt(a)}", h * 0.42, 1);
+        MeterTextRight(dc, new(body.Right - 4, body.Y + h * 0.2), $"{Fmt(b)} 2파티", h * 0.42, 1);
+    }
+
+    /// <summary>Each dealer's DPS over this 전분 record, one line each, and always mine (alone, or as a support), with the top
+    /// DPS as the scale.</summary>
+    void MeterLines(DrawingContext dc, Rect area, MeterView v)
+    {
+        if (area.Height < 8) return;
+        dc.DrawRectangle(Solid(Color.FromArgb(0x40, 0, 0, 0)), null, area);
+        var series = v.Lines(MeterMe, MeterRows)
+            .Select(r => (Row: r, Points: v.History.Series(r.Id))).Where(s => s.Points.Count > 1).ToList();
+        if (series.Count == 0) { MeterText(dc, new(area.X + 4, area.Y + 4), "DPS 그래프: 전투가 시작되면 그립니다", Math.Min(area.Height * 0.3, 14), 0.6); return; }
+        var t0 = series.Min(s => s.Points[0].At);
+        double span = Math.Max(1, (series.Max(s => s.Points[^1].At) - t0).TotalSeconds);
+        double top = Math.Max(1, series.Max(s => s.Points.Max(p => (double)p.Dps)));
+        var grid = new Pen(Solid(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), 1);   // quarters of the top DPS, and every 30 s
+        for (int q = 1; q < 4; q++)
+        {
+            double gy = Math.Round(area.Bottom - area.Height * q / 4) + 0.5;
+            dc.DrawLine(grid, new(area.X, gy), new(area.Right, gy));
+        }
+        for (double sec = GridSeconds; sec < span; sec += GridSeconds)
+        {
+            double gx = Math.Round(area.X + area.Width * sec / span) + 0.5;
+            dc.DrawLine(grid, new(gx, area.Y), new(gx, area.Bottom));
+        }
+        double font = Math.Min(area.Height / (series.Count * 1.3 + 0.5), 12);   // the names fit the graph's height
+        MeterText(dc, new(area.X + 3, area.Bottom - font * 1.3), $"최고 {Eok((long)top)}/초", font, 0.6);
+        var names = new List<(double Y, string Name)>();
+        foreach (var (r, points) in series)
+        {
+            var geo = new StreamGeometry();
+            using (var g = geo.Open())
+                for (int i = 0; i < points.Count; i++)
+                {
+                    double value = points[i].Dps;
+                    var pt = new Point(area.X + area.Width * (points[i].At - t0).TotalSeconds / span, area.Bottom - area.Height * value / top);
+                    if (i == 0) g.BeginFigure(pt, false, false); else g.LineTo(pt, true, false);
+                }
+            dc.DrawGeometry(null, new Pen(Solid(MeterColor(r)), 1.5), geo);
+            names.Add((area.Bottom - area.Height * points[^1].Dps / top, r.Name));
+        }
+        double y = area.Y;   // whose line: names at the line ends, top down, kept apart
+        foreach (var (end, name) in names.OrderBy(n => n.Y))
+        {
+            y = Math.Max(y, Math.Min(end - font * 0.7, area.Bottom - font * 1.3));
+            MeterTextRight(dc, new(area.Right - 3, y), name, font, 0.85);
+            y += font * 1.25;
+        }
+    }
+
+    const double GridSeconds = 30;   // the DPS graph's vertical grid
+    const double BuffBarRows = 2.4;   // × a row: three bars
+
+    /// <summary>버프 적용률 is on and I'm not on a support (the view says so once the meter has read).</summary>
+    bool BuffBarsShown => Settings.Meter.BuffBars && _player?.Snapshot.MeterView?.ShowBuffBars != false;
+
+    /// <summary>버프 적용률: the share of my damage dealt while each of my three buffs was on (TimelineView's colours); with two
+    /// or more dealers sharing, 버프 분배 instead: each buff's bar is 100% of the damage dealt under it, split by dealer (who
+    /// made the most of it). A note while the buff row isn't read (설정 → 버프 off).</summary>
+    void MeterBuffBars(DrawingContext dc, Rect r, MeterView? v)
+    {
+        double each = r.Height / 3, font = each * 0.75, label = r.Width * 0.3;
+        if (v?.BuffSplit is { } split) { MeterBuffSplit(dc, r, v, split, each, font, label); return; }
+        if (v?.BuffCover is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프를 켜면 보입니다", font, 0.6); return; }
+        for (int i = 0; i < TimelineView.Buffs.Length && i < cover.Count; i++)
+        {
+            var (_, name, color) = TimelineView.Buffs[i];
+            double y = r.Y + i * each, share = Math.Clamp(cover[i], 0, 1);
+            MeterText(dc, new(r.X, y), name, font, 0.8);
+            var bar = new Rect(r.X + label, y + each * 0.15, r.Width - label - font * 3.2, each * 0.7);
+            dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, bar);
+            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * share });
+            MeterTextRight(dc, new(r.Right, y), $"{share * 100:0}%", font, 0.9);
+        }
+    }
+
+    void MeterBuffSplit(DrawingContext dc, Rect r, MeterView v, IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>> split,
+        double each, double font, double label)
+    {
+        for (int i = 0; i < TimelineView.Buffs.Length && i < split.Count; i++)
+        {
+            var (_, name, color) = TimelineView.Buffs[i];
+            double y = r.Y + i * each;
+            MeterText(dc, new(r.X, y), name, font, 0.8);
+            var bar = new Rect(r.X + label, y + each * 0.1, r.Width - label, each * 0.8);
+            dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), new Pen(Solid(Color.FromArgb(0x90, color.R, color.G, color.B)), 1), bar);
+            double x = bar.X;
+            foreach (var (id, who, share) in split[i])
+            {
+                double w = bar.Width * share;
+                var c = v.Rows.FirstOrDefault(row => row.Id == id) is { } row ? MeterColor(row) : MeterDealer;
+                dc.DrawRectangle(Solid(c), new Pen(Solid(Color.FromArgb(0xC0, 0, 0, 0)), 1), new Rect(x, bar.Y, w, bar.Height));
+                string text = $"{who} {share * 100:0}%";
+                if (w > font * text.Length * 0.6) MeterText(dc, new(x + 2, y + each * 0.05), text, font * 0.9, 1);
+                else if (w > font * 1.8) MeterText(dc, new(x + 2, y + each * 0.05), $"{share * 100:0}", font * 0.9, 1);
+                x += w;
+            }
+        }
+    }
+
+    void MeterText(DrawingContext dc, Point at, string s, double size, double opacity)
+    {
+        if (size < MinTimerFont) return;
+        dc.PushOpacity(opacity);
+        dc.DrawText(Text(s, size), at);
+        dc.Pop();
+    }
+
+    void MeterTextRight(DrawingContext dc, Point topRight, string s, double size, double opacity)
+    {
+        if (size < MinTimerFont) return;
+        var t = Text(s, size);
+        dc.PushOpacity(opacity);
+        dc.DrawText(t, new Point(topRight.X - t.Width, topRight.Y));
+        dc.Pop();
+    }
+}

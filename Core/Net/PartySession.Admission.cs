@@ -190,6 +190,7 @@ public sealed partial class PartySession
             Remove(m);
             return false;
         }
+        m.Party = _members.Count(x => x.Confirmed && x.Party == 1) < Membership.PartySize ? 1 : 2;   // join order fills 1파티 first
         m.Confirmed = true;
         _hadPeer = true;
         _statusDirty = _peersDirty = true;

@@ -4,7 +4,8 @@ namespace GaugeOverlay.App.Platform;
 
 /// <summary>Copies small screen regions of the latest frame off the GPU. Two implementations:
 /// Desktop Duplication (Windows 10, and fallback) and borderless WGC (Windows 11).
-/// Hard rule: an implementation must never start a capture that draws a border.</summary>
+/// Hard rule: an implementation must never start a capture of the game that draws a border (테스트 모드's video may: the user
+/// agreed to Windows 10's yellow border there, 2026-10-31).</summary>
 public interface ICaptureSource : IDisposable
 {
     /// <summary>Waits up to <paramref name="timeout"/> for a new frame, then copies each region (screen pixels)
@@ -13,4 +14,8 @@ public interface ICaptureSource : IDisposable
     /// convert with <see cref="Clock.FromTimestamp"/>.</param>
     /// <returns>False on timeout or when the output was lost (resolution change, lock screen); the caller retries.</returns>
     bool TryCapture(IReadOnlyList<PixelRect> regions, IReadOnlyList<Image> into, TimeSpan timeout, out long timestamp);
+
+    /// <summary>Reads the window's own content even while other windows cover it (WGC), so nothing has to wait for it to be
+    /// in front; false for Desktop Duplication, which sees only what is on top.</summary>
+    bool SeesBehind => false;
 }

@@ -13,31 +13,19 @@ public sealed class ReadScheduler
     private static readonly TimeSpan LongInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MidInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan EdgeWindow = TimeSpan.FromMilliseconds(60);
-    private static readonly TimeSpan KeyInterval = TimeSpan.FromSeconds(1.0 / 30);
 
     private readonly TimeSpan?[] lastRead = new TimeSpan?[SlotInfo.All.Length];
     private readonly TimeSpan?[] watchUntil = new TimeSpan?[SlotInfo.All.Length];
-    private TimeSpan? keyPendingFrom;
-    private TimeSpan? lastKeyServe;
 
     /// <summary>Slots to read on the frame captured at <paramref name="now"/>.</summary>
     public IReadOnlyList<SlotId> Due(TimeSpan now, IReadOnlyList<SlotState> states)
     {
-        bool key = keyPendingFrom is { } pressed && now >= pressed
-                   && (lastKeyServe is not { } served || now - served >= KeyInterval);
-        if (key) (keyPendingFrom, lastKeyServe) = (null, now);
-
         var due = new List<SlotId>();
         foreach (var s in states)
-            if (key || Watched(s.Slot, now) || IsDue(s, now))
+            if (Watched(s.Slot, now) || IsDue(s, now))
                 due.Add(s.Slot);
         return due;
     }
-
-    /// <summary>A key was pressed: read every slot on the next frame captured at or after <paramref name="now"/>
-    /// (cooldown slots to check for resets/spam, ready slots so a cast is seen without waiting for the 4 Hz check).
-    /// Presses before that frame merge into one read; at most 30 such frames per second.</summary>
-    public void RequestCooldownReads(TimeSpan now) => keyPendingFrom = now;
 
     /// <summary>Reads <paramref name="target"/> on every frame captured up to and including <paramref name="until"/>, whatever its
     /// phase (코어 빌드: a cast is known to change it). A later call extends the watch; an earlier time never shortens it.</summary>

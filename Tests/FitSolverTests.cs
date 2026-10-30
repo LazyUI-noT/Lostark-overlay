@@ -70,6 +70,27 @@ public class FitSolverTests
         Assert.InRange(FitSolver.HudFromHpBar(band.Frames[0], rect, new Viewport(x, y, w, h))!.Value, hud - 1, hud + 1);
     }
 
+    // The nudge search scales with the screen: a bar 12 px off at 4K (6 reference px) is found, as 6 px is at 1080p.
+    [Fact]
+    public void Finds_a_bar_off_its_predicted_spot_at_4K()
+    {
+        const int Shift = 12;
+        var band = Fixture.Load("band_4k");
+        var src = band.Frames[0];
+        var moved = new Image(src.Width, src.Height);
+        for (int y = 0; y < src.Height; y++)
+            for (int x = 0; x < src.Width; x++)
+                Array.Copy(src.Bgra, y * src.Stride + Math.Max(0, x - Shift) * 4, moved.Bgra, y * moved.Stride + x * 4, 4);
+        var rect = new PixelRect(band.Rect[0], band.Rect[1], band.Rect[2], band.Rect[3]);
+        var vp = new Viewport(0, 0, 3840, 2160);
+
+        var fit = FitSolver.Solve(moved, rect, vp);
+
+        Assert.NotNull(fit);
+        PixelRect got = Geometry.Slot(SlotId.각성기, vp, fit), want = Geometry.Slot(SlotId.각성기, vp, FitSolver.Solve(src, rect, vp)!);
+        Assert.InRange(got.X - want.X, Shift - 2, Shift + 2);
+    }
+
     [Fact]
     public void Finds_the_fit_in_a_forced_21_9_viewport() => AssertFit("band_219", new Viewport(0, 135, 1920, 810), 110);
 

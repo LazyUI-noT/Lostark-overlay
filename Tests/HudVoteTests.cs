@@ -4,6 +4,22 @@ namespace GaugeOverlay.Tests;
 
 public class HudVoteTests
 {
+    // A fit taken with most slots cooling leaves fewer than MinSlots references: no frame can vote, so saving only on a
+    // "shown" vote would never add the missing ones and the HUD would stay unknown (buffs, gauge, debuffs frozen).
+    [Theory]
+    [InlineData(true, 12, 12, 0, true)]     // the vote says shown
+    [InlineData(null, 3, 3, 0, true)]       // too few references to vote, all of them readable: the bar is there
+    [InlineData(null, 3, 2, 0, true)]       // most of them read
+    [InlineData(null, 3, 1, 0, false)]      // one of three read: too little to vouch for the bar
+    [InlineData(null, 1, 1, 0, true)]
+    [InlineData(null, 3, 3, 1, false)]      // one reference unreadable: maybe a loading screen
+    [InlineData(null, 3, 0, 0, false)]      // no reference read this frame: nothing vouches for the bar
+    [InlineData(null, 0, 0, 0, false)]      // no references at all
+    [InlineData(null, 6, 2, 0, false)]      // enough references exist: wait for a real vote
+    [InlineData(false, 3, 3, 0, false)]
+    public void Saves_new_references_only_when_the_bar_is_vouched_for(bool? shown, int stored, int calibrated, int unreadable, bool save) =>
+        Assert.Equal(save, HudVote.MaySave(shown, stored, calibrated, unreadable));
+
     [Fact]
     public void Frames_with_few_calibrated_slots_never_hide_the_HUD()
     {

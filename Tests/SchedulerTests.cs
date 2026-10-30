@@ -51,29 +51,6 @@ public class SchedulerTests
         Assert.InRange(reads.Count(t => t > 2.07 && t < 2.93), 1, 2);
     }
 
-    [Fact]
-    public void Key_spam_is_coalesced_into_one_read_on_the_next_frame()
-    {
-        var scheduler = new ReadScheduler();
-        var s = State(SlotPhase.Cooldown, 10.5);   // 2.0 s: mid-second, outside edge windows
-        scheduler.MarkRead(Q, S(1.99));
-
-        for (int i = 0; i < 20; i++) scheduler.RequestCooldownReads(S(2.0 + i * 0.0005));
-        Assert.DoesNotContain(Q, scheduler.Due(S(1.995), [s]));   // frame captured before the presses
-        Assert.Contains(Q, scheduler.Due(S(2.0 + 1 * Frame), [s]));
-        scheduler.MarkRead(Q, S(2.0 + Frame));
-        Assert.DoesNotContain(Q, scheduler.Due(S(2.0 + 2 * Frame), [s]));
-        Assert.DoesNotContain(Q, scheduler.Due(S(2.0 + 3 * Frame), [s]));
-    }
-
-    [Fact]
-    public void Key_triggered_reads_are_capped_at_30_per_second()
-    {
-        var scheduler = new ReadScheduler();
-        // Long cooldown is read once a second on its own; a press before every frame adds at most 30 more.
-        var reads = Reads(scheduler, State(SlotPhase.LongCooldown), 0, 1, t => scheduler.RequestCooldownReads(S(t)));
-        Assert.InRange(reads.Count, 20, 31);
-    }
 
     // --- Watch (코어 빌드: a slot a cast is known to change is read on every frame for a while) ---
 
@@ -171,15 +148,5 @@ public class SchedulerTests
         var (scheduler, states) = Idle(1.99);
         scheduler.Watch(SlotId.아덴2, S(3));
         Assert.DoesNotContain(SlotId.아덴2, scheduler.Due(S(2.0), states));
-    }
-
-    [Fact]
-    public void Key_press_also_reads_ready_slots_so_a_cast_is_seen_on_the_next_frame()
-    {
-        var scheduler = new ReadScheduler();
-        var s = State(SlotPhase.Ready);
-        scheduler.MarkRead(Q, S(1));
-        scheduler.RequestCooldownReads(S(1.05));
-        Assert.Contains(Q, scheduler.Due(S(1.06), [s]));
     }
 }

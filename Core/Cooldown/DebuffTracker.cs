@@ -53,6 +53,23 @@ public static class DebuffTracker
         return now - prev.BossSeenAt <= BossHold ? next : next with { BossRed = null, BossBlue = null };
     }
 
+    /// <summary>A read of the 결투자's timer ("38초"; null: not read). It ticks every whole second from when the debuff came, so a
+    /// tick (one less than the last read) seen at <paramref name="now"/> puts that instant whole seconds back: the latest one at or
+    /// before the first sighting, under a second before it (the icon is read 3–5 times a second). Anything else only keeps the
+    /// value. Pure.</summary>
+    public static DebuffStatus DuelTimer(DebuffStatus s, double? seconds, TimeSpan now)
+    {
+        if (s.Duelist is not { } d || seconds is not { } v || v < 1) return s;
+        int n = (int)Math.Round(v);
+        var next = d with { Timer = n };
+        if (d.Timer is { } prev && n == prev - 1 && now > d.FirstSeenAt)
+        {
+            var start = now - TimeSpan.FromSeconds(Math.Ceiling((now - d.FirstSeenAt).TotalSeconds));
+            if (start <= d.FirstSeenAt && d.FirstSeenAt - start < TimeSpan.FromSeconds(1)) next = next with { FirstSeenAt = start };
+        }
+        return s with { Duelist = next };
+    }
+
     /// <summary>The 결투자 cycle (user, 2026-10-13): a sigil read without 결투자 for <see cref="DuelMark.Gone"/> means the
     /// debuff is over, so it is removed and the next sighting counts down again. Both gone, or a hidden HUD, is most likely
     /// a cutscene: the mark is kept, so the icon coming back is the same cycle (no second countdown), until

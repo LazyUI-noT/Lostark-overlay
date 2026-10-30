@@ -28,6 +28,13 @@ public static partial class WindowStyles
     public static bool SetExcludeFromCapture(IntPtr hwnd, bool on) =>
         SetWindowDisplayAffinity(hwnd, on ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
 
+    /// <summary>Puts the window at <paramref name="r"/> in screen pixels, topmost, without taking focus: a layer exactly over the
+    /// game area whatever the monitor's DPI.</summary>
+    public static void PlaceInPixels(IntPtr hwnd, GaugeOverlay.Core.Domain.PixelRect r) =>
+        SetWindowPos(hwnd, HWND_TOPMOST, r.X, r.Y, r.Width, r.Height, SWP_NOACTIVATE);
+
+    private static readonly IntPtr HWND_TOPMOST = -1;
+    private const uint SWP_NOACTIVATE = 0x0010;
     private const int GWL_EXSTYLE = -20;
     private const uint WDA_NONE = 0, WDA_EXCLUDEFROMCAPTURE = 0x11;
 
@@ -35,4 +42,6 @@ public static partial class WindowStyles
     [LibraryImport("user32.dll")] private static partial nint SetWindowLongPtrW(IntPtr hwnd, int index, nint value);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 }

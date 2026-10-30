@@ -42,6 +42,29 @@ public static class DebuffReader
         return BuffReader.Best((structure, hue, lookAlike)) is { } k ? (DebuffKind)k : null;
     }
 
+    /// <summary>Whether the box holds a debuff icon of any kind, known or not: its frame is red (every debuff's is). The engine
+    /// reads a box only when every box left of it is filled (debuffs fill the row from the left).</summary>
+    public static bool Filled(Image area, PixelRect icon) => RedFrame(area, icon) >= MinFrame;
+
+    // The six debuffrow shots: a filled box 0.22–0.78 (the frame's top-left is silver), an empty one 0.03 at most.
+    const double MinFrame = 0.12;
+
+    /// <summary>The share of the icon's outer ring (2 px, scaled) that is frame red: R well over G and B.</summary>
+    internal static double RedFrame(Image area, PixelRect icon)
+    {
+        int band = Math.Max(1, (int)Math.Round(icon.Width * 2 / 31.0)), red = 0, all = 0;
+        for (int y = icon.Y; y < icon.Bottom; y++)
+            for (int x = icon.X; x < icon.Right; x++)
+            {
+                if (x - icon.X >= band && icon.Right - 1 - x >= band && y - icon.Y >= band && icon.Bottom - 1 - y >= band) continue;
+                if (x < 0 || y < 0 || x >= area.Width || y >= area.Height) continue;
+                var (b, g, r) = area.Pixel(x, y);
+                all++;
+                if (r >= 90 && r - Math.Max(g, b) >= 50) red++;
+            }
+        return all == 0 ? 0 : red / (double)all;
+    }
+
     /// <summary>What the debug window's row says of a box: the kind or "없음", with the 결투자 score when nothing or the red
     /// sigil was read and the score is over half (a near miss of the 결투자's bar, to see it in game).</summary>
     public static string DebugText(DebuffKind? kind, double duelScore)

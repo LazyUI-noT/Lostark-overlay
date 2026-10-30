@@ -1,0 +1,16 @@
+{
+  "source": "user screenshot 8.png",
+  "slot": "bosshp",
+  "hud": 110,
+  "rect": [
+    0,
+    0,
+    418,
+    23
+  ],
+  "width": 418,
+  "height": 23,
+  "pts": [
+    0
+  ]
+}

@@ -467,3 +467,11 @@ foreach ($f in @(@('busy_300a', '단심300%.mp4', 0.6), @('busy_300b', '단심30
 Cut 'war2_R' (Join-Path $ref '전태_해_2.mp4') '일반4' 110 0.6 2.8
 Cut 'war2_F' (Join-Path $ref '전태_해_2.mp4') '일반8' 110 0.6 2.8
 Cut 'war2_R2' (Join-Path $ref '전태_해_2.mp4') '일반4' 110 22.5 4.5
+
+# The boss HP bar (project B, Geometry.BossBar): the top of the screen round the bar, its name and "X n". mordum.png and
+# Mordum_layout.png: 1920×1080, HUD 110, the raid bar with no portrait ("X 494", "X 468"); Mordum_layout_21_9.png: the same
+# frame at forced 21:9 (viewport 0, 135, 1920, 810), with a portrait; bossHP_hud100/80.png: the dummy 루메루스 (no count).
+foreach ($b in @(@('mordum', 'mordum.png', 110), @('layout', 'Mordum_layout.png', 110), @('dummy100', 'bossHP_hud100.png', 100), @('dummy80', 'bossHP_hud80.png', 80))) {
+  CutRect "bosstop_$($b[0])" (Join-Path $ref $b[1]) 'bosstop' $b[2] @(560, 20, 800, 90)
+}
+CutRect 'bosstop_219' (Join-Path $ref 'Mordum_layout_21_9.png') 'bosstop' 110 @(560, 150, 800, 70)

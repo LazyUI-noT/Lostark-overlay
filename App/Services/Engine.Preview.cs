@@ -16,19 +16,19 @@ public sealed partial class Engine
 
     /// <summary>A preview session began: its number, the game area, the fit it starts from, the buff size, 테스트 모드.</summary>
     public event Action<int, Viewport, Fit, int, bool>? PreviewStarted;
-    /// <summary>The session's pictures: the bottom band and the boss band, each with where it is on screen.</summary>
-    public event Action<int, Image, PixelRect, Image, PixelRect>? PreviewFrame;
+    /// <summary>The session's read states (what the adjust layer draws green), every <see cref="PreviewEvery"/>.</summary>
+    public event Action<int, AdjustReads>? PreviewReads;
     /// <summary>적용 kept: the slots calibrated as ready (-1: the game wasn't in front), 테스트 모드 (then only the video's fit has it).</summary>
     public event Action<int, bool>? PreviewCommitted;
 
-    /// <summary>테스트 모드: 위치 조정 began with no fit found, from <see cref="BareHud"/>.</summary>
-    public event Action? PreviewWithoutFit;
+    /// <summary>위치 조정 began with no fit found, from <see cref="PreviewStart.BareHud"/>; true in 테스트 모드.</summary>
+    public event Action<bool>? PreviewWithoutFit;
     /// <summary>테스트 모드: the window picked from the tray no longer exists (raised each step until App ends the mode).</summary>
     public event Action<IntPtr>? PickedWindowClosed;
 
+    bool _previewFit;    // engine thread only: _fit was put by a preview (StartBare or an edit), not found or saved
     bool _bareNoticed;   // engine thread only: PreviewWithoutFit told in this session
 
-    const double BareHud = 100;
     static readonly TimeSpan PreviewEvery = TimeSpan.FromMilliseconds(200);
     PreviewAsk? _ask;
     int _end;            // set by EndPreview: 1 drop the edit, 2 keep it
@@ -42,14 +42,17 @@ public sealed partial class Engine
 
     /// <summary>The debug window closed (<paramref name="keep"/> false: back to the saved fit) or 적용 (true, with the fit applied:
     /// the last edit may not have reached the engine yet); any thread.</summary>
-    public void EndPreview(bool keep, Fit? fit = null)
+    /// <param name="testBuffSize">테스트 모드's 적용: the video's 버프 크기, kept for the test session instead of 설정.</param>
+    public void EndPreview(bool keep, Fit? fit = null, int? testBuffSize = null)
     {
         Volatile.Write(ref _ask, null);
         Volatile.Write(ref _kept, keep ? fit : null);
+        _keptBuffSize = keep ? testBuffSize : null;
         Interlocked.Exchange(ref _end, keep ? 2 : 1);
     }
 
     Fit? _kept;
+    volatile object? _keptBuffSize;   // boxed int: 테스트 모드's 적용 buff size, read with the end
 
     /// <summary>After <see cref="EnsureFit"/>: ends, starts or follows the preview. A drop leaves <see cref="_fit"/> null, so the
     /// saved fit and its calibration come back next step.</summary>
@@ -64,12 +67,18 @@ public sealed partial class Engine
             // A drop, or an 적용 made for a game area that has changed since (its fit is for the old one): back to the saved fit.
             if (end == 1 || _vp != _previewVp) { _fit = null; return; }
             var fit = kept ?? _fit!;
-            if (_testMode) { _testFits.Set(_vp, fit); _vpPinned = true; }
+            if (_testMode)
+            {
+                _testFits.Set(_vp, fit);
+                _testFits.Lock((_client.Width, _client.Height));
+                if (Interlocked.Exchange(ref _keptBuffSize, null) is int size) _testFits.BuffSize = size;
+                _vpPinned = true;
+            }
             else _adjusted = true;   // App has stored it in Settings.Adjusts; its calibration is the …_adj files
             // The ready slots are read off the game: App brings it to the front, so wait for it as 스킬창 맞추기 does.
-            for (int i = 0; i < FitWaitSteps && !_foreground; i++) Thread.Sleep(100);
+            for (int i = 0; i < FitWaitSteps && !CanRead; i++) Thread.Sleep(100);
             int ready = -1;
-            if (_foreground) ready = Recalibrate(fit);
+            if (CanRead) ready = Recalibrate(fit);
             else
             {
                 if (!_testMode) foreach (var file in OwnCalibrationFiles().ToList()) File.Delete(file);   // none stale from an older 수동 조정
@@ -77,15 +86,18 @@ public sealed partial class Engine
             }
             PreviewCommitted?.Invoke(ready, _testMode);
         }
+        // A fit only a preview made (HUD 100, or an edit) with no preview running: the window closed before its session began.
+        // Never read or calibrate with it.
+        if (_previewFit && !_previewing && Volatile.Read(ref _ask) is null) { (_fit, _previewFit) = (null, false); return; }
         if (Volatile.Read(ref _ask) is not { } ask) return;
         if (!_previewing || _vp != _previewVp)
         {
             (_previewing, _previewVp, _lastPreview, _previewBuffSize) = (true, _vp, TimeSpan.MinValue, null);
-            PreviewStarted?.Invoke(++_gen, _vp, _fit!, _config.DebuffSize, _testMode);
+            PreviewStarted?.Invoke(++_gen, _vp, _fit!, (_testMode ? _testFits.BuffSize : null) ?? _config.DebuffSize, _testMode);
             return;
         }
         if (ask.Gen != _gen) return;
         _previewBuffSize = ask.BuffSize;
-        if (ask.Fit is { } f && f != _fit) ApplyFit(f);
+        if (ask.Fit is { } f && f != _fit) { ApplyFit(f); _previewFit = true; }
     }
 }

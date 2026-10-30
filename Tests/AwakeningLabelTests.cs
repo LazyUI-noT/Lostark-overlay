@@ -18,6 +18,29 @@ public class AwakeningLabelTests
         Assert.True(AwakeningLabel.IsShown(VisionReplayTests.Crop(img, Label.X - 505 + frameX, Label.Y - 982 + frameY, Label.Width, Label.Height)));
     }
 
+    // At 4K the crop is twice as big, so the search around the fitted spot must be too: the banner 4 reference px off
+    // (the edge of the 1080p search) is 8 crop px off at 2×, past a search fixed in crop pixels.
+    [Fact]
+    public void Banner_off_its_spot_is_found_at_twice_the_size()
+    {
+        var img = Fixture.Load("label_ref").Frames[0];
+        var crop = VisionReplayTests.Crop(img, Label.X - 505 + 27 + 4, Label.Y - 982 + 65, Label.Width, Label.Height);
+        Assert.True(AwakeningLabel.IsShown(crop));
+        Assert.True(AwakeningLabel.IsShown(ImageOps.Resample(crop, new PixelRect(0, 0, crop.Width, crop.Height), 2)));
+    }
+
+    [Theory]
+    [InlineData("label_gameplay_5")]
+    [InlineData("label_gameplay_5.5")]
+    [InlineData("label_gameplay_23.8")]
+    public void No_banner_stays_no_banner_at_twice_the_size(string name)
+    {
+        var f = Fixture.Load(name);
+        var r = Geometry.ToScreen(Label, Fhd, new Fit(100));
+        var crop = VisionReplayTests.Crop(f.Frames[0], r.X - f.Rect[0], r.Y - f.Rect[1], r.Width, r.Height);
+        Assert.False(AwakeningLabel.IsShown(ImageOps.Resample(crop, new PixelRect(0, 0, crop.Width, crop.Height), 2)));
+    }
+
     [Theory]
     [InlineData("label_gameplay_5", 100, false)]      // no banner
     [InlineData("label_gameplay_5.5", 100, false)]    // dark scenes, the hardest backgrounds for a grey banner

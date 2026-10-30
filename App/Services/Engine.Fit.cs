@@ -21,7 +21,9 @@ public sealed partial class Engine
         if (test != _testMode)
         {
             // In or out of 테스트 모드: the video's fit and calibration (memory only) and the game's saved ones don't mix.
-            _testFits.Clear();
+            _testFitsBy.Clear();
+            ResetSource();   // 테스트 모드 reads the video's window itself (CaptureFactory), the game the screen
+            _pictureNoticed = false;
             (_vp, _fit, _fitNeededRaised, _lastViewport, _vpPinned) = (default, null, false, TimeSpan.MinValue, false);
             Array.Clear(_cal);
             for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
@@ -43,9 +45,10 @@ public sealed partial class Engine
         if (hwnd != _hwnd || monitor != _monitor || _source is null)
         {
             ResetSource();
-            if (hwnd != _hwnd) _vpPinned = false;   // another video in test mode
+            if (hwnd != _hwnd) (_vpPinned, _pictureNoticed) = (false, false);   // another video in test mode (each keeps its own TestFits)
             (_hwnd, _monitor) = (hwnd, monitor);
-            _source = CaptureFactory.Create(hwnd);
+            _source = CaptureFactory.Create(hwnd, test);
+            _seesBehind = test && _source.SeesBehind;   // the game keeps its front waits (Windows 11's borderless WGC too)
             _lastViewport = TimeSpan.MinValue;
         }
         return true;
@@ -56,20 +59,27 @@ public sealed partial class Engine
     {
         // 테스트 모드 while 위치 조정 is open or after its 적용: the boxes stay on the screen pixels they were put on. A video's
         // dark scene reads as black bars, which moved the area, restarted the preview and looked for a fit again.
-        // A moved window keeps them there; refit (fitting), another window or a resize releases it.
+        // Refit (fitting), another window, a resize or a move releases them: the area (and the 위치 조정 layer over it) follows the window.
         if (GameWindow.ClientRect(_hwnd) is not { } client) return;
-        bool sameSize = (client.Width, client.Height) == (_client.Width, _client.Height);
-        if (fitting || !sameSize) _vpPinned = false;
-        else if (_testMode && _vp.Height > 0 && (_vpPinned || _previewing)) { _lastViewport = now; return; }
+        bool sameSize = (client.Width, client.Height) == (_client.Width, _client.Height), samePlace = client == _client;
+        if (fitting || !sameSize || !samePlace) _vpPinned = false;
+        // So does a live area 위치 조정 opened with no saved fit (a cutscene's bars would restart it from HUD 100).
+        else if (_vp.Height > 0 && (_testMode && (_vpPinned || _previewing) || _previewFit && _previewing)) { _lastViewport = now; return; }
+        if (!samePlace) _vp = default;   // moved: found again where the window is now (the kept-fit rule below would hold the old spot)
         var manual = _testMode ? null : _config.Manual(client);   // 직접 입력 describes the game, not a video of it
         Viewport vp;
-        if (manual is { } m) vp = Geometry.ManualViewport(client, m.Screen);   // 직접 입력: no black-bar probe
+        if (_testMode)
+        {
+            // The video picture in the player window (fullscreen or not), never the game's 직접 입력 or black-bar probe.
+            vp = TestArea(client, now, fitting);
+        }
+        else if (manual is { } m) vp = Geometry.ManualViewport(client, m.Screen);   // 직접 입력: no black-bar probe
         else
         {
             var probe = Letterbox.Probe(client);
             var column = Buffer(probe);
             if (!_source!.TryCapture([probe], [column], TimeSpan.FromMilliseconds(100), out _)) return;
-            vp = Letterbox.Viewport(client, column, _testMode ? Letterbox.VideoNoise : 0);
+            vp = Letterbox.Viewport(client, column);
         }
         _lastViewport = now;
         bool resized = (client.Width, client.Height) != (_client.Width, _client.Height);
@@ -98,19 +108,13 @@ public sealed partial class Engine
         {
             // The video in front: its own fit, looked for on it while it is in front (TestFits), never the game's saved one.
             if (_testFits.For(_vp) is { } found) { ApplyFit(found); return true; }
-            if (_foreground && _testFits.ShouldTry(_vp, Clock.Now()))
+            if (CanRead && _testFits.ShouldTry(_vp, Clock.Now()))
             {
                 _quietFit = true;
                 try { RunFit(); }
                 finally { _quietFit = false; }
             }
-            // 위치 조정 opened with nothing found: start from where HUD 100 puts the bar, for the user to move it (a drop
-            // clears it again, 적용 keeps it as the video's fit).
-            if (_fit is null && Volatile.Read(ref _ask) is not null)
-            {
-                ApplyFit(new Fit(BareHud));
-                if (!_bareNoticed) { _bareNoticed = true; PreviewWithoutFit?.Invoke(); }   // once per session, not per game-area change
-            }
+            if (_fit is null) StartBare();
             return _fit is not null;
         }
         // 수동 조정 applied for this game area wins; its slot calibration is kept apart (CalibrationFile).
@@ -120,14 +124,26 @@ public sealed partial class Engine
         if (!_config.Fits.TryGetValue(Geometry.ViewportKey(_vp), out var fit))
         {
             if (!_fitNeededRaised) { _fitNeededRaised = true; FitNeeded?.Invoke(_vp); }
-            return false;
+            StartBare();
+            return _fit is not null;
         }
         ApplyFit(fit);
         return true;
     }
 
+    /// <summary>위치 조정 opened with nothing found: start from where HUD 100 puts the bar, for the user to move it (a drop clears it
+    /// again; 적용 keeps it as 수동 조정, or as the video's fit in 테스트 모드).</summary>
+    void StartBare()
+    {
+        if (PreviewStart.Fit(null, Volatile.Read(ref _ask) is not null) is not { } bare) return;
+        ApplyFit(bare);
+        _previewFit = true;
+        if (!_bareNoticed) { _bareNoticed = true; PreviewWithoutFit?.Invoke(_testMode); }   // once per session, not per game-area change
+    }
+
     void ApplyFit(Fit fit)
     {
+        _previewFit = false;   // StartBare and the preview's own edits set it again
         Array.Clear(_cal);
         _fit = fit;
         _digits = new DigitReader(Geometry.Scale(_vp, fit));
@@ -148,7 +164,7 @@ public sealed partial class Engine
     /// <summary>A fit not found, told to App unless it was looked for unasked (테스트 모드, <see cref="_quietFit"/>).</summary>
     bool Failed(string message)
     {
-        if (!_quietFit) FitFinished?.Invoke(_vp, null, message, null, _testMode);
+        if (!_quietFit) FitFinished?.Invoke(_vp, null, message, null, _testMode, false);
         return false;
     }
 
@@ -157,9 +173,10 @@ public sealed partial class Engine
         if (_vp.Height == 0) return Failed("게임 화면을 찾지 못했습니다. 게임을 창 모드(전체 창)로 실행해 주세요.");
         // The request came from the tray menu or 설정, which leave the taskbar over the skill bar: App brings the game to
         // the front, and the capture waits for it and for the taskbar to slide away.
-        for (int i = 0; i < FitWaitSteps && !_foreground; i++) Thread.Sleep(100);
-        if (!_foreground) return Failed("게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도해 주세요.");
-        if (!_quietFit) Thread.Sleep(TaskbarSettleMs);   // a quiet try runs with the video already in front, no taskbar to wait out
+        for (int i = 0; i < FitWaitSteps && !CanRead; i++) Thread.Sleep(100);
+        if (!CanRead) return Failed("게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도해 주세요.");
+        // A quiet try runs with the video already in front, and a window capture sees through the taskbar: nothing to wait out.
+        if (!_quietFit && !_seesBehind) Thread.Sleep(TaskbarSettleMs);
         var band = FitSolver.Band(_vp);
         var img = new Image(band.Width, band.Height);
         if (!_source!.TryCapture([band], [img], TimeSpan.FromMilliseconds(500), out _))
@@ -168,11 +185,37 @@ public sealed partial class Engine
         var (fit, note, detected) = !_testMode && _config.Manual(_client) is { } m ? SolveManual(img, band, m.Hud, m.Screen) : SolveAuto(img, band);
         if (fit is null) return Failed(note);
 
-        if (_testMode) _testFits.Set(_vp, fit);
+        // 테스트 모드, asked for (not the quiet try): the video's bar fine-tuned; 되돌리기 puts back the fit in use before.
+        bool refined = false;
+        if (_testMode && !_quietFit && FitSolver.Refine(img, band, _vp, fit) is { } tuned)
+        {
+            _testFits.SetFound(_vp, tuned, _testFits.For(_vp) ?? fit);
+            (fit, refined) = (tuned, true);
+        }
+        else if (_testMode) _testFits.Set(_vp, fit);
+        if (_testMode) _testFits.Lock((_client.Width, _client.Height));   // a fit found on the picture: it stays where it is
         _adjusted = false;   // found on screen (App drops a 수동 조정 of this area before asking)
         int ready = Recalibrate(fit);
-        FitFinished?.Invoke(_vp, fit, $"스킬창을 맞췄습니다 (HUD {fit.Hud:0}%, 준비된 칸 {ready}/{SlotInfo.All.Length}개 기준 저장).{note}", detected, _testMode);
+        string what = refined ? TestFits.Describe(fit, Geometry.Scale(_vp, fit)) : $"스킬창을 맞췄습니다 (HUD {fit.Hud:0}%";
+        FitFinished?.Invoke(_vp, fit, $"{what}{(refined ? " (" : ", ")}준비된 칸 {ready}/{SlotInfo.All.Length}개 기준 저장).{note}", detected, _testMode, refined);
         return true;
+    }
+
+    /// <summary>테스트 모드's 되돌리기: the fit kept by the last fit request, recalibrated when the video is in front (App brings it).</summary>
+    void RevertFit()
+    {
+        _previewing = false;   // an open 위치 조정 starts over on the fit put back, as after a refit
+        if (!_testMode || _testFits.Revert(_vp) is not { } back)
+        {
+            // Test mode ended, 위치 조정 applied another fit, or the game area changed since: say so, and the button goes.
+            FitFinished?.Invoke(_vp, null, "되돌릴 맞춤이 없습니다. 테스트 모드가 끝났거나 위치를 다시 맞췄습니다.", null, _testMode, false);
+            return;
+        }
+        for (int i = 0; i < FitWaitSteps && !CanRead; i++) Thread.Sleep(100);
+        int ready = CanRead ? Recalibrate(back) : -1;
+        if (ready < 0) ApplyFit(back);
+        FitFinished?.Invoke(_vp, back, $"되돌렸습니다: {TestFits.Offsets(back, Geometry.Scale(_vp, back))}" +
+            (ready >= 0 ? $" (준비된 칸 {ready}/{SlotInfo.All.Length}개 기준 저장)." : "."), null, true, false);
     }
 
     /// <summary>Puts <paramref name="fit"/> to use and calibrates every slot that reads ready now (cooldowns reset), replacing the

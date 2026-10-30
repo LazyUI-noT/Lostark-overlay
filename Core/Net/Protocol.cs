@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Core.Net;
 
 /// <summary>Packet type byte (the first header byte, authenticated as AAD). 5 was Gauge (protocol 1).</summary>
-public enum MessageType : byte { Hello = 1, Welcome, Refuse, State, Heartbeat = 6, Bye, Roster, Look, LookAck, Pending }
+public enum MessageType : byte { Hello = 1, Welcome, Refuse, State, Heartbeat = 6, Bye, Roster, Look, LookAck, Pending, Meter }
 
 /// <summary>A joiner's Hello as read. <see cref="App"/> is 0.0.0 and <see cref="DeviceKey"/> and <see cref="Signature"/>
 /// are empty when an older Hello doesn't carry them.</summary>
@@ -24,8 +24,9 @@ public static class Protocol
     /// ColorsAck (a member's own box colours, for 파티원 설정 따르기). 8: they became Look and LookAck, which add the box
     /// size and free layout (파티원 크기 받기, 파티원 배치 받기). 9: the Hello ends with the joiner's app version (major,
     /// minor, patch), and the host refuses another major.minor (<see cref="Membership.AppRefusal"/>). 10: the Hello adds the
-    /// joiner's device key and its signature (<see cref="DeviceIdentity"/>), and Pending says the host is deciding.</summary>
-    public const byte Version = 10;
+    /// joiner's device key and its signature (<see cref="DeviceIdentity"/>), and Pending says the host is deciding. 11: a 공대
+    /// of 8 in two parties (the Roster adds each member's party) and Meter (the DPS 미터기's 1 Hz figures).</summary>
+    public const byte Version = 11;
     const int Estimated = 0x80, Stacked = 0x40, Gold = 0x20, StackSkill = 0x10, PhaseBits = 0x0F;
     const int MaxName = 16;
 
@@ -77,22 +78,62 @@ public static class Protocol
         return reason;
     }
 
-    /// <summary>Host → peers: every member including the host, in join order.</summary>
-    public static byte[] Roster(IReadOnlyList<(ulong Id, string Name)> members) => Write(w =>
+    /// <summary>Host → peers: every member including the host, in join order, with their party (1 or 2):
+    /// <c>[1B n] + n × [8B id][name][1B party]</c>.</summary>
+    public static byte[] Roster(IReadOnlyList<(ulong Id, string Name, int Party)> members) => Write(w =>
     {
         w.Write((byte)members.Count);
-        foreach (var (id, name) in members) { w.Write(id); w.Write(Clip(name)); }
+        foreach (var (id, name, party) in members) { w.Write(id); w.Write(Clip(name)); w.Write((byte)party); }
     });
 
-    public static bool TryReadRoster(byte[] body, out List<(ulong Id, string Name)> members)
+    /// <summary>False on a short body or a party other than 1 or 2.</summary>
+    public static bool TryReadRoster(byte[] body, out List<(ulong Id, string Name, int Party)> members)
     {
-        var list = new List<(ulong, string)>();
+        var list = new List<(ulong, string, int)>();
         members = list;
-        return Read(body, b =>
+        bool ok = Read(body, b =>
         {
             int n = b.ReadByte();
-            for (int i = 0; i < n; i++) list.Add((b.ReadUInt64(), Clip(b.ReadString())));
+            for (int i = 0; i < n; i++) list.Add((b.ReadUInt64(), Clip(b.ReadString()), b.ReadByte()));
         });
+        return ok && list.All(m => m.Item3 is 1 or 2);
+    }
+
+    // ── Meter ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Largest damage, DPS or boss figure taken from the wire: 10^16 (raid HP is in the tens of 조, 10^13).</summary>
+    const long MaxMeterValue = 10_000_000_000_000_000;
+    const int MaxTimer = 24 * 3600;
+
+    /// <summary>A member's DPS 미터기 figures: <c>[8B id][name][1B class][1B role][1B party][8B damage][8B dps][4B timer, −1 none]
+    /// [1B running][4B fight][8B boss taken][8B damage under own 공증, −1 none]</c>.</summary>
+    public static byte[] Meter(MeterSample s) => Write(w =>
+    {
+        w.Write(s.Id); w.Write(Clip(s.Name)); w.Write((byte)Math.Clamp(s.ClassId, 0, 255)); w.Write((byte)s.Role); w.Write((byte)s.Party);
+        w.Write(s.Damage); w.Write(s.Dps); w.Write(s.Timer ?? -1); w.Write(s.Running); w.Write(s.Fight); w.Write(s.BossTaken);
+        w.Write(s.AtkBuffed ?? -1);
+    });
+
+    /// <summary>False on a short body or anything out of range (raw wire data from a member).</summary>
+    public static bool TryReadMeter(byte[] body, out MeterSample sample)
+    {
+        MeterSample? s = null;
+        bool ok = Read(body, b =>
+        {
+            ulong id = b.ReadUInt64();
+            string name = Clip(b.ReadString());
+            int cls = b.ReadByte(), role = b.ReadByte(), party = b.ReadByte();
+            long damage = b.ReadInt64(), dps = b.ReadInt64();
+            int timer = b.ReadInt32();
+            bool running = b.ReadBoolean();
+            int fight = b.ReadInt32();
+            long boss = b.ReadInt64(), atk = b.ReadInt64();
+            if (!Enum.IsDefined((MeterRole)role) || party is not (1 or 2) || timer is < -1 or > MaxTimer || fight < 0) return;
+            if (new[] { damage, dps, boss }.Any(v => v is < 0 or > MaxMeterValue) || atk is < -1 or > MaxMeterValue) return;
+            s = new(id, name, cls, (MeterRole)role, party, damage, dps, timer < 0 ? null : timer, running, fight, boss, atk < 0 ? null : atk);
+        });
+        sample = s ?? new(0, "", 0, MeterRole.딜러, 1, 0, 0, null, false, 0, 0);
+        return ok && s is not null;
     }
 
     /// <summary>A heartbeat carries the sender's clock; the receiver echoes it back (reply) so the sender measures RTT.</summary>
@@ -273,7 +314,16 @@ public static class Protocol
 
     static uint Ms(TimeSpan? t) => t is { } v ? (uint)Math.Clamp(Math.Round(v.TotalMilliseconds), 0, uint.MaxValue) : 0;
 
-    static string Clip(string s) => s.Length > MaxName ? s[..MaxName] : s;
+    /// <summary>A name as shown to others: no control or format characters (newlines, right-to-left overrides that reorder the
+    /// numbers beside it), at most <see cref="MaxName"/> chars, never half a surrogate pair.</summary>
+    static string Clip(string s)
+    {
+        var kept = new string([.. s.Where(c => char.GetUnicodeCategory(c) is not (System.Globalization.UnicodeCategory.Control
+            or System.Globalization.UnicodeCategory.Format))]);
+        if (kept.Length <= MaxName) return kept;
+        int n = char.IsHighSurrogate(kept[MaxName - 1]) ? MaxName - 1 : MaxName;
+        return kept[..n];
+    }
 
     static byte[] Write(Action<BinaryWriter> write)
     {

@@ -366,4 +366,29 @@ public class DuelistTests
         Assert.Null(s.Lightning);
         Assert.NotNull(s.Duelist);
     }
+
+    [Fact]
+    public void The_timer_ticking_moves_the_countdown_back_to_when_the_debuff_really_came()
+    {
+        // The debuff came at 0; the icon, read 3 times a second, was first seen at 0.3. The timer under it ticks every whole
+        // second from the real start: read 38 at 0.4, 37 at 1.05 (the tick was at 1.0, read 0.05 late at 10 a second).
+        var s = DebuffStatus.None with { Duelist = new DuelMark(At(0.3)) };
+        s = DebuffTracker.DuelTimer(s, 38, At(0.4));
+        Assert.Equal(At(0.3), s.Duelist!.FirstSeenAt);                       // no tick seen yet
+        s = DebuffTracker.DuelTimer(s, 37, At(1.05));
+        Assert.Equal(At(0.05), s.Duelist!.FirstSeenAt);                      // the tick minus 1 s
+        s = DebuffTracker.DuelTimer(s, 36, At(2.02));
+        Assert.Equal(At(0.02), s.Duelist!.FirstSeenAt);                      // a later tick read sooner refines it
+        s = DebuffTracker.DuelTimer(s, 36, At(2.5));
+        Assert.Equal(At(0.02), s.Duelist!.FirstSeenAt);                      // no tick: unchanged
+    }
+
+    [Fact]
+    public void A_misread_timer_never_moves_the_countdown_by_a_second_or_more_or_later()
+    {
+        var s = DebuffStatus.None with { Duelist = new DuelMark(At(0.3)) };
+        s = DebuffTracker.DuelTimer(DebuffTracker.DuelTimer(s, 38, At(0.4)), 35, At(0.5));   // a jump of 3: not a tick
+        Assert.Equal(At(0.3), s.Duelist!.FirstSeenAt);
+        Assert.Equal(s, DebuffTracker.DuelTimer(s with { Duelist = null }, 34, At(1)) with { Duelist = s.Duelist });   // no 결투자: nothing
+    }
 }

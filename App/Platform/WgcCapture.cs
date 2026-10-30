@@ -28,13 +28,26 @@ public sealed partial class WgcCapture : ICaptureSource
     private Windows.Graphics.SizeInt32 _size;
 
     /// <summary>A borderless capture of <paramref name="hwnd"/>, or null when the border can't be disabled
-    /// (always on Windows 10) or the window can't be captured.</summary>
-    public static WgcCapture? TryCreate(IntPtr hwnd)
+    /// (always on Windows 10) or the window can't be captured. <paramref name="allowBorder"/>: 테스트 모드's video only (the user
+    /// agreed, 2026-10-31), where Windows 10 keeps its yellow border; the window is read even while covered, so the player never
+    /// has to come to the front (which shows its controls over the skill bar).</summary>
+    public static WgcCapture? TryCreate(IntPtr hwnd, bool allowBorder = false)
     {
-        if (hwnd == 0 || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348) || !BorderlessGranted()) return null;
-        try { return new WgcCapture(hwnd); }
-        catch (Exception e) when (e is COMException or SharpGen.Runtime.SharpGenException or InvalidOperationException) { return null; }
+        if (hwnd == 0) return null;
+        bool borderless = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348) && BorderlessGranted();
+        if (!borderless && !(allowBorder && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041) && GraphicsCaptureSession.IsSupported())) return null;
+        try { return new WgcCapture(hwnd, borderless); }
+        // E_INVALIDARG (ArgumentException) from CreateForWindow: a window WGC can't capture (seen in 테스트 모드's replays,
+        // 2026-10-31); the caller falls back to Desktop Duplication.
+        catch (Exception e) when (e is COMException or SharpGen.Runtime.SharpGenException or InvalidOperationException or ArgumentException)
+        {
+            Trace.WriteLine($"[capture] WGC not available for window 0x{hwnd:X} ({GameWindow.ClassOf(hwnd)}): {e.GetType().Name}: {e.Message}");
+            return null;
+        }
     }
+
+    /// <summary>The window's own content, also behind other windows.</summary>
+    public bool SeesBehind => true;
 
     /// <summary>True only if a capture started now would have no border.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.20348.0")]
@@ -47,8 +60,9 @@ public sealed partial class WgcCapture : ICaptureSource
         return status == AppCapabilityAccessStatus.Allowed;
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.20348.0")]
-    private WgcCapture(IntPtr hwnd)
+    /// <param name="borderless">Turn the border off (Windows 11, access granted); false only for <c>allowBorder</c>.</param>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.19041.0")]
+    private WgcCapture(IntPtr hwnd, bool borderless)
     {
         _hwnd = hwnd;
         D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport, [FeatureLevel.Level_11_0, FeatureLevel.Level_10_1, FeatureLevel.Level_10_0], out ID3D11Device device, out ID3D11DeviceContext context).CheckError();
@@ -60,8 +74,11 @@ public sealed partial class WgcCapture : ICaptureSource
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(_winrtDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _size);
         _pool.FrameArrived += OnFrameArrived;
         _session = _pool.CreateCaptureSession(_item);
-        _session.IsBorderRequired = false;
-        if (_session.IsBorderRequired) throw new InvalidOperationException("Border can't be disabled.");
+        if (borderless && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            _session.IsBorderRequired = false;
+            if (_session.IsBorderRequired) throw new InvalidOperationException("Border can't be disabled.");
+        }
         _session.IsCursorCaptureEnabled = false;
         _session.StartCapture();
     }

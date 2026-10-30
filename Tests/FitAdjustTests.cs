@@ -101,6 +101,16 @@ public class FitAdjustTests
         Assert.Equal((120, false), (back.BuffSize, back.Changed));
     }
 
+    /// <summary>위치 조정 draws the rows the engine reads: the buff row at 버프 읽을 칸 수, the boss row at the game's 보스 디버프 크기.</summary>
+    [Fact]
+    public void The_session_draws_the_buff_count_and_boss_size_that_are_read()
+    {
+        var a = FitAdjust.Begin(Fhd, 120, new Fit(100), buffCount: 12, bossSize: 100);
+        Assert.Equal(Geometry.BuffArea(Fhd, a.Current, 120, 12), a.RectOf(AdjustPart.버프));
+        Assert.Equal(Geometry.BossRow(Fhd, a.Current, 100), a.RectOf(AdjustPart.보스));
+        Assert.Equal((12, 100), (a.WithBuffSize(110).BuffCount, a.BossTo(130).BossGameSize));   // edits keep them
+    }
+
     [Theory]
     [InlineData(113, 113)]   // ± between the game's choices
     [InlineData(9999, FitAdjust.MaxBuffSize)]
@@ -197,6 +207,59 @@ public class FitAdjustTests
         Assert.True(b.Changed);
         Assert.Equal(a.Start, b.Reverted().Current);
         Assert.False(b.Reverted().Changed);
+    }
+
+    [Fact]
+    public void A_rows_handle_is_on_its_moving_edge()
+    {
+        var a = Session();
+        foreach (var part in new[] { AdjustPart.버프, AdjustPart.디버프, AdjustPart.보스 })
+        {
+            var (x, y) = a.Handle(part);
+            Assert.Equal((part, true), a.PartAt(x, y, 10));
+        }
+        Assert.Equal(a.RectOf(AdjustPart.버프).X, a.Handle(AdjustPart.버프).X);       // the buff row keeps its right end, grows left
+        Assert.Equal(a.RectOf(AdjustPart.디버프).Right, a.Handle(AdjustPart.디버프).X);
+        Assert.Equal(a.RectOf(AdjustPart.보스).Right, a.Handle(AdjustPart.보스).X);
+    }
+
+    [Theory]
+    [InlineData(AdjustPart.버프, -40)]
+    [InlineData(AdjustPart.버프, 30)]
+    [InlineData(AdjustPart.디버프, 40)]
+    [InlineData(AdjustPart.보스, 25)]
+    [InlineData(AdjustPart.보스, -25)]
+    public void A_dragged_handle_follows_the_pointer(AdjustPart part, double dx)
+    {
+        var a = Session();
+        double target = a.Handle(part).X + dx, step = a.RectOf(part).Width / 100.0 + 1;   // one size step, and rounding
+        Assert.InRange(a.DragCorner(part, dx).Handle(part).X, target - step, target + step);
+    }
+
+    [Fact]
+    public void Resize_steps_each_part()
+    {
+        var a = Session();
+        Assert.Equal(a.WidenBy(1).Current, a.Resize(AdjustPart.스킬창, 1).Current);
+        Assert.Equal(121, a.Resize(AdjustPart.버프, 1).BuffSize);
+        Assert.Equal(119, a.Resize(AdjustPart.디버프, -1).BuffSize);   // one 버프 크기 for both rows
+        Assert.Equal(101, a.Resize(AdjustPart.보스, 1).BossPercent);
+    }
+
+    [Fact]
+    public void Dragging_the_bar_corner_matches_DragLeftTo()
+    {
+        var a = Session();
+        Assert.Equal(a.DragLeftTo(a.RectOf(AdjustPart.스킬창).X - 20).Current, a.DragCorner(AdjustPart.스킬창, -20).Current);
+    }
+
+    [Fact]
+    public void Dragging_a_handle_far_stops_at_the_clamps()
+    {
+        var a = Session();
+        Assert.Equal(FitAdjust.MaxBuffSize, a.DragCorner(AdjustPart.버프, -10_000).BuffSize);   // the buff row grows to the left
+        Assert.Equal(FitAdjust.MinBuffSize, a.DragCorner(AdjustPart.디버프, -10_000).BuffSize);
+        Assert.Equal(FitAdjust.MinBoss, a.DragCorner(AdjustPart.보스, -10_000).BossPercent);
     }
 
     // ── Settings: the three modes and the applied adjusts ─────────────────────────────────────────────────────────

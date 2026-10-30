@@ -27,6 +27,7 @@ public partial class SettingsWindow
     Place? PlaceOf(Panel p) =>
         p == _secCharacter ? new(AreaCharacter, "캐릭터", null)
         : p == _secFit ? new(AreaFit, "스킬창", null)
+        : p == _secDiag ? new(AreaFit, SecDiag, null)
         : p == _secDisplay ? new(AreaOverlay, "전체", null)
         : p == _secPlace ? new(AreaOverlay, "배치", null)
         : p == GaugeBox ? new(AreaOverlay, "아덴 게이지", new("Gauge", Part.게이지, null))
@@ -37,6 +38,8 @@ public partial class SettingsWindow
         : p == _secMembers ? new(AreaParty, SecMembers, null)
         : p == _secOrder ? new(AreaParty, "순서", null)
         : p == _secSend ? new(AreaParty, "보내기·받기", null)
+        : p == _secRaid ? new(AreaRaid, "레이드", null)
+        : p == _secMeter ? new(AreaMeter, AreaMeter, null)
         : p == _secKeys ? new(AreaKeys, "게임 키", null)
         : p == _secHotkeys ? new(AreaKeys, "앱 단축키", null)
         : null;

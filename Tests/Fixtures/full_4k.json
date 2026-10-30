@@ -1,0 +1,9 @@
+{
+  "source": "4k_screenshot_bard.jpg",
+  "slot": "full",
+  "hud": 0,
+  "rect": [0, 0, 480, 270],
+  "width": 480,
+  "height": 270,
+  "pts": [0.0]
+}

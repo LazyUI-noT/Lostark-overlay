@@ -62,17 +62,4 @@ public class JudgmentSettingsTests
         Assert.Equal((true, 200, 50.0, 1.5), (j.On("워로드 · 고독한 기사"), j.FontSize, j.Left, j.Width));
         Assert.Equal((JudgmentSource.Both, JudgmentDisplay.Bar, new JudgmentSettings().Color, 1.0), (j.Source, j.Display, j.Color, j.Opacity));
     }
-
-    // 레이아웃 편집기 (user, 2026-10-13): its 적용 carries the 단심 window's place and size and its 단심 창 switch.
-    [Fact]
-    public void The_layout_editor_applies_the_단심_window()
-    {
-        var live = new Settings();
-        var edited = new Settings();
-        edited.Judgment.Set("워로드 · 고독한 기사", true);
-        (edited.Judgment.Left, edited.Judgment.Top, edited.Judgment.Width) = (300, 400, 1.4);
-        live.ApplyLayoutFrom(edited);
-        Assert.Equal((true, 300.0, 400.0, 1.4), (live.Judgment.On("워로드 · 고독한 기사"), live.Judgment.Left, live.Judgment.Top, live.Judgment.Width));
-        Assert.True(new Settings().LayoutDiffers(edited));
-    }
 }

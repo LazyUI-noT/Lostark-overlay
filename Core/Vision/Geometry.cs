@@ -81,6 +81,10 @@ public static class Geometry
     // HUD 110) and buff_gameplay.mp4 (120): the pitch is 22.25, 25.5, 28.75, 32, 35 — linear in the size but not
     // proportional to it — and the icon bottom rises 15 buff px above the baseline (930 at 80 to 924 at 120).
     public const int BuffBoxCount = 7, DebuffBoxCount = 5;
+    /// <summary>How many buff boxes 설정 lets the row read (<see cref="BuffSettings.Count"/>; <see cref="BuffBoxCount"/> by default).
+    /// The game draws as many as fit and folds the rest into a "+N" icon: 10 at 1080p, buff 120% (mordum.png), 14 at buff 100%
+    /// in an 810-high game area (4k_down.mp4).</summary>
+    public const int MinBuffBoxCount = 1, MaxBuffBoxCount = 14;
     /// <summary>심판's icon can sit further along the row than the party buffs (user, 2026-10-13).</summary>
     public const int JudgmentBoxCount = 10;
     const double RefBuffRight = 845, BuffBottomAboveBaseline = 15;
@@ -89,6 +93,9 @@ public static class Geometry
     // HUD-scaled 941.6 gives.
     const double RefBuffBaseline = 934.2, BuffBaselineFixed = 941.6 - RefBuffBaseline;
     // Pitch at a 1080-high viewport = BuffPitchPerSize × size/100 + BuffPitchOffset; the gold frame is BuffIconShare of it.
+    // ponytail: the pitch is measured at 1080p only. The native 4K stills (buff 100%) match the icon size and right edge within
+    // 1 px but show one buff, so no pitch; 4k_down (the 21:9 one scaled to 810 high, ~2 px blur) reads 21.86 against this
+    // 21.56, which would put box 13 ~3 px off. A native 4K shot with 10+ buffs settles it.
     const double BuffPitchPerSize = 32.5, BuffPitchOffset = -3.75, BuffIconShare = 0.885;
     // The timer text's band below the frame, per unit of buff scale.
     const double BuffTimerTop = 4.5, BuffTimerBottom = 15.5;
@@ -180,9 +187,9 @@ public static class Geometry
     }
 
     /// <summary>The one rect to capture for the debuff row.</summary>
-    public static PixelRect DebuffArea(Viewport vp, Fit fit, int buffSize)
+    public static PixelRect DebuffArea(Viewport vp, Fit fit, int buffSize, int count = DebuffBoxCount)
     {
-        var b = DebuffBoxes(vp, fit, buffSize);
+        var b = DebuffBoxes(vp, fit, buffSize)[..Math.Clamp(count, 1, DebuffBoxCount)];
         int x = b.Min(r => r.Timer.X), y = b.Min(r => r.Icon.Y);
         return new(x, y, b.Max(r => r.Timer.Right) - x, b.Max(r => r.Timer.Bottom) - y);
     }
@@ -191,13 +198,26 @@ public static class Geometry
     /// from the top of the viewport (mordum.png: the sigils at 845 and 880, y 169, the counts 14 px above them).</summary>
     public static readonly PixelRect RefBossRow = new(700, 140, 540, 70);
 
+    /// <summary>The game's boss effect size every boss shot was taken at (mordum.png, bossHP_hud80/100.png): the size
+    /// <see cref="RefBossRow"/> is measured at. The boss row has its own size in the game, apart from 버프 크기 (user, 2026-10-23).</summary>
+    public const int RefBossSize = 120;
+
     /// <summary>Screen pixels per reference pixel for the boss's effect icons and their counts. Like the buff row's icons they
-    /// don't shrink with the HUD (31.7 px at HUD 110, 29.4 at 80): the viewport height and the same packing as the buff row.
-    /// ponytail: every boss shot is at buff 120%; whether the boss's icons follow the buff size too is unmeasured.
-    /// A 수동 조정 boss size (<see cref="Fit.BossSize"/>, % of it) scales it.</summary>
-    public static double BossScale(Viewport vp, Fit fit) => GameBossScale(vp, fit) * (fit.BossSize ?? 100) / 100.0;
+    /// don't shrink with the HUD (31.7 px at HUD 110, 29.4 at 80): the viewport height and the same packing as the buff row,
+    /// times the game's boss size (<paramref name="bossSize"/>, <see cref="BossSizeShare"/>). A 수동 조정 boss size
+    /// (<see cref="Fit.BossSize"/>, % of it) scales it. Both grow the icons about the slash (<see cref="BossRow"/>): it is the
+    /// middle of the "모든 면역 / 관통 면역" text, which an icon size doesn't move.</summary>
+    public static double BossScale(Viewport vp, Fit fit, int bossSize = RefBossSize) =>
+        GameBossScale(vp, fit) * BossSizeShare(bossSize) * (fit.BossSize ?? 100) / 100.0;
 
     static double GameBossScale(Viewport vp, Fit fit) => vp.Height / ReferenceHeight * PackingAt(fit.Hud);
+
+    /// <summary>The boss icons' size at the game's boss size <paramref name="bossSize"/> against <see cref="RefBossSize"/>, by the buff
+    /// row's measured pitch law (linear in the size, not proportional to it): the boss icon at 120% is the buff icon's size there
+    /// (31.7 px against 31.2 at 1080p). ponytail: boss sizes other than 120% are unmeasured; a shot at 80% or 100% settles whether
+    /// this law holds for the boss too.</summary>
+    public static double BossSizeShare(int bossSize) =>
+        (BuffPitchPerSize * bossSize / 100.0 + BuffPitchOffset) / (BuffPitchPerSize * RefBossSize / 100.0 + BuffPitchOffset);
 
     /// <summary>Where in <see cref="RefBossRow"/> (reference px from its left) the boss's buffs and debuffs mirror: the slash in
     /// "모든 면역 / 관통 면역" at x 919. A 수동 조정 icon size keeps it in place.</summary>
@@ -206,14 +226,40 @@ public static class Geometry
     /// <summary><see cref="RefBossRow"/> on screen: placed by the HUD from the top centre (the boss bar and the top of its effect
     /// row follow the HUD: bossHP_hud80/100.png, HUD80_buff120.png), and as big as <see cref="BossScale"/> makes the icons, with
     /// the sigils' row where it was at HUD 110 and the slash (<see cref="BossAxis"/>) where the game's size puts it.</summary>
-    public static PixelRect BossRow(Viewport vp, Fit fit)
+    public static PixelRect BossRow(Viewport vp, Fit fit, int bossSize = RefBossSize)
     {
-        double k = Scale(vp, fit), s0 = GameBossScale(vp, fit), s = BossScale(vp, fit), cx = vp.X + vp.Width / 2.0;
+        double k = Scale(vp, fit), s0 = GameBossScale(vp, fit), s = BossScale(vp, fit, bossSize), cx = vp.X + vp.Width / 2.0;
         var r = RefBossRow;
         double iconTop = vp.Y + (r.Y + DebuffReader.BossIconTop) * k;
         double left = cx + (r.X - RefCenterX) * k + BossAxis * (s0 - s);
         return new((int)Math.Round(left) + fit.BossShift.X, (int)Math.Round(iconTop - DebuffReader.BossIconTop * s) + fit.BossShift.Y,
             (int)Math.Round(r.Width * s), (int)Math.Round(r.Height * s));
+    }
+
+    // ── Boss HP bar (project B) ─────────────────────────────────────────────────────────────────────────────────────
+    // Reference px at HUD 110 from the viewport's top, measured on mordum.png and Mordum_layout(_21_9).png; the bar follows the
+    // HUD about the top centre (bossHP_hud100/80.png: exactly 100/110 and 80/110 of it). A raid bar's fill spans x 576–1299,
+    // y 69–94; a portrait (21:9) or a field boss (the dummy: 640–1232) starts or ends it sooner, but "X n" sits at its right end.
+
+    public static readonly PixelRect RefBossBar = new(576, 69, 724, 26);
+    /// <summary>"X n" at the bar's right end ("X 494": x 1257–1294, y 76–87), with room for two more digits.</summary>
+    public static readonly PixelRect RefBossCount = new(1236, 72, 63, 20);
+    /// <summary>"current/max" HP, centred near x 917 (mordum: 765–1068), between "Lv.60" and "X n".</summary>
+    public static readonly PixelRect RefBossHpText = new(650, 72, 580, 20);
+    /// <summary>The boss's name above the bar ("심연의 징벌자, 모르둠": x 833–999, y 39–54; 40–57 in the layout shots), wide enough for a longer name.</summary>
+    public static readonly PixelRect RefBossName = new(720, 32, 400, 30);
+
+    public static PixelRect BossBar(Viewport vp, Fit fit) => FromTop(RefBossBar, vp, fit);
+    public static PixelRect BossCount(Viewport vp, Fit fit) => FromTop(RefBossCount, vp, fit);
+    public static PixelRect BossHpText(Viewport vp, Fit fit) => FromTop(RefBossHpText, vp, fit);
+    public static PixelRect BossName(Viewport vp, Fit fit) => FromTop(RefBossName, vp, fit);
+
+    /// <summary>A reference rect placed from the viewport's top centre by the HUD, moved by the 수동 조정 boss shift.</summary>
+    static PixelRect FromTop(PixelRect r, Viewport vp, Fit fit)
+    {
+        double k = Scale(vp, fit), cx = vp.X + vp.Width / 2.0;
+        return new((int)Math.Round(cx + (r.X - RefCenterX) * k) + fit.BossShift.X, (int)Math.Round(vp.Y + r.Y * k) + fit.BossShift.Y,
+            (int)Math.Round(r.Width * k), (int)Math.Round(r.Height * k));
     }
 
     // ── 수동 조정 ─────────────────────────────────────────────────────────────────────────────────────────────────

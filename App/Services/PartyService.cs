@@ -175,6 +175,28 @@ public sealed class PartyService : IDisposable
         _session?.PublishLook(_look, Now);
     });
 
+    /// <summary>Shares my DPS 미터기 figures with the session (once a second, while 내 피해량 보내기 is on).</summary>
+    public void SendMeter(MeterSample mine) => Locked(() => _session?.SendMeter(mine, Now));
+
+    /// <summary>The meter's party side: every sharing member's figures, my id and the host's (all empty / 0 alone).</summary>
+    public (IReadOnlyList<MeterSample> Samples, ulong Me, ulong Host) Meter()
+    {
+        lock (_lock)
+            return _session is { Ended: false, Welcomed: true } s && s.Members is { Count: > 0 } members
+                ? (s.MeterSamples(Now), s.Id, members[0].Id) : ([], 0, 0);
+    }
+
+    /// <summary>The session's members with their party (empty alone).</summary>
+    public IReadOnlyList<PartyMember> Members { get { lock (_lock) return _session is { Ended: false } s ? s.Members : []; } }
+
+    /// <summary>Host: 1파티 or 2파티 for a member (파티 → 순서). False when not the host or the party is full.</summary>
+    public bool SetParty(ulong id, int party)
+    {
+        bool done = false;
+        Locked(() => done = _session?.SetParty(id, party) == true);
+        return done;
+    }
+
     /// <summary>True while hosting a session.</summary>
     public bool IsHost { get { lock (_lock) return _session is { Ended: false, IsHost: true }; } }
 

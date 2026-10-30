@@ -21,4 +21,12 @@ public sealed class HudVote
         else { _shown = 0; if (++_hidden >= Votes) Visible = false; }
         return shown;
     }
+
+    /// <summary>Whether a frame may save references for slots that have none: when its own vote says shown, or, while
+    /// fewer than <see cref="MinSlots"/> references are <paramref name="stored"/> (a fit taken with most slots cooling),
+    /// when it read most of them and every one it read is readable (one readable slot alone could be a dark cutscene
+    /// frame, and a bad reference stays until the next refit). No frame can vote in that state, so without the second
+    /// case the missing references would never be added and <see cref="Visible"/> would stay unknown.</summary>
+    public static bool MaySave(bool? shown, int stored, int calibrated, int unreadable) =>
+        shown == true || (shown is null && stored < MinSlots && calibrated * 2 > stored && unreadable == 0);
 }

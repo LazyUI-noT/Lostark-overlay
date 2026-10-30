@@ -38,6 +38,8 @@ public sealed partial class OverlayRenderer
         _clips.Clear();
         if (DebuffsOnly) return DebuffPanelSize();
         if (JudgmentOnly) return JudgmentPanelSize();
+        if (RaidOnly) return RaidPanelSize();
+        if (MeterOnly) return MeterPanelSize();
         _layout = BuildLayout();
         return _layout is { } l ? new Size(l.Plate.Right + Bleed, l.Plate.Bottom + Bleed) : new Size(0, 0);
     }

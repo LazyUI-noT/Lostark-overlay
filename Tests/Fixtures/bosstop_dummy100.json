@@ -1,0 +1,16 @@
+{
+  "source": "bossHP_hud100.png",
+  "slot": "bosstop",
+  "hud": 100,
+  "rect": [
+    560,
+    20,
+    800,
+    90
+  ],
+  "width": 800,
+  "height": 90,
+  "pts": [
+    0
+  ]
+}

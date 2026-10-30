@@ -6,11 +6,11 @@ namespace GaugeOverlay.Core.Vision;
 /// class (PLAN §1). The frame alone fooled the size: 바드's charged frame matched worse than the slot beside it (bardbug_103.mp4).
 /// Only the frame ring is compared; the class-specific icon inside, the light that runs around it
 /// and the see-through panel are ignored (see FrameTemplate).</summary>
-public static class FitSolver
+public static partial class FitSolver
 {
     private const double Good = 0.6;       // a frame match this good places the bar; below, the size stands without a nudge
     private const double MinScore = 0.4;   // below this there is no 각성기 frame at the size read: no skill bar in the band
-    private const int Radius = 8;          // nudge search, in screen pixels around the predicted spot
+    private const int Radius = 8;          // nudge search around the predicted spot, in pixels at 1080p (never fewer: NearRadius)
     private const int WideRadius = 40;     // 직접 입력's second search, in pixels at 1080p (ManualFitTests: a bar 30 px off is found)
 
     // The HP bar's top row over its left end (filled until HP is low, and clear of the HP numbers), at reference scale (HUD 110, 1080 high):
@@ -37,12 +37,16 @@ public static class FitSolver
     public static Fit? Solve(Image bottomBand, PixelRect bandRect, Viewport vp, bool video = false)
     {
         if (HudFromHpBar(bottomBand, bandRect, vp) is not { } size) return null;
-        var m = Match(bottomBand, bandRect, vp, size, Radius);
+        var m = Match(bottomBand, bandRect, vp, size, NearRadius(vp));
         if (m.Score < MinScore) return video ? new Fit(size) : null;   // a red edge with no skill bar under it: not the HUD
         if (m.Score < Good) return new Fit(size);   // a charged or covered frame places nothing
         double k = Geometry.Scale(vp, new Fit(size));
         return new Fit(size, m.Dx / k, m.Dy / k);
     }
+
+    /// <summary>The nudge search in screen pixels: <see cref="Radius"/> scaled to the screen, so a 4K bar 12 px off (6 at
+    /// 1080p) is found too; never below <see cref="Radius"/>, so smaller viewports (forced 21:9) search as before.</summary>
+    private static int NearRadius(Viewport vp) => Math.Max(Radius, (int)Math.Round(Radius * vp.Height / Geometry.ReferenceHeight));
 
     /// <summary>A 직접 입력 fit: <see cref="Fit"/> at the typed HUD size, or null when the bar isn't where the typed values put it;
     /// <see cref="Moved"/>, the screen pixels the wider search moved it (0: where they said).</summary>
@@ -55,7 +59,7 @@ public static class FitSolver
     public static ManualResult SolveManual(Image bottomBand, PixelRect bandRect, Viewport vp, double hud)
     {
         double k = Geometry.Scale(vp, new Fit(hud));
-        var near = Match(bottomBand, bandRect, vp, hud, Radius);
+        var near = Match(bottomBand, bandRect, vp, hud, NearRadius(vp));
         if (near.Score >= Good && HpEdgeAt(bottomBand, bandRect, vp, hud, near.Dx, near.Dy)) return new(new Fit(hud, near.Dx / k, near.Dy / k), 0);
         var far = Match(bottomBand, bandRect, vp, hud, (int)Math.Round(WideRadius * vp.Height / Geometry.ReferenceHeight));
         if (far.Score >= Good && HpEdgeAt(bottomBand, bandRect, vp, hud, far.Dx, far.Dy))

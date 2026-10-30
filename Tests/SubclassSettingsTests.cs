@@ -141,22 +141,4 @@ public class SubclassSettingsTests
         Assert.True(s.SyncPlace());
         Assert.Equal(100, s.Overlay.Left);
     }
-
-    [Fact]
-    public void 적용_from_an_editor_that_showed_another_직업각인_keeps_this_characters_spot()
-    {
-        var s = Playing(Lone);
-        ClassProfiles.SetOwn(s, Combat, true);
-        Place(s, 100, 1.0);
-        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(s, GaugeOverlay.Core.Data.SettingsStore.Json);
-        var edited = System.Text.Json.JsonSerializer.Deserialize<Settings>(json, GaugeOverlay.Core.Data.SettingsStore.Json)!;   // as the editor copies
-        edited.ActiveCharacter = Combat;   // the editor previews the other 직업각인
-        edited.SyncPlace();
-        Place(edited, 500, 1.0);
-        s.ApplyLayoutFrom(edited);
-        Assert.Equal((100, (string?)null), (s.Overlay.Left, s.PlaceKey));
-        s.ActiveCharacter = Combat;
-        s.SyncPlace();
-        Assert.Equal(500, s.Overlay.Left);
-    }
 }

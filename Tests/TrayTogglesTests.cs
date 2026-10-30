@@ -49,4 +49,13 @@ public class TrayTogglesTests
         s.Buffs.Edit(BuffKind.공증).Visible = true;
         Assert.True(TrayToggles.IsShown(s, OverlayPart.Buffs));
     }
+
+    [Fact]
+    public void The_tray_debuff_switch_shows_the_window_always_as_before()
+    {
+        var s = new Settings();
+        TrayToggles.Show(s, OverlayPart.Debuffs, true);
+        Assert.False(s.Raids.Gate(RaidSettings.MordumGate).DebuffAuto);   // recognition is not checked on footage yet
+        Assert.Equal(Raid.모르둠, s.Debuffs.Raid);
+    }
 }

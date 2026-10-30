@@ -121,17 +121,20 @@ internal static class PartySelfTest
 
         var fifth = new Node("영희");
         fifth.Attach();
-        bool fifthJoined = await fifth.Service.Join(token, fifth.Name);
-        Result("5th join refused", !fifthJoined && fifth.Notices.Any(t => t.Contains("가득")), string.Join(" | ", fifth.Notices));
+        bool fifthJoined = await fifth.Service.Join(token, fifth.Name)
+            && await Wait(() => host.Service.Status == "호스트 중 (5/8)", TimeSpan.FromSeconds(1));
+        Result("a 5th joins (공대: up to 8)", fifthJoined, $"{host.Service.Status} | {string.Join(" | ", fifth.Notices)}");
+        fifth.Service.Leave();
+        await Wait(() => host.Service.Status == "호스트 중 (4/8)", TimeSpan.FromSeconds(1));
 
         peers[2].Service.Leave();
         bool updated = await Wait(() => new[] { host, peers[0], peers[1] }.All(n => n.Peers.Count == 2 && n.Peers.All(p => p.Name != "철수"))
-            && host.Service.Status == "호스트 중 (3/4)" && peers[0].Service.Status == "참가 중 (3/4)", TimeSpan.FromSeconds(1));
+            && host.Service.Status == "호스트 중 (3/8)" && peers[0].Service.Status == "참가 중 (3/8)", TimeSpan.FromSeconds(1));
         Result("leaving updates rosters", updated, $"{host.Service.Status}, {peers[0].Service.Status}");
 
         // 내보내기: the kicked member's session ends with the notice; the same token no longer lets that device in.
         bool kickedOk = host.Service.IsHost && !peers[0].Service.IsHost && host.Service.Kick("지현");
-        bool kickedOut = kickedOk && await Wait(() => peers[1].Service.Status is null && host.Service.Status == "호스트 중 (2/4)"
+        bool kickedOut = kickedOk && await Wait(() => peers[1].Service.Status is null && host.Service.Status == "호스트 중 (2/8)"
             && host.Peers.All(p => p.Name != "지현"), TimeSpan.FromSeconds(1));
         Result("host kicks a member", kickedOut && peers[1].Notices.Any(t => t.Contains("내보냈")), string.Join(" | ", peers[1].Notices));
         // Join completes when the session ends; its notice is raised just after, on the network thread.
@@ -143,7 +146,7 @@ internal static class PartySelfTest
             $"refused {refusedAgain}, listed {listed}, told {told}");
         host.Service.Unblock(peers[1].Fingerprint);
         bool rejoined = await peers[1].Service.Join(token, peers[1].Name)
-            && await Wait(() => host.Service.Status == "호스트 중 (3/4)", TimeSpan.FromSeconds(1));
+            && await Wait(() => host.Service.Status == "호스트 중 (3/8)", TimeSpan.FromSeconds(1));
         Result("다시 허용 lets it back in", rejoined, host.Service.Status ?? "");
 
         // 참가 요청 승인: an untrusted device waits for the host; once allowed it is trusted and rejoins without asking.
@@ -156,7 +159,7 @@ internal static class PartySelfTest
             && host.Admissions.Any(a => a.Trusted.Any(t => t.Device == peers[2].Fingerprint));
         Result("approval: asked, allowed, trusted", approved, peers[2].Service.Status ?? "");
         peers[2].Service.Leave();
-        await Wait(() => host.Service.Status == "호스트 중 (3/4)", TimeSpan.FromSeconds(1));
+        await Wait(() => host.Service.Status == "호스트 중 (3/8)", TimeSpan.FromSeconds(1));
         host.Service.SetAdmission(true, [peers[2].Fingerprint]);
         int askedBefore = host.Admissions.Sum(a => a.Asked.Count);
         bool trustedBack = await peers[2].Service.Join(token, peers[2].Name) && host.Admissions.Sum(a => a.Asked.Count) == askedBefore;
@@ -192,7 +195,7 @@ internal static class PartySelfTest
         bool joinedDuringHost = await late.Service.Join(token, late.Name);
         bool hostedAfter = await hosting;
         bool clean = !joinedDuringHost && late.Notices.Any(n => n.Contains("이미 연결 중"))
-            && late.Service.Status == (hostedAfter ? "호스트 중 (1/4)" : null);
+            && late.Service.Status == (hostedAfter ? "호스트 중 (1/8)" : null);
         late.Service.Leave();
         Result("concurrent Host + Join: Join refused, one clean session", clean && late.Service.Status is null,
             $"host {(hostedAfter ? "started" : "failed (no public IP)")}; {string.Join(" | ", late.Notices.TakeLast(2))}");

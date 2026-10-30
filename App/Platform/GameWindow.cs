@@ -38,19 +38,24 @@ public static partial class GameWindow
     public sealed record Choice(IntPtr Hwnd, string Title);
 
     /// <summary>Visible top-level windows with a title, front to back, without this app's own, the shell's, tool windows and
-    /// hidden (cloaked) store apps.</summary>
+    /// hidden (cloaked) store apps. A fullscreen store app (영화 및 TV, checked 2026-10-31) is missed by EnumWindows, hence
+    /// FindWindowEx, and is cloaked by the shell as soon as anything else (the tray menu) is in front: the window last in
+    /// front and the picked one are listed first even while cloaked.</summary>
     public static IReadOnlyList<Choice> Choices()
     {
         var list = new List<Choice>();
-        EnumWindows((h, _) => { if (TitleIfChoosable(h) is { } t) list.Add(new(h, t)); return true; }, 0);
+        for (IntPtr h = FindWindowExW(0, 0, 0, 0); h != 0; h = FindWindowExW(0, h, 0, 0))
+            if (TitleIfChoosable(h, cloakedOk: false) is { } t) list.Add(new(h, t));
+        foreach (var h in new[] { Front, Picked }.Distinct())
+            if (h != 0 && list.All(c => c.Hwnd != h) && TitleIfChoosable(h, cloakedOk: true) is { } t) list.Insert(0, new(h, t));
         return list;
     }
 
-    static string? TitleIfChoosable(IntPtr h)
+    static string? TitleIfChoosable(IntPtr h, bool cloakedOk)
     {
         if (!IsWindowVisible(h) || GetWindow(h, GW_OWNER) != 0 || IsOursOrShell(h)) return null;
         if ((GetWindowLongPtrW(h, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) return null;
-        if (DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return null;
+        if (!cloakedOk && DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return null;
         var buf = new char[256];
         int n = GetWindowTextW(h, buf, buf.Length);
         return n > 0 ? new string(buf, 0, n) : null;
@@ -98,6 +103,14 @@ public static partial class GameWindow
         Activate();
     }
 
+    /// <summary>The window's class name (for logs).</summary>
+    public static string ClassOf(IntPtr hwnd)
+    {
+        var name = new char[64];
+        int n = GetClassNameW(hwnd, name, name.Length);
+        return n > 0 ? new string(name, 0, n) : "?";
+    }
+
     static bool IsOursOrShell(IntPtr hwnd)
     {
         if (GetWindowThreadProcessId(hwnd, out uint pid) == 0) return false;
@@ -139,9 +152,8 @@ public static partial class GameWindow
     private const int GWL_EXSTYLE = -20, SW_RESTORE = 9;
     private const long WS_EX_TOOLWINDOW = 0x80;
 
-    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr param);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumWindows(EnumWindowsProc proc, IntPtr param);
+    /// <summary>Top-level windows in z-order: parent, class and title all zero (no filter).</summary>
+    [LibraryImport("user32.dll")] private static partial IntPtr FindWindowExW(IntPtr parent, IntPtr after, IntPtr cls, IntPtr title);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsWindowVisible(IntPtr hwnd);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]

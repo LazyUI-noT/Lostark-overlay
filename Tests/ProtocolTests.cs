@@ -158,8 +158,8 @@ public class ProtocolTests
         Assert.Equal(cookie, readCookie);
         Assert.False(Protocol.TryReadWelcome(key, out _, out _));   // a version 5 Welcome: the key alone
 
-        Assert.True(Protocol.TryReadRoster(Protocol.Roster([(1, "호스트"), (2, "지현")]), out var roster));
-        Assert.Equal([(1UL, "호스트"), (2UL, "지현")], roster);
+        Assert.True(Protocol.TryReadRoster(Protocol.Roster([(1, "호스트", 1), (2, "지현", 2)]), out var roster));
+        Assert.Equal([(1UL, "호스트", 1), (2UL, "지현", 2)], roster);
 
         Assert.True(Protocol.TryReadHeartbeat(Protocol.Heartbeat(T0, reply: true), out var stamp, out var reply));
         Assert.Equal((T0, true), (stamp, reply));
@@ -235,12 +235,12 @@ public class ProtocolTests
     }
 
     [Fact]
-    public void FifthMemberIsRefused()
+    public void NinthMemberIsRefused()
     {
-        List<ulong> members = [0x1_0000_0001, 0x2_0000_0002, 0x3_0000_0003];
-        Assert.Null(Membership.Refusal(members, 0x4_0000_0004, Protocol.Version));
-        members.Add(0x4_0000_0004);
-        Assert.Contains("가득", Membership.Refusal(members, 0x5_0000_0005, Protocol.Version));
+        List<ulong> members = [.. Enumerable.Range(1, 7).Select(i => (ulong)i << 32 | (uint)i)];
+        Assert.Null(Membership.Refusal(members, 0x8_0000_0008, Protocol.Version));
+        members.Add(0x8_0000_0008);
+        Assert.Contains("가득", Membership.Refusal(members, 0x9_0000_0009, Protocol.Version));
     }
 
     [Fact]
@@ -271,5 +271,56 @@ public class ProtocolTests
         List<ulong> everAdmitted = [0xAAAA_0000_0001, 0xCCCC_0000_1234];
         Assert.NotNull(Membership.Refusal(current, 0xDDDD_0000_1234, Protocol.Version, everAdmitted));
         Assert.Null(Membership.Refusal(current, 0xDDDD_0000_9999, Protocol.Version, everAdmitted));
+    }
+
+    static readonly MeterSample Meter = new(7, "민수", 12, MeterRole.서포터, 2, 1_234_567_890_123, 98_765_432, 125, true, 3, 9_876_543_210_987, 456_789_000);
+
+    [Fact]
+    public void A_meter_sample_round_trips()
+    {
+        Assert.True(Protocol.TryReadMeter(Protocol.Meter(Meter), out var back));
+        Assert.Equal(Meter, back);
+        Assert.True(Protocol.TryReadMeter(Protocol.Meter(Meter with { AtkBuffed = null }), out back));
+        Assert.Null(back.AtkBuffed);
+        Assert.True(Protocol.TryReadMeter(Protocol.Meter(Meter with { Timer = null, Running = false }), out back));
+        Assert.Null(back.Timer);
+    }
+
+    [Theory]
+    [InlineData("short")]
+    [InlineData("negative")]
+    [InlineData("huge")]
+    [InlineData("role")]
+    [InlineData("party")]
+    [InlineData("timer")]
+    public void A_hostile_meter_body_is_refused(string what)
+    {
+        byte[] body = what switch
+        {
+            "short" => Protocol.Meter(Meter)[..20],
+            "negative" => Protocol.Meter(Meter with { Damage = -1 }),
+            "huge" => Protocol.Meter(Meter with { BossTaken = 20_000_000_000_000_000 }),
+            "role" => Protocol.Meter(Meter with { Role = (MeterRole)9 }),
+            "party" => Protocol.Meter(Meter with { Party = 3 }),
+            _ => Protocol.Meter(Meter with { Timer = 1_000_000 }),
+        };
+        Assert.False(Protocol.TryReadMeter(body, out _));
+    }
+
+    [Fact]
+    public void The_roster_carries_each_members_party()
+    {
+        Assert.True(Protocol.TryReadRoster(Protocol.Roster([(1, "a", 1), (2, "b", 2)]), out var back));
+        Assert.Equal([(1UL, "a", 1), (2UL, "b", 2)], back);
+        Assert.False(Protocol.TryReadRoster(Protocol.Roster([(1, "a", 3)]), out _));
+    }
+
+    [Fact]
+    public void Names_lose_control_and_direction_characters_and_never_split_a_pair()
+    {
+        Assert.True(Protocol.TryReadMeter(Protocol.Meter(Meter with { Name = "a\u202Eb\nc" }), out var back));
+        Assert.Equal("abc", back.Name);
+        Assert.True(Protocol.TryReadMeter(Protocol.Meter(Meter with { Name = new string('가', 15) + "😀" }), out back));
+        Assert.Equal(new string('가', 15), back.Name);
     }
 }

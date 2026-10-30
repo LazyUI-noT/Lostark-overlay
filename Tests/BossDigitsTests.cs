@@ -1,0 +1,107 @@
+using System.Text;
+using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
+
+namespace GaugeOverlay.Tests;
+
+/// <summary>The boss bar's "X n" and "current/max" HP (BossDigits) on the bosstop fixtures. The templates come from the two
+/// HUD 110 shots (mordum, layout); the 21:9 shot and the dummy at HUD 100 and 80 are read with templates never cut from them.
+/// Margins on the five: the worst right digit scores 0.66 (dummy, HUD 80), 0.12 above its runner-up; the '/' wins by 0.10+;
+/// the X scores 0.89+ and no digit reaches 0.29 against it.</summary>
+public class BossDigitsTests
+{
+    static (Image Hp, Image Count, double Scale) Areas(string name, int top, int height, double hud)
+    {
+        var f = Fixture.Load(name);
+        var (vp, fit) = (new Viewport(0, top, 1920, height), new Fit(hud));
+        PixelRect Local(PixelRect r) => r with { X = r.X - f.Rect[0], Y = r.Y - f.Rect[1] };
+        return (f.Frames[0].Crop(Local(Geometry.BossHpText(vp, fit))), f.Frames[0].Crop(Local(Geometry.BossCount(vp, fit))), Geometry.Scale(vp, fit));
+    }
+
+    // The dummy at HUD 80 was shot at full HP (100,000,000,000/100,000,000,000), unlike the HUD 100 shot.
+    public static TheoryData<string, int, int, double, long, long, int?> Shots => new()
+    {
+        { "bosstop_mordum", 0, 1080, 110, 16_897_047_862_607, 17_126_566_042_900, 494 },
+        { "bosstop_layout", 0, 1080, 110, 27_934_993_622, 29_863_807_555, 468 },
+        { "bosstop_219", 135, 810, 110, 27_934_993_622, 29_863_807_555, 468 },
+        { "bosstop_dummy100", 0, 1080, 100, 99_981_084_598, 100_000_000_000, null },
+        { "bosstop_dummy80", 0, 1080, 80, 100_000_000_000, 100_000_000_000, null },
+    };
+
+    [Theory, MemberData(nameof(Shots))]
+    public void Reads_the_hp_and_the_count(string name, int top, int height, double hud, long current, long max, int? count)
+    {
+        var (hp, box, scale) = Areas(name, top, height, hud);
+        Assert.Equal((current, max), BossDigits.ReadHp(hp, scale));
+        Assert.Equal(count, BossDigits.ReadCount(box, scale));
+    }
+
+    // The user's screenshot (HUD 110) of 모르둠 with a shield not added to the lines (the fill stays). The white bar of a shield
+    // added to the lines has no lossless shot yet (the ones given were compressed: digits scored under 0.55).
+    [Theory]
+    [InlineData("bosshp_shield_mordum", 6_747_376_602_438, 17_126_566_042_900, 321_823_151_269)]
+    public void Reads_a_shield_in_brackets_after_the_hp(string name, long current, long max, long shield)
+    {
+        var text = Fixture.Load(name).Frames[0];
+        Assert.Equal((current, max, shield), BossDigits.ReadHpWithShield(text, 1.1));
+        Assert.Equal((current, max), BossDigits.ReadHp(text, 1.1));
+    }
+
+    [Fact]
+    public void A_blank_or_bare_bar_reads_nothing()
+    {
+        var blank = new Image(580, 20);
+        Assert.Null(BossDigits.ReadHp(blank, 1));
+        Assert.Null(BossDigits.ReadCount(blank, 1));
+        var fill = new Image(580, 20);
+        for (int i = 0; i < fill.Bgra.Length; i += 4) (fill.Bgra[i], fill.Bgra[i + 1], fill.Bgra[i + 2]) = (16, 99, 192);   // 모르둠's orange
+        Assert.Null(BossDigits.ReadHp(fill, 1));
+    }
+
+    [Fact]
+    public void The_count_and_the_hp_do_not_read_each_other()
+    {
+        var (hp, box, scale) = Areas("bosstop_mordum", 0, 1080, 110);
+        Assert.Null(BossDigits.ReadCount(hp, scale));   // commas and no X
+        Assert.Null(BossDigits.ReadHp(box, scale));     // no '/'
+    }
+
+    /// <summary>Writes Core/Vision/BossDigitTemplates.cs from the two HUD 110 shots (GAUGE_BUILD_TEMPLATES=1).</summary>
+    [Fact]
+    public void Build_boss_digit_templates_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_BUILD_TEMPLATES") != "1") return;
+        var samples = new SortedDictionary<char, List<float[]>>();
+        foreach (var (name, hpText, countText) in new[] { ("bosstop_mordum", "16,897,047,862,607/17,126,566,042,900", "X494"),
+                                                          ("bosstop_layout", "27,934,993,622/29,863,807,555", "X468") })
+        {
+            var (hp, box, scale) = Areas(name, 0, 1080, 110);
+            foreach (var (area, text) in new[] { (hp, hpText), (box, countText) })
+            {
+                var glyphs = BossDigits.Glyphs(area, scale)!;
+                Assert.Equal(text.Length, glyphs.Count);
+                foreach (var (g, ch) in glyphs.Zip(text))
+                    if (!g.Comma) { if (!samples.TryGetValue(ch, out var list)) samples[ch] = list = []; list.Add(g.Grid!); }
+            }
+        }
+        var sb = new StringBuilder();
+        sb.AppendLine("namespace GaugeOverlay.Core.Vision;");
+        sb.AppendLine();
+        sb.AppendLine("/// <summary>The boss bar's digits, '/' and 'X' (BossDigits), 7×11 grids of grey (DigitReader.GreyRamp), each the mean of every");
+        sb.AppendLine("/// sample in bosstop_mordum and bosstop_layout. Generated by BossDigitsTests.Build_boss_digit_templates_when_requested");
+        sb.AppendLine("/// (GAUGE_BUILD_TEMPLATES=1); do not edit by hand.</summary>");
+        sb.AppendLine("internal static class BossDigitTemplates");
+        sb.AppendLine("{");
+        sb.AppendLine("    public static readonly (char Ch, string[] Rows)[] Glyphs =");
+        sb.AppendLine("    [");
+        foreach (var (ch, list) in samples)
+        {
+            var rows = Enumerable.Range(0, BossDigits.GridH).Select(y => new string([.. Enumerable.Range(0, BossDigits.GridW).Select(x =>
+                DigitReader.GreyRamp[Math.Clamp((int)(list.Average(g => g[y * BossDigits.GridW + x]) / 25.6), 0, 9)])]));
+            sb.AppendLine($"        ('{ch}', [{string.Join(", ", rows.Select(r => $"\"{r}\""))}]),");
+        }
+        sb.AppendLine("    ];");
+        sb.AppendLine("}");
+        File.WriteAllText(Path.Combine(RepoRoot(), "Core", "Vision", "BossDigitTemplates.cs"), sb.ToString());
+    }
+}

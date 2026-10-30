@@ -14,6 +14,10 @@ public readonly record struct PixelRect(int X, int Y, int Width, int Height)
         int w = Math.Min(Right, other.Right) - x, h = Math.Min(Bottom, other.Bottom) - y;
         return w > 0 && h > 0 ? new(x, y, w, h) : null;
     }
+
+    /// <summary>Whether the rect lies wholly inside <paramref name="vp"/> (a capture outside it would fail).</summary>
+    public bool Inside(Viewport vp) =>
+        Width > 0 && Height > 0 && X >= vp.X && Y >= vp.Y && Right <= vp.X + vp.Width && Bottom <= vp.Y + vp.Height;
 }
 
 /// <summary>The game's drawn area, in screen pixels (black bars already excluded).</summary>

@@ -53,6 +53,21 @@ public class DebuffTests
         }
     }
 
+    // How many boxes, from the left, hold any debuff icon (a red frame), known or not: 4 in debuffrow_3, two unknown first.
+    static readonly int[] Filled = [1, 2, 2, 4, 2, 1];
+
+    [Fact]
+    public void A_box_with_any_debuff_icon_is_filled_and_an_empty_one_is_not()
+    {
+        var boxes = Boxes();
+        for (int f = 0; f < Filled.Length; f++)
+        {
+            var img = Fixture.Load($"debuffrow_{f}").Frames[0];
+            for (int b = 0; b < boxes.Length; b++)
+                Assert.True((b < Filled[f]) == DebuffReader.Filled(img, boxes[b].Icon), $"debuffrow_{f} box {b}: want {(b < Filled[f] ? "filled" : "empty")}");
+        }
+    }
+
     [Fact]
     public void The_lightning_and_swap_timers_read_in_the_buff_font()
     {

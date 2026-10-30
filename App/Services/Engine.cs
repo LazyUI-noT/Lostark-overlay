@@ -27,11 +27,17 @@ public sealed partial class Engine : IDisposable
     /// <param name="Judgment">단심 (설정 → 기타), when on for <paramref name="Character"/>: what to read it from (null: off).</param>
     /// <param name="StackSkills">The slots <paramref name="Character"/> has shown a stack count on (Settings.StackSkills): known before
     /// the first cast, so its re-use lockout's "1s" isn't taken for a 1 s cooldown (null: none, or another class on screen).</param>
+    /// <param name="BuffCount">버프 읽을 칸 수: how many buff boxes are read, from the row's right end.</param>
+    /// <param name="BossSize">The game's 보스 디버프 크기 (%), apart from <paramref name="DebuffSize"/> (버프 크기, your own rows).</param>
+    /// <param name="Raids">설정 → 레이드, a copy (RaidSettings.Clone); null reads nothing for it.</param>
+    /// <param name="RaidGates">The gates (Profiles/raids.json) and <paramref name="BossNames"/> their name templates (Profiles/bossnames).</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
-        GaugeReadMode ReadMode = GaugeReadMode.Agreed, string? Character = null, Raid Raid = Raid.없음, int DebuffSize = 100, double? ManualHud = null,
+        GaugeReadMode ReadMode = GaugeReadMode.Agreed, string? Character = null, int DebuffSize = 100, double? ManualHud = null,
         ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null,
-        IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null)
+        IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
+        RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
+        bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -50,8 +56,9 @@ public sealed partial class Engine : IDisposable
     /// <summary>No saved fit for this game-area size: the user must run 스킬창 맞추기.</summary>
     public event Action<Viewport>? FitNeeded;
     /// <summary>Result of <see cref="RequestFit"/>: a fit (null on failure), a message for the user, and on a fit found
-    /// without 직접 입력 the 해상도 and 21:9 it was found at (직접 입력 starts from them).</summary>
-    public event Action<Viewport, Fit?, string, ManualScreen?, bool>? FitFinished;   // last: found in 테스트 모드 (never saved)
+    /// without 직접 입력 the 해상도 and 21:9 it was found at (직접 입력 starts from them); then 테스트 모드 (never saved), and whether
+    /// 되돌리기 (<see cref="RevertTestFit"/>) can undo it (a 테스트 모드 fit request's fine-tune).</summary>
+    public event Action<Viewport, Fit?, string, ManualScreen?, bool, bool>? FitFinished;
     /// <summary>The class emblem, captured on the first frame the skill bar is certainly on screen after <see cref="RequestDetect"/>
     /// or <see cref="RequestEmblem"/> (스킬창 다시 맞추기, a character picked by hand, 테스트 모드). Never on its own.</summary>
     public event Action<Image>? EmblemCaptured;
@@ -96,6 +103,13 @@ public sealed partial class Engine : IDisposable
     DebuffStatus _debuffs = DebuffStatus.None;
     TimeSpan _lastBoss = TimeSpan.MinValue;
     static readonly TimeSpan BossEvery = TimeSpan.FromMilliseconds(500);   // the boss's counts change only on a swap
+    // Debuff icons: 3 a second with none up, 5 while one is (boxes filled from the left, plus the next); the 결투자's timer
+    // 10 a second in between, its ticks putting the countdown back to when it really came (DebuffTracker.DuelTimer).
+    static readonly TimeSpan DebuffIdleEvery = TimeSpan.FromMilliseconds(333), DebuffShownEvery = TimeSpan.FromMilliseconds(200),
+        DuelTimerEvery = TimeSpan.FromMilliseconds(100);
+    TimeSpan _lastDebuffIcons = TimeSpan.MinValue, _lastDuelTimer = TimeSpan.MinValue;
+    int _debuffFilled;   // boxes from the left holding a debuff icon at the last read: the next read takes these and one more
+    int? _duelBox;       // the box the 결투자 was in at the last read
     double? _gauge;
     GaugeDef? _gaugeFrom;      // the definition _gauge was read with (one instance per 직업각인: CharacterService caches it)
     readonly GaugeFilter _gaugeFilter = new();   // drops the shine the game sweeps over the gauge
@@ -122,7 +136,9 @@ public sealed partial class Engine : IDisposable
     TimeSpan _lastViewport = TimeSpan.MinValue, _lastLabel = TimeSpan.MinValue, _lastPoll = TimeSpan.MinValue, _lastGauge = TimeSpan.MinValue;   // MinValue = never (see Elapsed)
     bool _awakeningChanged, _labelMissed, _running, _fitNeededRaised, _emblemPending, _subclassPending, _testMode;
     // 테스트 모드: fits found on the video in front, memory only; _quietFit while one is looked for unasked (no failure notices).
-    readonly TestFits _testFits = new();
+    readonly Dictionary<IntPtr, TestFits> _testFitsBy = [];   // per picked window: another video of the same size is its own
+    /// <summary>테스트 모드's memory for the window followed now (engine thread only).</summary>
+    TestFits _testFits => _testFitsBy.TryGetValue(_hwnd, out var f) ? f : _testFitsBy[_hwnd] = new();
     bool _vpPinned;   // 테스트 모드 after 적용: the game area stays on these screen pixels (a video's dark scene or a moved window doesn't shift it)
     bool _quietFit;
     bool _adjusted;   // the fit in use is a 수동 조정 (Config.Adjusts): its calibration files are its own
@@ -146,8 +162,22 @@ public sealed partial class Engine : IDisposable
     /// Desktop Duplication captures whatever is on top, so ready icons are learned only while this is true.</summary>
     public bool GameForeground { get => _foreground; set => _foreground = value; }
 
+    volatile bool _seesBehind;   // the capture source reads the window even while covered (테스트 모드's WGC)
+
+    /// <summary>The capture reads the game window even behind others (테스트 모드 on a window WGC can capture): App needn't bring
+    /// it to the front for a fit, a revert or 적용, which would show a video player's controls over the skill bar.</summary>
+    public bool CanCaptureBehind => _seesBehind;
+
+    /// <summary>A capture now shows the game: it is in front, or the source sees behind other windows.</summary>
+    bool CanRead => _foreground || _seesBehind;
+
     /// <summary>Runs 스킬창 맞추기 on the next frame. The user should be in the 수련장 with every cooldown reset.</summary>
     public void RequestFit() => _fitRequested = true;
+
+    /// <summary>테스트 모드's 되돌리기: the fit in use before the last fit request comes back on the next frame.</summary>
+    public void RevertTestFit() => _revertRequested = true;
+
+    volatile bool _revertRequested;
 
     object? _shotFor;   // the pending 게임 화면 찍기 request's token
 
@@ -210,7 +240,12 @@ public sealed partial class Engine : IDisposable
             if (_fitRequested)
             {
                 _fitRequested = false;
-                FitFinished?.Invoke(_vp, null, "게임이 실행 중이 아닙니다. 게임을 켜고 다시 시도해 주세요.", null, _testMode);
+                FitFinished?.Invoke(_vp, null, "게임이 실행 중이 아닙니다. 게임을 켜고 다시 시도해 주세요.", null, _testMode, false);
+            }
+            if (_revertRequested)
+            {
+                _revertRequested = false;   // never kept for a video opened later
+                FitFinished?.Invoke(_vp, null, "고른 창이 보이지 않아 되돌리지 못했습니다.", null, _testMode, false);
             }
             if (Interlocked.Exchange(ref _shotFor, null) is { } missed) ScreenshotCaptured?.Invoke(missed, null, default);
             Thread.Sleep(1000);
@@ -219,19 +254,22 @@ public sealed partial class Engine : IDisposable
         if (Interlocked.Exchange(ref _shotFor, null) is { } token) { TakeScreenshot(token); return; }
         var now = Clock.Now();
 
-        if (Elapsed(now, _lastViewport, ViewportEvery)) UpdateViewport(now);
+        // 테스트 모드: a moved or resized player window is followed at once (the kept picture moves with it, no capture).
+        if (Elapsed(now, _lastViewport, ViewportEvery) || _testMode && GameWindow.ClientRect(_hwnd) is { } c && c != _client) UpdateViewport(now);
         if (_fitRequested)
         {
-            _fitRequested = false;
+            (_fitRequested, _revertRequested) = (false, false);   // a new fit replaces what 되돌리기 would have put back
             var kept = _vp;
             _previewing = false;   // the debug window's preview starts over on the new fit
             UpdateViewport(now, fitting: true);
             if (!RunFit() && _vp != kept) (_vp, _fit) = (kept, null);   // a failed fit keeps the game area its saved fit is for
             return;
         }
+        if (_revertRequested) { _revertRequested = false; RevertFit(); return; }
         if (!EnsureFit()) { Thread.Sleep(200); return; }
         PreviewStep();
         if (_fit is null) return;   // a preview just ended: the saved fit is resolved next step
+        if (_testMode) StepTestBuffSize(now);
         // Detection runs only when asked (스킬창 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
         // cutscene it used to pick the wrong class.
         // Both in one tick: the full detection wins.
@@ -253,17 +291,26 @@ public sealed partial class Engine : IDisposable
         _gaugeFilter.Mode = config.ReadMode;
         // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
         if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
-        (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, config.Raid != Raid.없음);
+        (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, DebuffRaid(config) != Raid.없음);
         // 위치 조정 tries a 버프 크기 live: both rows read at it until 적용 stores it in 설정 or the panel closes.
         int? previewSize = _previewing ? _previewBuffSize : null;
-        int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? set : null;
-        int debuffSize = previewSize ?? config.DebuffSize;
-        bool debuffs = poll && _debuffsOn, boss = debuffs && Elapsed(now, _lastBoss, BossEvery);
+        // 테스트 모드: the 버프 크기 위치 조정 applied for the video (memory only), else 설정's.
+        int? testSize = _testMode ? _testFits.BuffSize : null;
+        int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? testSize ?? set : null;
+        int debuffSize = previewSize ?? testSize ?? config.DebuffSize;
+        bool debuffIcons = _debuffsOn && Elapsed(now, _lastDebuffIcons, _debuffFilled > 0 ? DebuffShownEvery : DebuffIdleEvery);
+        bool duelTimer = _debuffsOn && !debuffIcons && _duelBox is not null && Elapsed(now, _lastDuelTimer, DuelTimerEvery);
+        bool debuffs = debuffIcons || duelTimer, boss = debuffIcons && Elapsed(now, _lastBoss, BossEvery);
+        int debuffBoxes = Math.Min(Geometry.DebuffBoxCount, _debuffFilled + 1);
         if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
         bool preview = _previewing && Elapsed(now, _lastPreview, PreviewEvery);
         var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, now);
         bool judging = judgRow is not null || judgBand is not null;
-        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging)
+        var (raidName, raidCount, raidHp) = RaidRects(config, poll, now);
+        bool raiding = raidName is not null || raidCount is not null;
+        var (meterHp, meterPanel) = MeterRects(config, now);
+        raiding |= meterHp is not null;
+        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
             Thread.Sleep(4);
@@ -274,18 +321,29 @@ public sealed partial class Engine : IDisposable
         foreach (var s in slots) rects.Add(Rect(s, _fit!, config));
         if (wantLabel) rects.Add(Geometry.ToScreen(Geometry.RefAwakeningLabel, _vp, _fit!));
         if (gaugeDef is not null) rects.Add(Geometry.ToScreen(gaugeDef.Ref, _vp, _fit!));
-        if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size));
+        if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size, config.BuffCount));
         int debuffAt = rects.Count;
-        if (debuffs) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize));
-        if (boss) rects.Add(Geometry.BossRow(_vp, _fit!));
+        if (debuffIcons) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize, debuffBoxes));
+        else if (duelTimer) rects.Add(Geometry.DebuffBoxes(_vp, _fit!, debuffSize)[_duelBox!.Value].Timer);
+        if (boss) rects.Add(Geometry.BossRow(_vp, _fit!, config.BossSize));
         int judgAt = rects.Count;
         if (judgRow is { } row) rects.Add(row);
         if (judgBand is { } band) rects.Add(band);
-        int previewAt = rects.Count;   // the debug window's pictures, in the same capture as the reads
-        if (preview) { rects.Add(FitSolver.Band(_vp)); rects.Add(Geometry.BossBand(_vp)); }
+        int raidAt = rects.Count;
+        if (raidName is { } nameRect) rects.Add(nameRect);
+        int raidCountAt = rects.Count;
+        if (raidCount is { } countRect) rects.Add(countRect);
+        int raidHpAt = rects.Count;
+        if (raidHp is { } raidHpRect) rects.Add(raidHpRect);
+        int meterAt = rects.Count;
+        if (meterHp is { } hpRect) rects.Add(hpRect);
+        if (meterPanel is { } panelRect) rects.Add(panelRect);
+        int previewAt = rects.Count;   // 위치 조정's bar score, from the same capture as the reads
+        if (preview) rects.Add(FitSolver.Band(_vp));
 
         var images = rects.Select(Buffer).ToList();
-        if (!_source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out long ts))
+        long ts = 0;
+        if (!Perf.Run("화면 캡처", () => _source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out ts)))
         {
             now = Clock.Now();
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
@@ -293,28 +351,34 @@ public sealed partial class Engine : IDisposable
             return;
         }
         var t = Clock.FromTimestamp(ts);
-        bool changed = ReadSlots(slots, images, t, config) | _gaugeSpent;
+        bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent;
         _gaugeSpent = false;
-        if (buffSize is not null || debuffs || judging) _lastPoll = t;
+        if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
         if (boss) _lastBoss = t;
+        if (debuffIcons) _lastDebuffIcons = t;
+        if (duelTimer) _lastDuelTimer = t;
         if (gaugeDef is not null) _lastGauge = t;
         if (gaugeDef is not null && _hud.Visible == true)   // loading screens and cutscenes would read as empty
         {
-            double v = _gaugeFilter.Add(gaugeDef.Read(images[slots.Count + (wantLabel ? 1 : 0)]), t);
+            double v = Perf.Run("아덴 게이지", () => _gaugeFilter.Add(gaugeDef!.Read(images[slots.Count + (wantLabel ? 1 : 0)]), t));
             changed |= v != _gauge;
             _gauge = v;
             if (!_previewing) _gains.Seen(v, t);
             if (Elapsed(now, _gainsSavedAt, GainsSaveEvery)) { SaveGains(); _gainsSavedAt = now; }
         }
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
-        if (buffSize is { } read) changed |= ReadBuffs(images[debuffAt - 1], read, t);
-        if (debuffs) changed |= ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, t);
+        if (buffSize is { } read) changed |= Perf.Run("버프", () => ReadBuffs(images[debuffAt - 1], read, config.BuffCount, t));
+        if (debuffIcons) changed |= Perf.Run("디버프", () => ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, config.BossSize, t, debuffBoxes));
+        else if (duelTimer) changed |= Perf.Run("디버프 (결투자 시간)", () => ReadDuelTimer(images[debuffAt], debuffSize, t));
         if (judging)
-            changed |= ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t);
+            changed |= Perf.Run("단심", () => ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t));
+        if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[meterAt], meterPanel is null ? null : images[meterAt + 1], t));
+        if (raidName is not null || raidCount is not null)
+            changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[raidCountAt], raidHp is null ? null : images[raidHpAt], t));
         if (wantLabel)
         {
             _lastLabel = t;
-            bool seen = AwakeningLabel.IsShown(images[slots.Count]), shown = AwakeningLabel.Hold(seen, _awakeningChanged, _labelMissed);
+            bool seen = Perf.Run("각성기 표시", () => AwakeningLabel.IsShown(images[slots.Count])), shown = AwakeningLabel.Hold(seen, _awakeningChanged, _labelMissed);
             _labelMissed = !seen;
             changed |= shown != _awakeningChanged;
             _awakeningChanged = shown;
@@ -324,8 +388,8 @@ public sealed partial class Engine : IDisposable
         if (preview)
         {
             _lastPreview = t;
-            // ponytail: two copies per frame (~21 MB at 4K, 5 fps, only while the debug window is open); pool them if GC shows.
-            PreviewFrame?.Invoke(_gen, images[previewAt].Copy(), rects[previewAt], images[previewAt + 1].Copy(), rects[previewAt + 1]);
+            double bar = FitSolver.Score(images[previewAt], rects[previewAt], _vp, _fit!);
+            PreviewReads?.Invoke(_gen, AdjustReads.From(bar, _buffsOn ? _buffs : null, _debuffsOn ? _debuffs : null));
         }
     }
 
@@ -371,10 +435,12 @@ public sealed partial class Engine : IDisposable
         bool? shown = _hud.Add(calibrated, unreadable);
         if (_hud.Visible != wasVisible) HudVisibleChanged?.Invoke(_hud.Visible == true);
         // Only while the bar is certainly on screen in this very frame: Desktop Duplication also captures loading
-        // screens, the login screen and windows covering the game.
+        // screens, the login screen and windows covering the game. References are also added while too few exist to
+        // vote at all (HudVote.MaySave), or the vote could never start.
+        if (_foreground && HudVote.MaySave(shown, _cal.Count(c => c is not null), calibrated, unreadable))
+            foreach (int i in uncalibratedReady) SaveCalibration(slots[i], images[i], trusted: false, config);
         if (shown == true && _foreground)
         {
-            foreach (int i in uncalibratedReady) SaveCalibration(slots[i], images[i], trusted: false, config);
             if (_emblemPending) { _emblemPending = false; CaptureEmblem(); }
             bool greyed = SubclassMatcher.Greyed(_skillColour);
             if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>()] : null); }
@@ -409,13 +475,13 @@ public sealed partial class Engine : IDisposable
 
     /// <summary>Finds the buffs in the captured buff row (<see cref="Geometry.BuffArea"/>) and updates each indicator.
     /// Kept apart from the slot reads: nothing here feeds the skill or gauge paths. Returns true if anything changed.</summary>
-    bool ReadBuffs(Image area, int size, TimeSpan t)
+    bool ReadBuffs(Image area, int size, int count, TimeSpan t)
     {
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
-        var origin = Geometry.BuffArea(_vp, _fit!, size);
+        var origin = Geometry.BuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var readings = new List<BuffReading>();
-        var boxes = Geometry.BuffBoxes(_vp, _fit!, size);
+        var boxes = Geometry.BuffBoxes(_vp, _fit!, size, count);
         for (int i = 0; i < boxes.Length; i++)
         {
             var kind = BuffReader.Classify(area, Local(boxes[i].Icon));
@@ -439,28 +505,50 @@ public sealed partial class Engine : IDisposable
         ExtraDebug?.Invoke(new(key, crop, kind is null ? "없음" : $"{kind}{(seconds is { } s ? $" {s:0.#}초" : "")}", ""));
     }
 
-    /// <summary>Finds your debuffs in the captured debuff row (<see cref="Geometry.DebuffArea"/>) and, when captured, the
-    /// boss's counts in <paramref name="boss"/> (<see cref="Geometry.BossRow"/>). Returns true if anything changed.</summary>
-    bool ReadDebuffs(Image area, Image? boss, int size, TimeSpan t)
+    /// <summary>Finds your debuffs in the captured debuff row (<see cref="Geometry.DebuffArea"/> of the first
+    /// <paramref name="count"/> boxes) and, when captured, the boss's counts in <paramref name="boss"/> (<see cref="Geometry.BossRow"/>).
+    /// Debuffs fill the row from the left, so the boxes are read up to the first without a debuff frame. Returns true if
+    /// anything changed.</summary>
+    bool ReadDebuffs(Image area, Image? boss, int size, int bossSize, TimeSpan t, int count)
     {
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
-        var origin = Geometry.DebuffArea(_vp, _fit!, size);
+        var origin = Geometry.DebuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var reads = new List<DebuffReading>();
         var boxes = Geometry.DebuffBoxes(_vp, _fit!, size);
-        for (int i = 0; i < boxes.Length; i++)
+        int filled = 0;
+        (int Box, double? Seconds)? duel = null;
+        for (int i = 0; i < count; i++)
         {
+            if (!DebuffReader.Filled(area, Local(boxes[i].Icon)))
+            {
+                if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), "없음", null);
+                break;
+            }
+            filled++;
             var kind = DebuffReader.Classify(area, Local(boxes[i].Icon), out double duelScore);
-            // 결투자's "38초" is not read: its countdown and hold are the tracker's own clock (DuelMark).
-            double? seconds = kind is DebuffKind.번개 or DebuffKind.교체 ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
+            double? seconds = kind is DebuffKind.번개 or DebuffKind.교체 or DebuffKind.결투자 ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
+            // 결투자's countdown and hold are the tracker's own clock (DuelMark); its "38초" only sets when it came (DuelTimer).
+            if (kind == DebuffKind.결투자) (duel, seconds) = ((i, seconds), null);
             if (kind is { } k) reads.Add(new(k, seconds));
             if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), DebuffReader.DebugText(kind, duelScore), seconds);
         }
-        var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.BossScale(_vp, _fit!));
-        var next = DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true);
+        (_debuffFilled, _duelBox) = (filled, duel?.Box);
+        var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.BossScale(_vp, _fit!, bossSize));
+        var next = DebuffTracker.DuelTimer(DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true), duel?.Seconds, t);
         if (boss is not null && _config.Debug)
             ExtraDebug?.Invoke(new("보스", boss.Copy(), $"빨강 {red?.ToString() ?? "?"} / 파랑 {blue?.ToString() ?? "?"}",
                 $"표시: 빨강 {next.BossRed?.ToString() ?? "?"} / 파랑 {next.BossBlue?.ToString() ?? "?"}"));
+        bool changed = next != _debuffs;
+        _debuffs = next;
+        return changed;
+    }
+
+    /// <summary>Reads the 결투자's timer alone (its box's "N초", captured between icon reads). True if the countdown moved.</summary>
+    bool ReadDuelTimer(Image timer, int size, TimeSpan t)
+    {
+        double? seconds = new BuffReader(Geometry.BuffScale(_vp, size)).ReadTimer(timer, new PixelRect(0, 0, timer.Width, timer.Height));
+        var next = DebuffTracker.DuelTimer(_debuffs, seconds, t);
         bool changed = next != _debuffs;
         _debuffs = next;
         return changed;
@@ -472,6 +560,9 @@ public sealed partial class Engine : IDisposable
             Buffs = _buffsOn ? [.. _buffs] : [],
             Debuffs = _debuffsOn ? _debuffs : null,
             Judgment = _judgmentOn ? _judgment : null,
+            Raid = _raid,
+            Meter = _meterOn ? _meter : null,
+            Dungeon = _meterOn ? _dungeon : null,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,
@@ -636,7 +727,7 @@ public sealed partial class Engine : IDisposable
     void ResetSource()
     {
         _source?.Dispose();
-        _source = null;
+        (_source, _seesBehind) = (null, false);
     }
 
     public void Dispose()

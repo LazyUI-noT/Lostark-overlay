@@ -36,6 +36,11 @@ public sealed partial class PartySession : IDisposable
         public TimeSpan LastHeard = now, RttHalf, LastRelayed = TimeSpan.MinValue;   // MinValue = never; subtracting it overflows
         public Snapshot? State;
         public bool Confirmed = confirmed, RelayPending;
+        /// <summary>1파티 or 2파티 (the host's word, in the Roster).</summary>
+        public int Party = 1;
+        /// <summary>The member's last DPS 미터기 figures and when they came (dropped after <see cref="MeterStale"/>).</summary>
+        public MeterSample? Meter;
+        public TimeSpan MeterAt;
         /// <summary>The member's own box look (null until they arrive) and their version.</summary>
         public Look? Look;
         public byte LookVersion;
@@ -156,7 +161,39 @@ public sealed partial class PartySession : IDisposable
     }
 
     /// <summary>Other members as the overlay draws them.</summary>
-    public IReadOnlyList<Player> Peers(TimeSpan now) => [.. Others().Select(m => new Player(m.Name, m.State ?? Snapshot.Empty(now), m.Look))];
+    public IReadOnlyList<Player> Peers(TimeSpan now) =>
+        [.. Others().Where(m => m.Party == Self.Party).Select(m => new Player(m.Name, m.State ?? Snapshot.Empty(now), m.Look))];
+
+    /// <summary>Everyone in the session (self included), in join order, with their party.</summary>
+    public IReadOnlyList<PartyMember> Members => [.. _members.Where(m => m.Confirmed).Select(m => new PartyMember(m.Id, m.Name, m.Party))];
+
+    /// <summary>A meter sample older than this is dropped (the member stopped sharing, or left).</summary>
+    public static readonly TimeSpan MeterStale = TimeSpan.FromSeconds(5);
+    static readonly TimeSpan MeterGap = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Every sharing member's last DPS 미터기 figures (mine included), with the name and party the host gave them.</summary>
+    public IReadOnlyList<MeterSample> MeterSamples(TimeSpan now) =>
+        [.. _members.Where(m => m.Confirmed && m.Meter is not null && now - m.MeterAt <= MeterStale).Select(m => m.Meter! with { Name = m.Name, Party = m.Party })];
+
+    /// <summary>Shares my DPS 미터기 figures (sent at once; the caller sends once a second while 내 피해량 보내기 is on).</summary>
+    public void SendMeter(MeterSample mine, TimeSpan now)
+    {
+        if (Ended) return;
+        var me = Self;
+        (me.Meter, me.MeterAt) = (mine with { Id = Id, Name = _myName, Party = me.Party }, now);
+        if (Welcomed) Broadcast(MessageType.Meter, Protocol.Meter(me.Meter));
+    }
+
+    /// <summary>Host: puts a member in 1파티 or 2파티 (파티 → 순서). False when not the host, no such member, or no such party.</summary>
+    public bool SetParty(ulong id, int party)
+    {
+        if (Ended || !_isHost || party is not (1 or 2) || _members.Find(m => m.Id == id && m.Confirmed) is not { } m) return false;
+        if (m.Party != party && _members.Count(x => x.Confirmed && x.Party == party) >= Membership.PartySize) return false;   // full
+        m.Party = party;
+        Broadcast(MessageType.Roster, RosterBody());
+        _peersDirty = true;
+        return true;
+    }
 
     /// <summary>What changed since the last call.</summary>
     public PartyChanges TakeChanges()
@@ -202,7 +239,7 @@ public sealed partial class PartySession : IDisposable
         Block(m);
         Send(m, MessageType.Refuse, Protocol.Refuse(Kicked));
         // Also the roster without it, which ends its session if the notice is lost; with both lost, its host timeout does.
-        Send(m, MessageType.Roster, Protocol.Roster([.. _members.Where(x => x.Confirmed && x != m).Select(x => (x.Id, x.Name))]));
+        Send(m, MessageType.Roster, Protocol.Roster([.. _members.Where(x => x.Confirmed && x != m).Select(x => (x.Id, x.Name, x.Party))]));
         Remove(m);
         return true;
     }
@@ -316,6 +353,13 @@ public sealed partial class PartySession : IDisposable
             case MessageType.LookAck when Protocol.TryReadLookAck(body, out var origin, out var version):
                 Acknowledged(m, origin, version);
                 break;
+            case MessageType.Meter when Protocol.TryReadMeter(body, out var sample) && sample.Id == m.Id:
+                if (m.Meter is not null && now - m.MeterAt < MeterGap) break;   // senders send once a second: a flood isn't relayed
+                // Its own figures only, under the name and party the host gave it, relayed as such.
+                (m.Meter, m.MeterAt) = (sample with { Name = m.Name, Party = m.Party }, now);
+                var relayed = Protocol.Meter(m.Meter);
+                foreach (var t in Others().Where(o => o != m).ToList()) Send(t, MessageType.Meter, relayed);
+                break;
             case MessageType.Bye:
                 Remove(m);
                 break;
@@ -342,10 +386,10 @@ public sealed partial class PartySession : IDisposable
             case MessageType.Roster when Protocol.TryReadRoster(body, out var roster):
                 var old = _members.ToDictionary(m => m.Id);
                 _members.Clear();
-                foreach (var (id, name) in roster)
+                foreach (var (id, name, party) in roster)
                 {
                     var m = old.GetValueOrDefault(id) ?? new Member(id, name, null, null, now, confirmed: true);
-                    m.Name = name;
+                    (m.Name, m.Party) = (name, party);
                     _members.Add(m);
                 }
                 if (!_members.Any(m => m.Id == Id) || !_members.Contains(host)) { End("파티에서 빠졌습니다."); return; }
@@ -366,6 +410,9 @@ public sealed partial class PartySession : IDisposable
                 break;
             case MessageType.LookAck when Protocol.TryReadLookAck(body, out var origin, out var version):
                 Acknowledged(host, origin, version);
+                break;
+            case MessageType.Meter when Protocol.TryReadMeter(body, out var sample):
+                if (sample.Id != Id && _members.Find(x => x.Id == sample.Id) is { } who) (who.Meter, who.MeterAt) = (sample, now);
                 break;
             case MessageType.Refuse:   // the party filled up while we were joining
                 End(Protocol.ReadRefuse(body));
@@ -511,7 +558,7 @@ public sealed partial class PartySession : IDisposable
     /// (future, ancient, near TimeSpan.MinValue) would overflow the subtraction or skew every cooldown of that member.</summary>
     static bool PlausibleStamp(TimeSpan now, TimeSpan stamp) => stamp <= now && stamp > now - TimeSpan.FromSeconds(5);
 
-    byte[] RosterBody() => Protocol.Roster([.. _members.Where(m => m.Confirmed).Select(m => (m.Id, m.Name))]);
+    byte[] RosterBody() => Protocol.Roster([.. _members.Where(m => m.Confirmed).Select(m => (m.Id, m.Name, m.Party))]);
 
     /// <summary>The name, numbered if someone else has it; a member on <paramref name="device"/> (about to be replaced by
     /// this join) doesn't count.</summary>
@@ -523,3 +570,6 @@ public sealed partial class PartySession : IDisposable
         return unique;
     }
 }
+
+/// <summary>A member as the party sees it: id, name and 1파티 or 2파티.</summary>
+public sealed record PartyMember(ulong Id, string Name, int Party);

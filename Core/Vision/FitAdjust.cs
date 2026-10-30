@@ -19,9 +19,14 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     /// <summary>The 버프 크기 range ± reaches: the game offers <see cref="Settings.BuffSizes"/>, a video (테스트 모드) may show any size.</summary>
     public const int MinBuffSize = 50, MaxBuffSize = 200;
 
-    public static FitAdjust Begin(Viewport vp, int buffSize, Fit fit)
+    /// <summary>The buff boxes read (설정's 버프 읽을 칸 수): the buff row is drawn and kept inside the game area at this many.</summary>
+    public int BuffCount { get; init; } = Geometry.BuffBoxCount;
+    /// <summary>The game's 보스 디버프 크기 (a 설정 value): the boss row's size before <see cref="Fit.BossSize"/>.</summary>
+    public int BossGameSize { get; init; } = Geometry.RefBossSize;
+
+    public static FitAdjust Begin(Viewport vp, int buffSize, Fit fit, int buffCount = Geometry.BuffBoxCount, int bossSize = Geometry.RefBossSize)
     {
-        var a = new FitAdjust(vp, buffSize, fit, fit, buffSize);
+        var a = new FitAdjust(vp, buffSize, fit, fit, buffSize) { BuffCount = buffCount, BossGameSize = bossSize };
         return a with { Current = a.Clamp(fit) };
     }
 
@@ -60,6 +65,31 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
         return a with { Current = a.Clamp(Current) };
     }
 
+    /// <summary>+ / − on the layer: the bar <paramref name="step"/> screen pixels wider, the buff and debuff rows' 버프 크기 or the
+    /// boss row's % by <paramref name="step"/>.</summary>
+    public FitAdjust Resize(AdjustPart part, int step) => part switch
+    {
+        AdjustPart.스킬창 => WidenBy(step),
+        AdjustPart.버프 or AdjustPart.디버프 => WithBuffSize(BuffSize + step),
+        _ => BossTo(BossPercent + step),
+    };
+
+    /// <summary>A part's size handle, on the edge a size change moves: the bar's bottom-left (its left edge follows the pointer),
+    /// the buff row's bottom-left (it keeps its right end and grows left), the debuff and boss rows' bottom-right.</summary>
+    public (int X, int Y) Handle(AdjustPart part) => RectOf(part) is var r && part is AdjustPart.스킬창 or AdjustPart.버프 ? (r.X, r.Bottom) : (r.Right, r.Bottom);
+
+    /// <summary>A size handle dragged <paramref name="dx"/> screen pixels, called on the drag's start state with the whole distance:
+    /// the bar's left edge follows it (<see cref="DragLeftTo"/>); a row takes the size whose handle lands nearest the pointer (its
+    /// width isn't proportional to its size, and the boss row grows about the slash).</summary>
+    public FitAdjust DragCorner(AdjustPart part, double dx)
+    {
+        if (part == AdjustPart.스킬창) return DragLeftTo(RectOf(part).X + dx);
+        double target = Handle(part).X + dx;
+        var (min, max, now) = part == AdjustPart.보스 ? (MinBoss, MaxBoss, BossPercent) : (MinBuffSize, MaxBuffSize, BuffSize);
+        return Enumerable.Range(min, max - min + 1).Select(size => part == AdjustPart.보스 ? BossTo(size) : WithBuffSize(size))
+            .MinBy(a => (Math.Abs(a.Handle(part).X - target), Math.Abs((part == AdjustPart.보스 ? a.BossPercent : a.BuffSize) - now)))!;
+    }
+
     /// <summary>The boss row's size in % of the game's (100: as the game draws it at this HUD).</summary>
     public int BossPercent => Current.BossSize ?? 100;
 
@@ -84,30 +114,31 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     PixelRect RectOf(Fit f, AdjustPart part) => part switch
     {
         AdjustPart.스킬창 => Geometry.BarRect(Vp, f),
-        AdjustPart.버프 => Geometry.BuffArea(Vp, f, BuffSize),
+        AdjustPart.버프 => Geometry.BuffArea(Vp, f, BuffSize, BuffCount),
         AdjustPart.디버프 => Geometry.DebuffArea(Vp, f, BuffSize),
-        _ => Geometry.BossRow(Vp, f),
+        _ => Geometry.BossRow(Vp, f, BossGameSize),
     };
 
     /// <summary>The biggest boss size whose row still fits in the game area on both sides of the slash, which a size keeps in
     /// place: so <see cref="Clamp"/> never has to push the row (and keep that push after the size shrinks again).</summary>
     int MaxBossPercent()
     {
-        var row = Geometry.BossRow(Vp, Current);
-        double scale = Geometry.BossScale(Vp, Current), game = scale / (BossPercent / 100.0);
+        var row = Geometry.BossRow(Vp, Current, BossGameSize);
+        double scale = Geometry.BossScale(Vp, Current, BossGameSize), game = scale / (BossPercent / 100.0);
         double axis = row.X + Geometry.BossAxis * scale;
         double left = Geometry.BossAxis, right = Geometry.RefBossRow.Width - Geometry.BossAxis;
         double s = Math.Min((axis - Vp.X) / left, (Vp.X + Vp.Width - axis) / right) - 1.0 / Geometry.RefBossRow.Width;   // 1 px for rounding
         return Math.Min(MaxBoss, (int)Math.Floor(s / game * 100));
     }
 
-    /// <summary>What a press at screen pixel (<paramref name="x"/>, <paramref name="y"/>) takes: the bar's bottom-left corner
-    /// (within <paramref name="handle"/> pixels: a resize, <see cref="DragLeftTo"/>), else the smallest box under it; null over none.
-    /// The left corner: the bar mostly lies left of the HUD's anchor, so its left edge follows the pointer.</summary>
+    /// <summary>What a press at screen pixel (<paramref name="x"/>, <paramref name="y"/>) takes: a size handle (<see cref="Handle"/>,
+    /// within <paramref name="handle"/> pixels: <see cref="DragCorner"/>), the bar's first; else the smallest box under it; null over none.</summary>
     public (AdjustPart Part, bool Corner)? PartAt(double x, double y, double handle)
     {
         var bar = RectOf(AdjustPart.스킬창);
         if (Math.Abs(x - bar.X) <= handle && Math.Abs(y - bar.Bottom) <= handle) return (AdjustPart.스킬창, true);
+        foreach (var row in new[] { AdjustPart.버프, AdjustPart.디버프, AdjustPart.보스 })
+            if (Handle(row) is var (hx, hy) && Math.Abs(x - hx) <= handle && Math.Abs(y - hy) <= handle) return (row, true);
         var hit = Enum.GetValues<AdjustPart>().Select(p => (Part: p, Rect: RectOf(p)))
             .Where(h => x >= h.Rect.X && x < h.Rect.Right && y >= h.Rect.Y && y < h.Rect.Bottom)
             .OrderBy(h => (long)h.Rect.Width * h.Rect.Height).ToList();

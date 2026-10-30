@@ -27,6 +27,19 @@ public sealed class SettingsStoreTests : IDisposable
         return s;
     }
 
+    [Theory]
+    [InlineData("""{"Buffs":{"Count":99},"Debuffs":{"BossIconSize":999}}""", 14, 120)]
+    [InlineData("""{"Buffs":{"Count":0},"Debuffs":{"BossIconSize":10}}""", 1, 120)]
+    [InlineData("""{"Buffs":{"Count":11},"Debuffs":{"BossIconSize":90}}""", 11, 90)]
+    [InlineData("""{}""", 7, 120)]   // a file from before both settings
+    public void The_buff_box_count_and_boss_size_load_within_their_ranges(string json, int count, int bossSize)
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, json);
+        var s = new SettingsStore(FilePath).Load(out _);
+        Assert.Equal((count, bossSize), (s.Buffs.Count, s.Debuffs.BossIconSize));
+    }
+
     [Fact]
     public void Null_class_entries_and_null_profiles_in_a_hand_edited_file_load_as_defaults_and_survive_EnsureOwn()
     {

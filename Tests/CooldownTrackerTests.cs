@@ -212,12 +212,11 @@ public class CooldownTrackerTests
         var rng = new Random(7);
         var scheduler = new ReadScheduler();
         var s = ReadyAt(-1);
-        bool pressed = false, readyChecked = false;
+        bool readyChecked = false;
 
         for (int k = 0; k < 480; k++)
         {
             double t = k * Frame + (rng.NextDouble() * 2 - 1) * 0.003;
-            if (!pressed && t >= castAt - 0.002) { scheduler.RequestCooldownReads(S(castAt)); pressed = true; }
             if (!scheduler.Due(S(t), [s]).Contains(D)) continue;
             scheduler.MarkRead(D, S(t));
 
@@ -228,7 +227,8 @@ public class CooldownTrackerTests
             if (s.Phase == SlotPhase.Cooldown && t > castAt + 0.35 + 2 * Frame)
             {
                 Near(endsAt, s.EndsAt, Frame + 0.006);
-                Near(length, s.Total, 2 * Frame + 0.006);
+                // No key is read: the cast is seen by the 50 ms ready check, so the length can be that much short, never long.
+                Assert.InRange(s.Total!.Value.TotalSeconds, length - 0.05 - 2 * Frame - 0.006, length + 2 * Frame + 0.006);
             }
             if (s.Phase == SlotPhase.Ready && prev.Phase == SlotPhase.Cooldown)
             {

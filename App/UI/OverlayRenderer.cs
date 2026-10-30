@@ -290,9 +290,13 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
         if (DebuffsOnly) DrawDebuffs(dc, now, ms, reduced);
         else if (JudgmentOnly) DrawJudgment(dc, now, reduced);
+        else if (RaidOnly) DrawRaid(dc, ms, reduced);
+        else if (MeterOnly) DrawMeter(dc);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         _frameMs = _animating ? FastFrameMs : SlowFrameMs;
         SetLoop(_moving || _animating);
+        Services.Perf.Add(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+            : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창", Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0));
     }
 
     void DrawPlayer(DrawingContext dc, PlayerLayout l, TimeSpan now, double ms, bool reduced)

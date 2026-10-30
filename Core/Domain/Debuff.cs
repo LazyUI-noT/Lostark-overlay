@@ -23,8 +23,10 @@ public sealed record DebuffMark(TimeSpan SeenAt, TimeSpan? EndsAt)
 /// 30 s (the game's debuff lasts longer) so the icon coming back after a cutscene is the same cycle, not a new countdown.
 /// It ends only when a sigil is read without 결투자 for <see cref="Gone"/> (the debuff is over), or <see cref="Keep"/>
 /// after the first sighting (the next pull). <paramref name="GoneSince"/>: since when every read has shown a sigil without it.
-/// <paramref name="Ended"/>: the 30 s are over (a change of status, so the box is republished and cleared).</summary>
-public sealed record DuelMark(TimeSpan FirstSeenAt, TimeSpan? GoneSince = null, bool Ended = false)
+/// <paramref name="Ended"/>: the 30 s are over (a change of status, so the box is republished and cleared).
+/// <paramref name="Timer"/>: the game's "N초" under the icon as last read (its ticks put <see cref="FirstSeenAt"/> back to when the
+/// debuff really came: the icon is read only 3–5 times a second).</summary>
+public sealed record DuelMark(TimeSpan FirstSeenAt, TimeSpan? GoneSince = null, bool Ended = false, int? Timer = null)
 {
     /// <summary>A sigil read without 결투자 this long means the debuff is over (one read could be the glare).</summary>
     public static readonly TimeSpan Gone = TimeSpan.FromSeconds(0.5);

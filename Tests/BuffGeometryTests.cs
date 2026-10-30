@@ -162,11 +162,48 @@ public class BuffGeometryTests
         Assert.Equal(5, Geometry.DebuffBoxes(Fhd, new Fit(110), 120).Length);
     }
 
+    /// <summary>버프 읽을 칸 수: more boxes go on leftwards at the same pitch, the first seven unchanged. 4k_down.mp4 (810-high game
+    /// area, HUD 100, buff 100%) shows 14 buffs at pitch
+    /// 21.86, where the model's 21.56 puts box 13 about 3 px right of it: known, and bounded here so it can't grow unseen
+    /// (Geometry's ponytail at the pitch).</summary>
+    [Fact]
+    public void Fourteen_buff_boxes_carry_the_row_on_at_one_pitch()
+    {
+        var seven = Geometry.BuffBoxes(Fhd, new Fit(110), 120);
+        var fourteen = Geometry.BuffBoxes(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
+        Assert.Equal(14, fourteen.Length);
+        Assert.Equal(seven, fourteen.Take(7));
+        int first = fourteen[0].Icon.X - fourteen[1].Icon.X;
+        Assert.All(fourteen.Zip(fourteen.Skip(1)), p => Assert.InRange(p.First.Icon.X - p.Second.Icon.X, first - 1, first + 1));
+        var down = Geometry.BuffBoxes(new Viewport(0, 135, 1920, 810), new Fit(100), 100, Geometry.MaxBuffBoxCount);
+        double measured = 13 * 21.86;
+        Assert.InRange(down[0].Icon.X - down[13].Icon.X, measured - 4.5, measured + 1);
+        Assert.Equal(down[0].Icon.Y, down[13].Icon.Y);
+    }
+
+    /// <summary>The boss row has its own game size, apart from 버프 크기. At 120% (every boss shot) nothing changes; another size
+    /// grows or shrinks the icons about the slash, which stays put, and keeps the icons' top where the HUD puts it.</summary>
+    [Theory]
+    [InlineData(80)]
+    [InlineData(100)]
+    [InlineData(110)]
+    public void The_boss_size_scales_the_icons_about_the_slash(int bossSize)
+    {
+        Assert.Equal(1, Geometry.BossSizeShare(Geometry.RefBossSize));
+        var fit = new Fit(110);
+        var (at120, row) = (Geometry.BossRow(Fhd, fit), Geometry.BossRow(Fhd, fit, bossSize));
+        double s120 = Geometry.BossScale(Fhd, fit), s = Geometry.BossScale(Fhd, fit, bossSize);
+        Assert.Equal(Geometry.BossSizeShare(bossSize), s / s120, 6);
+        Assert.True(s < s120);
+        Assert.InRange(row.X + Geometry.BossAxis * s, at120.X + Geometry.BossAxis * s120 - 1, at120.X + Geometry.BossAxis * s120 + 1);
+        Assert.InRange(row.Y + DebuffReader.BossIconTop * s, at120.Y + DebuffReader.BossIconTop * s120 - 1, at120.Y + DebuffReader.BossIconTop * s120 + 1);
+    }
+
     [Fact]
     public void Area_covers_every_box_and_timer()
     {
-        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120);
-        var area = Geometry.BuffArea(Fhd, new Fit(110), 120);
+        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
+        var area = Geometry.BuffArea(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
         foreach (var b in boxes)
             foreach (var r in new[] { b.Icon, b.Timer })
                 Assert.True(r.X >= area.X && r.Y >= area.Y && r.Right <= area.Right && r.Bottom <= area.Bottom, $"{r} in {area}");

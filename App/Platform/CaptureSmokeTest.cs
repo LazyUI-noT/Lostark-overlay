@@ -108,6 +108,44 @@ internal static partial class CaptureSmokeTest
         File.WriteAllText(Path.Combine(dir, "report.txt"), report.ToString());
     }
 
+    /// <summary><c>GaugeOverlay --capture-test=&lt;title part&gt;</c>: 테스트 모드's capture of the first listed window whose title
+    /// contains it (WGC even with Windows 10's border), as a PNG of its client area plus the picture finder's candidates, to
+    /// %TEMP%\GaugeOverlay-capture-test\window.png / window.txt. Checks that a player's video isn't black to WGC and is read
+    /// while covered.</summary>
+    public static void RunWindow(Application app, string titlePart)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "GaugeOverlay-capture-test");
+        Directory.CreateDirectory(dir);
+        var report = new StringBuilder();
+        try
+        {
+            var choice = GameWindow.Choices().FirstOrDefault(c => c.Title.Contains(titlePart, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"no listed window has \"{titlePart}\" in its title");
+            var client = GameWindow.ClientRect(choice.Hwnd) ?? throw new InvalidOperationException("window minimised or gone");
+            using var source = CaptureFactory.Create(choice.Hwnd, test: true);
+            report.AppendLine($"window: {choice.Title} {client}; backend {source.GetType().Name}, sees behind {source.SeesBehind}");
+            var img = new Image(client.Width, client.Height);
+            bool got = false;
+            for (int i = 0; i < 20 && !got; i++) got = source.TryCapture([client], [img], TimeSpan.FromMilliseconds(250), out _);
+            report.AppendLine($"captured: {got}");
+            if (got)
+            {
+                int distinct = Enumerable.Range(0, img.Width * img.Height).Select(p => BitConverter.ToInt32(img.Bgra, p * 4) & 0xFFFFFF).Distinct().Count();
+                report.AppendLine($"distinct colours: {distinct} (a black or blocked video gives a handful)");
+                var half = ImageOps.Resample(img, new(0, 0, img.Width, img.Height), 0.5);
+                foreach (var r in PictureFinder.Candidates(half)) report.AppendLine($"candidate (half scale): {r}");
+                var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgr32, null, img.Bgra, img.Stride);
+                using var file = File.Create(Path.Combine(dir, "window.png"));
+                var png = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                png.Save(file);
+            }
+        }
+        catch (Exception ex) { report.AppendLine("FAILED " + ex); }
+        File.WriteAllText(Path.Combine(dir, "window.txt"), report.ToString());
+        app.Shutdown();
+    }
+
     private static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
     private static string Stats(List<double> v)

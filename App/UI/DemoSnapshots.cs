@@ -34,9 +34,81 @@ public sealed class DemoSnapshots
         return changed;
     }
 
+    /// <summary>A 공대 of eight sharing (two parties of three dealers and a support), <paramref name="timer"/> seconds into the
+    /// record, with the half minute before it as history; "나" is id 1.</summary>
+    static MeterView DemoMeter(int timer)
+    {
+        (string Name, int Class, MeterRole Role, int Party, double Share)[] who =
+        [
+            ("나", 0, MeterRole.딜러, 1, 0.27), ("민수", 0, MeterRole.딜러, 1, 0.22), ("지현", 0, MeterRole.딜러, 1, 0.19), ("하나", 0, MeterRole.서포터, 1, 0.31),
+            ("철수", 0, MeterRole.딜러, 2, 0.12), ("영희", 0, MeterRole.딜러, 2, 0.09), ("수진", 0, MeterRole.딜러, 2, 0.06), ("도윤", 0, MeterRole.서포터, 2, 0.14),
+        ];
+        const long Boss = 4_200_000_000_000;
+        List<MeterSample> At(int t) => [.. who.Select((w, i) =>
+        {
+            double wobble = 1 + 0.08 * Math.Sin(t / 7.0 + i);
+            long damage = (long)(Boss * t / timer * w.Share * wobble);
+            return new MeterSample((ulong)i + 1, w.Name, w.Class, w.Role, w.Party, damage, damage / Math.Max(1, t), t, true, 1, Boss * t / timer);
+        })];
+        var history = new MeterHistory();
+        for (int t = timer - 30; t < timer; t++)
+            history.Add(Sec(t), 1, MeterMath.Rows(At(t), 1, 1, MeterScope.공대, null));
+        var rows = MeterMath.Rows(At(timer), 1, 1, MeterScope.공대, history.SharesAt(Sec(timer - 10)));
+        history.Add(Sec(timer), 1, rows);
+        // 버프 분배 as a support would see it (the dealers only; "나" is a dealer here, so it is only for the look)
+        IReadOnlyList<(ulong, string, double)> Split(params double[] s) => [(2, "민수", s[0]), (3, "지현", s[1]), (5, "철수", s[2])];
+        return new(rows, MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
+            BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)]);
+    }
+
+    /// <summary>Two 전투 기록 fights for --records: four players, a phase change, my casts and buff windows; the second a
+    /// little faster.</summary>
+    public static IReadOnlyList<FightRecord> DemoRecords()
+    {
+        (string Name, int Class, MeterRole Role, double Share)[] who =
+            [("나", 0, MeterRole.딜러, 0.34), ("민수", 0, MeterRole.딜러, 0.27), ("지현", 0, MeterRole.딜러, 0.22), ("하나", 0, MeterRole.서포터, 0.30)];
+        FightRecord Fight(int minute, double length, double phase, double pace)
+        {
+            const long Boss = 3_000_000_000_000;
+            var samples = new List<RecordSample>();
+            var boss = new List<RecordBoss>();
+            for (int t = 1; t <= length; t++)
+            {
+                foreach (var (w, i) in who.Select((w, i) => (w, i)))
+                {
+                    double wobble = 1 + 0.25 * Math.Sin(t / 9.0 + i) * (t > phase - 8 && t < phase ? 0.2 : 1);
+                    long damage = (long)(Boss * pace * t / length * w.Share);
+                    samples.Add(new(t, w.Name, damage, (long)(Boss * pace / length * w.Share * wobble)));
+                }
+                boss.Add(new(t, (long)(Boss * pace * t / length), null, null));
+            }
+            var events = new List<RecordEvent>();
+            foreach (var (cd, i) in new[] { 6.0, 9, 12, 15, 20, 24 }.Select((cd, i) => (cd, i)))   // my skills, each on its cooldown
+                for (double t = 1 + i * 0.6; t < length; t += cd + i % 3 * 0.4)
+                    if (Math.Abs(t - phase) > 4) events.Add(new(Math.Round(t, 1), "나", RecordEventKind.사용, (int)SlotId.일반1 + i));
+            events.Add(new(phase + 20, "나", RecordEventKind.사용, (int)SlotId.각성기));
+            for (double t = 4; t < length; t += 18)
+            {
+                events.Add(new(t, "나", RecordEventKind.버프시작, (int)BuffKind.공증));
+                events.Add(new(t + 9, "나", RecordEventKind.버프끝, (int)BuffKind.공증));
+            }
+            for (double t = 6; t < length; t += 30)
+            {
+                events.Add(new(t, "나", RecordEventKind.버프시작, (int)BuffKind.아덴피증));
+                events.Add(new(t + 8, "나", RecordEventKind.버프끝, (int)BuffKind.아덴피증));
+                events.Add(new(t + 2, "나", RecordEventKind.사용, (int)SlotId.초각스));
+                events.Add(new(t + 2.1, "나", RecordEventKind.버프시작, (int)BuffKind.초각스피증));
+                events.Add(new(t + 12, "나", RecordEventKind.버프끝, (int)BuffKind.초각스피증));
+            }
+            return new(new DateTime(2026, 10, 30, 21, minute, 0), "3막 · 3관문", length, [phase], "나", 0, null,
+                [.. who.Select(w => new RecordMember(w.Name, w.Class, w.Role, 1))], samples, boss, [.. events.OrderBy(e => e.T)]);
+        }
+        return [Fight(4, 182, 95, 1.0), Fight(40, 168, 88, 1.08) with { Kept = true }];
+    }
+
     static bool Same(Snapshot a, Snapshot b) =>
         a.Slots.SequenceEqual(b.Slots) && a.AwakeningChanged == b.AwakeningChanged && a.Gauge == b.Gauge && a.Groups.SetEquals(b.Groups)
-        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment;
+        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment && a.Raid == b.Raid;
 
     /// <summary>The buff bars: 뎀증 from 0 s (20 s), 공증 from 1 s (8 s), 아덴피증 from 3 s (12 s) and 초각스피증 from
     /// 5 s (10 s); absent otherwise.</summary>
@@ -73,7 +145,8 @@ public sealed class DemoSnapshots
         double gauge = t < 20 ? Math.Floor(t * 2) / 40 : 0.2;
         SlotState Lit(SlotId id) => State(id) with { Gold = id is SlotId.일반3 or SlotId.일반4 && t is >= 12 and < 18 };   // gold frame
         return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist),
-            Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)) };   // 심판 at 1 s: its 6 s, then the 24 s cooldown
+            Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)),   // 심판 at 1 s: its 6 s, then the 24 s cooldown
+            Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12, null), MeterView = DemoMeter(60 + (int)t) };   // the 줄 수 창 glows at 755 for 7 s
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap
@@ -131,7 +204,7 @@ public sealed class DemoSnapshots
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
         var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
-            Judgment = new JudgmentState(at - Sec(3)) };   // 심판 on, half its 6 s left
+            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true, null), MeterView = DemoMeter(95) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),

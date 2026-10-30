@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using GaugeOverlay.App.Platform;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
@@ -24,7 +25,7 @@ public sealed class Tray : IDisposable
     readonly ToolStripMenuItem[] _profileItems;
     bool _gameRunning = true, _partyActive;
 
-    public event Action? ToggleOverlay, ToggleEditMode, ToggleTestMode, HostParty, JoinParty, CopyToken, LeaveParty, Refit, DetectSubclass, SubmitSkills, RereadIcons, OpenSettings, OpenDebug, Exit;
+    public event Action? ToggleOverlay, ToggleEditMode, ToggleTestMode, HostParty, JoinParty, CopyToken, LeaveParty, Refit, DetectSubclass, SubmitSkills, RereadIcons, OpenSettings, OpenDiagnostics, Exit;
     /// <summary>직업군, 클래스, 직업각인 picked from the 캐릭터 menu.</summary>
     public event Action<string, string, string>? CharacterPicked;
     /// <summary>기본 (no class) picked from the 캐릭터 menu.</summary>
@@ -39,11 +40,8 @@ public sealed class Tray : IDisposable
     public event Action<IntPtr>? TestWindowPicked;
     /// <summary>테스트 모드 → 끄기.</summary>
     public event Action? TestOff;
-    /// <summary>디버프 레이드 picked (없음: off).</summary>
-    public event Action<Raid>? RaidChosen;
-
-    /// <summary>What a raid is called in the tray menu and in 설정 → 버프/디버프.</summary>
-    public static string RaidName(Raid r) => r switch { Raid.모르둠 => "G3 모르둠", _ => "끔" };
+    /// <summary>레이드 → 자동 인식 (null) or a gate picked by hand (its id).</summary>
+    public event Action<string?>? RaidPicked;
 
     public Tray()
     {
@@ -76,8 +74,8 @@ public sealed class Tray : IDisposable
         }
         _character = new ToolStripMenuItem("캐릭터: 없음");
         _raid = new ToolStripMenuItem();
-        foreach (var r in Enum.GetValues<Raid>()) _raid.DropDownItems.Add(Item(RaidName(r), () => RaidChosen?.Invoke(r)));
-        SetRaid(Raid.없음);
+        _raid.DropDownItems.Add(Item("자동 인식", () => RaidPicked?.Invoke(null)));
+        SetRaid(new RaidSettings(), [], null);
         _refit = Item("스킬창 재맞춤 (+캐릭터 감지)", () => Refit?.Invoke());
         _detectSubclass = Item("직업각인 다시 감지", () => DetectSubclass?.Invoke());
         var submitSkills = Item("스킬 등록", () => SubmitSkills?.Invoke());
@@ -92,7 +90,7 @@ public sealed class Tray : IDisposable
         // Rarely used tools in one submenu, so the top level keeps what is used between gates.
         var tools = new ToolStripMenuItem("인식 도구");
         tools.DropDownItems.AddRange([_detectSubclass, submitSkills, _rereadIcons, new ToolStripSeparator(),
-            Item("디버그 창", () => OpenDebug?.Invoke())]);
+            Item("진단", () => OpenDiagnostics?.Invoke())]);
         // 설정 열기 first and bold: it is what double-clicking the icon does (Windows' default-item convention).
         var settings = Item("설정 열기", () => OpenSettings?.Invoke());
         settings.Font = _bold = new Font(settings.Font, FontStyle.Bold);
@@ -170,11 +168,38 @@ public sealed class Tray : IDisposable
         for (int i = 0; i < _profileItems.Length; i++) _profileItems[i].Checked = i == active;
     }
 
-    /// <summary>The 디버프 line and the checkmark on the raid chosen.</summary>
-    public void SetRaid(Raid active)
+    /// <summary>The 레이드 line: 자동 with what it recognises now (<paramref name="seen"/>, a gate id), or the gate picked by hand;
+    /// the gates are listed under 자동 인식 the first time they are known.</summary>
+    public void SetRaid(RaidSettings raids, IReadOnlyList<RaidGate> gates, string? seen)
     {
-        _raid.Text = $"디버프: {RaidName(active)}";
-        foreach (var (item, r) in _raid.DropDownItems.OfType<ToolStripMenuItem>().Zip(Enum.GetValues<Raid>())) item.Checked = r == active;
+        if (_raid.DropDownItems.Count == 1 && gates.Count > 0)
+        {
+            _raid.DropDownItems.Add(new ToolStripSeparator());
+            foreach (var tab in gates.GroupBy(g => g.TabName))   // 카제로스 레이드 › 종막: 최후의 날 · 1관문 …
+            {
+                var group = new ToolStripMenuItem(tab.Key);
+                foreach (var g in tab)
+                {
+                    var item = new ToolStripMenuItem(RaidData.Label(g)) { Tag = g.Id };
+                    item.Click += (_, _) => RaidPicked?.Invoke(g.Id);
+                    group.DropDownItems.Add(item);
+                }
+                _raid.DropDownItems.Add(group);
+            }
+        }
+        var manual = RaidData.Find(gates, raids.ManualGate);
+        _raid.Text = raids.Auto || manual is null
+            ? $"레이드: 자동 ({(RaidData.Find(gates, seen) is { } g0 ? RaidData.Label(g0) : "인식 안 됨")})"
+            : $"레이드: {RaidData.Label(manual)}";
+        foreach (var item in _raid.DropDownItems.OfType<ToolStripMenuItem>())
+        {
+            if (item.HasDropDownItems)   // a tab: checked when the gate picked by hand is in it
+            {
+                foreach (var gate in item.DropDownItems.OfType<ToolStripMenuItem>()) gate.Checked = !raids.Auto && (string?)gate.Tag == raids.ManualGate;
+                item.Checked = item.DropDownItems.OfType<ToolStripMenuItem>().Any(x => x.Checked);
+            }
+            else item.Checked = raids.Auto || manual is null;   // 자동 인식
+        }
     }
 
     /// <summary>Checkmark on "편집 모드".</summary>

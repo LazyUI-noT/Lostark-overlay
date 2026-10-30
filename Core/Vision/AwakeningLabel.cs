@@ -10,7 +10,7 @@ public static class AwakeningLabel
 {
     // The ✳'s centre in Geometry.RefAwakeningLabel at reference scale (gameplay.mp4 puts it at x 21, the screenshots at
     // 23–25), points on its strokes and in the body between them (reference px from the centre), and the search
-    // around the fitted spot that covers that spread.
+    // around the fitted spot that covers that spread (crop px at reference scale; scaled with the crop, never below it).
     private const int CentreX = 22, CentreY = 11, Search = 4;
     private static readonly (int X, int Y)[] Strokes = [(0, -3), (0, 0), (0, 3), (-3, 0), (3, 0)];
     private static readonly (int X, int Y)[] Body = [(-2, -4), (2, -4), (-2, 4), (2, 4), (-7, 0), (7, 0)];
@@ -23,8 +23,9 @@ public static class AwakeningLabel
     public static bool IsShown(Image labelCrop)
     {
         double k = labelCrop.Width / (double)Geometry.RefAwakeningLabel.Width;
-        for (int dy = -Search; dy <= Search; dy++)
-            for (int dx = -Search; dx <= Search; dx++)
+        int search = Math.Max(Search, (int)Math.Round(Search * k));
+        for (int dy = -search; dy <= search; dy++)
+            for (int dx = -search; dx <= search; dx++)
             {
                 double cx = CentreX * k + dx, cy = CentreY * k + dy, darkestStroke = double.MaxValue, lightestBody = 0;
                 foreach (var (x, y) in Strokes) darkestStroke = Math.Min(darkestStroke, Lum(labelCrop, cx + x * k, cy + y * k));

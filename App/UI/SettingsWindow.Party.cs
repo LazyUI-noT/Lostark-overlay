@@ -125,6 +125,7 @@ public partial class SettingsWindow
     {
         var party = _s.Party;
         var p = Refill(_secOrder, "파티원 순서", "번호는 파티원 창 왼쪽에 보입니다. 게임에서 내가 몇 번인지 고르면 파티원은 나머지 번호를 씁니다. 바꾼 순서는 그 이름에 고정되어, 다시 참가해도 같은 자리에 옵니다. " + "파티원마다 창이 따로 있습니다. 편집 모드에서 각 창을 끌어 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꿉니다.");
+        PartyAssign(p);
         int mine = party.MyNumber;
         p.Children.Add(Row("내 번호", NumberCombo([1, 2, 3, 4], mine, v =>
         {
@@ -184,6 +185,8 @@ public partial class SettingsWindow
             send.Add(Check(g.ToString(), party.Send.GetValueOrDefault(g, true), v => party.Send[g] = v, Changed));
         send.Add(Check("아덴 게이지", party.SendGauge, v => party.SendGauge = v, Changed));
         p.Children.Add(Row(Described("보낼 그룹", "끈 그룹은 파티원에게 보내지 않습니다"), [.. send]));
+        p.Children.Add(Row("", Check("내 피해량 보내기 (DPS 미터기)", _s.Meter.Send, v => _s.Meter.Send = v, () => { Changed(); FillMeter(); },
+            "1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 다른 파티원의 수치도 받지 않습니다. DPS 미터기에 있는 스위치와 같습니다.")));
 
         p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에 씁니다. 크기와 배치는 아래를 켤 때만 쓰고, 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창이 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));

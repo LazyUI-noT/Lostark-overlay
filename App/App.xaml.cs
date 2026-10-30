@@ -21,6 +21,7 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
 
         if (e.Args.Contains("--capture-test")) { Platform.CaptureSmokeTest.Run(this); return; }
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--capture-test=")) is { } window) { Platform.CaptureSmokeTest.RunWindow(this, window["--capture-test=".Length..]); return; }
         if (e.Args.Contains("--demo")) { StartDemo(e.Args); return; }
         if (e.Args.Contains("--party-test")) { PartySelfTest.Run(this); return; }
         if (e.Args.Contains("--build-gauge")) { BuildGauge(e.Args); Shutdown(); return; }
@@ -33,6 +34,7 @@ public partial class App : Application
     }
 
     static readonly TimeSpan UpdateHandover = TimeSpan.FromSeconds(30);
+    static readonly TimeSpan SaveOnExit = TimeSpan.FromSeconds(3);   // a fight record still being written when the app closes
 
     /// <summary>An intake folder's gauge_&lt;kind&gt;.png (_NEED.md), else the older &lt;kind&gt;.png.</summary>
     static string Shot(string dir, string kind) =>
@@ -91,10 +93,15 @@ public partial class App : Application
     OverlayWindow _buffs = null!;  // 버프 막대 따로 두기: your buff bars on their own
     OverlayWindow _debuffs = null!;   // 디버프: the chosen raid's debuffs and the swap count
     OverlayWindow _judgment = null!;   // 단심 (설정 → 기타): 심판's cycle
+    OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
+    OverlayWindow _meter = null!;   // DPS 미터기
+    PartyService? _partyService;   // set by StartApp (null in the demo)
+    IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
+    string? _raidSeen;   // the gate 자동 인식 recognises now
     /// <summary>The windows besides yours that follow it: the party slots and the buff bars'.</summary>
-    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment];
+    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment, _raid, _meter];
     SettingsWindow _settingsWindow = null!;
-    DebugWindow _debug = null!;
+    AdjustLayer _layer = null!;
     Tray _tray = null!;
     Hotkeys _hotkeys = null!;
     Action _changed = null!;
@@ -106,12 +113,14 @@ public partial class App : Application
         (_settings, _characters) = (settings, characters);
         _changed = changed;
         _overlay = new OverlayWindow(settings);
-        _peers = [.. Enumerable.Range(0, Membership.MaxMembers - 1).Select(i => new OverlayWindow(settings, i))];
+        _peers = [.. Enumerable.Range(0, Membership.PartySize - 1).Select(i => new OverlayWindow(settings, i))];
         _buffs = new OverlayWindow(settings, buffs: true);
         _debuffs = new OverlayWindow(settings, debuffs: true);
         _judgment = new OverlayWindow(settings, judgment: true);
+        _raid = new OverlayWindow(settings, raid: true);
+        _meter = new OverlayWindow(settings, meter: true);
         _settingsWindow = new SettingsWindow(settings, characters);
-        _debug = new DebugWindow();
+        _layer = new AdjustLayer();
         _tray = new Tray();
         _hotkeys = new Hotkeys();
         _owned.AddRange([_tray, _hotkeys]);
@@ -131,7 +140,7 @@ public partial class App : Application
         _tray.ToggleOverlay += ToggleOverlay;
         _tray.ToggleEditMode += () => SetEditMode(!_overlay.EditMode);
         _tray.OpenSettings += () => { _settingsWindow.Show(); _settingsWindow.Activate(); };
-        _tray.OpenDebug += () => { _debug.Show(); _debug.Activate(); };
+        _tray.OpenDiagnostics += _settingsWindow.ShowDiagnostics;
         _tray.PartToggled += (part, on) => { TrayToggles.Show(_settings, part, on); _settingsWindow.Reload(); changed(); };
         _settingsWindow.ProfileRequested += SwitchProfile;
         _settingsWindow.LayoutChanged += () =>
@@ -142,7 +151,12 @@ public partial class App : Application
         };
         _tray.CharacterPicked += (family, cls, sub) => { characters.Pick(family, cls, sub); _settingsWindow.Reload(); changed(); };
         _tray.DefaultPicked += () => { characters.PickDefault(); _settingsWindow.Reload(); changed(); };
-        _tray.RaidChosen += r => { _settings.Debuffs.Raid = r; _settingsWindow.Reload(); changed(); };
+        _tray.RaidPicked += id =>
+        {
+            (_settings.Raids.Auto, _settings.Raids.ManualGate) = (id is null, id ?? _settings.Raids.ManualGate);
+            _settingsWindow.Reload();
+            changed();
+        };
         _tray.Exit += Quit;
     }
 
@@ -163,7 +177,7 @@ public partial class App : Application
         _tray.SetHotkeys(_settings.Hotkeys);
         _tray.SetTheme(_settings.Theme);
         _tray.SetProfile(_settings.ActiveProfile);
-        _tray.SetRaid(_settings.Debuffs.Raid);
+        _tray.SetRaid(_settings.Raids, _raidGates, _raidSeen);
         _tray.SetCharacters(_characters.ClassTree, _settings.ActiveCharacter, _settings.FavoriteClasses);
         _tray.SetParts(part => TrayToggles.IsShown(_settings, part));
         UpdateVisibility();   // 오버레이 표시
@@ -230,6 +244,7 @@ public partial class App : Application
         for (int i = 0; i < _peers.Length; i++) _peers[i].Update(placed[i]);
         StackParty();
         _settingsWindow.SetPartyOrder([.. placed.Select(p => p?.Name)]);
+        if (_partyService is { } ps) _settingsWindow.SetPartyMembers(ps.Members, ps.IsHost);
     }
 
     /// <summary>파티 묶기: the party windows one under another from the first one's spot, plates meeting, as one plate.</summary>
@@ -251,9 +266,15 @@ public partial class App : Application
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _overlay.Visibility;
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
-        _debuffs.Visibility = _settings.Debuffs.Raid != Raid.없음 ? _overlay.Visibility : Visibility.Hidden;
+        _debuffs.Visibility = _settings.Raids.DebuffShown() ? _overlay.Visibility : Visibility.Hidden;
+        _raid.Visibility = _settings.Raids.CountShown() ? _overlay.Visibility : Visibility.Hidden;
+        // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
+        bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, preview: _overlay.Preview, visible: _settings.Overlay.Visible,
+            gameForeground: _gameForeground, hudVisible: true, firstRunDone: _settings.FirstRunDone);
+        _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }
+        else if (_meter.Visibility == Visibility.Visible) _meter.BringToFront();
         _tray.SetOverlayVisible(_settings.Overlay.Visible);
     }
 
@@ -284,6 +305,8 @@ public partial class App : Application
     // Flags: --settings, --first-run, --debug, --edit, --pick=<Part> (a part's box options in 설정), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
     // --theme=<UiTheme>, --peer-colors=<ColorSource>, --support=<number 1–4>, --my-number=<1–4>, --name-length=<2–14>, --receive (파티원 크기·배치 받기),
     // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스),
+    // --saved-icons (the icons saved for the active 직업각인, from the real icons folder),
+    // --saved-icons (the icons saved for the active 직업각인, from the real icons folder),
     // --unseen=<클래스> (설정 → 캐릭터 shows that class as newly added),
     // --cores (코어 빌드 applied to 워로드 · 고독한기사: 해 3, 버스트 캐넌 in 일반3),
     // --edit-as=<클래스 · 직업각인> (설정 → 편집 중 picks that 직업각인, so the overlay shows its sample; with --settings),
