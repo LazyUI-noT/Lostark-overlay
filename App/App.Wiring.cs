@@ -350,7 +350,7 @@ public partial class App
             hidden = HiddenHp.Step(hidden, raidGates, status,
                 HiddenHp.RaidDamage(all, myParty, share, r.OtherParty, options.Assist1, options.Assist2), options, now);
             if (was is null != hidden is null) Trace.WriteLine(hidden is { } on ? $"[raid] {on.Gate.Id} ({on.Difficulty}): HP estimated" : "[raid] HP estimate ended");
-            if (hidden is not { } est || r.Gates.GetValueOrDefault(est.Gate.Id) is not { CountWindow: true })
+            if (hidden is not { } est || !r.CountOn(est.Gate.Id))
             {
                 (hiddenStatus, hiddenBar) = (null, BarCountState.None);
                 return;
@@ -527,6 +527,11 @@ public partial class App
 
         // Platform → engine / UI.
         foreground.Changed += fg => { engine.GameForeground = fg; Dispatcher.BeginInvoke(() => { _gameForeground = fg; UpdateVisibility(); }); };
+        foreground.OwnChanged += own => Dispatcher.BeginInvoke(() => { _ownForeground = own; UpdateVisibility(); });
+        // 설정 in front shows the overlays like the game (켜기); its handle exists once it is first shown.
+        void Own() { foreground.OwnWindow = new System.Windows.Interop.WindowInteropHelper(_settingsWindow).Handle; foreground.Recheck(); }
+        _settingsWindow.SourceInitialized += (_, _) => Own();
+        Own();   // already shown (0 until then)
         // 테스트 모드 (tray or hotkey): a window (a video of the game) is watched instead of LOSTARK: the one picked from the tray's
         // list, or (picked zero: the hotkey, 맨 앞 창 따라가기) whichever was last in front.
         void SetTest(bool on, IntPtr picked, string? notice = null)

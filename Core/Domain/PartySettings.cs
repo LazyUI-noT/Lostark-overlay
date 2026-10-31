@@ -58,6 +58,8 @@ public sealed class PartySettings
     public bool Together { get; set; }
     public double Left { get; set; } = double.NaN;
     public double Top { get; set; } = double.NaN;
+    /// <summary>파티원 창 표시: off hides the party members' windows (설정 → 표시, tray → 표시); the party stays connected.</summary>
+    public bool ShowMembers { get; set; } = true;
     /// <summary>The party windows' plate colour (#RRGGBB).</summary>
     public string PlateColor { get; set; } = OverlaySettings.DefaultPlate;
 }

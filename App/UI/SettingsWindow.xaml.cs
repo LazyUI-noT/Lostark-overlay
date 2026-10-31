@@ -180,6 +180,7 @@ public partial class SettingsWindow : Window
         FillHotkeys();
         FillRaid();
         FillMeter();
+        FillShow();
         Collect(null);
         FillRecords();   // a list of files, not settings: nothing for search   // 편집 중's line is not a setting row
         FillClassSections();
@@ -380,7 +381,11 @@ public partial class SettingsWindow : Window
     {
         var o = _s.Overlay;
         var p = Refill(_secDisplay, "전체");
-        p.Children.Add(Check("오버레이", o.Visible, v => o.Visible = v, Changed, "끄면 게임 화면의 내 오버레이와 파티원 창을 모두 숨깁니다. 트레이 메뉴나 '오버레이 켜기/끄기' 단축키로도 바꿀 수 있습니다. 왼쪽 화면에는 그대로 보입니다."));
+        p.Children.Add(HelpRow("오버레이 표시", "끄기: 내 오버레이와 파티원 창을 모두 숨깁니다. 켜기: 게임이나 설정 창이 앞에 있을 때 보여 줍니다 (게임이 꺼져 있어도). " +
+            "항상: 어느 창이 앞에 있어도 보여 줍니다. 트레이 메뉴나 '오버레이 켜기/끄기' 단축키는 끄기와 마지막 켠 방식 사이를 오갑니다. 왼쪽 화면에는 그대로 보입니다.",
+            EnumCombo([(OverlayShow.끄기, "끄기"), (OverlayShow.켜기, "켜기 (게임·설정이 앞에 있을 때)"), (OverlayShow.항상, "항상")], o.Mode(), o.SetMode)));
+        p.Children.Add(Check("스킬창이 안 보이면 숨기기", o.HideWithoutHud, v => o.HideWithoutHud = v, Changed,
+            "게임이 앞에 있을 때, 컷신·로딩처럼 스킬창이 안 보이는 동안 오버레이를 숨깁니다. 끄면 마지막 모습 그대로 둡니다. DPS 미터기는 따르지 않습니다."));
         UIElement? opacityRow = null;
         p.Children.Add(Check("배경 판", o.ShowPlate,
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤의 판입니다. 분리된 버프 창에는 판이 없습니다."));

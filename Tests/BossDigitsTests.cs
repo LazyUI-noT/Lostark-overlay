@@ -28,6 +28,31 @@ public class BossDigitsTests
         { "bosstop_dummy80", 0, 1080, 80, 100_000_000_000, 100_000_000_000, null },
     };
 
+    /// <summary>The whole bar row (Geometry.BossTextRow): "Lv.60", the HP and "X n" found wherever the bar starts and ends. A
+    /// friend's 2560×1080 game (21:9, HUD 110) puts a shorter bar further left than the 16:9 shots, past the fixed areas.</summary>
+    public static TheoryData<string, int, int, int, double, long, long, int?> BarShots => new()
+    {
+        { "bosstop_mordum", 0, 1920, 1080, 110, 16_897_047_862_607, 17_126_566_042_900, 494 },
+        { "bosstop_layout", 0, 1920, 1080, 110, 27_934_993_622, 29_863_807_555, 468 },
+        { "bosstop_219", 135, 1920, 810, 110, 27_934_993_622, 29_863_807_555, 468 },
+        { "bosstop_dummy100", 0, 1920, 1080, 100, 99_981_084_598, 100_000_000_000, null },
+        { "bosstop_dummy80", 0, 1920, 1080, 80, 100_000_000_000, 100_000_000_000, null },
+        { "bosstop_2560", 180, 2560, 1080, 110, 1_057_137_405_322, 1_197_954_508_761, 177 },
+    };
+
+    [Theory, MemberData(nameof(BarShots))]
+    public void Reads_the_hp_and_the_count_from_the_whole_bar_row(string name, int top, int width, int height, double hud, long current, long max, int? count)
+    {
+        var f = Fixture.Load(name);
+        var (vp, fit) = (new Viewport(0, top, width, height), new Fit(hud));
+        var band = Geometry.BossTextRow(vp, fit);
+        var bar = BossDigits.ReadBar(f.Frames[0].Crop(band with { X = band.X - f.Rect[0], Y = band.Y - f.Rect[1] }), Geometry.Scale(vp, fit));
+        Assert.Equal((current, max), bar.Hp is { } hp ? (hp.Current, hp.Max) : default((long, long)?));
+        Assert.Equal(count, bar.Count);
+        var countOnly = BossDigits.ReadBar(f.Frames[0].Crop(band with { X = band.X - f.Rect[0], Y = band.Y - f.Rect[1] }), Geometry.Scale(vp, fit), hp: false);
+        Assert.Equal((count, null), (countOnly.Count, countOnly.Hp));   // the 줄 수 창's poll: same count, HP not read
+    }
+
     [Theory, MemberData(nameof(Shots))]
     public void Reads_the_hp_and_the_count(string name, int top, int height, double hud, long current, long max, int? count)
     {
@@ -45,6 +70,28 @@ public class BossDigitsTests
         var text = Fixture.Load(name).Frames[0];
         Assert.Equal((current, max, shield), BossDigits.ReadHpWithShield(text, 1.1));
         Assert.Equal((current, max), BossDigits.ReadHp(text, 1.1));
+        Assert.Equal((current, max, shield), BossDigits.ReadBar(text, 1.1).Hp);   // the row read keeps "(+n)" with the HP
+    }
+
+    [Fact]
+    public void The_row_read_keeps_a_shield_with_the_hp_and_the_count_apart()
+    {
+        // The shield shot's text with "X 321" set beside it, a word's gap away, as on the bar.
+        var text = Fixture.Load("bosshp_shield_mordum").Frames[0];
+        var (_, box, _) = Areas("bosstop_mordum", 0, 1080, 110);
+        int gap = 40, h = Math.Max(text.Height, box.Height);
+        var row = new Image(text.Width + gap + box.Width, h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < row.Width; x++)
+            {
+                var src = x < text.Width ? (y < text.Height ? text.Pixel(x, y) : ((byte)0, (byte)0, (byte)0))
+                    : x >= text.Width + gap && y < box.Height ? box.Pixel(x - text.Width - gap, y) : ((byte)0, (byte)0, (byte)0);
+                int i = y * row.Stride + x * 4;
+                (row.Bgra[i], row.Bgra[i + 1], row.Bgra[i + 2], row.Bgra[i + 3]) = (src.Item1, src.Item2, src.Item3, 255);
+            }
+        var bar = BossDigits.ReadBar(row, 1.1);
+        Assert.Equal((6_747_376_602_438L, 17_126_566_042_900L, 321_823_151_269L), bar.Hp);
+        Assert.Equal(494, bar.Count);
     }
 
     [Fact]

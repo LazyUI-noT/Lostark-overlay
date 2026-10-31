@@ -110,6 +110,7 @@ public partial class SettingsWindow
         _areas =
         [
             new(AreaFavorites, "★를 단 설정을 한곳에서 바꿉니다. 설정 행을 오른쪽 클릭하거나, 검색 결과의 ☆로 답니다.", (AreaFavorites, _secFavorites)),
+            new(AreaShow, "오버레이 창마다 켜고 끕니다. 예시로 모양을 봅니다.", (AreaShow, _secShow)),
             new(AreaOverlay, ""),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", ("캐릭터", _secCharacter)),
             new(AreaMeter, "보스가 받은 피해 중 각자의 몫(딜지분, 찬조)을 보여 줍니다.", (AreaMeter, _secMeter)),
@@ -120,7 +121,7 @@ public partial class SettingsWindow
             new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 알려 줍니다. 진단에서 칸마다 읽은 값을 봅니다.", ("스킬창", _secFit), (SecDiag, _secDiag)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
         ];
-        _area = _areas[1];   // 내 오버레이
+        _area = _areas[2];   // 내 오버레이
 
         foreach (var area in _areas)
         {
@@ -170,7 +171,7 @@ public partial class SettingsWindow
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaFavorites] = "\uE734", [AreaOverlay] = "\uE7B3", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaFit] = "\uE7C5", [AreaKeys] = "\uE765",
+        [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE7B3", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaFit] = "\uE7C5", [AreaKeys] = "\uE765",
     };
 
     static StackPanel AreaLabel(string name)

@@ -16,12 +16,13 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _icon;
     readonly ContextMenuStrip _menu = new();
     readonly ToolStripMenuItem _overlay, _edit, _test, _character, _refit, _detectSubclass, _rereadIcons, _party, _host, _join, _copyToken, _leave;
-    readonly ToolStripMenuItem _profiles, _raid, _testFront, _testOff, _parts;
+    readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _parts;
     readonly Dictionary<OverlayPart, ToolStripMenuItem> _partItems = [];
 
-    /// <summary>표시 ▸'s names, in menu order (보스 줄 수 창 and DPS 미터기 come with their projects).</summary>
-    static readonly (OverlayPart Part, string Name)[] PartNames =
-        [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Judgment, "단심 창"), (OverlayPart.Debuffs, "디버프 창")];
+    /// <summary>표시 ▸'s names, in menu order (as 설정 → 표시).</summary>
+    internal static readonly (OverlayPart Part, string Name)[] PartNames =
+        [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Debuffs, "디버프 창"),
+         (OverlayPart.Judgment, "단심 창"), (OverlayPart.Meter, "DPS 미터기"), (OverlayPart.BarCount, "줄 수 창"), (OverlayPart.Party, "파티원 창")];
     readonly ToolStripMenuItem[] _profileItems;
     bool _gameRunning = true, _partyActive;
 
@@ -42,6 +43,8 @@ public sealed class Tray : IDisposable
     public event Action? TestOff;
     /// <summary>레이드 → 자동 인식 (null) or a gate picked by hand (its id).</summary>
     public event Action<string?>? RaidPicked;
+    /// <summary>레이드 → 줄 수 읽기 (모든 레이드) turned on (true) or off.</summary>
+    public event Action<bool>? CountToggled;
 
     public Tray()
     {
@@ -74,7 +77,8 @@ public sealed class Tray : IDisposable
         }
         _character = new ToolStripMenuItem("캐릭터: 없음");
         _raid = new ToolStripMenuItem();
-        _raid.DropDownItems.Add(Item("자동 인식", () => RaidPicked?.Invoke(null)));
+        _raidCount = Item("줄 수 읽기 (모든 레이드)", () => CountToggled?.Invoke(!_raidCount!.Checked));
+        _raid.DropDownItems.AddRange([_raidCount, new ToolStripSeparator(), Item("자동 인식", () => RaidPicked?.Invoke(null))]);
         SetRaid(new RaidSettings(), [], null);
         _refit = Item("스킬창 재맞춤 (+캐릭터 감지)", () => Refit?.Invoke());
         _detectSubclass = Item("직업각인 다시 감지", () => DetectSubclass?.Invoke());
@@ -172,7 +176,8 @@ public sealed class Tray : IDisposable
     /// the gates are listed under 자동 인식 the first time they are known.</summary>
     public void SetRaid(RaidSettings raids, IReadOnlyList<RaidGate> gates, string? seen)
     {
-        if (_raid.DropDownItems.Count == 1 && gates.Count > 0)
+        _raidCount.Checked = raids.CountEnabled;
+        if (_raid.DropDownItems.Count == 3 && gates.Count > 0)
         {
             _raid.DropDownItems.Add(new ToolStripSeparator());
             foreach (var tab in gates.GroupBy(g => g.TabName))   // 카제로스 레이드 › 종막: 최후의 날 · 1관문 …
@@ -191,7 +196,7 @@ public sealed class Tray : IDisposable
         _raid.Text = raids.Auto || manual is null
             ? $"레이드: 자동 ({(RaidData.Find(gates, seen) is { } g0 ? RaidData.Label(g0) : "인식 안 됨")})"
             : $"레이드: {RaidData.Label(manual)}";
-        foreach (var item in _raid.DropDownItems.OfType<ToolStripMenuItem>())
+        foreach (var item in _raid.DropDownItems.OfType<ToolStripMenuItem>().Where(i => i != _raidCount))
         {
             if (item.HasDropDownItems)   // a tab: checked when the gate picked by hand is in it
             {

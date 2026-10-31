@@ -51,7 +51,8 @@ public static class DungeonPanel
         return new(same ? new(d.Kind, title ?? s.Shown!.Title, difficulty) : d with { Title = title }, votes);
     }
 
-    static double Shared(string a, string b)
+    /// <summary>The share of <paramref name="a"/>'s letters (spaces aside) found in <paramref name="b"/>.</summary>
+    internal static double Shared(string a, string b)
     {
         var letters = a.Where(c => !char.IsWhiteSpace(c)).Distinct().ToList();
         return letters.Count == 0 ? 0 : letters.Count(b.Contains) / (double)letters.Count;
@@ -75,6 +76,9 @@ public static class DungeonPanel
 
     static string? Difficulty(string line)
     {
+        // 구원의 종탑: "[1단계]" … "[3단계]" (the digit and 단계, spaces aside)
+        var step = System.Text.RegularExpressions.Regex.Match(line, @"(\d)\s*단\s*계");
+        if (step.Success) return $"{step.Groups[1].Value}단계";
         var (name, score) = Difficulties.Select(d => (d.Name, Score: d.Letters.Count(line.Contains) / (double)d.Letters.Length))
             .MaxBy(d => d.Score);
         if (score < 0.5) return null;

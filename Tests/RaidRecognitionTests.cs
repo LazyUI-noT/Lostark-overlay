@@ -87,6 +87,25 @@ public class RaidRecognitionTests
     }
 
     [Fact]
+    public void The_main_줄_수_switch_off_reads_no_count_and_keeps_each_gate()
+    {
+        var s = Count(countAuto: false);
+        s.CountEnabled = false;
+        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(s, Gates, "act3-g3"));
+        Assert.True(s.Gate("act3-g3").CountWindow);   // the gate's own switch is untouched
+        s.CountEnabled = true;
+        Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
+    }
+
+    [Fact]
+    public void The_main_줄_수_switch_off_leaves_the_debuff_window_reading_the_name()
+    {
+        var s = Count();
+        (s.CountEnabled, s.Gate("act3-g3").DebuffWindow) = (false, true);
+        Assert.Equal((true, false, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, "act3-g3"));
+    }
+
+    [Fact]
     public void A_gate_that_always_shows_its_count_still_does_while_another_is_recognised()
     {
         var s = new RaidSettings();

@@ -19,7 +19,8 @@ public partial class SettingsWindow
     static readonly IReadOnlyList<RaidGate> RaidGates = RaidData.Load(CharacterService.DefaultProfilesDir);
     string? _raidSeen;
     string? _raidTab;   // the tab shown (카제로스 레이드 …); null: the recognised gate's, else the first
-    HashSet<string>? _raidOpen;   // the raids unfolded; null until first shown (then the recognised gate's raid)
+    HashSet<string>? _raidOpen;   // the raid boxes open; null until first shown (then the recognised, else last recognised, raid)
+    string? _raidLast;   // the gate recognised last (kept after the fight ends)
 
     /// <summary>Redraws 레이드 (the 2-1 figures filled from the party's meter); any thread.</summary>
     public void RefreshRaid() => Dispatcher.BeginInvoke(FillRaid);
@@ -28,7 +29,55 @@ public partial class SettingsWindow
     public void SetRaidSeen(string? id)
     {
         _raidSeen = id;
+        if (RaidData.Find(RaidGates, id) is { } seen && _raidLast != id)
+        {
+            _raidLast = id;
+            _raidOpen?.Add(seen.Raid);   // a newly recognised raid opens; the others stay as the user left them
+        }
         FillRaid();
+    }
+
+    /// <summary>One raid as a box: a header (chevron, name, what's on) that opens or closes it, and when open its gates inside.</summary>
+    UIElement RaidBox(string name, IReadOnlyList<RaidGate> gates, Action again)
+    {
+        var r = _s.Raids;
+        bool open = _raidOpen!.Contains(name);
+        int counts = gates.Count(g => r.Gates.GetValueOrDefault(g.Id)?.CountWindow == true);
+        var debuffGates = gates.Where(g => g.DebuffRaid != Raid.없음).ToList();
+        int debuffs = debuffGates.Count(g => r.Gates.GetValueOrDefault(g.Id)?.DebuffWindow == true);
+        string summary = (r.CountEnabled ? $"줄 수 창 {counts}/{gates.Count}" : "줄 수 읽기 꺼짐")
+            + (debuffGates.Count > 0 ? $" · 디버프 창 {debuffs}/{debuffGates.Count}" : "");
+
+        var icons = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+        var chevron = new TextBlock { Text = open ? "" : "", FontFamily = icons, FontSize = 12, Margin = new(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+        var title = new TextBlock { Text = name, FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var info = new TextBlock { Text = summary, Opacity = 0.7, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var head = new DockPanel { LastChildFill = false };
+        DockPanel.SetDock(info, Dock.Right);
+        head.Children.Add(info);
+        head.Children.Add(chevron);
+        head.Children.Add(title);
+        var toggle = new Button
+        {
+            Content = head, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(14, 10, 14, 10), Cursor = Cursors.Hand,
+            Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new(0), ToolTip = open ? "접기" : "펼치기",
+        };
+        System.Windows.Automation.AutomationProperties.SetName(toggle, $"{name} {(open ? "접기" : "펼치기")}");
+        toggle.Click += (_, _) => { if (!_raidOpen.Remove(name)) _raidOpen.Add(name); again(); };
+
+        var inside = new StackPanel { Children = { toggle } };
+        if (open)
+        {
+            inside.Children.Add(Divider(0, 0));
+            var body = new CardStack { Margin = new(14, 4, 14, 8) };
+            foreach (var g in gates) GateRows(body, g, again);
+            inside.Children.Add(body);
+        }
+        var box = new Border { Child = inside, CornerRadius = new(8), BorderThickness = new(1), Margin = new(0, 0, 0, 8) };
+        box.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        box.SetResourceReference(Border.BackgroundProperty, CardBrushKey);   // reads as a box even when closed
+        CardStack.SetBreak(box, true);   // its own box, not a row in the page's cards
+        return box;
     }
 
     void FillRaid()
@@ -38,6 +87,12 @@ public partial class SettingsWindow
         var p = Refill(_secRaid, "레이드", "보스 체력바 위의 이름으로 레이드·관문을 알아보고, 체력바 오른쪽 끝의 줄 수(X 494)를 줄 수 창에 따로 보여 줍니다. " +
             "정한 줄 수가 되면 창이 빛납니다. 알아보지 못한 보스에는 아무것도 띄우지 않습니다.");
         p.Children.Add(Note("아직 실제 레이드 화면으로 확인하지 않았습니다. 스크린샷 몇 장으로만 맞췄습니다."));
+
+        // The main 줄 수 switch first: it gates every gate's own 줄 수 창 below, which stays as set.
+        p.Children.Add(Row("", Check("줄 수 읽기 (모든 레이드)", r.CountEnabled, v => r.CountEnabled = v, () => { Changed(); Again(); },
+            "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창은 그대로 남아, 다시 켜면 돌아옵니다. " +
+            "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다.")));
+        if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 그대로 남아 있고, 다시 켜면 그대로 돌아옵니다."));
 
         p.Children.Add(SubHeading("보스 인식"));
         p.Children.Add(Row("", Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
@@ -57,17 +112,10 @@ public partial class SettingsWindow
         }
         CardStack.SetBreak(bar, true);   // between the cards, like a heading
         p.Children.Add(bar);
-        _raidOpen ??= RaidData.Find(RaidGates, _raidSeen) is { } open ? [open.Raid] : [];
+        // Opened at first: the raid recognised now, else the one recognised last.
+        _raidOpen ??= RaidData.Find(RaidGates, _raidSeen ?? _raidLast) is { } open ? [open.Raid] : [];
         foreach (var raid in RaidGates.Where(g => g.TabName == tab).GroupBy(g => g.Raid))
-        {
-            bool unfolded = _raidOpen.Contains(raid.Key);   // folded: only the heading, so the page stays short
-            var head = Heading($"{(unfolded ? "▾" : "▸")} {raid.Key}");
-            (head.Cursor, head.Background) = (Cursors.Hand, System.Windows.Media.Brushes.Transparent);   // the whole line takes the click
-            head.ToolTip = unfolded ? "접기" : "펼치기";
-            head.MouseLeftButtonUp += (_, _) => { if (!_raidOpen.Remove(raid.Key)) _raidOpen.Add(raid.Key); Again(); };
-            p.Children.Add(head);
-            if (unfolded) foreach (var g in raid) GateRows(p, g, Again);
-        }
+            p.Children.Add(RaidBox(raid.Key, [.. raid], Again));
 
         p.Children.Add(SubHeading("알림", "목표 줄 수에 ±줄을 더한 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
         p.Children.Add(Row("", Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },
@@ -103,10 +151,18 @@ public partial class SettingsWindow
                 g.Hp.Count == 0 ? null : "보스 HP로 알아봅니다: " + string.Join(", ", g.Hp.Select(h => $"{h.Key} {h.Value:N0}")) + ".",
                 g.Shields.Count == 0 ? null : "실드 기믹: " + string.Join(", ", g.Shields.Select(x => $"{x.At}줄에서 +{x.Lines}줄")) + " (HP 뒤 괄호 수치로 읽어 DPS에 넣습니다).",
             }.OfType<string>()) is { Length: > 0 } help ? help : null));
-        p.Children.Add(Row("줄 수 창",
+        // Greyed, kept as set, while the main 줄 수 읽기 is off.
+        var count = Row("줄 수 창",
             Check("켜기", row.CountWindow, v => r.Gate(g.Id).CountWindow = v, () => { Changed(); again(); }),
-            Check("자동", row.CountAuto, v => r.Gate(g.Id).CountAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 이 관문 알림으로 늘 보여 줍니다.")));
-        if (row.CountWindow) p.Children.Add(Row(g.HiddenHp.Count > 0 ? "알림 HP %" : "알림 줄 수", AlertChips(g, again)));
+            Check("자동", row.CountAuto, v => r.Gate(g.Id).CountAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 이 관문 알림으로 늘 보여 줍니다."));
+        count.IsEnabled = r.CountEnabled;
+        p.Children.Add(count);
+        if (row.CountWindow)
+        {
+            var alerts = Row(g.HiddenHp.Count > 0 ? "알림 HP %" : "알림 줄 수", AlertChips(g, again));
+            alerts.IsEnabled = r.CountEnabled;
+            p.Children.Add(alerts);
+        }
         void Extras()   // after the gate's own rows: the ??? estimate and the 에스더 plan (종막 EX)
         {
             if (g.HiddenHp.Count > 0) HiddenRows(p, g);

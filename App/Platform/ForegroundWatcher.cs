@@ -28,9 +28,25 @@ public sealed partial class ForegroundWatcher : IDisposable
     /// <summary>Test mode was switched: whether "the game" is in front changes with it.</summary>
     public void Recheck() => Update(GetForegroundWindow());
 
+    /// <summary>The 설정 window's handle (0: not created yet): it, or a dialog it owns (colour picker), in front counts as
+    /// <see cref="IsOwnForeground"/>. Not any window of the app: the first-run window and tray menus don't.</summary>
+    public IntPtr OwnWindow { get; set; }
+
+    /// <summary>True while <see cref="OwnWindow"/> or a window it owns is in the foreground.</summary>
+    public bool IsOwnForeground { get; private set; }
+
+    /// <summary>New value of <see cref="IsOwnForeground"/>; raised only when it changes.</summary>
+    public event Action<bool>? OwnChanged;
+
     private void Update(IntPtr hwnd)
     {
         GameWindow.NoteForeground(hwnd);
+        bool own = hwnd != 0 && OwnWindow != 0 && (hwnd == OwnWindow || GetWindow(hwnd, GW_OWNER) == OwnWindow);
+        if (own != IsOwnForeground)
+        {
+            IsOwnForeground = own;
+            OwnChanged?.Invoke(own);
+        }
         bool game = IsGame(hwnd);
         if (game == IsGameForeground) return;
         IsGameForeground = game;
@@ -62,5 +78,7 @@ public sealed partial class ForegroundWatcher : IDisposable
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool UnhookWinEvent(IntPtr hook);
     [LibraryImport("user32.dll")] private static partial IntPtr GetForegroundWindow();
+    [LibraryImport("user32.dll")] private static partial IntPtr GetWindow(IntPtr hwnd, uint cmd);
+    private const uint GW_OWNER = 4;
     [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 }

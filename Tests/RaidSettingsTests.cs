@@ -130,6 +130,27 @@ public class RaidSettingsTests
     }
 
     [Fact]
+    public void The_main_줄_수_switch_hides_the_count_window_and_keeps_each_gate_on_a_reload()
+    {
+        var s = new Settings();
+        s.Raids.Gate("act3-g3").CountWindow = true;
+        s.Raids.CountEnabled = false;
+        Assert.False(s.Raids.CountShown());
+        Assert.False(s.Raids.CountOn("act3-g3"));
+        var back = RoundTrip(s).Raids;
+        Assert.False(back.CountEnabled);
+        Assert.True(back.Gate("act3-g3").CountWindow);
+    }
+
+    [Fact]
+    public void A_file_saved_before_the_main_줄_수_switch_loads_it_on()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.SerializeToUtf8Bytes(new Settings(), SettingsStore.Json))!.AsObject();
+        node["Raids"]!.AsObject().Remove("CountEnabled");
+        Assert.True(SettingsStore.Normalize(node.Deserialize<Settings>(SettingsStore.Json)!).Raids.CountEnabled);
+    }
+
+    [Fact]
     public void The_old_debuff_raid_mirrors_the_table_for_older_versions()
     {
         var s = new Settings();

@@ -31,11 +31,12 @@ public sealed partial class Engine
             (_meterOn, _meter, _panelMisses) = (config.MeterOn, MeterStatus.None, 0);
             Publish(now);
         }
-        if (_meterOn && StepDungeon(now)) Publish(now);
+        // The dungeon panel: for the meter's records, and for 자동 인식 (the boss name is read as text only in a raid it names).
+        if ((_meterOn || _raidWaits) && StepDungeon(now)) Publish(now);
         if (!_meterOn || !Elapsed(now, _lastMeter, MeterEvery)) return (null, null);
         var panel = PanelSpot(config);
         if ((panel is null || _panelMisses >= SearchAfterMisses) && Elapsed(now, _lastSearch, SearchEvery)) panel = Perf.Run("전분 위치 찾기", () => SearchPanel(now)) ?? panel;
-        return (Geometry.BossHpText(_vp, _fit!), panel);
+        return (Geometry.BossTextRow(_vp, _fit!), panel);   // the bar's whole text row: the HP wherever 21:9 or the HUD puts it
     }
 
     /// <summary>The spot for this game-area size: one just found, else the saved one. A spot outside the game area would fail
@@ -76,7 +77,7 @@ public sealed partial class Engine
         double scale = Geometry.Scale(_vp, _fit!);
         var reading = panel is null ? null : JeonbunReader.Read(panel);
         _panelMisses = reading is null ? _panelMisses + 1 : 0;
-        var read = BossDigits.ReadHpWithShield(hp, scale);   // a shield in brackets counts as HP (its breaking is damage)
+        var read = BossDigits.ReadBar(hp, scale).Hp;   // a shield in brackets counts as HP (its breaking is damage)
         var next = MeterTracker.Step(_meter, read is var (cur, max, _) ? (cur, max) : null, reading, reading is not null, t, read?.Shield ?? 0);
         bool changed = next != _meter;
         _meter = next;

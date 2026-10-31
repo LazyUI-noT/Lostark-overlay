@@ -102,8 +102,8 @@ public partial class OverlayWindow : Window
     /// <summary>True while edit mode is on.</summary>
     public bool EditMode => _editMode;
 
-    /// <summary>While 설정 is open and 오버레이 표시 is on: shown whatever is in front, with live data, so changed colours can be judged on it;
-    /// sample data only when there is nothing live (no game, an empty party slot). Never clickable.</summary>
+    /// <summary>While 설정 is open: live data, so changed colours can be judged on it; sample data only for another 직업각인
+    /// picked in 편집 중 (<see cref="SetPreviewTarget"/>). Never clickable.</summary>
     public bool Preview
     {
         get => _preview;
@@ -120,8 +120,9 @@ public partial class OverlayWindow : Window
         if (Sample || wasSample) Redraw(); else Renderer.Update(_shown = player);
     }
 
-    /// <summary>Sample data is drawn: in edit mode, and while 설정 is open with nothing live or with another 직업각인 picked.</summary>
-    bool Sample => _editMode || (_preview && (_player is null || _target is not null));
+    /// <summary>Sample data is drawn: in edit mode, and while 설정 is open with another 직업각인 picked in 편집 중. Opening 설정
+    /// alone shows the live data only (an empty party slot stays empty).</summary>
+    bool Sample => _editMode || (_preview && _target is not null);
 
     PreviewTarget? _target;
 

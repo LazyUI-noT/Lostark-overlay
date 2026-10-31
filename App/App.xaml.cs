@@ -105,7 +105,7 @@ public partial class App : Application
     Tray _tray = null!;
     Hotkeys _hotkeys = null!;
     Action _changed = null!;
-    bool _gameForeground = true, _hudVisible = true;
+    bool _gameForeground = true, _hudVisible = true, _ownForeground;   // own: one of the app's windows (설정) is in front
 
     /// <param name="changed">Runs after any edit of the settings object (settings window, first run, tray).</param>
     void BuildUi(Settings settings, CharacterService characters, Action changed)
@@ -154,6 +154,12 @@ public partial class App : Application
         _tray.RaidPicked += id =>
         {
             (_settings.Raids.Auto, _settings.Raids.ManualGate) = (id is null, id ?? _settings.Raids.ManualGate);
+            _settingsWindow.Reload();
+            changed();
+        };
+        _tray.CountToggled += on =>
+        {
+            _settings.Raids.CountEnabled = on;
             _settingsWindow.Reload();
             changed();
         };
@@ -261,16 +267,17 @@ public partial class App : Application
 
     void UpdateVisibility()
     {
-        bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, preview: _overlay.Preview, visible: _settings.Overlay.Visible,
-            gameForeground: _gameForeground, hudVisible: _hudVisible, firstRunDone: _settings.FirstRunDone);
+        var o = _settings.Overlay;
+        bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
+            gameForeground: _gameForeground, hudVisible: _hudVisible, hideWithoutHud: o.HideWithoutHud, firstRunDone: _settings.FirstRunDone);
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
-        foreach (var w in _peers) w.Visibility = _overlay.Visibility;
+        foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
         _debuffs.Visibility = _settings.Raids.DebuffShown() ? _overlay.Visibility : Visibility.Hidden;
         _raid.Visibility = _settings.Raids.CountShown() ? _overlay.Visibility : Visibility.Hidden;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
-        bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, preview: _overlay.Preview, visible: _settings.Overlay.Visible,
-            gameForeground: _gameForeground, hudVisible: true, firstRunDone: _settings.FirstRunDone);
+        bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
+            gameForeground: _gameForeground, hudVisible: true, hideWithoutHud: false, firstRunDone: _settings.FirstRunDone);
         _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }

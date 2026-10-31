@@ -31,14 +31,15 @@ public static class RaidReadPlan
     public static (bool ReadName, bool ReadCount, RaidGate? Gate) Of(RaidSettings s, IReadOnlyList<RaidGate> gates, string? recognised)
     {
         GateSettings? Row(RaidGate g) => s.Gates.GetValueOrDefault(g.Id);
-        if (!gates.Any(g => Row(g) is { } r && (r.CountWindow || r.DebuffWindow))) return (false, false, null);
-        bool readName = s.Auto && gates.Any(g => Row(g) is { } r && (r.CountWindow && r.CountAuto || r.DebuffWindow && r.DebuffAuto));
+        bool Count(GateSettings r) => s.CountEnabled && r.CountWindow;   // the main 줄 수 switch gates every gate's own
+        if (!gates.Any(g => Row(g) is { } r && (Count(r) || r.DebuffWindow))) return (false, false, null);
+        bool readName = s.Auto && gates.Any(g => Row(g) is { } r && (Count(r) && r.CountAuto || r.DebuffWindow && r.DebuffAuto));
         // 자동: the recognised gate while its 줄 수 창 is on, else the gate whose 줄 수 창 shows without waiting.
         var seen = RaidData.Find(gates, recognised);
-        var fixedGate = gates.FirstOrDefault(g => Row(g) is { CountWindow: true, CountAuto: false });
+        var fixedGate = gates.FirstOrDefault(g => Row(g) is { CountAuto: false } r && Count(r));
         var gate = !s.Auto ? RaidData.Find(gates, s.ManualGate)
-            : seen is not null && Row(seen) is { CountWindow: true } ? seen : fixedGate ?? seen;
-        return (readName, gate is not null && Row(gate) is { CountWindow: true }, gate);
+            : seen is not null && Row(seen) is { } sr && Count(sr) ? seen : fixedGate ?? seen;
+        return (readName, gate is not null && Row(gate) is { } gr && Count(gr), gate);
     }
 
     /// <summary>The debuff window's raid: the first gate with a debuff raid whose 디버프 창 is on, shown always (자동 off) or

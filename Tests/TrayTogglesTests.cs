@@ -15,6 +15,9 @@ public class TrayTogglesTests
     [InlineData(OverlayPart.Gauge)]
     [InlineData(OverlayPart.Judgment)]
     [InlineData(OverlayPart.Debuffs)]
+    [InlineData(OverlayPart.Meter)]
+    [InlineData(OverlayPart.BarCount)]
+    [InlineData(OverlayPart.Party)]
     public void Each_part_turns_off_and_on_again(OverlayPart part)
     {
         var s = WithCharacter();
@@ -49,6 +52,30 @@ public class TrayTogglesTests
         s.Buffs.Edit(BuffKind.공증).Visible = true;
         Assert.True(TrayToggles.IsShown(s, OverlayPart.Buffs));
     }
+
+    [Fact]
+    public void The_meter_off_hides_its_window_and_keeps_reading_for_the_records()
+    {
+        var s = new Settings();
+        TrayToggles.Show(s, OverlayPart.Meter, true);
+        Assert.True(s.Meter.On && s.Meter.Show);
+        TrayToggles.Show(s, OverlayPart.Meter, false);
+        Assert.True(s.Meter.On);
+        Assert.False(s.Meter.Show);
+    }
+
+    [Fact]
+    public void The_bar_count_switch_is_the_main_줄_수_switch_and_keeps_each_gate()
+    {
+        var s = new Settings();
+        s.Raids.Gate("act3-g3").CountWindow = true;
+        TrayToggles.Show(s, OverlayPart.BarCount, false);
+        Assert.False(s.Raids.CountEnabled);
+        Assert.True(s.Raids.Gate("act3-g3").CountWindow);
+    }
+
+    [Fact]
+    public void Party_windows_are_shown_by_default() => Assert.True(TrayToggles.IsShown(new Settings(), OverlayPart.Party));
 
     [Fact]
     public void The_tray_debuff_switch_shows_the_window_always_as_before()

@@ -36,6 +36,16 @@ public sealed partial class Engine
         return Interlocked.Exchange(ref _dungeonNew, 0) == 1;
     }
 
+    // The dungeon panel and the boss name share the one OCR engine: one recognition at a time.
+    static readonly SemaphoreSlim OcrGate = new(1, 1);
+
+    static async Task<IReadOnlyList<string>> RecognizeLines(SoftwareBitmap bmp)
+    {
+        await OcrGate.WaitAsync();
+        try { return [.. (await Ocr.Value!.RecognizeAsync(bmp)).Lines.Select(l => l.Text)]; }
+        finally { OcrGate.Release(); }
+    }
+
     async Task ReadDungeon(Image img, TimeSpan at)
     {
         long t0 = Stopwatch.GetTimestamp();
@@ -43,8 +53,7 @@ public sealed partial class Engine
         {
             var big = ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), 2);   // OCR reads small Hangul far better at 2×
             using var bmp = SoftwareBitmap.CreateCopyFromBuffer(big.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, big.Width, big.Height, BitmapAlphaMode.Premultiplied);
-            var result = await Ocr.Value!.RecognizeAsync(bmp);
-            if (DungeonPanel.Parse([.. result.Lines.Select(l => l.Text)]) is not { } d) return;
+            if (DungeonPanel.Parse(await RecognizeLines(bmp)) is not { } d) return;
             _dungeonSeen = at;
             var was = _dungeon;
             _dungeonState = DungeonPanel.Next(_dungeonState, d);   // the name read most wins over a misread

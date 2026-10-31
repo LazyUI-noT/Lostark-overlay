@@ -47,17 +47,24 @@ public sealed class JeonbunSweep
     public void Count_in_a_video_when_requested()
     {
         if (Environment.GetEnvironmentVariable("GAUGE_COUNT") is not { } video) return;
-        var ks = (Environment.GetEnvironmentVariable("GAUGE_COUNT_K") ?? "0.818,0.909,1").Split(',').Select(double.Parse).ToArray();
+        // GAUGE_COUNT_HUD: HUD % values instead (e.g. "75,80,85,90"); GAUGE_COUNT_VP: the game area in the video "x,y,w,h"
+        // (a 21:9 game letterboxed in a 2560×1440 video: "0,180,2560,1080").
+        var ks = Environment.GetEnvironmentVariable("GAUGE_COUNT_HUD") is { } huds
+            ? huds.Split(',').Select(h => double.Parse(h) / Geometry.ReferenceHud).ToArray()
+            : (Environment.GetEnvironmentVariable("GAUGE_COUNT_K") ?? "0.818,0.909,1").Split(',').Select(double.Parse).ToArray();
+        int[] area = Environment.GetEnvironmentVariable("GAUGE_COUNT_VP")?.Split(',').Select(int.Parse).ToArray() ?? [0, 0, 1920, 1080];
+        int band = (int)Math.Ceiling(140 * area[3] / Geometry.ReferenceHeight);   // the bar's rows, from the area's top
         var lines = new List<string>();
-        foreach (var (t, img) in Frames(video, 0, 0, 1920, 140))
+        foreach (var (t, img) in Frames(video, area[0], area[1], area[2], band))
         {
-            var vp = new Viewport(0, 0, 1920, 1080);
+            var vp = new Viewport(0, 0, area[2], area[3]);
             var cells = ks.Select(k =>
             {
                 var fit = new Fit(Geometry.ReferenceHud * k);
+                double scale = Geometry.Scale(vp, fit);   // k only while the area is 1080 tall
                 var c = ImageOps.Crop(img, Geometry.BossCount(vp, fit));
-                var hp = BossDigits.ReadHp(ImageOps.Crop(img, Geometry.BossHpText(vp, fit)), k);
-                return $"{BossDigits.ReadCount(c, k)?.ToString() ?? "-"} {hp?.Current.ToString() ?? "-"}";
+                var hp = BossDigits.ReadHp(ImageOps.Crop(img, Geometry.BossHpText(vp, fit)), scale);
+                return $"{BossDigits.ReadCount(c, scale)?.ToString() ?? "-"} {hp?.Current.ToString() ?? "-"}/{hp?.Max.ToString() ?? "-"}";
             });
             lines.Add($"{t:0.0} | {string.Join(" | ", cells)}");
         }

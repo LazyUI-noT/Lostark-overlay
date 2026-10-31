@@ -17,6 +17,9 @@ public sealed class DungeonPanelTests
     [InlineData("3막 : 칠흑, 폭풍의 밤|[나이트메어]", "칠흑, 폭풍의 밤", "나이트메어")]
     [InlineData("죽음의 계율자, 벨가르닌|[노말1|재시작", "죽음의 계율자, 벨가르닌", "노말")]   // no "N막 :": the line above the difficulty
     [InlineData("죽음의 계율자, 벨가르딘|[매칭]|재시작", "죽음의 계율자, 벨가르딘", "매칭")]   // 8인 매칭
+    [InlineData("구원의 종탑|[3단계]|재시작", "구원의 종탑", "3단계")]   // 구원의 종탑's 단계 (a friend's 1440p clip)
+    [InlineData("구원의 종탑|[1 단계]", "구원의 종탑", "1단계")]
+    [InlineData("구원의 종탑|[2단계]|재시작", "구원의 종탑", "2단계")]
     public void A_raid_panel_gives_its_name_and_difficulty(string lines, string title, string difficulty)
     {
         var d = DungeonPanel.Parse(lines.Split('|'));

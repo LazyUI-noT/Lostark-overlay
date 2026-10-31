@@ -44,6 +44,9 @@ public sealed class RaidSettings : IWindowPlace
     /// <summary>자동 인식: the boss name above the HP bar picks the gate; off = <see cref="ManualGate"/>.</summary>
     public bool Auto { get; set; } = true;
     public string? ManualGate { get; set; }
+    /// <summary>줄 수 읽기 for every raid: off stops the bar count (X 494) and hides the 줄 수 창, each gate's own
+    /// <see cref="GateSettings.CountWindow"/> kept as it is. The 디버프 창 doesn't follow it.</summary>
+    public bool CountEnabled { get; set; } = true;
     public Dictionary<string, GateSettings> Gates { get; set; } = [];
     /// <summary>± bars added to every alert ("전 관문 공통"); per gate when <see cref="OffsetPerGate"/>. Target 750, +5 → 755.</summary>
     public int Offset { get; set; }
@@ -79,7 +82,9 @@ public sealed class RaidSettings : IWindowPlace
         System.Text.Json.JsonSerializer.Deserialize<RaidSettings>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(this, SettingsStore.Json), SettingsStore.Json)!;
 
     /// <summary>A gate's 줄 수 창 is on (the window exists; what it shows waits for recognition).</summary>
-    public bool CountShown() => Gates.Values.Any(g => g.CountWindow);
+    public bool CountShown() => CountEnabled && Gates.Values.Any(g => g.CountWindow);
+    /// <summary>Gate <paramref name="id"/>'s 줄 수 창 is on, with the main switch.</summary>
+    public bool CountOn(string id) => CountEnabled && Gates.TryGetValue(id, out var g) && g.CountWindow;
     /// <summary>A gate's 디버프 창 is on.</summary>
     public bool DebuffShown() => Gates.Values.Any(g => g.DebuffWindow);
 

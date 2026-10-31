@@ -64,9 +64,11 @@ public class RaidDataTests
         Assert.Equal("벨가르딘 · 2관문", RaidData.Label(gate));
         Assert.Equal([240, 195, 115, 75], RaidData.Find(gates, "belgardin-g1")!.Alerts);   // 1관문's 기믹 줄 수
         Assert.Equal([360, 320, 280, 200, 100], gate.Alerts);   // 2관문's
-        var tower = RaidData.ByHp(gates, 1_261_004_417_020)!.Value;   // 구원의 종탑: 1–3단계 instead of 노말/하드
+        var tower = RaidData.ByHp(gates, 1_197_954_508_761)!.Value;   // 구원의 종탑: 1–3단계 instead of 노말/하드 (a friend's 1440p clip, 2026-10-31)
         Assert.Equal(("구원의 종탑 · 2관문", "3단계"), (RaidData.Label(tower.Gate), tower.Difficulty));
         Assert.Equal([160, 100, 60], RaidData.Find(gates, "belltower-g1")!.Alerts);
+        var single = RaidData.ByHp(gates, 25_807_352_833)!.Value;   // 4막 1관문 [싱글 모드] (a friend's 1440p clip)
+        Assert.Equal(("act4-g1", "싱글"), (single.Gate.Id, single.Difficulty));
         var ex = RaidData.ByHp(gates, 11_123_200_336_247)!.Value;   // 종막: EX has its own gate rows (own alerts)
         Assert.Equal(("종막: 최후의 날 · EX 2-1관문", "EX 나이트메어"), (RaidData.Label(ex.Gate), ex.Difficulty));
         Assert.Equal("final-g1", RaidData.ByHp(gates, 41_816_032_557)!.Value.Gate.Id);

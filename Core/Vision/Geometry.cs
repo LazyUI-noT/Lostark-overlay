@@ -249,6 +249,12 @@ public static class Geometry
     /// <summary>The boss's name above the bar ("심연의 징벌자, 모르둠": x 833–999, y 39–54; 40–57 in the layout shots), wide enough for a longer name.</summary>
     public static readonly PixelRect RefBossName = new(720, 32, 400, 30);
 
+    /// <summary>The bar's whole text row ("Lv.60", "current/max", "X n"), from left of the 16:9 HP text to right of its "X n" and
+    /// a little above and below: a 21:9 game at 2560×1080 draws a shorter bar further left and its text ~10 px higher (bosstop_2560),
+    /// so the fixed areas above miss there. BossDigits.ReadBar finds the words in it.</summary>
+    public static readonly PixelRect RefBossTextRow = new(590, 60, 730, 36);
+
+    public static PixelRect BossTextRow(Viewport vp, Fit fit) => FromTop(RefBossTextRow, vp, fit);
     public static PixelRect BossBar(Viewport vp, Fit fit) => FromTop(RefBossBar, vp, fit);
     public static PixelRect BossCount(Viewport vp, Fit fit) => FromTop(RefBossCount, vp, fit);
     public static PixelRect BossHpText(Viewport vp, Fit fit) => FromTop(RefBossHpText, vp, fit);

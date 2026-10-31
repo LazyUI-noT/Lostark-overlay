@@ -38,4 +38,17 @@ public sealed class OverlaySettings : IWindowPlace
 
     /// <summary>오버레이 표시: off hides your overlay and the party windows (set also by the hotkey and the tray).</summary>
     public bool Visible { get; set; } = true;
+    /// <summary>오버레이 표시 항상: on (with <see cref="Visible"/>), shown over any app, not only the game or 설정. Kept apart
+    /// from <see cref="Visible"/> so the hotkey's on/off comes back to it, and older versions read Visible as before.</summary>
+    public bool Always { get; set; }
+    /// <summary>스킬창이 안 보이면 숨기기: with the game in front, hide while the skill bar isn't seen (cutscene, loading).</summary>
+    public bool HideWithoutHud { get; set; }
+
+    public OverlayShow Mode() => !Visible ? OverlayShow.끄기 : Always ? OverlayShow.항상 : OverlayShow.켜기;
+
+    public void SetMode(OverlayShow mode)
+    {
+        Visible = mode != OverlayShow.끄기;
+        if (Visible) Always = mode == OverlayShow.항상;   // 끄기 keeps the on-mode for the hotkey's way back
+    }
 }

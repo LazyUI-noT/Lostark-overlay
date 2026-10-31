@@ -40,6 +40,7 @@ public partial class SettingsWindow
         : p == _secSend ? new(AreaParty, "보내기·받기", null)
         : p == _secRaid ? new(AreaRaid, "레이드", null)
         : p == _secMeter ? new(AreaMeter, AreaMeter, null)
+        : p == _secShow ? new(AreaShow, AreaShow, null)
         : p == _secKeys ? new(AreaKeys, "게임 키", null)
         : p == _secHotkeys ? new(AreaKeys, "앱 단축키", null)
         : null;

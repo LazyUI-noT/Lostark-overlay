@@ -74,8 +74,57 @@ public static class BossDigits
         return current <= max ? (current, max, shield) : null;
     }
 
-    /// <summary>The glyphs left to right, or null: no text, a line of the wrong height, or a short mark that is no comma.</summary>
-    internal static List<Glyph>? Glyphs(Image area, double scale)
+    // Between words ("Lv.60", the HP, "X n"): wider than the space in "X 494" and any gap inside the HP text, at HUD 110 1080p.
+    const double WordGap = 11;
+
+    /// <summary>The bar's whole text row (Geometry.BossTextRow): its words split at wide gaps, each read as "X n" and as the HP,
+    /// so neither depends on where the bar starts or ends (21:9, the HUD).</summary>
+    /// <param name="hp">false: the count alone (read every poll for the 줄 수 창): the HP words aren't read, and the right-most
+    /// words are tried first, where "X n" is.</param>
+    public static (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) ReadBar(Image row, double scale, bool hp = true)
+    {
+        int? count = null;
+        (long, long, long)? read = null;
+        PixelRect? countArea = null;
+        var words = Words(row, scale).ToList();
+        if (!hp) words.Reverse();
+        foreach (var (word, at) in words)
+        {
+            if (count is null && word.Width <= MaxCountWidth * scale && ReadCount(word, scale) is { } c) (count, countArea) = (c, at);   // 화면 그대로 shows this part
+            if (hp) read ??= ReadHpWithShield(word, scale);
+            else if (count is not null) break;
+        }
+        return (count, read, countArea);
+    }
+
+    // "X 12345" at HUD 110 1080p is under 60 px: a wider word is the HP text, not tried as a count.
+    const double MaxCountWidth = 70;
+
+    /// <summary>The row cut at every run of blank columns wider than <see cref="WordGap"/> (a column margin kept each side).</summary>
+    static IEnumerable<(Image Word, PixelRect At)> Words(Image row, double scale)
+    {
+        var (grey, minInk) = Ink(row);
+        int w = row.Width, h = row.Height, gap = (int)Math.Ceiling(WordGap * scale);
+        bool Inked(int x)
+        {
+            for (int y = 0; y < h; y++) if (grey[y * w + x] > minInk) return true;
+            return false;
+        }
+        for (int x = 0, start = -1, last = -1; x <= w; x++)
+        {
+            bool ink = x < w && Inked(x);
+            if (ink) { if (start < 0) start = x; last = x; continue; }
+            if (start < 0 || (x < w && x - last <= gap)) continue;
+            int x0 = Math.Max(0, start - 1), x1 = Math.Min(w, last + 2);
+            var at = new PixelRect(x0, 0, x1 - x0, h);
+            yield return (row.Crop(at), at);
+            start = -1;
+        }
+    }
+
+    /// <summary>Each pixel's min(R,G,B), and the level text clears. A white bar (a shield added to the lines): the ink clears
+    /// halfway from the fill to white, and the text's dark edges are lifted to the fill so the glyphs look as on a dark fill.</summary>
+    static (byte[] Grey, int MinInk) Ink(Image area)
     {
         int w = area.Width, h = area.Height;
         var grey = new byte[w * h];
@@ -85,29 +134,46 @@ public static class BossDigits
                 var (b, g, r) = area.Pixel(x, y);
                 grey[y * w + x] = Math.Min(b, Math.Min(g, r));
             }
-        // A white bar (a shield added to the lines): the ink clears halfway from the fill to white, and the text's dark edges
-        // are lifted to the fill so the glyphs look as they do on a dark fill.
-        int fill = grey.Length == 0 ? 0 : grey.Order().ElementAt(grey.Length / 2), minInk = MinInk;
+        int fill = MedianByte(grey), minInk = MinInk;
         if (fill > MinInk - 30)
         {
             minInk = (fill + 255) / 2;
             for (int i = 0; i < grey.Length; i++) grey[i] = Math.Max(grey[i], (byte)fill);
         }
-        var runs = new List<(int X0, int X1, int Top, int Bottom)>();
-        for (int x = 0, start = -1; x <= w; x++)
+        return (grey, minInk);
+    }
+
+    /// <summary>The glyphs left to right, or null: no text, a line of the wrong height, or a short mark that is no comma.</summary>
+    internal static List<Glyph>? Glyphs(Image area, double scale)
+    {
+        int w = area.Width, h = area.Height;
+        var (grey, minInk) = Ink(area);
+        // The ink runs between blank columns, a column's ink looked for in rows y0..y1 only.
+        List<(int X0, int X1, int Top, int Bottom)> Runs(int y0, int y1)
         {
-            bool ink = x < w && Enumerable.Range(0, h).Any(y => grey[y * w + x] > minInk);
-            if (ink && start < 0) start = x;
-            if (ink || start < 0) continue;
-            var rows = Enumerable.Range(0, h).Where(y => Enumerable.Range(start, x - start).Any(c => grey[y * w + c] > minInk)).ToList();
-            runs.Add((start, x, rows[0], rows[^1] + 1));
-            start = -1;
+            var found = new List<(int X0, int X1, int Top, int Bottom)>();
+            for (int x = 0, start = -1; x <= w; x++)
+            {
+                bool ink = x < w && Enumerable.Range(y0, y1 - y0).Any(y => grey[y * w + x] > minInk);
+                if (ink && start < 0) start = x;
+                if (ink || start < 0) continue;
+                var rows = Enumerable.Range(y0, y1 - y0).Where(y => Enumerable.Range(start, x - start).Any(c => grey[y * w + c] > minInk)).ToList();
+                found.Add((start, x, rows[0], rows[^1] + 1));
+                start = -1;
+            }
+            // A run taller than any text (a bright tick or highlight of the bar, bosstop_2560) is no glyph and sets no line height.
+            return [.. found.Where(r => r.Bottom - r.Top <= MaxLine * scale)];
         }
+        var runs = Runs(0, h);
         if (runs.Count == 0) return null;
         int tallest = runs.Max(r => r.Bottom - r.Top);
         var tall = runs.Where(r => r.Bottom - r.Top >= 0.6 * tallest).ToList();
         int top = Median(tall.Select(r => r.Top)), bottom = Median(tall.Select(r => r.Bottom)), line = bottom - top;
         if (line < MinLine * scale || line > MaxLine * scale) return null;
+        // Again within the line's rows (commas below it): a bright speck of the bar above or below the text would join two
+        // glyphs' columns (a taller area over a compressed video: bosstop_2560's "954").
+        runs = Runs(Math.Max(0, top - 1), Math.Min(h, bottom + (int)Math.Ceiling(line * 0.4)));
+        if (runs.Count == 0) return null;
         var glyphs = new List<Glyph>(runs.Count);
         foreach (var r in runs)
         {
@@ -122,6 +188,17 @@ public static class BossDigits
             glyphs.Add(new(false, Resample(grey, w, x0, x1, top, bottom)));
         }
         return glyphs;
+    }
+
+    /// <summary>The middle value of <paramref name="v"/> by a histogram (no sort: the whole row is read every poll).</summary>
+    static int MedianByte(byte[] v)
+    {
+        if (v.Length == 0) return 0;
+        Span<int> counts = stackalloc int[256];
+        foreach (byte b in v) counts[b]++;
+        for (int i = 0, seen = 0; i < 256; i++)
+            if ((seen += counts[i]) > v.Length / 2) return i;
+        return 255;
     }
 
     static int Median(IEnumerable<int> values)

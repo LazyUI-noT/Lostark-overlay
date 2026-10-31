@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.Graphics.Imaging;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
@@ -15,6 +17,9 @@ public sealed partial class Engine
     string? _barGate;   // the gate _bar counts for
     RaidStatus? _raid;
     TimeSpan _lastName = TimeSpan.MinValue;
+    HpAnchor? _hpAnchor;
+    long? _lastMaxHp;   // the max HP the previous name step read
+    bool _raidWaits;   // a window waits for 자동 인식: the dungeon panel is read for it too
 
     /// <summary>The gate 자동 인식 recognises changed (its id, null: none); on the engine thread.</summary>
     public event Action<string?>? RaidRecognised;
@@ -24,12 +29,14 @@ public sealed partial class Engine
     (PixelRect? Name, PixelRect? Count, PixelRect? Hp) RaidRects(Config config, bool poll, TimeSpan now)
     {
         var plan = config.Raids is { } s ? RaidReadPlan.Of(s, config.RaidGates ?? [], _raidRec.Gate) : default;
+        _raidWaits = plan.ReadName;
         if (!plan.ReadCount && _raid is not null) { _raid = null; Publish(now); }
         if (!poll) return (null, null, null);
         bool name = plan.ReadName && Elapsed(now, _lastName, NameEvery);
-        // The boss's max HP (raids.json "hp") recognises a gate exactly, with its difficulty: read with the name.
-        return (name ? Geometry.BossName(_vp, _fit!) : null, plan.ReadCount ? Geometry.BossCount(_vp, _fit!) : null,
-            name ? Geometry.BossHpText(_vp, _fit!) : null);
+        // The boss's max HP (raids.json "hp") recognises a gate exactly, with its difficulty: read with the name. Both the count
+        // and the HP are read from the bar's whole text row (BossDigits.ReadBar), wherever a 21:9 or HUD size puts them.
+        var row = Geometry.BossTextRow(_vp, _fit!);
+        return (name ? Geometry.BossName(_vp, _fit!) : null, plan.ReadCount ? row : null, name ? row : null);
     }
 
     /// <summary>The debuff window's raid this step: the gate's 디버프 창 (RaidReadPlan.DebuffRaid).</summary>
@@ -46,10 +53,19 @@ public sealed partial class Engine
         if (name is not null)
         {
             _lastName = t;
-            var byHp = hp is null ? null : RaidData.ByHp(gates, BossDigits.ReadHp(hp, scale)?.Max);
-            var matched = byHp?.Gate.Id ?? BossName.Match(name, scale, config.BossNames ?? []);
+            long? maxHp = hp is null ? null : BossDigits.ReadBar(hp, scale).Hp?.Max;
+            var byHp = RaidData.ByHp(gates, maxHp);
+            // A boss the name read (OCR) found stays found while its max HP reads the same, with a check read every 30 s
+            // instead of every 4 s (HpAnchor). Out of a raid the anchor is dropped.
+            if (_dungeon is not { Kind: DungeonKind.Raid }) _hpAnchor = null;
+            var anchored = HpAnchor.Match(_hpAnchor, maxHp);
+            string? ocr = null;
+            var matched = byHp?.Gate.Id ?? BossName.Match(name, scale, config.BossNames ?? [])
+                ?? (ocr = NameByOcr(name, s, gates, scale, t, anchored is not null)) ?? anchored;
             var was = _raidRec.Gate;
             _raidRec = RaidRecognition.Update(_raidRec, matched, t);
+            if (byHp is null) _hpAnchor = HpAnchor.Next(_hpAnchor, _raidRec.Gate, ocr, maxHp, _lastMaxHp);
+            _lastMaxHp = maxHp;
             if (_raidRec.Gate != was)
             {
                 Trace.WriteLine($"[raid] recognised {_raidRec.Gate ?? "none"}" + (byHp is { } h ? $" by HP ({h.Difficulty})" : ""));
@@ -62,20 +78,81 @@ public sealed partial class Engine
         if (plan is { ReadCount: true, Gate: { } gate })
         {
             if (gate.Id != _barGate) (_barGate, _bar) = (gate.Id, BarCountState.None);   // another gate: its own count
+            Image? countPixels = null;   // "X n" alone, for 화면 그대로
             if (count is not null)
             {
-                int? read = BossDigits.ReadCount(count, scale);
-                _bar = BarAlert.Update(_bar, read, t, BarAlert.Thresholds(s.AlertsOf(gate), s.OffsetOf(gate.Id)));
-                if (config.Debug) ExtraDebug?.Invoke(new("줄 수", count.Copy(), read?.ToString() ?? "?", _bar.Shown?.ToString() ?? "?"));
+                var bar = BossDigits.ReadBar(count, scale, hp: false);
+                if (bar.CountArea is { } at) countPixels = count.Crop(at);
+                _bar = BarAlert.Update(_bar, bar.Count, t, BarAlert.Thresholds(s.AlertsOf(gate), s.OffsetOf(gate.Id)));
+                if (config.Debug) ExtraDebug?.Invoke(new("줄 수", count.Copy(), bar.Count?.ToString() ?? "?", _bar.Shown?.ToString() ?? "?"));
             }
             bool glow = s.Glow && BarAlert.Glowing(_bar, s.GlowUntil, s.GlowSeconds, s.GlowBars, t);
             // 화면 그대로 only while a count is read: no boss bar (town), no copy of whatever is there.
-            var crop = s.Look != BarCountLook.화면그대로 || _bar.Shown is null ? null : count is null ? _raid?.CountCrop : Same(_raid?.CountCrop, count);
+            var crop = s.Look != BarCountLook.화면그대로 || _bar.Shown is null ? null : countPixels is null ? _raid?.CountCrop : Same(_raid?.CountCrop, countPixels);
             next = new(gate, _bar.Shown, glow, crop);
         }
         bool changed = next != _raid;   // CountCrop compares by reference: Same keeps it while the pixels don't change
         _raid = next;
         return changed;
+    }
+
+    /// <summary>Once a gate is recognised by OCR, its name is read again this often to keep it (RaidRecognition.Keep is 10 s).</summary>
+    static readonly TimeSpan NameOcrKeepEvery = TimeSpan.FromSeconds(4);
+    /// <summary>While the max HP holds the gate (HpAnchor), the name is read this often to check it.</summary>
+    static readonly TimeSpan NameOcrCheckEvery = TimeSpan.FromSeconds(30);
+
+    /// <summary>The boss name read as text (Windows OCR, on the thread pool) when neither the HP nor a name template knows the
+    /// boss: any gate in raids.json, at any resolution or mode. Each finished read is handed out once (so one read can't count as
+    /// the two that RaidRecognition needs), and a new one starts: every name read (1 s) while nothing is recognised, every
+    /// <see cref="NameOcrKeepEvery"/> once something is.</summary>
+    string? NameByOcr(Image name, RaidSettings s, IReadOnlyList<RaidGate> gates, double scale, TimeSpan t, bool anchored)
+    {
+        var done = Interlocked.Exchange(ref _nameOcr, null);
+        // Only inside a raid: the top-left dungeon panel names one (not in town, not between fights for long).
+        var panel = _dungeon;
+        // Held by the max HP: a check every NameOcrCheckEvery. Recognised: every NameOcrKeepEvery, but again a second later
+        // after a garbled read (two in a row at 4 s outlast Keep).
+        bool due = panel is { Kind: DungeonKind.Raid } && (anchored ? Elapsed(t, _lastNameOcr, NameOcrCheckEvery)
+            : _raidRec.Gate is null || Volatile.Read(ref _nameOcrMissed) || Elapsed(t, _lastNameOcr, NameOcrKeepEvery));
+        if (due && Ocr.Value is not null && Interlocked.CompareExchange(ref _nameOcrBusy, 1, 0) == 0)
+        {
+            _lastNameOcr = t;
+            var copy = name.Copy();   // the capture buffer is reused
+            // The panel's raid and difficulty narrow the gates (종막 2-1 vs EX 2-1); a boss still of two goes to the one with a window on.
+            var candidates = BossNameText.Candidates(gates, panel);
+            var on = s.Gates.Where(g => g.Value.CountWindow || g.Value.DebuffWindow).Select(g => g.Key).ToHashSet();
+            _ = Task.Run(() => ReadNameOcr(copy, candidates, on, scale, t));
+        }
+        return done is { } r && t - r.At <= 2 * NameEvery ? r.Gate : null;
+    }
+
+    sealed record NameOcrRead(string? Gate, TimeSpan At);
+    NameOcrRead? _nameOcr;
+    int _nameOcrBusy;
+    bool _nameOcrMissed;   // the last read gave no gate
+    TimeSpan _lastNameOcr = TimeSpan.MinValue;
+    string? _nameOcrGate = "";   // the last result logged ("": none yet)
+
+    async Task ReadNameOcr(Image img, IReadOnlyList<RaidGate> gates, IReadOnlyCollection<string> prefer, double scale, TimeSpan at)
+    {
+        long t0 = Stopwatch.GetTimestamp();
+        try
+        {
+            // Small Hangul reads far better enlarged: at least 2×, more for a capture smaller than 1080p's.
+            var big = ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), Math.Clamp(2 / scale, 2, 4));
+            using var bmp = SoftwareBitmap.CreateCopyFromBuffer(big.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, big.Width, big.Height, BitmapAlphaMode.Premultiplied);
+            var lines = await RecognizeLines(bmp);
+            var gate = BossNameText.Match(lines, gates, prefer);
+            Volatile.Write(ref _nameOcr, new NameOcrRead(gate, at));
+            Volatile.Write(ref _nameOcrMissed, gate is null);
+            if (gate != _nameOcrGate)   // logged when the answer changes, not on every read
+            {
+                _nameOcrGate = gate;
+                Trace.WriteLine($"[raid] name read \"{string.Join(" / ", lines)}\" → {gate ?? "no gate"}");
+            }
+        }
+        catch (Exception ex) { Trace.WriteLine($"[raid] name OCR failed: {ex.Message}"); }
+        finally { Volatile.Write(ref _nameOcrBusy, 0); Perf.Add("보스 이름 (Windows OCR)", Stopwatch.GetTimestamp() - t0); }
     }
 
     /// <summary><paramref name="prev"/> when <paramref name="img"/> (a reused capture buffer) holds the same pixels, else a copy.</summary>

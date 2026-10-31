@@ -1,0 +1,16 @@
+{
+  "source": "Bossbar_bug/Lost Ark 2026.10.31 - 15.11.23.01.mp4 at 30 s (a friend's 2560x1080 21:9 game in a 2560x1440 video; game area from y 180)",
+  "slot": "bosstop",
+  "hud": 110,
+  "rect": [
+    780,
+    180,
+    1000,
+    160
+  ],
+  "width": 1000,
+  "height": 160,
+  "pts": [
+    0
+  ]
+}
