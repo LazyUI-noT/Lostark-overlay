@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -116,7 +117,15 @@ public sealed class DuplicationCapture : ICaptureSource
 /// <see cref="Image"/> buffers. Shared by both capture sources.</summary>
 internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext context) : IDisposable
 {
-    private readonly List<ID3D11Texture2D?> _staging = [];
+    // Staging textures kept by size (StagingSlots): the regions asked for change from capture to capture, and making a texture
+    // on the GPU the game draws on, many times a second, stalls it. _used: the texture each region of the last Copy went to.
+    private readonly List<ID3D11Texture2D> _staging = [];
+    private readonly List<(int W, int H)> _sizes = [];
+    private int[] _used = [];
+    // ponytail: a hard cap, not an LRU; sizes change only with the game area (resolution, HUD, a 수동 조정), so a reset is rare.
+    private const int MaxKept = 64;
+    private int _made;   // staging textures made since _madeSince (logged every 10 s while any are made)
+    private long _madeSince = Stopwatch.GetTimestamp();
 
     /// <summary>GPU copy of each region (screen pixels) from <paramref name="source"/>, whose top-left pixel
     /// sits at <paramref name="sourceBounds"/>.X/Y on screen. Copies nothing and returns false if any region isn't
@@ -126,10 +135,13 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
         foreach (var r in regions)
             if (r.X < sourceBounds.X || r.Y < sourceBounds.Y || r.Right > sourceBounds.Right || r.Bottom > sourceBounds.Bottom)
                 return false;
+        var wanted = regions.Select(r => (r.Width, r.Height)).ToArray();
+        _used = StagingSlots.Assign(_sizes, wanted);
+        if (_used.Length > 0 && _used.Max() >= MaxKept) { Clear(); _used = StagingSlots.Assign(_sizes, wanted); }
         for (int i = 0; i < regions.Count; i++)
         {
             var r = regions[i];
-            var tex = Staging(i, r.Width, r.Height);
+            var tex = Staging(_used[i], r.Width, r.Height);
             var box = new Box(r.X - sourceBounds.X, r.Y - sourceBounds.Y, 0, r.Right - sourceBounds.X, r.Bottom - sourceBounds.Y, 1);
             context.CopySubresourceRegion(tex, 0, 0, 0, 0, source, 0, box);
         }
@@ -141,7 +153,7 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
     {
         for (int i = 0; i < into.Count; i++)
         {
-            var tex = _staging[i]!;
+            var tex = _staging[_used[i]];
             var img = into[i];
             var map = context.Map(tex, 0, MapMode.Read);
             try
@@ -155,22 +167,35 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
         }
     }
 
-    private ID3D11Texture2D Staging(int i, int w, int h)
+    /// <summary>The pool's texture <paramref name="slot"/>, made (and added) when the slot is new: Assign numbers new slots in order.</summary>
+    private ID3D11Texture2D Staging(int slot, int w, int h)
     {
-        while (_staging.Count <= i) _staging.Add(null);
-        var t = _staging[i];
-        if (t is not null && t.Description.Width == w && t.Description.Height == h) return t;
-        t?.Dispose();
-        t = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)w, (uint)h, 1, 1,
+        if (slot < _staging.Count) return _staging[slot];
+        long started = Stopwatch.GetTimestamp();
+        var t = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)w, (uint)h, 1, 1,
             BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
-        _staging[i] = t;
+        _staging.Add(t);
+        _sizes.Add((w, h));
+        Services.Perf.Add("캡처 텍스처 새로 만들기", Stopwatch.GetTimestamp() - started);
+        _made++;
+        if (Stopwatch.GetElapsedTime(_madeSince) >= TimeSpan.FromSeconds(10))
+        {
+            Trace.WriteLine($"[capture] {_made} staging textures made in {Stopwatch.GetElapsedTime(_madeSince).TotalSeconds:0} s ({_staging.Count} kept)");
+            (_made, _madeSince) = (0, Stopwatch.GetTimestamp());
+        }
         return t;
+    }
+
+    private void Clear()
+    {
+        foreach (var t in _staging) t.Dispose();
+        _staging.Clear();
+        _sizes.Clear();
     }
 
     public void Dispose()
     {
-        foreach (var t in _staging) t?.Dispose();
-        _staging.Clear();
+        Clear();
         context.Dispose();
     }
 }
