@@ -10,11 +10,14 @@ namespace GaugeOverlay.Core.Data;
 /// deleted. Files that can't be read (cut short, hand-edited, too big) are left alone and skipped.</summary>
 public sealed class RecordStore(string dir)
 {
-    public const int Keep = 20, MinKeep = 1, MaxKeep = 50;
+    public const int Keep = 50, MinKeep = 1, MaxKeep = 50;
     const string Ext = ".json.gz";
     const long MaxBytes = 64L << 20;   // a 10-minute 8-player fight is ~300 KB unpacked
     const double MaxSeconds = 24 * 3600;
     readonly object _gate = new();   // a background save and the UI's 보관 / 삭제 take turns
+    // Parsed records by file, kept while the file's length and write time don't change: the 전투 기록 page lists every
+    // character's fights (hundreds of files) on each refresh.
+    readonly Dictionary<string, (long Length, DateTime Written, FightRecord Record)> _parsed = [];
 
     public static string DefaultDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GaugeOverlay", "records");
@@ -56,7 +59,9 @@ public sealed class RecordStore(string dir)
         string stem = Stem(r), name = stem + Ext;
         for (int n = 2; File.Exists(Path.Combine(dir, name)); n++) name = $"{stem}-{n}{Ext}";
         Write(name, r);
-        foreach (var (file, _) in List().Where(x => !x.Record.Kept && !IsHeld(x.File)).Skip(keep)) File.Delete(Path.Combine(dir, file));
+        string mine = RecordCharacter.Of(r);   // per character: another character's fights never push these out
+        foreach (var (file, _) in List().Where(x => !x.Record.Kept && !IsHeld(x.File) && RecordCharacter.Of(x.Record) == mine).Skip(keep))
+            File.Delete(Path.Combine(dir, file));
         return name;
     }
 
@@ -64,9 +69,13 @@ public sealed class RecordStore(string dir)
     public IReadOnlyList<(string File, FightRecord Record)> List()
     {
         if (!Directory.Exists(dir)) return [];
-        return [.. Directory.EnumerateFiles(dir, "*" + Ext).Select(Path.GetFileName).OfType<string>()
-            .OrderByDescending(f => f, StringComparer.Ordinal)
-            .Select(f => (File: f, Record: Read(f))).Where(x => x.Record is not null).Select(x => (x.File, x.Record!))];
+        lock (_gate)
+        {
+            var files = Directory.EnumerateFiles(dir, "*" + Ext).Select(Path.GetFileName).OfType<string>()
+                .OrderByDescending(f => f, StringComparer.Ordinal).ToList();
+            foreach (var gone in _parsed.Keys.Except(files).ToList()) _parsed.Remove(gone);
+            return [.. files.Select(f => (File: f, Record: Cached(f))).Where(x => x.Record is not null).Select(x => (x.File, x.Record!))];
+        }
     }
 
     public void SetKept(string file, bool kept)
@@ -99,6 +108,17 @@ public sealed class RecordStore(string dir)
         using (var gz = new GZipStream(File.Create(tmp), CompressionLevel.Optimal))
             JsonSerializer.Serialize(gz, r, SettingsStore.Json);
         File.Move(tmp, path, overwrite: true);
+    }
+
+    FightRecord? Cached(string file)
+    {
+        var info = new FileInfo(Path.Combine(dir, file));
+        if (!info.Exists) { _parsed.Remove(file); return null; }   // deleted between the listing and here
+        if (_parsed.TryGetValue(file, out var c) && c.Length == info.Length && c.Written == info.LastWriteTimeUtc) return c.Record;
+        var r = Read(file);
+        if (r is null) _parsed.Remove(file);
+        else _parsed[file] = (info.Length, info.LastWriteTimeUtc, r);
+        return r;
     }
 
     FightRecord? Read(string file)

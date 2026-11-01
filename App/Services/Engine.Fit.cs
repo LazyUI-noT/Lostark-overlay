@@ -28,7 +28,7 @@ public sealed partial class Engine
             Array.Clear(_cal);
             for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
             _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
-            (_debuffs, _gauge, _gaugeSpent) = (DebuffStatus.None, null, false);
+            (_debuffs, _slots, _gauge, _gaugeSpent) = (DebuffStatus.None, DebuffSlots.None, null, false);
             _gaugeFilter.Reset();
             // What casts add to the gauge: the game's is saved before a video plays, and what the video taught is dropped after.
             if (!_testMode) SaveGains();

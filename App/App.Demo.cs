@@ -100,6 +100,8 @@ public partial class App
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",
         };
         settings.ActiveCharacter = "워로드 · 고독한기사";
+        if (args.Any(a => a == "--amsu" || a.StartsWith("--amsu="))) { settings.Amsu.On = true; (settings.Amsu.Left, settings.Amsu.Top) = (828, 500); }
+        if (Enum.TryParse(Flag("amsu-look"), out AmsuLook amsuLook)) settings.Amsu.Look = amsuLook;
         if (args.Contains("--judgment")) { settings.Judgment.Set("워로드 · 고독한기사", true); (settings.Judgment.Left, settings.Judgment.Top) = (828, 588); }   // above the demo overlay
         if (args.Contains("--cores")) settings.SetCore("워로드 · 고독한기사", new CoreChoice { Apply = true, Sun = 3 }.WithSlot("버스트 캐넌", SlotId.일반3));
         if (Flag("cores") == "전투태세")   // 전투태세 active, 해 2 with 방패 돌진 on R (일반4)
@@ -132,7 +134,13 @@ public partial class App
         var demoFit = FitText(new Viewport(0, 0, 1920, 1080), new Fit(100), "");
         _settingsWindow.RefitRequested += () => _settingsWindow.SetFitResult(demoFit);
 
-        var demo = new DemoSnapshots(args.Contains("--duelist"));
+        var demo = new DemoSnapshots(args.Contains("--duelist"), Flag("amsu") switch
+        {
+            "warn" => (3, true),
+            "unseen" => (13, false),
+            _ when args.Contains("--amsu") => (13, true),
+            _ => ((double, bool)?)null,
+        });
         _meter.Renderer.MeterMe = 1;   // DemoSnapshots' meter: "나" is id 1
         void Push()
         {
@@ -141,6 +149,7 @@ public partial class App
             _buffs.Update(self);
             _debuffs.Update(self);
             _judgment.Update(self);
+            _amsu.Update(self);
             _raid.Update(self);
             _meter.Update(self);
             ShowPeers(peers);
@@ -160,6 +169,7 @@ public partial class App
         UpdateVisibility();
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
+        if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare");   // with --records: open | compare
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
         if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);

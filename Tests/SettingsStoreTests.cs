@@ -610,4 +610,29 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(back.Of(BuffKind.뎀증).Visible);
         Assert.True(back.Of(BuffKind.공증).Visible);
     }
+
+    // 전투 기록 per character (records-timeline.design.md): keep 50 by default; the old default 20 moves to 50 once.
+    [Fact]
+    public void A_saved_keep_of_20_becomes_50_once()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RecordKeep":20}""");
+        var s = new SettingsStore(FilePath).Load(out _);
+        Assert.Equal(50, s.RecordKeep);
+        Assert.True(s.RecordKeepMigrated);
+
+        File.WriteAllText(FilePath, """{"RecordKeep":20,"RecordKeepMigrated":true}""");   // set back to 20 after the move
+        Assert.Equal(20, new SettingsStore(FilePath).Load(out _).RecordKeep);
+    }
+
+    [Fact]
+    public void Another_saved_keep_stays()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RecordKeep":35}""");
+        Assert.Equal(35, new SettingsStore(FilePath).Load(out _).RecordKeep);
+    }
+
+    [Fact]
+    public void New_settings_keep_50() => Assert.Equal(50, new Settings().RecordKeep);
 }

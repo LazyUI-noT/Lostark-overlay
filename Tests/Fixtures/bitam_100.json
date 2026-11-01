@@ -1,0 +1,16 @@
+{
+  "source": "빛암/빛암 120_110_100.mp4, frame 113 of fps=1 (about 112 s): 100%: 빛암 13초. 1920x1080 game, HUD 100; crop of the frame at x 700, y 100",
+  "slot": "bossrow",
+  "hud": 100,
+  "rect": [
+    700,
+    100,
+    600,
+    160
+  ],
+  "width": 600,
+  "height": 160,
+  "pts": [
+    112
+  ]
+}

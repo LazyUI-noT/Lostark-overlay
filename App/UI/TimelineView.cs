@@ -4,19 +4,32 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.App.UI;
 
 /// <summary>전투 기록's timeline (spec § D Timeline view): for each record shown (two for 비교, on one time axis lined up at
 /// their offsets), one chart with each player's DPS (solid, left scale) and 누적 피해 (dashed, right scale), mine gold and on
-/// top; below it one row of my skill casts in time order (my skill icon where I have one); then a line per buff (공증 red,
+/// top; below it one row of my skill casts in time order (my skill icon where I have one, else its key); then a line per buff (공증 red,
 /// 아덴 피증 yellow, 초각스 피증 blue) lit while it was up, with its share of the fight (and of the seconds shown when zoomed).
 /// Phase markers dashed. Hovering shows each player's figures, my buffs and casts at that second (as the game's 전투 분석기).
 /// Wheel or +/− zooms around the cursor, dragging or ←/→ scrubs. Draws only while shown.</summary>
 sealed class TimelineView : FrameworkElement
 {
     const double LabelW = 96, RightW = 52, HeadH = 20, LegendH = 18, CurveH = 150, SkillH = 3 * (Icon + 2) + 4, BuffH = 16, AxisH = 18, Gap = 12, Icon = 16;
-    const double BlockHeight = HeadH + LegendH + CurveH + 8 + SkillH + 4 + 3 * BuffH;
+    double BlockHeight => HeadH + LegendH + CurveH + 8 + SkillH + 4 + Lanes * BuffH;   // one record's natural height
+    double _curveH = CurveH;   // its curves: taller when the view is taller than its records (the full page)
+    double Block => HeadH + LegendH + _curveH + 8 + SkillH + 4 + Lanes * BuffH;
+    double Natural => _shown.Count * (BlockHeight + Gap) + AxisH;
+    /// <summary>The buffs' lines, and the 암수 line when a fight shown had 암수 on (every record the same, so 비교 lines up).</summary>
+    int Lanes => Buffs.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
+    static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, Color.FromRgb(0x9B, 0x6B, 0xFF)), BombPens(Bomb.빛암, Color.FromRgb(0xD8, 0xA8, 0xFF))];
+
+    static (Bomb, Pen, Pen) BombPens(Bomb kind, Color c) =>
+        (kind, Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, c.R, c.G, c.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }),
+         Frozen(new Pen(Frozen(new SolidColorBrush(c)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }));
+    bool _useIcons = true;
+    IReadOnlyDictionary<SlotId, string> _keys = new Dictionary<SlotId, string>();
     internal static readonly (BuffKind Kind, string Name, Color Color)[] Buffs =
     [
         (BuffKind.공증, "공증", Color.FromRgb(0xE0, 0x52, 0x52)),
@@ -31,6 +44,7 @@ sealed class TimelineView : FrameworkElement
     ];
     static readonly Pen PhasePen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(160, 0xE0, 0x60, 0x60))), 1) { DashStyle = DashStyles.Dash });
     static readonly DashStyle Dashed = Frozen(new DashStyle([4, 3], 0));
+    const double TimeGap = 70;   // px between the time labels (and so the time lines)
 
     IReadOnlyList<(FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons)> _shown = [];
     TimeWindow _window = TimeWindow.Whole(0);
@@ -50,8 +64,22 @@ sealed class TimelineView : FrameworkElement
         InvalidateVisual();
     }
 
+    /// <summary>My skill keys (Settings.Keys): the mark of a cast with no icon, and every mark when 키 is on.</summary>
+    public IReadOnlyDictionary<SlotId, string> Keys
+    {
+        get => _keys;
+        set { _keys = value; InvalidateVisual(); }
+    }
+
+    /// <summary>My lane shows my skill icons (아이콘) where there are any, else the keys (키).</summary>
+    public bool UseIcons
+    {
+        get => _useIcons;
+        set { _useIcons = value; InvalidateVisual(); }
+    }
+
     protected override Size MeasureOverride(Size available) =>
-        new(double.IsInfinity(available.Width) ? 600 : available.Width, _shown.Count * (BlockHeight + Gap) + AxisH);
+        new(double.IsInfinity(available.Width) ? 600 : available.Width, Natural);
 
     double PlotW => Math.Max(1, ActualWidth - LabelW - RightW);
     double X(double t, double offset) => LabelW + _window.X(t - offset, PlotW);
@@ -59,6 +87,7 @@ sealed class TimelineView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));   // the whole area takes the wheel and drags
+        _curveH = CurveH + Math.Max(0, ActualHeight - Natural) / Math.Max(1, _shown.Count);   // spare height goes to the curves
         var fg = TextElement.GetForeground(this) ?? Brushes.Gray;
         double y = 0;
         foreach (var (r, offset, icons) in _shown) y = DrawRecord(dc, r, offset, icons, y, fg) + Gap;
@@ -69,7 +98,7 @@ sealed class TimelineView : FrameworkElement
     {
         var seen = new TimeWindow(_window.From + offset, _window.To + offset);   // the seconds shown, on this record's clock
         bool zoomed = _window.From > 0 || _window.To < r.Duration - offset;
-        double bottom = y + BlockHeight;
+        double bottom = y + Block;
         Text(dc, $"{r.StartedAt:MM-dd HH:mm} · {r.Gate ?? "알 수 없음"} · {Clock(r.Duration)}", new(0, y + 2), 12, fg, bold: true, width: ActualWidth);
         y += HeadH;
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, bottom - y)));
@@ -90,11 +119,11 @@ sealed class TimelineView : FrameworkElement
         }
         y += LegendH;
         DrawCurves(dc, r, offset, seen, colours, y, fg);
-        y += CurveH + 8;
+        y += _curveH + 8;
         DrawSkills(dc, r, offset, seen, icons, y, fg);
         y += SkillH + 4;
         DrawBuffs(dc, r, offset, seen, zoomed, y, fg);
-        if (_hover is { } hx && hx >= LabelW && hx <= LabelW + PlotW) DrawHover(dc, r, offset, colours, hx, bottom - BlockHeight + HeadH, bottom);
+        if (_hover is { } hx && hx >= LabelW && hx <= LabelW + PlotW) DrawHover(dc, r, offset, colours, hx, bottom - Block + HeadH, bottom);
         return bottom;
     }
 
@@ -104,29 +133,26 @@ sealed class TimelineView : FrameworkElement
         var grid = Faint(fg, 0.12);
         if (r.Samples.Count == 0)   // no 전분 figures this fight: no scale to show
         {
-            dc.DrawLine(grid, new(LabelW, y + CurveH - 4), new(LabelW + PlotW, y + CurveH - 4));
-            Text(dc, "전분 수치 없음 (피해량 · 초당 피해량이 기록되지 않았습니다)", new(LabelW + 8, y + CurveH / 2 - 8), 11, fg, opacity: 0.6, width: PlotW - 16);
+            dc.DrawLine(grid, new(LabelW, y + _curveH - 4), new(LabelW + PlotW, y + _curveH - 4));
+            Text(dc, "전분 수치 없음 (피해량 · 초당 피해량이 기록되지 않았습니다)", new(LabelW + 8, y + _curveH / 2 - 8), 11, fg, opacity: 0.6, width: PlotW - 16);
             return;
         }
-        long dpsMax = Math.Max(1, r.Samples.Max(s => s.Dps));
-        long dmgMax = Math.Max(1, r.Samples.Max(s => s.Damage));
-        for (int g = 0; g <= 4; g++)   // five levels on both scales: 초당 피해량 left, 피해량 right
-        {
-            double gy = y + CurveH - 4 - (CurveH - 8) * g / 4;
-            dc.DrawLine(grid, new(LabelW, gy), new(LabelW + PlotW, gy));
-            Text(dc, Amount(dpsMax * g / 4.0), new(0, gy - 7), 10, fg, opacity: 0.6, width: LabelW - 6, right: true);
-            Text(dc, Amount(dmgMax * g / 4.0), new(LabelW + PlotW + 4, gy - 7), 10, fg, opacity: 0.6, width: RightW - 4);
-        }
+        var (dpsPeak, dmgPeak) = Timeline.Peaks(r, seen);   // the scales fit the seconds shown, both of them
+        var (dpsStep, dpsTop) = GridScale.Values(dpsPeak);
+        var (dmgStep, dmgTop) = GridScale.Values(dmgPeak);
+        DrawScaleLines(dc, grid, fg, y, dpsStep, dpsTop, "/초", right: false);   // 초당 피해량 on the left
+        DrawScaleLines(dc, grid, fg, y, dmgStep, dmgTop, "", right: true);   // 피해량 on the right
+        DrawTimeLines(dc, grid, y);
         Text(dc, "— 초당 피해량   ┄ 피해량 (오른쪽)", new(LabelW + 4, y + 2), 10, fg, opacity: 0.6);
-        dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, CurveH)));
+        dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, _curveH)));
         foreach (var g in r.Samples.GroupBy(s => s.Name).OrderBy(g => g.Key == r.Me))
         {
             var near = g.Where(s => s.T >= seen.From - 1 && s.T <= seen.To + 1).ToList();
             if (near.Count < 2) continue;
             var brush = Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])));
             bool me = g.Key == r.Me;
-            Line(dc, near.Select(s => new Point(X(s.T, offset), y + CurveH - 4 - (CurveH - 8) * s.Dps / dpsMax)), new Pen(brush, me ? 2 : 1.2));
-            Line(dc, near.Select(s => new Point(X(s.T, offset), y + CurveH - 4 - (CurveH - 8) * s.Damage / dmgMax)),
+            Line(dc, near.Select(s => new Point(X(s.T, offset), y + _curveH - 4 - (_curveH - 8) * s.Dps / dpsTop)), new Pen(brush, me ? 2 : 1.2));
+            Line(dc, near.Select(s => new Point(X(s.T, offset), y + _curveH - 4 - (_curveH - 8) * s.Damage / dmgTop)),
                 new Pen(brush, me ? 1.6 : 1) { DashStyle = Dashed });
         }
         dc.Pop();
@@ -157,9 +183,9 @@ sealed class TimelineView : FrameworkElement
             last[lane] = x;
             var at = new Rect(x - Icon / 2, y + 2 + lane * (Icon + 2), Icon, Icon);
             var slot = (SlotId)e.What;
-            if (icons.TryGetValue(slot, out var img)) { dc.DrawImage(img, at); continue; }
+            if (_useIcons && icons.TryGetValue(slot, out var img)) { dc.DrawImage(img, at); continue; }
             dc.DrawRoundedRectangle(chip, null, at, 3, 3);
-            Text(dc, SlotShort(slot), new(at.X + 1, at.Y + 1), 9, fg, bold: true, width: Icon - 2);
+            Text(dc, SlotKey(slot), new(at.X + 1, at.Y + 1), 9, fg, bold: true, width: Icon - 2);
         }
         dc.Pop();
     }
@@ -186,6 +212,25 @@ sealed class TimelineView : FrameworkElement
             }
             y += BuffH;
         }
+        if (r.AmsuOn) DrawBombs(dc, r, offset, seen, zoomed, y, fg, track);
+    }
+
+    // The 암수 line: lit while a bomb was on the boss (암수 and 빛암 in their own shades), its uptime in the label.
+    void DrawBombs(DrawingContext dc, FightRecord r, double offset, TimeWindow seen, bool zoomed, double y, Brush fg, Pen track)
+    {
+        var spans = Timeline.AmsuSpans(r);
+        double Up(TimeWindow w) => w.Span <= 0 ? 0 : spans.Sum(s => Math.Max(0, Math.Min(s.To, w.To) - Math.Max(s.From, w.From))) / w.Span;
+        double cy = y + BuffH / 2;
+        Text(dc, $"암수 {Up(new TimeWindow(0, r.Duration)) * 100:0}%" + (zoomed ? $" ({Up(seen) * 100:0}%)" : ""), new(0, y), 11, fg);
+        dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
+        foreach (var (from, to, kind) in spans)
+        {
+            double x0 = Math.Max(LabelW, X(from, offset)), x1 = Math.Min(LabelW + PlotW, X(to, offset));
+            if (x1 <= x0) continue;
+            var (_, glow, lit) = Bombs.First(b => b.Kind == kind);
+            dc.DrawLine(glow, new(x0, cy), new(x1, cy));
+            dc.DrawLine(lit, new(x0, cy), new(x1, cy));
+        }
     }
 
     static readonly Brush TipBack = Frozen(new SolidColorBrush(Color.FromArgb(235, 0x16, 0x18, 0x20)));
@@ -203,6 +248,8 @@ sealed class TimelineView : FrameworkElement
                 lines.Add(($"{g.Key}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])))));
         var on = Timeline.BuffSpans(r).Where(b => b.From <= t && t < b.To).Select(b => Buffs.First(x => x.Kind == b.Kind).Name).Distinct().ToList();
         lines.Add(($"버프: {(on.Count == 0 ? "없음" : string.Join(", ", on))}", TipText));
+        if (r.AmsuOn)
+            lines.Add(($"암수: {(Timeline.AmsuSpans(r).FirstOrDefault(s => s.From <= t && t < s.To) is { To: > 0 } b ? b.Kind.ToString() : "없음")}", TipText));
         var casts = r.Events.Where(e => e.Name == r.Me && e.Kind == RecordEventKind.사용 && Math.Abs(e.T - t) <= 0.5 && Enum.IsDefined((SlotId)e.What))
             .Select(e => SlotName((SlotId)e.What)).ToList();
         if (casts.Count > 0) lines.Add(($"스킬: {string.Join(", ", casts)}", TipText));
@@ -216,11 +263,39 @@ sealed class TimelineView : FrameworkElement
 
     void DrawAxis(DrawingContext dc, double y, Brush fg)
     {
-        double fit = _window.Span / Math.Max(1, PlotW / 70);   // never more labels than fit, whatever the record says
-        double step = new double[] { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200 }.FirstOrDefault(s => s >= fit, Math.Ceiling(fit));
+        double step = TimeStep();
         for (double t = Math.Ceiling(_window.From / step) * step; t <= _window.To; t += step)
             Text(dc, Clock(t), new(LabelW + _window.X(t, PlotW) - 12, y + 1), 10, fg, opacity: 0.7);
     }
+
+    /// <summary>The seconds between the time lines and labels: the finest round step that keeps them apart.</summary>
+    double TimeStep() => GridScale.Seconds(_window.Span, PlotW, TimeGap);
+
+    // A vertical line at each time label, through the curves of every record (the axis's times, on the shown clock).
+    void DrawTimeLines(DrawingContext dc, Pen grid, double y)
+    {
+        double step = TimeStep();
+        for (double t = Math.Ceiling(_window.From / step) * step; t <= _window.To; t += step)
+        {
+            double x = LabelW + _window.X(t, PlotW);
+            dc.DrawLine(grid, new(x, y), new(x, y + _curveH));
+        }
+    }
+
+    // Horizontal lines at each round step up to the scale's top, labelled on their side in the game's units (the baseline reads 0).
+    void DrawScaleLines(DrawingContext dc, Pen grid, Brush fg, double y, double step, double top, string suffix, bool right)
+    {
+        int lines = (int)Math.Round(top / step);
+        for (int k = 0; k <= lines; k++)
+        {
+            double v = k * step, gy = y + _curveH - 4 - (_curveH - 8) * v / top;
+            dc.DrawLine(grid, new(LabelW, gy), new(LabelW + PlotW, gy));
+            string label = k == 0 ? "0" : GridScale.Label(v) + suffix;
+            if (right) Text(dc, label, new(LabelW + PlotW + 4, gy - 7), 10, fg, opacity: 0.6, width: RightW - 4);
+            else Text(dc, label, new(0, gy - 7), 10, fg, opacity: 0.6, width: LabelW - 6, right: true);
+        }
+    }
+
 
     static Pen Faint(Brush fg, double opacity)
     {
@@ -232,24 +307,19 @@ sealed class TimelineView : FrameworkElement
     static string Clock(double seconds) => $"{(int)seconds / 60}:{(int)seconds % 60:00}";
 
     /// <summary>An amount in the game's units: 조 (10^12), 억 (10^8) or 만 (10^4), as the 전투 분석기 writes them.</summary>
-    static string Amount(double v) => v >= 1e12 ? $"{v / 1e12:0.0}조" : v >= 1e8 ? $"{v / 1e8:0.0}억" : v >= 1e4 ? $"{v / 1e4:0.0}만" : $"{v:0}";
+    internal static string Amount(double v) => v >= 1e12 ? $"{v / 1e12:0.0}조" : v >= 1e8 ? $"{v / 1e8:0.0}억" : v >= 1e4 ? $"{v / 1e4:0.0}만" : $"{v:0}";
 
-    static string SlotName(SlotId s) => s switch
+    /// <summary>A cast's name in the hover box: the skill's key (Q, W…), as the lane shows it.</summary>
+    string SlotName(SlotId s) => s switch
     {
         SlotId.각성기 => "각성기",
         SlotId.초각스 => "초각스",
-        >= SlotId.일반1 and <= SlotId.일반8 => $"스킬 {s - SlotId.일반1 + 1}",
+        >= SlotId.일반1 and <= SlotId.일반8 => SlotKey(s),
         _ => $"아덴 {s - SlotId.아덴1 + 1}",
     };
 
-    /// <summary>A slot's mark when I have no icon for it.</summary>
-    static string SlotShort(SlotId s) => s switch
-    {
-        SlotId.각성기 => "각",
-        SlotId.초각스 => "초",
-        >= SlotId.일반1 and <= SlotId.일반8 => $"{s - SlotId.일반1 + 1}",
-        _ => $"아{s - SlotId.아덴1 + 1}",
-    };
+    /// <summary>A slot's key as set in 키·단축키 (Settings.Keys): its mark when I have no icon for it, or always with 키.</summary>
+    string SlotKey(SlotId s) => _keys.TryGetValue(s, out var key) ? key : SlotInfo.DefaultKey(s);
 
     /// <summary>Draws one line of text; returns its width.</summary>
     double Text(DrawingContext dc, string text, Point at, double size, Brush fg, bool bold = false, double opacity = 1, double? width = null,

@@ -86,4 +86,43 @@ public class TimelineTests
     [Fact]
     public void A_zero_length_record_still_has_a_window() =>
         Assert.True(TimeWindow.Whole(0).To > TimeWindow.Whole(0).From);
+
+    /// <summary>A 40 s fight: my 피해량 and the boss's Taken grow only from 10 to 30 s (1조 and 2조), a bomb up from 10 to 30 s.</summary>
+    static FightRecord Bombed(bool amsuOn, double from = 10, double to = 30)
+    {
+        double[] ts = [0, 10, 20, 30, 40];
+        long Grown(double t, long total) => t <= 10 ? 0 : t >= 30 ? total : (long)(total * (t - 10) / 20);
+        return R(40, null, E(from, "나", RecordEventKind.암수시작, 0), E(to, "나", RecordEventKind.암수끝, 0)) with
+        {
+            Samples = [.. ts.Select(t => new RecordSample(t, "나", Grown(t, 1_000_000_000_000), 0))],
+            Boss = [.. ts.Select(t => new RecordBoss(t, Grown(t, 2_000_000_000_000), null, null))],
+            AmsuOn = amsuOn,
+        };
+    }
+
+    [Fact]
+    public void 암수_gain_is_10_35_percent_of_the_damage_done_while_a_bomb_was_up()
+    {
+        var (mine, total) = Timeline.AmsuGain(Bombed(amsuOn: true))!.Value;
+        Assert.Equal(103_500_000_000, mine, 0);    // 1조 × 10.35% = 1035억
+        Assert.Equal(207_000_000_000, total, 0);   // the boss's 2조 likewise
+    }
+
+    [Fact]
+    public void Only_the_damage_inside_the_bomb_windows_counts()
+    {
+        var (mine, _) = Timeline.AmsuGain(Bombed(amsuOn: true, from: 20, to: 30))!.Value;   // half of the growth
+        Assert.Equal(51_750_000_000, mine, 0);
+    }
+
+    [Fact]
+    public void Without_암수_on_there_is_no_gain()
+    {
+        Assert.Null(Timeline.AmsuGain(Bombed(amsuOn: false)));
+        Assert.Null(Timeline.AmsuGain(R(40)));   // a record from before 암수: no flag, no events
+    }
+
+    [Fact]
+    public void Bomb_windows_run_to_the_end_when_no_end_came() =>
+        Assert.Equal([(5.0, 40.0)], Timeline.AmsuSpans(R(40, null, E(5, "나", RecordEventKind.암수시작, 1))).Select(s => (s.From, s.To)));
 }

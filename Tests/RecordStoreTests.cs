@@ -63,13 +63,13 @@ public sealed class RecordStoreTests : IDisposable
     }
 
     [Fact]
-    public void Past_twenty_the_oldest_automatic_record_goes_and_kept_ones_stay()
+    public void Past_fifty_the_oldest_automatic_record_goes_and_kept_ones_stay()
     {
         Store.Save(R(-10, kept: true));
-        for (int i = 0; i < 21; i++) Store.Save(R(i));
+        for (int i = 0; i < 51; i++) Store.Save(R(i));
         var list = Store.List();
-        Assert.Equal(21, list.Count);   // 20 automatic + 1 보관
-        Assert.Equal(R(20).StartedAt, list[0].Record.StartedAt);   // newest first
+        Assert.Equal(51, list.Count);   // 50 automatic + 1 보관
+        Assert.Equal(R(50).StartedAt, list[0].Record.StartedAt);   // newest first
         Assert.DoesNotContain(list, x => x.Record.StartedAt == R(0).StartedAt);
         Assert.Contains(list, x => x.Record.Kept);
     }
@@ -158,5 +158,46 @@ public sealed class RecordStoreTests : IDisposable
         var (file, r) = Assert.Single(Store.List());
         Assert.Equal("20261030-200000_act3-g3_고독한기사.json.gz", file);
         Assert.True(r.Kept);
+    }
+
+    static FightRecord As(FightRecord r, string? cls) => r with { MyClassName = cls };
+
+    [Fact]
+    public void Saving_prunes_only_the_same_characters_automatic_records()
+    {
+        var store = Store;
+        store.Hold(As(R(0), "워로드"));
+        store.Save(As(R(1, kept: true), "워로드"), keep: 2);
+        store.Save(As(R(2), "바드"), keep: 2);
+        store.Save(As(R(3), "워로드"), keep: 2);
+        store.Save(As(R(4), "워로드"), keep: 2);
+        store.Save(As(R(5), "워로드"), keep: 2);   // the third 워로드 auto: the oldest (minute 3) goes
+
+        var left = store.List().Select(x => x.Record.StartedAt.Minute).Order().ToList();
+
+        Assert.Equal([0, 1, 2, 4, 5], left);   // held, 보관, 바드's and the two newest 워로드 autos
+    }
+
+    [Fact]
+    public void A_record_without_a_class_is_pruned_only_among_unknown_ones()
+    {
+        var store = Store;
+        store.Save(As(R(0), "워로드"), keep: 1);
+        store.Save(As(R(1), null), keep: 1);
+        store.Save(As(R(2), null), keep: 1);
+
+        Assert.Equal([0, 2], store.List().Select(x => x.Record.StartedAt.Minute).Order());
+    }
+
+    [Fact]
+    public void Listing_twice_reads_an_unchanged_file_once()
+    {
+        var store = Store;
+        var file = store.Save(R(0));
+        var first = Assert.Single(store.List()).Record;
+
+        Assert.Same(first, Assert.Single(store.List()).Record);
+        store.SetKept(file, true);
+        Assert.NotSame(first, Assert.Single(store.List()).Record);   // rewritten: read again
     }
 }

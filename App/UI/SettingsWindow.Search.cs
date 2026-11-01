@@ -33,6 +33,7 @@ public partial class SettingsWindow
         : p == GaugeBox ? new(AreaOverlay, "아덴 게이지", new("Gauge", Part.게이지, null))
         : p == _secBuffs ? new(AreaOverlay, "버프 막대", new("BuffBar", FreeLayout.FirstBuff, null))
         : p == _secOther ? new(AreaOverlay, "단심", new("Judgment", null, null))
+        : p == _secAmsu ? new(AreaOverlay, "암흑수류탄", new("Amsu", null, null))
         : p == _skillsClass || p == _secSkillLook ? new(AreaOverlay, "스킬 칸", new("Skills", Part.일반1, null))
         : p == _secConnect ? new(AreaParty, "연결", null)
         : p == _secMembers ? new(AreaParty, SecMembers, null)

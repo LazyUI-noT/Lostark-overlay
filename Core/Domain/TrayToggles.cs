@@ -1,7 +1,7 @@
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>What tray → 표시 turns on and off.</summary>
-public enum OverlayPart { Skills, Buffs, Gauge, Judgment, Debuffs, Meter, BarCount, Party }
+public enum OverlayPart { Skills, Buffs, Gauge, Judgment, Debuffs, Meter, BarCount, Party, Amsu }
 
 /// <summary>Tray → 표시 and 설정 → 표시: each part through the same setting as its own show switch in 설정 (the character's
 /// class for skills and gauge, every buff bar, 단심 for the character, the gates' 디버프 창, the DPS 미터기's window, the main
@@ -17,6 +17,7 @@ public static class TrayToggles
         OverlayPart.Meter => s.Meter.On && s.Meter.Show,
         OverlayPart.BarCount => s.Raids.CountEnabled,
         OverlayPart.Party => s.Party.ShowMembers,
+        OverlayPart.Amsu => s.Amsu.On,
         _ => s.Raids.DebuffShown(),
     };
 
@@ -53,6 +54,9 @@ public static class TrayToggles
                 break;
             case OverlayPart.Party:
                 s.Party.ShowMembers = on;
+                break;
+            case OverlayPart.Amsu:
+                s.Amsu.On = on;
                 break;
             default:
                 // ponytail: 모르둠 is the only gate with debuffs; a second one needs "the last one shown" remembered here.

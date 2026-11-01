@@ -19,10 +19,13 @@ public sealed partial class Engine
     TimeSpan _lastName = TimeSpan.MinValue;
     HpAnchor? _hpAnchor;
     long? _lastMaxHp;   // the max HP the previous name step read
+    HpLearner _hpLearn = HpLearner.None;   // HP 변경 감지: the values this raid uses (HpChange)
     bool _raidWaits;   // a window waits for 자동 인식: the dungeon panel is read for it too
 
     /// <summary>The gate 자동 인식 recognises changed (its id, null: none); on the engine thread.</summary>
     public event Action<string?>? RaidRecognised;
+    /// <summary>HP 변경 감지: the values this raid uses changed (a new one, or cleared on leaving the raid); on the engine thread.</summary>
+    public event Action<IReadOnlyList<FightHp>>? FightHpChanged;
 
     /// <summary>What to capture for 설정 → 레이드 this step: the name strip (once a second while a window on 자동 waits for it) and
     /// the count (every poll while the 줄 수 창 shows). A 줄 수 창 no longer shown is cleared here, since nothing is read for it.</summary>
@@ -48,7 +51,7 @@ public sealed partial class Engine
     bool ReadRaid(Config config, Image? name, Image? count, Image? hp, TimeSpan t)
     {
         var s = config.Raids!;
-        var gates = config.RaidGates ?? [];
+        var gates = HpChange.Effective(config.RaidGates ?? [], s, _hpLearn.Fight);
         double scale = Geometry.Scale(_vp, _fit!);
         if (name is not null)
         {
@@ -60,12 +63,21 @@ public sealed partial class Engine
             if (_dungeon is not { Kind: DungeonKind.Raid }) _hpAnchor = null;
             var anchored = HpAnchor.Match(_hpAnchor, maxHp);
             string? ocr = null;
-            var matched = byHp?.Gate.Id ?? BossName.Match(name, scale, config.BossNames ?? [])
-                ?? (ocr = NameByOcr(name, s, gates, scale, t, anchored is not null)) ?? anchored;
+            string? byName = byHp is null ? BossName.Match(name, scale, config.BossNames ?? [])
+                ?? (ocr = NameByOcr(name, s, gates, scale, t, anchored is not null)) : null;
+            var matched = byHp?.Gate.Id ?? byName ?? anchored;
             var was = _raidRec.Gate;
             _raidRec = RaidRecognition.Update(_raidRec, matched, t);
             if (byHp is null) _hpAnchor = HpAnchor.Next(_hpAnchor, _raidRec.Gate, ocr, maxHp, _lastMaxHp);
             _lastMaxHp = maxHp;
+            var learned = _hpLearn.Fight;
+            _hpLearn = _hpLearn.Step(config.RaidGates ?? [], s, _raidRec.Gate, maxHp, byName, _dungeon);
+            if (!ReferenceEquals(learned, _hpLearn.Fight))
+            {
+                Trace.WriteLine("[raid] HP change: " + (_hpLearn.Fight.LastOrDefault() is { } f
+                    ? $"{f.GateId} [{f.Difficulty}] {f.Hp} ({f.Trust})" : "cleared"));
+                FightHpChanged?.Invoke(_hpLearn.Fight);
+            }
             if (_raidRec.Gate != was)
             {
                 Trace.WriteLine($"[raid] recognised {_raidRec.Gate ?? "none"}" + (byHp is { } h ? $" by HP ({h.Difficulty})" : ""));

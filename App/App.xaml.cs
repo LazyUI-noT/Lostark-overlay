@@ -93,13 +93,14 @@ public partial class App : Application
     OverlayWindow _buffs = null!;  // 버프 막대 따로 두기: your buff bars on their own
     OverlayWindow _debuffs = null!;   // 디버프: the chosen raid's debuffs and the swap count
     OverlayWindow _judgment = null!;   // 단심 (설정 → 기타): 심판's cycle
+    OverlayWindow _amsu = null!;   // 암수 창: the bomb on the boss
     OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
     OverlayWindow _meter = null!;   // DPS 미터기
     PartyService? _partyService;   // set by StartApp (null in the demo)
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
     string? _raidSeen;   // the gate 자동 인식 recognises now
     /// <summary>The windows besides yours that follow it: the party slots and the buff bars'.</summary>
-    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment, _raid, _meter];
+    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment, _amsu, _raid, _meter];
     SettingsWindow _settingsWindow = null!;
     AdjustLayer _layer = null!;
     Tray _tray = null!;
@@ -117,6 +118,7 @@ public partial class App : Application
         _buffs = new OverlayWindow(settings, buffs: true);
         _debuffs = new OverlayWindow(settings, debuffs: true);
         _judgment = new OverlayWindow(settings, judgment: true);
+        _amsu = new OverlayWindow(settings, amsu: true);
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
         _settingsWindow = new SettingsWindow(settings, characters);
@@ -280,6 +282,7 @@ public partial class App : Application
             gameForeground: _gameForeground, hudVisible: true, hideWithoutHud: false, firstRunDone: _settings.FirstRunDone);
         _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
+        _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }
         else if (_meter.Visibility == Visibility.Visible) _meter.BringToFront();
         _tray.SetOverlayVisible(_settings.Overlay.Visible);

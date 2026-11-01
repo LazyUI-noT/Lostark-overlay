@@ -22,7 +22,7 @@ public sealed class Tray : IDisposable
     /// <summary>표시 ▸'s names, in menu order (as 설정 → 표시).</summary>
     internal static readonly (OverlayPart Part, string Name)[] PartNames =
         [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Debuffs, "디버프 창"),
-         (OverlayPart.Judgment, "단심 창"), (OverlayPart.Meter, "DPS 미터기"), (OverlayPart.BarCount, "줄 수 창"), (OverlayPart.Party, "파티원 창")];
+         (OverlayPart.Judgment, "단심 창"), (OverlayPart.Amsu, "암수 창"), (OverlayPart.Meter, "DPS 미터기"), (OverlayPart.BarCount, "줄 수 창"), (OverlayPart.Party, "파티원 창")];
     readonly ToolStripMenuItem[] _profileItems;
     bool _gameRunning = true, _partyActive;
 

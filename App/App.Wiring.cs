@@ -27,6 +27,11 @@ public partial class App
         var raidGates = RaidData.Load(CharacterService.DefaultProfilesDir);   // 설정 → 레이드's gates and their boss names, read once
         var bossNames = BossName.LoadTemplates(CharacterService.DefaultProfilesDir, raidGates);
         _raidGates = raidGates;
+        // HP 변경 감지: a value raids.json now ships (or a newer one) replaces the learned one.
+        if (HpChange.Prune(raidGates, settings.Raids)) debounce.Changed(Clock.Now());
+        IReadOnlyList<FightHp> fightHp = [];   // the values this raid uses (Engine.FightHpChanged)
+        // The gates with learned and this raid's HP values: what RaidData.ByHp and HiddenHp name a boss by.
+        IReadOnlyList<RaidGate> HpGates() => HpChange.Effective(raidGates, settings.Raids, fightHp);
         // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
         if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
         // 설정 → 캐릭터 marks what was added since: the first run of a version with the list records what ships now.
@@ -271,7 +276,7 @@ public partial class App
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels)));
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -296,6 +301,7 @@ public partial class App
             _buffs.Update(mine is not null ? new Player("", mine) : null);
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
             _judgment.Update(mine is not null ? new Player("", mine) : null);
+            _amsu.Update(mine is not null ? new Player("", mine) : null);
             _raid.Update(mine is not null ? new Player("", hiddenStatus is not null && mine.Meter is not null ? mine with { Raid = hiddenStatus } : mine) : null);
             _meter.Update(mine is not null ? new Player("", mine) : null);
             ShowPeers(peers);
@@ -329,7 +335,8 @@ public partial class App
         void StepHidden(MeterStatus status, List<MeterSample> all, int myParty)
         {
             var r = settings.Raids;
-            foreach (var (gateId, p, assist) in HiddenHp.Calibration(raidGates, status, all))   // 2-1 cleared: its 조력 피해량 per party
+            var gates = HpGates();
+            foreach (var (gateId, p, assist) in HiddenHp.Calibration(gates, status, all))   // 2-1 cleared: its 조력 피해량 per party
             {
                 var target = r.Gate(gateId);
                 if (Math.Abs((p == 1 ? target.Assist1 : target.Assist2) - assist) < 0.05) continue;
@@ -339,15 +346,15 @@ public partial class App
                 _settingsWindow.RefreshRaid();
             }
             // The ??? gate this fight may reach (its row's figures): the one under way, else any (only EX 2-3 is one).
-            var gate23 = hidden?.Gate ?? raidGates.FirstOrDefault(g => g.HiddenHp.Count > 0);
+            var gate23 = hidden?.Gate ?? gates.FirstOrDefault(g => g.HiddenHp.Count > 0);
             var row = gate23 is null ? null : r.Gates.GetValueOrDefault(gate23.Id);
             // The 조력 비율: what 2-1 shows (both parties' figures and its 에스더 plan) at this difficulty (2-2's HP gives it), else the user's.
             double share = gate23 is null ? r.AssistShare
-                : HiddenHp.Share(raidGates, gate23, hidden?.Difficulty ?? RaidData.ByHp(raidGates, status.Boss.Max)?.Difficulty, r);
+                : HiddenHp.Share(gates, gate23, hidden?.Difficulty ?? RaidData.ByHp(gates, status.Boss.Max)?.Difficulty, r);
             var options = new HiddenHpOptions(share, r.OtherParty, row?.Esthers ?? [], row?.Assist1 ?? 0, row?.Assist2 ?? 0);
             var now = Clock.Now();
             var was = hidden;
-            hidden = HiddenHp.Step(hidden, raidGates, status,
+            hidden = HiddenHp.Step(hidden, gates, status,
                 HiddenHp.RaidDamage(all, myParty, share, r.OtherParty, options.Assist1, options.Assist2), options, now);
             if (was is null != hidden is null) Trace.WriteLine(hidden is { } on ? $"[raid] {on.Gate.Id} ({on.Difficulty}): HP estimated" : "[raid] HP estimate ended");
             if (hidden is not { } est || !r.CountOn(est.Gate.Id))
@@ -367,6 +374,7 @@ public partial class App
         {
             if (!settings.Meter.Record) { recorder.Finish(); return; }   // 전투 기록 off: a fight under way is dropped, not saved
             recorder.InRaid = latest?.Dungeon?.Kind == DungeonKind.Raid;   // records start only in a raid (the dungeon panel)
+            recorder.AmsuOn = settings.Amsu.On;   // the bombs are recorded (and their gain shown) only while read
             recorder.PauseLimit = TimeSpan.FromSeconds(Math.Clamp(settings.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause));
             // My name as the party knows it (a taken name gets a number there), so no member's lane is mine.
             string myName = party.Members.FirstOrDefault(m => m.Id == me)?.Name ?? PartyName();
@@ -392,7 +400,7 @@ public partial class App
             var dungeon = latest?.Dungeon;
             if (dungeon?.Kind == DungeonKind.Guardian) { Trace.WriteLine("[records] guardian raid: not saved"); return; }
             long? hp = BossBook.FightHp(fight.Boss);   // one per gate and difficulty: names the fight once learned
-            if (RaidData.ByHp(raidGates, hp) is var (shipped, level))   // a gate raids.json knows by HP: its own name
+            if (RaidData.ByHp(HpGates(), hp) is var (shipped, level))   // a gate raids.json knows by HP: its own name
             {
                 Store(fight with { Gate = RaidData.Label(shipped), Difficulty = level });
                 return;
@@ -438,6 +446,18 @@ public partial class App
             _raidSeen = id;
             _tray.SetRaid(settings.Raids, raidGates, id);
             _settingsWindow.SetRaidSeen(id);
+        });
+        // HP 변경 감지: this raid's values; confirmed ones are kept (a video's fight changes nothing for the game).
+        engine.FightHpChanged += list => Dispatcher.BeginInvoke(() =>
+        {
+            fightHp = list;
+            if (!GameWindow.TestMode && HpChange.Keep(raidGates, settings.Raids, list, DateTime.UtcNow))
+            {
+                Trace.WriteLine("[raid] HP change kept");
+                Configure();   // the engine's copy of the 레이드 settings, for after this raid
+                Save(now: false);
+            }
+            _settingsWindow.SetFightHp(list);
         });
         engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() => { _hudVisible = visible; UpdateVisibility(); });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>

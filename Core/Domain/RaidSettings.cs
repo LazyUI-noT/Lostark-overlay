@@ -31,6 +31,10 @@ public sealed class GateSettings
     /// 2-1 is cleared for the parties whose support sends; the user types the rest.</summary>
     public double Assist1 { get; set; }
     public double Assist2 { get; set; }
+    /// <summary>HP 변경 감지: max HP learned per difficulty (<see cref="HpChange"/>), used instead of raids.json's.</summary>
+    public Dictionary<string, LearnedHp>? LearnedHp { get; set; }
+    /// <summary>HP 변경 감지: first values seen in one raid, waiting for a later raid to read them again (<see cref="HpChange.Keep"/>).</summary>
+    public Dictionary<string, PendingHp>? PendingHp { get; set; }
 }
 
 /// <summary>설정 → 레이드 (spec § B): boss recognition (자동, or a gate picked by hand), the gates' rows, the alert offset and

@@ -24,7 +24,7 @@ public sealed partial class OverlayCanvas
     int _debuffIndex;                                       // DebuffSize: the box dragged
     (double W, double H) _startBox, _startDrawn;           // its size setting and drawn size when the drag began
 
-    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _raid ? _s.Raids : _s.Overlay;
+    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _amsu ? _s.Amsu : r == _raid ? _s.Raids : _s.Overlay;
 
     void OnDown(object sender, MouseButtonEventArgs e)
     {
@@ -169,7 +169,7 @@ public sealed partial class OverlayCanvas
         OverlayRenderer? r = _pickedDebuff is not null ? _debuffs : _picked?.R;
         if (r is null || r.Visibility != Visibility.Visible) return;
         GestureStarted?.Invoke();
-        if (_pickedDebuff is null && _picked?.Part is { } part && r != _buffs && r != _judgment && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_pickedDebuff is null && _picked?.Part is { } part && r != _buffs && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
             StartBoxDrag(r, part, resize: false);
             MoveBox(r, dx, dy, resize: false, snap: false);
@@ -204,7 +204,7 @@ public sealed partial class OverlayCanvas
     /// <summary>The pointer is on a box's corner grip that a drag would resize.</summary>
     bool OverGrip(MouseEventArgs e)
     {
-        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _judgment || r == _raid || r.ShowsReceivedLayout || Previewing(r)) return false;
+        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r)) return false;
         var at = e.GetPosition(r);
         if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
         return r.PartAt(at) is var (_, rect) && InGrip(rect, at);

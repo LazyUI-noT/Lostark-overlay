@@ -117,6 +117,7 @@ public partial class SettingsWindow : Window
     {
         _skillsResult = text;
         FillFit();
+        SkillsRegistered(text);
     }
 
     public SettingsWindow(Settings settings, CharacterService characters)
@@ -381,12 +382,7 @@ public partial class SettingsWindow : Window
     {
         var o = _s.Overlay;
         var p = Refill(_secDisplay, "전체");
-        p.Children.Add(HelpRow("오버레이 표시", "끄기: 내 오버레이와 파티원 창을 모두 숨깁니다. 켜기: 게임이나 설정 창이 앞에 있을 때 보여 줍니다 (게임이 꺼져 있어도). " +
-            "항상: 어느 창이 앞에 있어도 보여 줍니다. 트레이 메뉴나 '오버레이 켜기/끄기' 단축키는 끄기와 마지막 켠 방식 사이를 오갑니다. 왼쪽 화면에는 그대로 보입니다.",
-            EnumCombo([(OverlayShow.끄기, "끄기"), (OverlayShow.켜기, "켜기 (게임·설정이 앞에 있을 때)"), (OverlayShow.항상, "항상")], o.Mode(), o.SetMode)));
-        p.Children.Add(Check("스킬창이 안 보이면 숨기기", o.HideWithoutHud, v => o.HideWithoutHud = v, Changed,
-            "게임이 앞에 있을 때, 컷신·로딩처럼 스킬창이 안 보이는 동안 오버레이를 숨깁니다. 끄면 마지막 모습 그대로 둡니다. DPS 미터기는 따르지 않습니다."));
-        UIElement? opacityRow = null;
+        UIElement? opacityRow = null;   // 오버레이 표시 and 스킬창이 안 보이면 숨기기: 설정 → 표시 (FillShow)
         p.Children.Add(Check("배경 판", o.ShowPlate,
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤의 판입니다. 분리된 버프 창에는 판이 없습니다."));
         p.Children.Add(opacityRow = SliderRow("판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
@@ -402,6 +398,7 @@ public partial class SettingsWindow : Window
         p.Children.Add(SliderRow("금테 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed));
         FillBuffs();
         FillJudgment();
+        FillAmsu();
     }
 
     /// <summary>How every box shows its cooldown: 칸 불투명도, 남은 시간 숫자 (and its size), 쿨타임 표시 (and 채움 방향).

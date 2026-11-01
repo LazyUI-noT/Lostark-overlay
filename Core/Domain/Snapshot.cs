@@ -29,6 +29,9 @@ public sealed record Snapshot(
     /// <summary>단심's cycle (yours only); null when it is off for the active character.</summary>
     public JudgmentState? Judgment { get; init; }
 
+    /// <summary>암흑수류탄 on the boss (amsu.design.md); null while its switch is off. The 암수 창 counts down from it (Amsu.View).</summary>
+    public AmsuState? Amsu { get; init; }
+
     /// <summary>The 줄 수 창 (설정 → 레이드, yours only); null while it isn't shown.</summary>
     public RaidStatus? Raid { get; init; }
 

@@ -19,6 +19,17 @@ public class EditorViewTests
     }
 
     [Fact]
+    public void The_whole_view_fits_the_screen_and_centres_it()
+    {
+        var v = EditorView.Whole(800, 400, 1920, 1080);   // wider view than the screen's shape: height decides
+        Assert.Equal(400 / 1080.0, v.Scale, 6);
+        var (l, t) = v.ToView(0, 0);
+        var (r, b) = v.ToView(1920, 1080);
+        Assert.Equal(800 - r, l, 6);   // centred left and right
+        Assert.Equal((0.0, 400.0), (t, b));
+    }
+
+    [Fact]
     public void Zoom_stays_within_its_limits()
     {
         var v = new EditorView(1, 0, 0);

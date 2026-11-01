@@ -37,7 +37,7 @@ public sealed partial class Engine : IDisposable
         ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null,
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
-        bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null)
+        bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -105,11 +105,7 @@ public sealed partial class Engine : IDisposable
     static readonly TimeSpan BossEvery = TimeSpan.FromMilliseconds(500);   // the boss's counts change only on a swap
     // Debuff icons: 3 a second with none up, 5 while one is (boxes filled from the left, plus the next); the 결투자's timer
     // 10 a second in between, its ticks putting the countdown back to when it really came (DebuffTracker.DuelTimer).
-    static readonly TimeSpan DebuffIdleEvery = TimeSpan.FromMilliseconds(333), DebuffShownEvery = TimeSpan.FromMilliseconds(200),
-        DuelTimerEvery = TimeSpan.FromMilliseconds(100);
-    TimeSpan _lastDebuffIcons = TimeSpan.MinValue, _lastDuelTimer = TimeSpan.MinValue;
-    int _debuffFilled;   // boxes from the left holding a debuff icon at the last read: the next read takes these and one more
-    int? _duelBox;       // the box the 결투자 was in at the last read
+    DebuffSlots _slots = DebuffSlots.None;   // your debuff row at the last read and when each pass ran (DebuffSchedule: cadence v2)
     double? _gauge;
     GaugeDef? _gaugeFrom;      // the definition _gauge was read with (one instance per 직업각인: CharacterService caches it)
     readonly GaugeFilter _gaugeFilter = new();   // drops the shine the game sweeps over the gauge
@@ -298,10 +294,12 @@ public sealed partial class Engine : IDisposable
         int? testSize = _testMode ? _testFits.BuffSize : null;
         int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? testSize ?? set : null;
         int debuffSize = previewSize ?? testSize ?? config.DebuffSize;
-        bool debuffIcons = _debuffsOn && Elapsed(now, _lastDebuffIcons, _debuffFilled > 0 ? DebuffShownEvery : DebuffIdleEvery);
-        bool duelTimer = _debuffsOn && !debuffIcons && _duelBox is not null && Elapsed(now, _lastDuelTimer, DuelTimerEvery);
-        bool debuffs = debuffIcons || duelTimer, boss = debuffIcons && Elapsed(now, _lastBoss, BossEvery);
-        int debuffBoxes = Math.Min(Geometry.DebuffBoxCount, _debuffFilled + 1);
+        // Debuff cadence v2: a frame pass 5/s (the filled boxes and the next), a timer pass 10/s in between for the timers under 2 s.
+        var debuffPass = _debuffsOn ? DebuffSchedule.Due(_slots, now) : DebuffPass.None;
+        bool debuffIcons = debuffPass == DebuffPass.Frames;
+        IReadOnlyList<int> fastTimers = debuffPass == DebuffPass.Timers ? DebuffSchedule.FastTimers(_slots) : [];
+        bool debuffs = debuffIcons || fastTimers.Count > 0, boss = debuffIcons && Elapsed(now, _lastBoss, BossEvery);
+        int debuffBoxes = DebuffSchedule.Boxes(_slots);
         if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
         bool preview = _previewing && Elapsed(now, _lastPreview, PreviewEvery);
         var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, now);
@@ -324,7 +322,7 @@ public sealed partial class Engine : IDisposable
         if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size, config.BuffCount));
         int debuffAt = rects.Count;
         if (debuffIcons) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize, debuffBoxes));
-        else if (duelTimer) rects.Add(Geometry.DebuffBoxes(_vp, _fit!, debuffSize)[_duelBox!.Value].Timer);
+        else foreach (int box in fastTimers) rects.Add(Geometry.DebuffBoxes(_vp, _fit!, debuffSize)[box].Timer);   // each timer alone, at its box
         if (boss) rects.Add(Geometry.BossRow(_vp, _fit!, config.BossSize));
         int judgAt = rects.Count;
         if (judgRow is { } row) rects.Add(row);
@@ -338,6 +336,10 @@ public sealed partial class Engine : IDisposable
         int meterAt = rects.Count;
         if (meterHp is { } hpRect) rects.Add(hpRect);
         if (meterPanel is { } panelRect) rects.Add(panelRect);
+        var (amsuText, amsuStrip) = AmsuRects(config, poll, now);
+        int amsuAt = rects.Count;
+        if (amsuText is { } amsuTextRect) rects.Add(amsuTextRect);
+        if (amsuStrip is { } amsuStripRect) rects.Add(amsuStripRect);
         int previewAt = rects.Count;   // 위치 조정's bar score, from the same capture as the reads
         if (preview) rects.Add(FitSolver.Band(_vp));
 
@@ -355,8 +357,6 @@ public sealed partial class Engine : IDisposable
         _gaugeSpent = false;
         if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
         if (boss) _lastBoss = t;
-        if (debuffIcons) _lastDebuffIcons = t;
-        if (duelTimer) _lastDuelTimer = t;
         if (gaugeDef is not null) _lastGauge = t;
         if (gaugeDef is not null && _hud.Visible == true)   // loading screens and cutscenes would read as empty
         {
@@ -369,10 +369,12 @@ public sealed partial class Engine : IDisposable
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
         if (buffSize is { } read) changed |= Perf.Run("버프", () => ReadBuffs(images[debuffAt - 1], read, config.BuffCount, t));
         if (debuffIcons) changed |= Perf.Run("디버프", () => ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, config.BossSize, t, debuffBoxes));
-        else if (duelTimer) changed |= Perf.Run("디버프 (결투자 시간)", () => ReadDuelTimer(images[debuffAt], debuffSize, t));
+        else if (fastTimers.Count > 0) changed |= Perf.Run("디버프 (시간)", () => ReadDebuffTimers(images, debuffAt, fastTimers, debuffSize, t));
         if (judging)
             changed |= Perf.Run("단심", () => ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t));
         if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[meterAt], meterPanel is null ? null : images[meterAt + 1], t));
+        if (amsuText is not null || amsuStrip is not null)
+            changed |= Perf.Run("암수", () => ReadAmsu(config, amsuText is null ? null : images[amsuAt], amsuStrip is null ? null : images[amsuAt + (amsuText is null ? 0 : 1)], t));
         if (raidName is not null || raidCount is not null)
             changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[raidCountAt], raidHp is null ? null : images[raidHpAt], t));
         if (wantLabel)
@@ -505,37 +507,39 @@ public sealed partial class Engine : IDisposable
         ExtraDebug?.Invoke(new(key, crop, kind is null ? "없음" : $"{kind}{(seconds is { } s ? $" {s:0.#}초" : "")}", ""));
     }
 
-    /// <summary>Finds your debuffs in the captured debuff row (<see cref="Geometry.DebuffArea"/> of the first
-    /// <paramref name="count"/> boxes) and, when captured, the boss's counts in <paramref name="boss"/> (<see cref="Geometry.BossRow"/>).
-    /// Debuffs fill the row from the left, so the boxes are read up to the first without a debuff frame. Returns true if
-    /// anything changed.</summary>
+    /// <summary>The frame pass (<see cref="DebuffSchedule"/>): your debuffs in the captured row (<see cref="Geometry.DebuffArea"/> of the
+    /// first <paramref name="count"/> boxes) and, when captured, the boss's counts in <paramref name="boss"/> (<see cref="Geometry.BossRow"/>).
+    /// Debuffs fill the row from the left, so the boxes are checked up to the first without a debuff frame; the icons are identified
+    /// only when the schedule asks (every 0.5 s, the row shifted, a timer unread), else kept; the timed boxes' timers are read.
+    /// Returns true if anything changed.</summary>
     bool ReadDebuffs(Image area, Image? boss, int size, int bossSize, TimeSpan t, int count)
     {
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
         var origin = Geometry.DebuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
-        var reads = new List<DebuffReading>();
         var boxes = Geometry.DebuffBoxes(_vp, _fit!, size);
         int filled = 0;
-        (int Box, double? Seconds)? duel = null;
-        for (int i = 0; i < count; i++)
+        while (filled < count && DebuffReader.Filled(area, Local(boxes[filled].Icon))) filled++;
+        if (filled < count && _config.Debug) BoxDebug($"디버프 {filled + 1}", area, Local(boxes[filled].Icon), Local(boxes[filled].Timer), "없음", null);
+        bool classify = DebuffSchedule.Classify(_slots, filled, t);
+        var kinds = new DebuffKind?[filled];
+        var seconds = new double?[filled];
+        var reads = new List<DebuffReading>();
+        double? duelSeconds = null;
+        for (int i = 0; i < filled; i++)
         {
-            if (!DebuffReader.Filled(area, Local(boxes[i].Icon)))
-            {
-                if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), "없음", null);
-                break;
-            }
-            filled++;
-            var kind = DebuffReader.Classify(area, Local(boxes[i].Icon), out double duelScore);
-            double? seconds = kind is DebuffKind.번개 or DebuffKind.교체 or DebuffKind.결투자 ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
+            double duelScore = 0;
+            kinds[i] = classify ? DebuffReader.Classify(area, Local(boxes[i].Icon), out duelScore) : _slots.Kinds[i];
+            seconds[i] = DebuffSchedule.Timed(kinds[i]) ? reader.ReadTimer(area, Local(boxes[i].Timer)) : null;
             // 결투자's countdown and hold are the tracker's own clock (DuelMark); its "38초" only sets when it came (DuelTimer).
-            if (kind == DebuffKind.결투자) (duel, seconds) = ((i, seconds), null);
-            if (kind is { } k) reads.Add(new(k, seconds));
-            if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), DebuffReader.DebugText(kind, duelScore), seconds);
+            double? sec = seconds[i];
+            if (kinds[i] == DebuffKind.결투자) (duelSeconds, sec) = (sec, null);
+            if (kinds[i] is { } k) reads.Add(new(k, sec));
+            if (_config.Debug) BoxDebug($"디버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), DebuffReader.DebugText(kinds[i], duelScore), seconds[i]);
         }
-        (_debuffFilled, _duelBox) = (filled, duel?.Box);
+        _slots = DebuffSchedule.Frames(_slots, filled, classify ? kinds : null, seconds, t);
         var (red, blue) = boss is null ? (null, null) : DebuffReader.BossCounts(boss, Geometry.BossScale(_vp, _fit!, bossSize));
-        var next = DebuffTracker.DuelTimer(DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true), duel?.Seconds, t);
+        var next = DebuffTracker.DuelTimer(DebuffTracker.Update(_debuffs, reads, red, blue, t, _hud.Visible == true), duelSeconds, t);
         if (boss is not null && _config.Debug)
             ExtraDebug?.Invoke(new("보스", boss.Copy(), $"빨강 {red?.ToString() ?? "?"} / 파랑 {blue?.ToString() ?? "?"}",
                 $"표시: 빨강 {next.BossRed?.ToString() ?? "?"} / 파랑 {next.BossBlue?.ToString() ?? "?"}"));
@@ -544,11 +548,24 @@ public sealed partial class Engine : IDisposable
         return changed;
     }
 
-    /// <summary>Reads the 결투자's timer alone (its box's "N초", captured between icon reads). True if the countdown moved.</summary>
-    bool ReadDuelTimer(Image timer, int size, TimeSpan t)
+    /// <summary>The timer pass: the timers under 2 s (<paramref name="timerBoxes"/>, each captured alone from <paramref name="at"/> on).
+    /// The tracker gets every known debuff but only this pass's seconds: another box's older read would reset its end.</summary>
+    bool ReadDebuffTimers(IReadOnlyList<Image> images, int at, IReadOnlyList<int> timerBoxes, int size, TimeSpan t)
     {
-        double? seconds = new BuffReader(Geometry.BuffScale(_vp, size)).ReadTimer(timer, new PixelRect(0, 0, timer.Width, timer.Height));
-        var next = DebuffTracker.DuelTimer(_debuffs, seconds, t);
+        var reader = new BuffReader(Geometry.BuffScale(_vp, size));
+        var read = new Dictionary<int, double?>();
+        for (int j = 0; j < timerBoxes.Count; j++)
+            read[timerBoxes[j]] = reader.ReadTimer(images[at + j], new PixelRect(0, 0, images[at + j].Width, images[at + j].Height));
+        _slots = DebuffSchedule.Timers(_slots, read, t);
+        var reads = new List<DebuffReading>();
+        double? duelSeconds = null;
+        for (int i = 0; i < _slots.Filled; i++)
+        {
+            double? sec = read.TryGetValue(i, out var v) ? v : null;
+            if (_slots.Kinds[i] == DebuffKind.결투자) (duelSeconds, sec) = (sec, null);
+            if (_slots.Kinds[i] is { } k) reads.Add(new(k, sec));
+        }
+        var next = DebuffTracker.DuelTimer(DebuffTracker.Update(_debuffs, reads, null, null, t, _hud.Visible == true), duelSeconds, t);
         bool changed = next != _debuffs;
         _debuffs = next;
         return changed;
@@ -563,6 +580,7 @@ public sealed partial class Engine : IDisposable
             Raid = _raid,
             Meter = _meterOn ? _meter : null,
             Dungeon = _meterOn ? _dungeon : null,
+            Amsu = _amsuOn ? _amsu : null,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,

@@ -1,7 +1,8 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>What happened at an event: a skill used (a slot going ready → cooldown), or one of my buffs starting or ending.</summary>
-public enum RecordEventKind { 사용, 버프시작, 버프끝 }
+/// <summary>What happened at an event: a skill used (a slot going ready → cooldown), one of my buffs starting or ending, or a
+/// bomb on the boss (암흑수류탄 / 빛나는, recorded while its switch is on) starting or ending.</summary>
+public enum RecordEventKind { 사용, 버프시작, 버프끝, 암수시작, 암수끝 }
 
 /// <summary>A player in a record (spec § D): name, class, role (null: did not share figures), and 1·2파티.</summary>
 public sealed record RecordMember(string Name, int ClassId, MeterRole? Role, int Party);
@@ -13,7 +14,7 @@ public sealed record RecordSample(double T, string Name, long Damage, long Dps);
 public sealed record RecordBoss(double T, long Taken, long? Current, long? Max);
 
 /// <summary>An event at fight second <paramref name="T"/> in <paramref name="Name"/>'s lane; <paramref name="What"/> is the
-/// <see cref="SlotId"/> for 사용, the <see cref="BuffKind"/> for a buff.</summary>
+/// <see cref="SlotId"/> for 사용, the <see cref="BuffKind"/> for a buff, the <see cref="Vision.Bomb"/> for a bomb.</summary>
 public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, int What);
 
 /// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
@@ -33,7 +34,8 @@ public sealed record FightRecord(
     bool Kept = false,
     string? MyClassName = null,
     string? Difficulty = null,
-    bool? Cleared = null)
+    bool? Cleared = null,
+    bool AmsuOn = false)
 {
     /// <summary>My share at the end (my last figure over the last boss figure); null under the meter's dash rule.</summary>
     public double? MyShare =>

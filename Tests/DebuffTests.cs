@@ -103,6 +103,51 @@ public class DebuffTests
         Assert.True(r80 is not null || b80 is not null, "the sigils were found at HUD 80 scale");
     }
 
+    [Theory]
+    [InlineData("bossrow", 4, 4)]
+    [InlineData("bossrow_53", 5, 3)]
+    [InlineData("bossrow_62", 6, 2)]
+    [InlineData("bossrow_62b", 6, 2)]
+    [InlineData("bossrow_61", 6, 1)]
+    public void The_boss_counts_survive_a_row_a_few_px_off_and_a_darker_scene(string fixture, int red, int blue)
+    {
+        var row = Fixture.Load(fixture).Frames[0];
+        foreach (int dy in new[] { -3, -2, -1, 1, 2, 3 })
+            Assert.Equal((red, blue), DebuffReader.BossCounts(Shifted(row, dy), 1));
+        Assert.Equal((red, blue), DebuffReader.BossCounts(Dimmed(row, 0.8), 1));
+    }
+
+    /// <summary>The row moved <paramref name="dy"/> px down (up when negative), the edge row repeated.</summary>
+    static Image Shifted(Image row, int dy)
+    {
+        var bytes = new byte[row.Bgra.Length];
+        for (int y = 0; y < row.Height; y++)
+            Array.Copy(row.Bgra, Math.Clamp(y - dy, 0, row.Height - 1) * row.Stride, bytes, y * row.Stride, row.Stride);
+        return new Image(row.Width, row.Height, bytes);
+    }
+
+    static Image Dimmed(Image row, double k) =>
+        new(row.Width, row.Height, [.. row.Bgra.Select((v, i) => i % 4 == 3 ? v : (byte)Math.Round(v * k))]);
+
+    [Fact]
+    public void A_sigil_outside_the_boss_buff_zone_is_not_counted()
+    {
+        // bossrow_61 (X 6) with the two sigils' green frames painted red: the same art in the debuff zone's colour, as on your own
+        // row. Only the boss buff zone (green frames, the two right-most) holds the boss's sigils (user, mordum fix.PNG).
+        var row = Fixture.Load("bossrow_61").Frames[0];
+        var bytes = row.Bgra.ToArray();
+        const int top = 30, side = 31, band = 3;
+        foreach (int left in new[] { 146, 180 })
+            for (int y = top; y <= top + side; y++)
+                for (int x = left; x <= left + side - 1; x++)
+                {
+                    if (x - left >= band && left + side - 1 - x >= band && y - top >= band && top + side - y >= band) continue;
+                    int i = y * row.Stride + x * 4;
+                    (bytes[i + 1], bytes[i + 2]) = (bytes[i + 2], bytes[i + 1]);   // G ↔ R
+                }
+        Assert.Equal((null, null), DebuffReader.BossCounts(new Image(row.Width, row.Height, bytes), 1));
+    }
+
     [Fact]
     public void A_row_without_the_boss_sigils_reads_no_count()
     {

@@ -186,8 +186,9 @@ public sealed partial class OverlayRenderer
         MeterTextRight(dc, new(body.Right - 4, body.Y + h * 0.2), $"{Fmt(b)} 2파티", h * 0.42, 1);
     }
 
-    /// <summary>Each dealer's DPS over this 전분 record, one line each, and always mine (alone, or as a support), with the top
-    /// DPS as the scale.</summary>
+    /// <summary>Each dealer's DPS over this 전분 record, one line each, and always mine (alone, or as a support). The scale is a
+    /// round step (GridScale), labelled at the left in 억/초; the time lines fall on round steps, labelled m:ss below. A graph
+    /// too small for its labels draws its lines alone.</summary>
     void MeterLines(DrawingContext dc, Rect area, MeterView v)
     {
         if (area.Height < 8) return;
@@ -197,20 +198,26 @@ public sealed partial class OverlayRenderer
         if (series.Count == 0) { MeterText(dc, new(area.X + 4, area.Y + 4), "DPS 그래프: 전투가 시작되면 그립니다", Math.Min(area.Height * 0.3, 14), 0.6); return; }
         var t0 = series.Min(s => s.Points[0].At);
         double span = Math.Max(1, (series.Max(s => s.Points[^1].At) - t0).TotalSeconds);
-        double top = Math.Max(1, series.Max(s => s.Points.Max(p => (double)p.Dps)));
-        var grid = new Pen(Solid(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), 1);   // quarters of the top DPS, and every 30 s
-        for (int q = 1; q < 4; q++)
-        {
-            double gy = Math.Round(area.Bottom - area.Height * q / 4) + 0.5;
-            dc.DrawLine(grid, new(area.X, gy), new(area.Right, gy));
-        }
-        for (double sec = GridSeconds; sec < span; sec += GridSeconds)
-        {
-            double gx = Math.Round(area.X + area.Width * sec / span) + 0.5;
-            dc.DrawLine(grid, new(gx, area.Y), new(gx, area.Bottom));
-        }
         double font = Math.Min(area.Height / (series.Count * 1.3 + 0.5), 12);   // the names fit the graph's height
-        MeterText(dc, new(area.X + 3, area.Bottom - font * 1.3), $"최고 {Eok((long)top)}/초", font, 0.6);
+        var (step, top) = GridScale.Values(series.Max(s => s.Points.Max(p => (double)p.Dps)));
+        double labelW = Text(GridScale.Label(top) + "/초", font).Width;   // the widest label is the top's
+        bool labels = GridScale.LabelsFit(area.Height, area.Width, font, labelW);
+        var plot = labels ? new Rect(area.X + labelW + 6, area.Y, Math.Max(1, area.Width - labelW - 6), Math.Max(0, area.Height - font * 1.3)) : area;
+        var grid = new Pen(Solid(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), 1);   // round DPS steps, and round time steps
+        for (int k = 1; k <= Math.Round(top / step); k++)
+        {
+            double value = k * step;
+            double gy = Math.Round(plot.Bottom - plot.Height * value / top) + 0.5;
+            dc.DrawLine(grid, new(plot.X, gy), new(plot.Right, gy));
+            if (labels) MeterTextRight(dc, new(plot.X - 4, gy - font * 0.6), GridScale.Label(value) + "/초", font, 0.6);
+        }
+        double timeStep = GridScale.Seconds(span, plot.Width, 6 * font);
+        for (double sec = timeStep; sec < span; sec += timeStep)
+        {
+            double gx = Math.Round(plot.X + plot.Width * sec / span) + 0.5;
+            dc.DrawLine(grid, new(gx, plot.Y), new(gx, plot.Bottom));
+            if (labels) MeterText(dc, new(gx + 2, plot.Bottom + 1), $"{(int)sec / 60}:{(int)sec % 60:00}", font, 0.6);
+        }
         var names = new List<(double Y, string Name)>();
         foreach (var (r, points) in series)
         {
@@ -219,22 +226,21 @@ public sealed partial class OverlayRenderer
                 for (int i = 0; i < points.Count; i++)
                 {
                     double value = points[i].Dps;
-                    var pt = new Point(area.X + area.Width * (points[i].At - t0).TotalSeconds / span, area.Bottom - area.Height * value / top);
+                    var pt = new Point(plot.X + plot.Width * (points[i].At - t0).TotalSeconds / span, plot.Bottom - plot.Height * value / top);
                     if (i == 0) g.BeginFigure(pt, false, false); else g.LineTo(pt, true, false);
                 }
             dc.DrawGeometry(null, new Pen(Solid(MeterColor(r)), 1.5), geo);
-            names.Add((area.Bottom - area.Height * points[^1].Dps / top, r.Name));
+            names.Add((plot.Bottom - plot.Height * points[^1].Dps / top, r.Name));
         }
-        double y = area.Y;   // whose line: names at the line ends, top down, kept apart
+        double y = plot.Y;   // whose line: names at the line ends, top down, kept apart
         foreach (var (end, name) in names.OrderBy(n => n.Y))
         {
-            y = Math.Max(y, Math.Min(end - font * 0.7, area.Bottom - font * 1.3));
-            MeterTextRight(dc, new(area.Right - 3, y), name, font, 0.85);
+            y = Math.Max(y, Math.Min(end - font * 0.7, plot.Bottom - font * 1.3));
+            MeterTextRight(dc, new(plot.Right - 3, y), name, font, 0.85);
             y += font * 1.25;
         }
     }
 
-    const double GridSeconds = 30;   // the DPS graph's vertical grid
     const double BuffBarRows = 2.4;   // × a row: three bars
 
     /// <summary>버프 적용률 is on and I'm not on a support (the view says so once the meter has read).</summary>

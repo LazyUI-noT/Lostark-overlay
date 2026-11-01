@@ -22,6 +22,9 @@ sealed class PreviewPlayer
 
     public bool Running => _sim is not null;
 
+    /// <summary>How often the sample is pushed to the boxes (50 ms; the 설정 → 표시 scene slower).</summary>
+    public TimeSpan Every { get => _timer.Interval; set => _timer.Interval = value; }
+
     /// <summary>The sample for the class shown; a running play starts over with it.</summary>
     public void Show(Player sample)
     {
@@ -60,10 +63,16 @@ sealed class PreviewPlayer
         Push();
     }
 
+    /// <summary>자동: the boxes are used in turn without clicks (<see cref="PreviewSim.Auto"/>); the value gives the gauge's
+    /// section count. Null: only clicks use them.</summary>
+    public Func<int>? Auto { get; set; }
+
     void Push()
     {
         if (_sim is null) return;
-        var p = new Player("", _sim.At(Clock.Now()));
+        var now = Clock.Now();
+        if (Auto is { } sections) _sim.Auto(now, sections());
+        var p = new Player("", _sim.At(now));
         foreach (var t in _targets) t.Update(p);
     }
 

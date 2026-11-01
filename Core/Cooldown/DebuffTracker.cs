@@ -28,8 +28,11 @@ public static class DebuffTracker
         {
             if (reads.FirstOrDefault(r => r.Kind == kind) is not { } r)
                 return was is not null && now - was.SeenAt <= Hold ? was : null;
-            // "N초" is N to N+1 s left: the middle is taken (every read corrects it); tenths are exact.
-            TimeSpan? end = r.Seconds is { } s ? now + TimeSpan.FromSeconds(s >= 1 ? s + 0.5 : s) : was?.EndsAt;
+            // "N초" is N to N+1 s left: the first read takes the middle, later ones keep the end and move it only as far as
+            // their own range needs (at 5–10 reads a second, resetting to the middle each time made the bar jitter); tenths are exact.
+            TimeSpan? end = r.Seconds is not { } s ? was?.EndsAt
+                : s < 1 ? now + TimeSpan.FromSeconds(s)
+                : Clamp(was?.EndsAt ?? now + TimeSpan.FromSeconds(s + 0.5), now + TimeSpan.FromSeconds(s), now + TimeSpan.FromSeconds(s + 1));
             return new DebuffMark(now, end);
         }
 
@@ -52,6 +55,8 @@ public static class DebuffTracker
         if (red is not null || blue is not null) return next with { BossRed = null, BossBlue = null };
         return now - prev.BossSeenAt <= BossHold ? next : next with { BossRed = null, BossBlue = null };
     }
+
+    static TimeSpan Clamp(TimeSpan v, TimeSpan min, TimeSpan max) => v < min ? min : v > max ? max : v;
 
     /// <summary>A read of the 결투자's timer ("38초"; null: not read). It ticks every whole second from when the debuff came, so a
     /// tick (one less than the last read) seen at <paramref name="now"/> puts that instant whole seconds back: the latest one at or

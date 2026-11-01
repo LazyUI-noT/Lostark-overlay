@@ -19,11 +19,15 @@ public sealed partial class Settings
     public void CopyFrom(Settings other)
     {
         var trusted = Party.TrustedDevices;
+        var learnedHp = Raids.Gates.Select(g => (Id: g.Key, g.Value.LearnedHp, g.Value.PendingHp)).ToList();   // HP 변경 감지
         var shots = Profiles.Select(p => p.Shot).ToList();   // a screenshot is a file, kept or removed at once: no undo step
         foreach (var p in typeof(Settings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
             if (p is { CanRead: true, CanWrite: true } && p.GetIndexParameters().Length == 0 && !AppWritten.Contains(p.Name) && !SavedForms.Contains(p.Name))
                 p.SetValue(this, p.GetValue(other));
         Party.TrustedDevices = trusted;
+        foreach (var g in Raids.Gates.Values) (g.LearnedHp, g.PendingHp) = (null, null);
+        foreach (var (id, learned, pending) in learnedHp.Where(g => g.LearnedHp is not null || g.PendingHp is not null))
+            (Raids.Gate(id).LearnedHp, Raids.Gate(id).PendingHp) = (learned, pending);
         for (int i = 0; i < Math.Min(shots.Count, Profiles.Count); i++) Profiles[i].Shot = shots[i];
     }
 

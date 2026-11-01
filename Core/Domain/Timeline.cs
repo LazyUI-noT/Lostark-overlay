@@ -64,7 +64,61 @@ public static class Timeline
         return [.. spans.OrderBy(s => s.Item1)];
     }
 
+    /// <summary>The bomb windows (a bomb up on the boss): each start to its end, or to the end of the fight when none came.</summary>
+    public static IReadOnlyList<(double From, double To, Vision.Bomb Kind)> AmsuSpans(FightRecord r)
+    {
+        var spans = new List<(double, double, Vision.Bomb)>();
+        (double From, int What)? open = null;
+        foreach (var e in r.Events.Where(e => e.Name == r.Me && e.Kind is RecordEventKind.암수시작 or RecordEventKind.암수끝).OrderBy(e => e.T))
+        {
+            if (open is { } o) spans.Add((o.From, e.T, (Vision.Bomb)o.What));
+            open = e.Kind == RecordEventKind.암수시작 ? (e.T, e.What) : null;
+        }
+        if (open is { } last) spans.Add((last.From, r.Duration, (Vision.Bomb)last.What));
+        return spans;
+    }
+
+    /// <summary>What a bomb adds to the damage dealt while it is up (user, 2026-11-01: a flat 10.35%).</summary>
+    public const double AmsuShare = 0.1035;
+
+    /// <summary>The 암수 gain over the fight: my 피해량 and the boss's damage taken within the bomb windows × <see cref="AmsuShare"/>;
+    /// null when 암수 was not read in this fight (the windows would be missing, not empty).</summary>
+    public static (double Mine, double Total)? AmsuGain(FightRecord r)
+    {
+        if (!r.AmsuOn) return null;
+        var spans = AmsuSpans(r);
+        var mine = r.Samples.Where(s => s.Name == r.Me).OrderBy(s => s.T).Select(s => (s.T, (double)s.Damage)).ToList();
+        var boss = r.Boss.OrderBy(b => b.T).Select(b => (b.T, (double)b.Taken)).ToList();
+        double Within(List<(double T, double V)> line) => spans.Sum(s => At(line, s.To) - At(line, s.From));
+        return (Within(mine) * AmsuShare, Within(boss) * AmsuShare);
+    }
+
+    /// <summary>A running total at second <paramref name="t"/>: linear between samples, held past the ends.</summary>
+    static double At(List<(double T, double V)> line, double t)
+    {
+        if (line.Count == 0) return 0;
+        if (t <= line[0].T) return line[0].V;
+        for (int i = 1; i < line.Count; i++)
+            if (t <= line[i].T)
+                return line[i - 1].V + (line[i].V - line[i - 1].V) * (t - line[i - 1].T) / Math.Max(1e-9, line[i].T - line[i - 1].T);
+        return line[^1].V;
+    }
+
     /// <summary>Where 비교 lines this record up: phase <paramref name="phase"/>'s start (0: the fight's), or the start when the
     /// record has no such phase.</summary>
     public static double Offset(FightRecord r, int phase) => phase >= 1 && phase <= r.Phases.Count ? r.Phases[phase - 1] : 0;
+
+    /// <summary>The biggest 초당 피해량 and 피해량 among the samples within a second of the seconds shown (the curves draw those
+    /// too): the two scales are fitted to these. Zero when none is near.</summary>
+    public static (long Dps, long Damage) Peaks(FightRecord r, TimeWindow seen)
+    {
+        long dps = 0, damage = 0;
+        foreach (var s in r.Samples)
+        {
+            if (s.T < seen.From - 1 || s.T > seen.To + 1) continue;
+            dps = Math.Max(dps, s.Dps);
+            damage = Math.Max(damage, s.Damage);
+        }
+        return (dps, damage);
+    }
 }

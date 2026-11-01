@@ -118,6 +118,61 @@ public class FightRecorderTests
         Assert.NotNull(Step(2));
     }
 
+    /// <summary>A snapshot with <paramref name="bomb"/> on the boss (15 s left) at <paramref name="at"/>, or none.</summary>
+    static Snapshot Bombed(double at, Core.Vision.Bomb? bomb) => Snap(SlotPhase.Unknown, at) with
+    {
+        Amsu = bomb is { } k ? AmsuState.None with { Up = AmsuState.None.Up.Add(k, new BombTimer(S(at + 15), S(at))) } : AmsuState.None,
+    };
+
+    [Fact]
+    public void A_bomb_on_the_boss_is_a_window_when_암수_is_on()
+    {
+        _r.AmsuOn = true;
+        Tick(0, 0); Tick(1, 1);
+        See("나", Bombed(1.1, null), 1.1);
+        See("나", Bombed(1.2, Core.Vision.Bomb.빛암), 1.2);
+        See("나", Bombed(1.7, null), 1.7);
+        Tick(2, 2);
+        var r = _r.Finish()!;
+        Assert.True(r.AmsuOn);
+        Assert.Equal([(RecordEventKind.암수시작, (int)Core.Vision.Bomb.빛암, 1.2), (RecordEventKind.암수끝, (int)Core.Vision.Bomb.빛암, 1.7)],
+            r.Events.Select(e => (e.Kind, e.What, Math.Round(e.T, 6))));
+    }
+
+    [Fact]
+    public void A_bomb_is_recorded_with_every_buff_bar_hidden()
+    {
+        _r.AmsuOn = true;   // no buff bar shown: the engine publishes no buffs at all
+        Tick(0, 0); Tick(1, 1);
+        See("나", Bombed(1.2, Core.Vision.Bomb.암수) with { Buffs = [] }, 1.2);
+        See("나", Bombed(1.7, null) with { Buffs = [] }, 1.7);
+        Tick(2, 2);
+        Assert.Equal([RecordEventKind.암수시작, RecordEventKind.암수끝], _r.Finish()!.Events.Select(e => e.Kind));
+    }
+
+    [Fact]
+    public void Without_암수_on_no_bomb_is_recorded()
+    {
+        Tick(0, 0); Tick(1, 1);
+        See("나", Bombed(1.2, Core.Vision.Bomb.암수), 1.2);
+        Tick(2, 2);
+        var r = _r.Finish()!;
+        Assert.False(r.AmsuOn);
+        Assert.Empty(r.Events);
+    }
+
+    [Fact]
+    public void A_bomb_that_ends_while_the_timer_is_stopped_ends_where_it_stopped()
+    {
+        _r.AmsuOn = true;
+        Tick(0, 0); Tick(1, 1);
+        See("나", Bombed(1.2, Core.Vision.Bomb.암수), 1.2);
+        Tick(2, 2); Tick(2, 3.6);   // stopped at 2
+        See("나", Bombed(4, null), 4);
+        Tick(3, 10); Tick(4, 11);
+        Assert.Equal([(RecordEventKind.암수시작, 1.2), (RecordEventKind.암수끝, 2.0)], _r.Finish()!.Events.Select(e => (e.Kind, Math.Round(e.T, 6))));
+    }
+
     [Fact]
     public void My_buff_windows_are_kept()
     {

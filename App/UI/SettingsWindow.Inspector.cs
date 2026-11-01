@@ -24,6 +24,7 @@ public partial class SettingsWindow
     void BuildCanvasPage()
     {
         var canvas = _canvas = new OverlayCanvas(_s, _chars);
+        canvas.Play.Auto = () => PreviewPlayer.Sections(_s, _chars, PreviewTarget);   // ▶ plays a fight on its own; a click still uses a box
         canvas.Selected += ShowInspector;
         canvas.GestureStarted += RecordStep;
         canvas.Changed += () => { ResetBaseline(); SettingsChanged?.Invoke(); LayoutChanged?.Invoke(); };
@@ -147,6 +148,8 @@ public partial class SettingsWindow
                 return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 설정은 왼쪽의 레이드에서 바꿉니다.", []);
             case { Kind: "Judgment" }:
                 return ("단심", "단죄·심판 룬의 심판 시간입니다.", [_secOther]);
+            case { Kind: "Amsu" }:
+                return ("암흑수류탄", "보스에 걸린 암흑수류탄의 남은 시간입니다.", [_secAmsu]);
             case { Kind: "Party" }:
                 return ("파티원 창", "파티원 칸의 모양입니다. 클래스마다 따로 저장됩니다.", [_secMembers]);
             case { Kind: "Plate" }:

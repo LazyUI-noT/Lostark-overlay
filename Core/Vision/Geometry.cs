@@ -236,6 +236,43 @@ public static class Geometry
             (int)Math.Round(r.Width * s), (int)Math.Round(r.Height * s));
     }
 
+    /// <summary>The most icons the boss debuff zone shows before folding the rest into "+N": 14 at 보스 디버프 크기 100% and under,
+    /// 12 at 110%, 10 at 120% (user, 2026-11-01).</summary>
+    public static int MaxBossDebuffs(int bossSize) => bossSize > 110 ? 10 : bossSize > 100 ? 12 : 14;
+
+    /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 보스 디버프 크기
+    /// (x 927–929 at 1080p, HUD 100, reference/빛암) while the boss's buffs grow to its left.</summary>
+    const int RefFirstBossDebuffX = 924;
+
+    /// <summary>The boss debuff zone inside <see cref="BossRowSearch"/>'s strip: where its first slot starts, and how many it shows.</summary>
+    public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize) =>
+        new(FirstBossDebuffX(vp, fit) - BossRowSearch(vp, fit, bossSize).X, MaxBossDebuffs(bossSize));
+
+    /// <summary>The boss debuff zone's first icon's left edge on screen (<see cref="RefFirstBossDebuffX"/>): the 암수 walk starts there.</summary>
+    public static int FirstBossDebuffX(Viewport vp, Fit fit) =>
+        (int)Math.Round(vp.X + vp.Width / 2.0 + (RefFirstBossDebuffX - RefCenterX) * Scale(vp, fit) + fit.BossShift.X);
+
+    /// <summary>Reference px searched above and below the expected icon line (<see cref="BossRowSearch"/>).</summary>
+    public const int BossRowPad = 12;
+
+    /// <summary>Reference px (at the HUD's scale) more below: the stagger bar or the lock line under the HP bar pushes the row down
+    /// 15–16 px at 1080p, HUD 100, at every 보스 디버프 크기 (reference/빛암: the icons' top stays at screen y 169 from 80% to 120%),
+    /// and the "N초" under the icons must be in the strip too. Measured: the strip lacked 11–15 px; this leaves about 9 more.</summary>
+    public const int BossRowDrop = 24;
+
+    /// <summary><see cref="BossRow"/> with <see cref="BossRowPad"/> more above and below, and <see cref="BossRowDrop"/> more below:
+    /// the debuff row is found inside it (DebuffReader.FindRowY) rather than assumed, since it moves with the boss bar (HUD, 21:9,
+    /// resolution) and with what shows under the bar.</summary>
+    public static PixelRect BossRowSearch(Viewport vp, Fit fit, int bossSize = RefBossSize)
+    {
+        var r = BossRow(vp, fit, bossSize);
+        double s = BossScale(vp, fit, bossSize);
+        int pad = (int)Math.Round(BossRowPad * s), drop = (int)Math.Round(BossRowDrop * GameBossScale(vp, fit));
+        // Out to the last debuff slot the size shows, and a pad past it.
+        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + (MaxBossDebuffs(bossSize) * DebuffReader.BossSlotPitch + BossRowPad) * s));
+        return new(r.X, r.Y - pad, right - r.X, r.Height + 2 * pad + drop);
+    }
+
     // ── Boss HP bar (project B) ─────────────────────────────────────────────────────────────────────────────────────
     // Reference px at HUD 110 from the viewport's top, measured on mordum.png and Mordum_layout(_21_9).png; the bar follows the
     // HUD about the top centre (bossHP_hud100/80.png: exactly 100/110 and 80/110 of it). A raid bar's fill spans x 576–1299,

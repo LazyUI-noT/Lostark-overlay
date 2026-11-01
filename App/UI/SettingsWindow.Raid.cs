@@ -116,6 +116,7 @@ public partial class SettingsWindow
         _raidOpen ??= RaidData.Find(RaidGates, _raidSeen ?? _raidLast) is { } open ? [open.Raid] : [];
         foreach (var raid in RaidGates.Where(g => g.TabName == tab).GroupBy(g => g.Raid))
             p.Children.Add(RaidBox(raid.Key, [.. raid], Again));
+        HpChangeRows(p, Again);
 
         p.Children.Add(SubHeading("알림", "목표 줄 수에 ±줄을 더한 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
         p.Children.Add(Row("", Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },

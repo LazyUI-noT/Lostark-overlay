@@ -12,11 +12,17 @@ public sealed class DemoSnapshots
     static readonly SlotId[] Aden = [SlotId.아덴2];
     readonly TimeSpan _origin = Clock.Now();
     readonly bool _duelist;
+    readonly (double Left, bool Seen)? _amsu;   // --amsu: a bomb held at this many seconds
     Snapshot? _last;
     Snapshot[]? _lastPeers;
 
     /// <param name="duelist">--duelist: the debuff window shows the 결투자 from the start of each loop instead of the lightning.</param>
-    public DemoSnapshots(bool duelist = false) => _duelist = duelist;
+    public DemoSnapshots(bool duelist = false, (double Left, bool Seen)? amsu = null) => (_duelist, _amsu) = (duelist, amsu);
+
+    /// <summary>암수 on the boss with <paramref name="left"/> s to go at <paramref name="at"/>; <paramref name="seen"/> false: its
+    /// icon last seen 5 s ago (pushed out of the row, counting on).</summary>
+    public static AmsuState DemoAmsu(TimeSpan at, double left, bool seen) =>
+        AmsuState.None with { Up = AmsuState.None.Up.Add(Core.Vision.Bomb.암수, new BombTimer(at + Sec(left), seen ? at : at - Sec(5))) };
 
     /// <summary>True when the script changed since the last call; then returns the new state.</summary>
     public bool TryNext(out Player self, out IReadOnlyList<Player> peers)
@@ -26,6 +32,7 @@ public sealed class DemoSnapshots
         var start = _origin + TimeSpan.FromSeconds(cycles * Loop);
         double t = (now - start).TotalSeconds;
         var me = Self(start, t, _duelist);
+        if (_amsu is { } a) me = me with { Amsu = DemoAmsu(me.At, a.Left, a.Seen) };
         self = new Player("", me);
         peers = [new("민수", Minsu(start, t), MinsuLook), new("지현가나다라마바사", Jihyun(start, t))];   // 지현 sent none
         bool changed = _last is null || !Same(_last, me) || _lastPeers is null || !_lastPeers.Zip(peers).All(p => Same(p.First, p.Second.Snapshot));
@@ -99,16 +106,18 @@ public sealed class DemoSnapshots
                 events.Add(new(t + 2, "나", RecordEventKind.사용, (int)SlotId.초각스));
                 events.Add(new(t + 2.1, "나", RecordEventKind.버프시작, (int)BuffKind.초각스피증));
                 events.Add(new(t + 12, "나", RecordEventKind.버프끝, (int)BuffKind.초각스피증));
+                events.Add(new(t + 3, "나", RecordEventKind.암수시작, (int)(t % 60 < 30 ? Core.Vision.Bomb.암수 : Core.Vision.Bomb.빛암)));   // a bomb up 3–21 s of each 30
+                events.Add(new(t + 21, "나", RecordEventKind.암수끝, (int)(t % 60 < 30 ? Core.Vision.Bomb.암수 : Core.Vision.Bomb.빛암)));
             }
             return new(new DateTime(2026, 10, 30, 21, minute, 0), "3막 · 3관문", length, [phase], "나", 0, null,
                 [.. who.Select(w => new RecordMember(w.Name, w.Class, w.Role, 1))], samples, boss, [.. events.OrderBy(e => e.T)]);
         }
-        return [Fight(4, 182, 95, 1.0), Fight(40, 168, 88, 1.08) with { Kept = true }];
+        return [Fight(4, 182, 95, 1.0) with { AmsuOn = true }, Fight(40, 168, 88, 1.08) with { Kept = true }];
     }
 
     static bool Same(Snapshot a, Snapshot b) =>
         a.Slots.SequenceEqual(b.Slots) && a.AwakeningChanged == b.AwakeningChanged && a.Gauge == b.Gauge && a.Groups.SetEquals(b.Groups)
-        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment && a.Raid == b.Raid;
+        && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment && a.Raid == b.Raid && a.Amsu == b.Amsu;
 
     /// <summary>The buff bars: 뎀증 from 0 s (20 s), 공증 from 1 s (8 s), 아덴피증 from 3 s (12 s) and 초각스피증 from
     /// 5 s (10 s); absent otherwise.</summary>
@@ -204,7 +213,7 @@ public sealed class DemoSnapshots
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
         var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
-            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true, null), MeterView = DemoMeter(95) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
+            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true, null), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),

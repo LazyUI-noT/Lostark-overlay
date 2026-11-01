@@ -31,6 +31,14 @@ public sealed class EditorView(double scale, double offsetX, double offsetY)
 
     /// <summary>The lower middle of a <paramref name="worldW"/> × <paramref name="worldH"/> screen, where the skill bar
     /// is, fitted and centred in a <paramref name="viewW"/> × <paramref name="viewH"/> view.</summary>
+    public static EditorView Whole(double viewW, double viewH, double worldW, double worldH)
+    {
+        double scale = Math.Clamp(Math.Min(viewW / worldW, viewH / worldH), MinScale, MaxScale);
+        return new(scale, (viewW - worldW * scale) / 2, (viewH - worldH * scale) / 2);
+    }
+
+    /// <summary>The lower middle of the screen, as <see cref="Initial"/> says; <see cref="Whole"/> above is the whole screen
+    /// fitted and centred (설정 → 표시's scene).</summary>
     public static EditorView Initial(double viewW, double viewH, double worldW, double worldH)
     {
         double x = worldW * Side, y = worldH * Side, w = worldW - 2 * x, h = worldH - y;
@@ -48,6 +56,7 @@ public static class WindowDefaults
     public const double BuffsBelow = 40;            // the buff window's top this far under your default spot's bottom
     public const double DebuffsRight = 260;         // the debuff window this far right of the buff window's default spot
     public const double JudgmentRight = -260;       // the 단심 window this far left of it
+    public const double AmsuRight = -400;           // the 암수 창 further left
     public const double RaidRight = 420, RaidTop = 110;
     // The DPS 미터기: at the screen's right edge, its bottom this far above your default spot's bottom, so it stays clear of
     // the game's 전분 panel (bottom right), which it must not cover: it is read from the screen.

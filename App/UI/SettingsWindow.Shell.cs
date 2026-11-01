@@ -30,7 +30,7 @@ public partial class SettingsWindow
     // One panel per section, refilled by the Fill methods.
     // Each a CardStack: its rows in Windows 11 setting cards, headings between them.
     readonly CardStack _secCharacter = new(), _secFit = new();
-    readonly CardStack _secSkillLook = new(), _secDisplay = new(), _secBuffs = new(), _secOther = new(), _secPlace = new(), _secCopy = new();
+    readonly CardStack _secSkillLook = new(), _secDisplay = new(), _secBuffs = new(), _secOther = new(), _secAmsu = new(), _secPlace = new(), _secCopy = new();
     readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
     readonly CardStack _secKeys = new(), _secHotkeys = new();
     readonly StackPanel _context = new() { Orientation = Orientation.Horizontal };   // 편집 중 (top bar): the class the class sections edit
@@ -110,14 +110,14 @@ public partial class SettingsWindow
         _areas =
         [
             new(AreaFavorites, "★를 단 설정을 한곳에서 바꿉니다. 설정 행을 오른쪽 클릭하거나, 검색 결과의 ☆로 답니다.", (AreaFavorites, _secFavorites)),
-            new(AreaShow, "오버레이 창마다 켜고 끕니다. 예시로 모양을 봅니다.", (AreaShow, _secShow)),
+            new(AreaShow, "오버레이 창을 한눈에 보고 켜고 끕니다. 오버레이를 언제 보일지도 여기서 정합니다.", (AreaShow, _secShow)),
             new(AreaOverlay, ""),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", ("캐릭터", _secCharacter)),
             new(AreaMeter, "보스가 받은 피해 중 각자의 몫(딜지분, 찬조)을 보여 줍니다.", (AreaMeter, _secMeter)),
-            new(AreaRecords, "저장된 전투를 시간 순으로 보고 둘을 비교합니다.", (AreaRecords, _secRecords)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
                 ("연결", _secConnect), (SecMembers, _secMembers), ("순서", _secOrder), ("보내기·받기", _secSend)),
             new(AreaRaid, "보스를 알아보고, 줄 수 창과 디버프 창을 관문마다 켭니다.", ("레이드", _secRaid)),
+            new(AreaRecords, "캐릭터마다 저장된 전투를 보고, 열어서 시간 순으로 봅니다. 둘을 골라 비교합니다.", (AreaRecords, _secRecords)),
             new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 알려 줍니다. 진단에서 칸마다 읽은 값을 봅니다.", ("스킬창", _secFit), (SecDiag, _secDiag)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
         ];
@@ -206,6 +206,7 @@ public partial class SettingsWindow
     {
         // 즐겨찾기 edits through its own copies of the rows: the sections show the new values only once rebuilt
         if (_shownArea == AreaFavorites && _area.Name != AreaFavorites) BuildAll();
+        if (_area.Name == AreaRecords && _shownArea != AreaRecords) EnterRecords();   // the list, the current character's chip
         _shownArea = _area.Name;
         bool canvas = _area.Name == AreaOverlay && _canvas is not null;
         CanvasPage.Visibility = Shown(canvas);

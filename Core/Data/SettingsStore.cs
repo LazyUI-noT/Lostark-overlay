@@ -80,6 +80,8 @@ public sealed class SettingsStore(string path)
 
     /// <summary>The repairs every loaded file gets (hand edits, lists saved by older beta builds), pure. Files from
     /// before the beta (settings version below 4) are no longer migrated: every beta release saved version 4.</summary>
+    const int OldRecordKeep = 20;   // 전투 기록's default before it went per character
+
     internal static Settings Normalize(Settings s)
     {
         RepairClasses(s);
@@ -90,8 +92,11 @@ public sealed class SettingsStore(string path)
             if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
             else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
         s.Cores ??= [];
+        if (!s.RecordKeepMigrated) (s.RecordKeep, s.RecordKeepMigrated) = (s.RecordKeep == OldRecordKeep ? new Settings().RecordKeep : s.RecordKeep, true);
         foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
             if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
+        s.Amsu ??= new();
+        s.Amsu.Clamp();
         s.Judgment ??= new();
         s.Judgment.Characters ??= [];
         if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit

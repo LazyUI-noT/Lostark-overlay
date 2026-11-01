@@ -25,13 +25,17 @@ public sealed partial class Settings : IJsonOnDeserializing
     public BuffSettings Buffs { get; set; } = new();
     public DebuffSettings Debuffs { get; set; } = new();
     public JudgmentSettings Judgment { get; set; } = new();
+    /// <summary>설정 → 암흑수류탄: the 암수 창 (amsu.design.md).</summary>
+    public AmsuSettings Amsu { get; set; } = new();
     public UpdateSettings Updates { get; set; } = new();
     /// <summary>설정 → 레이드: the 줄 수 창, boss recognition and each gate's switches (project B).</summary>
     public RaidSettings Raids { get; set; } = new();
     /// <summary>설정 → DPS 미터기 (project C).</summary>
     public MeterSettings Meter { get; set; } = new();
     /// <summary>전투 기록: how many automatic records to keep (1–50, RecordStore clamps); 보관 ones don't count.</summary>
-    public int RecordKeep { get; set; } = 20;
+    public int RecordKeep { get; set; } = 50;
+    /// <summary>A saved <see cref="RecordKeep"/> of 20 (the default before 전투 기록 went per character) has moved to 50 once.</summary>
+    public bool RecordKeepMigrated { get; set; } = true;
     /// <summary>전투 기록's 자동 저장: off, only the last fight is held (unsaved) until the next one, and 보관 saves it.</summary>
     public bool RecordAutoSave { get; set; } = true;
     /// <summary>전투 기록: how long the 전분 timer may stay stopped (a wipe) or hidden (a cutscene) before the fight ends.</summary>
@@ -59,7 +63,7 @@ public sealed partial class Settings : IJsonOnDeserializing
 
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
-    void IJsonOnDeserializing.OnDeserializing() => (Theme, Raids.Migrated) = (UiTheme.DeepTeal, false);
+    void IJsonOnDeserializing.OnDeserializing() => (Theme, Raids.Migrated, RecordKeepMigrated) = (UiTheme.DeepTeal, false, false);
     /// <summary>The 아덴 게이지 bar per "클래스/직업각인" (GaugeBar.Key): only the ones changed in the 게이지 tab; the
     /// rest use the classes.json default.</summary>
     public Dictionary<string, GaugeBarSettings> GaugeBars { get; set; } = [];

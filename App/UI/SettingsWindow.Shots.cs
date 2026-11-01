@@ -57,16 +57,21 @@ public partial class SettingsWindow
             _canvasNote.Text = $"새 화면입니다. 덮어쓰기를 누르면 프로필 {_s.ActiveProfile + 1}의 화면이 됩니다." + Relative(area);
             return;
         }
-        var path = ScreenShots.PathOf(ScreenShots.Dir, _s.ActiveProfile);
-        if (File.Exists(path) && OverlayCanvas.Decode(new Uri(path)) is { } saved)
+        if (SavedShot() is var (saved, shot))
         {
-            var shot = _s.Profiles[_s.ActiveProfile].Shot;
             _canvas.ShowPicture(saved, shot);
             _canvasNote.Text = $"프로필 {_s.ActiveProfile + 1}의 화면입니다." + Relative(shot);
             return;
         }
         _canvas.ShowSampleScreen();
         ShowCanvasNote();
+    }
+
+    /// <summary>The active profile's saved screenshot and the screen area it shows, or null.</summary>
+    (System.Windows.Media.Imaging.BitmapSource Picture, PixelRect? Area)? SavedShot()
+    {
+        var path = ScreenShots.PathOf(ScreenShots.Dir, _s.ActiveProfile);
+        return File.Exists(path) && OverlayCanvas.Decode(new Uri(path)) is { } saved ? (saved, _s.Profiles[_s.ActiveProfile].Shot) : null;
     }
 
     static string Relative(PixelRect? area) => area is null ? " 모니터와 모양이 달라 배경으로만 씁니다 (창 위치는 모니터 기준)." : "";

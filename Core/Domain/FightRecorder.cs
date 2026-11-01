@@ -22,6 +22,9 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     public TimeSpan PauseLimit { get; set; } = EndAfterFrozen;
     static readonly BuffKind[] Windows = [BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증];
 
+    /// <summary>암흑수류탄 is read (its switch): only then are the bombs recorded, as one window "a bomb is up" with the bomb shown.</summary>
+    public bool AmsuOn { get; set; }
+
     public string Me { get; set; } = "";
     public int MyClass { get; set; }
     public string? MySubclass { get; set; }
@@ -29,6 +32,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     SlotPhase[]? _slots;   // my slots as last seen
     readonly bool[] _buffs = new bool[Enum.GetValues<BuffKind>().Length];   // as last seen
     readonly bool[] _committed = new bool[Enum.GetValues<BuffKind>().Length];   // as the record has them
+    int? _bomb, _bombCommitted;   // the bomb shown (Vision.Bomb), as last seen and as the record has it
     readonly List<(TimeSpan At, RecordEvent Event)> _pending = [];
     FightClockState _clock = FightClockState.None;
     bool _started, _stopped;
@@ -44,6 +48,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     public void ObserveMine(Snapshot snap, TimeSpan now)
     {
         Casts(snap, now);
+        Bombs(snap, now);   // before the buffs' guard: with every buff bar hidden the snapshot has no buffs, but the bombs still count
         if (snap.Buffs.Length != _buffs.Length) return;
         foreach (var kind in Windows)
         {
@@ -52,6 +57,18 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             _buffs[(int)kind] = on;
         }
     }
+
+    void Bombs(Snapshot snap, TimeSpan now)
+    {
+        int? bomb = AmsuOn && snap.Amsu is { } a && Amsu.View(a, now).Shown is { } shown ? (int)shown : null;
+        if (bomb == _bomb) return;
+        if (_bomb is { } was) Hold(now, Me, RecordEventKind.암수끝, was);
+        if (bomb is { } b) Hold(now, Me, RecordEventKind.암수시작, b);
+        _bomb = bomb;
+    }
+
+    static bool IsBuff(RecordEventKind k) => k is RecordEventKind.버프시작 or RecordEventKind.버프끝;
+    static bool IsBomb(RecordEventKind k) => k is RecordEventKind.암수시작 or RecordEventKind.암수끝;
 
     void Casts(Snapshot snap, TimeSpan now)
     {
@@ -94,9 +111,16 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             // timer hidden by a cutscene or the inventory) goes at the last second known; changes still waiting for their
             // second count as made.
             var expected = (bool[])_committed.Clone();
-            foreach (var (_, e) in _pending.Where(p => p.Event.Kind != RecordEventKind.사용)) expected[e.What] = e.Kind == RecordEventKind.버프시작;
+            foreach (var (_, e) in _pending.Where(p => IsBuff(p.Event.Kind))) expected[e.What] = e.Kind == RecordEventKind.버프시작;
             foreach (var kind in Windows.Where(k => _buffs[(int)k] != expected[(int)k]))
                 Commit(new RecordEvent(before, Me, _buffs[(int)kind] ? RecordEventKind.버프시작 : RecordEventKind.버프끝, (int)kind));
+            int? bombExpected = _bombCommitted;
+            foreach (var (_, e) in _pending.Where(p => IsBomb(p.Event.Kind))) bombExpected = e.Kind == RecordEventKind.암수시작 ? e.What : null;
+            if (_bomb != bombExpected)   // the bomb window too is a state
+            {
+                if (bombExpected is { } ended) Commit(new RecordEvent(before, Me, RecordEventKind.암수끝, ended));
+                if (_bomb is { } started) Commit(new RecordEvent(before, Me, RecordEventKind.암수시작, started));
+            }
             _gate ??= gate;
             foreach (var m in members) _members[m.Name] = m;
             foreach (var s in samples)
@@ -115,7 +139,8 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     void Commit(RecordEvent e)
     {
         _events.Add(e);
-        if (e.Kind != RecordEventKind.사용) _committed[e.What] = e.Kind == RecordEventKind.버프시작;
+        if (IsBuff(e.Kind)) _committed[e.What] = e.Kind == RecordEventKind.버프시작;
+        else if (IsBomb(e.Kind)) _bombCommitted = e.Kind == RecordEventKind.암수시작 ? e.What : null;
     }
 
     /// <summary>Ends the fight being recorded (the meter turned off, the app closing); null when none was running. Events not
@@ -127,9 +152,10 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         if (!_started) return null;
         _started = false;
         Array.Clear(_committed);
+        _bombCommitted = null;
         bool? cleared = _boss.LastOrDefault(b => b.Current is not null)?.Current is { } hp ? hp < ClearUnder : null;
         var r = new FightRecord(_startedAt, _gate, _boss.Count > 0 ? _boss[^1].T : 0, _phases, Me, MyClass, MySubclass,
-            [.. _members.Values], _samples, _boss, _events, Cleared: cleared);
+            [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn);
         (_events, _samples, _boss, _phases, _members, _gate) = ([], [], [], [], [], null);
         return r;
     }

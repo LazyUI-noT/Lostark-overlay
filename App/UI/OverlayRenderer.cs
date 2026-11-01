@@ -86,6 +86,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
     bool _loop, _moving, _animating;   // loop attached; this frame had a moving sweep / a shine or tween
     double _frameMs = SlowFrameMs;
+    /// <summary>The shortest frame time; 설정 → 표시's small scene draws slower than a real overlay (0: no limit).</summary>
+    internal double MinFrameMs { get; set; }
     Player? _player;
     TimeSpan? _frozenAt;
     PlayerLayout? _layout;
@@ -290,12 +292,13 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
         if (DebuffsOnly) DrawDebuffs(dc, now, ms, reduced);
         else if (JudgmentOnly) DrawJudgment(dc, now, reduced);
+        else if (AmsuOnly) DrawAmsu(dc, now, ms, reduced);
         else if (RaidOnly) DrawRaid(dc, ms, reduced);
         else if (MeterOnly) DrawMeter(dc);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
-        _frameMs = _animating ? FastFrameMs : SlowFrameMs;
+        _frameMs = Math.Max(MinFrameMs, _animating ? FastFrameMs : SlowFrameMs);
         SetLoop(_moving || _animating);
-        Services.Perf.Add(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+        Services.Perf.Add(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
             : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창", Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0));
     }
 

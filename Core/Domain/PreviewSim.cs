@@ -37,9 +37,36 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
         }
     }
 
+    /// <summary>The order 자동 uses the boxes in: skills between buffs and gauge fills, one step each <see cref="AutoEvery"/>.</summary>
+    static readonly Part[] AutoOrder =
+    [
+        Part.일반1, Part.버프공증, Part.일반2, Part.게이지, Part.일반3, Part.버프아덴, Part.일반4, Part.아덴1, Part.일반5,
+        Part.버프초각, Part.일반6, Part.게이지, Part.일반7, Part.버프뎀증, Part.일반8, Part.아덴2, Part.각성기, Part.게이지, Part.초각스,
+    ];
+    public static readonly TimeSpan AutoEvery = TimeSpan.FromSeconds(0.8);
+    static readonly TimeSpan AutoCatchUp = TimeSpan.FromSeconds(5);
+    int _autoNext;
+    TimeSpan? _autoAt;
+
+    /// <summary>자동 (설정 → 표시, ▶ 시뮬레이션): the boxes are used in turn as if clicked, a box still cooling or a buff still on
+    /// skipped. After a gap (the page hidden) it goes on from now instead of replaying the missed steps.</summary>
+    public void Auto(TimeSpan at, int sections)
+    {
+        if (_autoAt is not { } next || at - next > AutoCatchUp) next = at;
+        for (; next <= at; next += AutoEvery)
+        {
+            var part = AutoOrder[_autoNext++ % AutoOrder.Length];
+            Settle(next);
+            bool busy = part >= FreeLayout.FirstBuff ? _buffEnds.ContainsKey((BuffKind)(part - FreeLayout.FirstBuff))
+                : part != Part.게이지 && _cooling.ContainsKey((SlotId)part);
+            if (!busy) Click(part, next, sections);
+        }
+        _autoAt = next;
+    }
+
     public void Reset(TimeSpan at)
     {
-        (_start, _gauge, _changed) = (at - LongAgo, 0, false);
+        (_start, _gauge, _changed, _autoAt, _autoNext) = (at - LongAgo, 0, false, null, 0);
         _cooling.Clear(); _buffEnds.Clear(); _readySince.Clear(); _buffOff.Clear();
     }
 
@@ -53,10 +80,12 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
             ? new BuffState(k, true, end, BuffLength, false, end - BuffLength)
             : BuffState.Absent(k, _buffOff.GetValueOrDefault(k, _start)));
         return sample with { At = at, Slots = [.. slots], AwakeningChanged = _changed, Gauge = sample.Gauge is null ? null : _gauge, Buffs = [.. buffs],
-            Debuffs = sample.Debuffs is null ? null : Debuffs(at), Judgment = sample.Judgment is null ? null : Judgment(at) };
+            Debuffs = sample.Debuffs is null ? null : Debuffs(at), Judgment = sample.Judgment is null ? null : Judgment(at),
+            Amsu = sample.Amsu is null ? null : Amsu(at) };
     }
 
-    static readonly TimeSpan DebuffLoop = TimeSpan.FromSeconds(30), JudgmentLoop = TimeSpan.FromSeconds(34);
+    static readonly TimeSpan DebuffLoop = TimeSpan.FromSeconds(30), JudgmentLoop = TimeSpan.FromSeconds(34),
+        AmsuLoop = TimeSpan.FromSeconds(24), AmsuThrow = TimeSpan.FromSeconds(1);
 
     /// <summary>Seconds into a loop of <paramref name="length"/> run from the start (or the last 처음으로), and when that
     /// loop began.</summary>
@@ -84,6 +113,16 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
         var (t, s) = Loop(at, JudgmentLoop);
         var trigger = s + TimeSpan.FromSeconds(2);
         return t < 2 ? JudgmentState.Ready : t < 32 ? new JudgmentState(trigger) : JudgmentState.Ready with { Previous = trigger };
+    }
+
+    /// <summary>A 24 s loop: none, 암수 thrown at 1 s (its 20 s, seen throughout), none again from 21 s.</summary>
+    AmsuState Amsu(TimeSpan at)
+    {
+        var (_, s) = Loop(at, AmsuLoop);
+        var thrown = s + AmsuThrow;
+        var ends = thrown + TimeSpan.FromSeconds(Domain.Amsu.Duration(Vision.Bomb.암수));
+        return at < thrown || at >= ends ? AmsuState.None
+            : AmsuState.None with { Up = AmsuState.None.Up.Add(Vision.Bomb.암수, new BombTimer(ends, at)) };
     }
 
     /// <summary>Ends what has run out by <paramref name="at"/>, remembering when (a box's ready shine starts then).</summary>
