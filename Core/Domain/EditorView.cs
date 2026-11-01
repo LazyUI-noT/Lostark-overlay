@@ -37,6 +37,15 @@ public sealed class EditorView(double scale, double offsetX, double offsetY)
         return new(scale, (viewW - worldW * scale) / 2, (viewH - worldH * scale) / 2);
     }
 
+    /// <summary>설정 → 표시 (user, 2026-11-01): the world rect (<paramref name="x"/>, <paramref name="y"/>, <paramref name="w"/>,
+    /// <paramref name="h"/>) round the windows plus <paramref name="margin"/>, fitted and centred; never larger than the game's own size.</summary>
+    public static EditorView Around(double viewW, double viewH, double x, double y, double w, double h, double margin)
+    {
+        double ww = w + 2 * margin, wh = h + 2 * margin;
+        double scale = Math.Clamp(Math.Min(viewW / ww, viewH / wh), MinScale, 1);
+        return new(scale, viewW / 2 - (x + w / 2) * scale, viewH / 2 - (y + h / 2) * scale);
+    }
+
     /// <summary>The lower middle of the screen, as <see cref="Initial"/> says; <see cref="Whole"/> above is the whole screen
     /// fitted and centred (설정 → 표시's scene).</summary>
     public static EditorView Initial(double viewW, double viewH, double worldW, double worldH)

@@ -1,4 +1,5 @@
 using System.Text;
+using GaugeOverlay.Core.Cooldown;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -165,6 +166,138 @@ public class AmsuReaderTests
         Assert.True(row.Seen);
     }
 
+    // AmsuWatch on the cadence both rows share (RowCadence, 2026-11-01): a frame pass 5/s walks the row; bombs are identified
+    // 2/s or at once when the row shifts; timers on each frame pass and 10/s under 2 s. The row's line settles over 3 finds.
+    static TimeSpan Ms(double ms) => TimeSpan.FromMilliseconds(ms);
+    const long Boss = 1_197_954_508_761;
+
+    static AmsuWatch Settled(AmsuLayout layout, Image strip)
+    {
+        var w = new AmsuWatch();
+        foreach (double at in new[] { 0.0, 500, 1000 })
+        {
+            Assert.Equal((RowPass.Frames, true), w.Due(Ms(at), layout.Timed));   // identification due: the boss's HP with it
+            w.Read(layout, RowPass.Frames, Boss, strip, Ms(at));
+        }
+        Assert.NotNull(w.Line);
+        return w;
+    }
+
+    [Fact]
+    public void A_frame_pass_between_identifications_keeps_the_bombs_without_matching()
+    {
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var layout = new AmsuLayout(scale, text, HdSlots(100), Timed: true);
+        var w = Settled(layout, strip);
+        Assert.Equal((RowPass.Frames, false), w.Due(Ms(1200), true));
+        w.Read(layout, RowPass.Frames, null, strip, Ms(1200));
+        Assert.Equal(Ms(1000), w.ClassifiedAt);   // not identified again
+        Assert.Equal(Ms(1200), w.State.Up[Bomb.빛암].LastSeen);   // the bomb kept, seen on the walk
+    }
+
+    [Fact]
+    public void A_row_that_shifted_is_identified_at_once()
+    {
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var layout = new AmsuLayout(scale, text, HdSlots(100), Timed: true);
+        var w = Settled(layout, strip);
+        var (two, _) = Slots(true, true);   // a debuff more in the row
+        w.Read(layout, RowPass.Frames, null, two, Ms(1200));
+        Assert.Equal(Ms(1200), w.ClassifiedAt);
+    }
+
+    [Fact]
+    public void A_timer_under_two_seconds_gets_the_timer_pass_between_frame_passes()
+    {
+        var layout = new AmsuLayout(Scale, TextScale, WideSlots, Timed: true);
+        var w = Settled(layout, Strip("amsu_55"));   // the 암수 at 1 s
+        Assert.Equal((RowPass.None, false), w.Due(Ms(1050), true));
+        Assert.Equal((RowPass.Timers, false), w.Due(Ms(1100), true));
+        Assert.Equal((RowPass.Frames, false), w.Due(Ms(1200), true));
+    }
+
+    [Fact]
+    public void An_unread_timer_with_the_boss_text_unread_keeps_the_bomb_seen()
+    {
+        // Replay 14 (2026-11-01, 21:9 shown at 1920): the "N초" stayed unread, the HP text too; each pass dropped the bomb's read,
+        // so it went unseen and the next match that missed its icon ended it 3 s early (then its "1초" restarted it as 21).
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var layout = new AmsuLayout(scale, text, HdSlots(100), Timed: true);
+        var w = Settled(layout, strip);   // the 빛암 up, its "N초" read
+        var box = Assert.Single(AmsuReader.Locate(strip, scale, HdSlots(100), null).Bombs).Icon;
+        var unread = new Image(strip.Width, strip.Height, (byte[])strip.Bgra.Clone());
+        Array.Clear(unread.Bgra, box.Bottom * unread.Stride, (unread.Height - box.Bottom) * unread.Stride);   // the "N초" gone
+        w.Read(layout, RowPass.Frames, Boss, unread, Ms(1200));   // the timer unread: identify at once, next pass
+        foreach (double at in new[] { 1400.0, 1600 }) w.Read(layout, RowPass.Frames, null, unread, Ms(at));   // and the HP text unread
+        Assert.Equal(Ms(1600), w.State.Up[Bomb.빛암].LastSeen);
+    }
+
+    [Fact]
+    public void A_bomb_behind_another_debuff_is_found_where_its_frame_peaks()
+    {
+        // In game (user, 2026-11-01): a 빛암 added behind a debuff was read only once that one expired. At 120% the second slot's
+        // frame peaks 28 px after the first (x 228 and 256), 6 px short of the 34 px pitch, out of the walk's ±4 px.
+        var strip = Fixture.Load("amsu_live_120").Frames[0];
+        var (vp, fit) = (new Viewport(0, 0, 1920, 1080), new Fit(110.05));
+        var layout = AmsuLayout.Of(vp, fit, 120);
+        var find = AmsuReader.Locate(strip, layout.Scale, layout.Slots, 41);
+        var bomb = Assert.Single(find.Bombs);
+        Assert.Equal((Bomb.빛암, 1), (bomb.Kind, bomb.Slot));
+        Assert.Equal(22, AmsuReader.ReadSeconds(strip, bomb, layout.TextScale));
+    }
+
+    [Fact]
+    public void A_bomb_further_along_the_row_is_found_on_the_icons_own_spacing()
+    {
+        // In game (user, 2026-11-01): a 빛암 in the third slot went unread. At 120% the icons' frame lines lie at 228/256,
+        // 259/286 and 290/317: 31 px apart, not the 34 px the walk stepped, 3 px more off at every slot (27 px by the tenth).
+        var strip = Fixture.Load("amsu_live_120_slot3").Frames[0];
+        var layout = AmsuLayout.Of(new Viewport(0, 0, 1920, 1080), new Fit(110.05), 120);
+        var walk = AmsuReader.Walk(strip, layout.Scale, layout.Slots, 41);
+        Assert.Equal([(0, 228), (1, 259), (2, 290)], walk.Filled.Select(f => (f.Slot, f.Icon.X)));
+        var bomb = Assert.Single(AmsuReader.Locate(strip, layout.Scale, layout.Slots, 41).Bombs);
+        Assert.Equal((Bomb.빛암, 2), (bomb.Kind, bomb.Slot));
+        Assert.Equal(22, AmsuReader.ReadSeconds(strip, bomb, layout.TextScale));
+    }
+
+    [Fact]
+    public void A_row_that_moved_off_the_locked_line_is_searched_at_once()
+    {
+        // In game (빛암debug, 2026-11-01): the line locked at an earlier fight, the boss bar changed phase and the row sat 3 px
+        // higher; a new 빛암 went unread 10 s while the locked line showed nothing and other lines were tried only every 2 s.
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var layout = new AmsuLayout(scale, text, HdSlots(100), Timed: true);
+        var lower = new Image(strip.Width, strip.Height);
+        Array.Copy(strip.Bgra, 0, lower.Bgra, 3 * lower.Stride, (strip.Height - 3) * strip.Stride);   // the row 3 px down
+        var w = Settled(layout, lower);
+        var empty = new Image(strip.Width, strip.Height);
+        for (double at = 1500; at <= 40000; at += 500) w.Read(layout, RowPass.Frames, Boss, empty, Ms(at));   // that bomb runs out
+        Assert.Empty(w.State.Up);
+        w.Read(layout, RowPass.Frames, Boss, strip, Ms(40500));   // a new one, the row back where the fixture has it
+        Assert.True(w.State.Up.ContainsKey(Bomb.빛암), "not found on the first read after the row moved");
+    }
+
+    [Fact]
+    public void A_row_without_a_bomb_waits_for_the_next_identification()   // user, 2026-11-01: a new bomb seen within 0.5 s is fine
+    {
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var layout = new AmsuLayout(scale, text, HdSlots(100), Timed: true);
+        var w = Settled(layout, strip);
+        var (empty, _) = Slots(false);
+        w.Read(layout, RowPass.Frames, Boss, empty, Ms(1500));   // the bomb gone from the row
+        Assert.Equal((RowPass.None, false), w.Due(Ms(1700), true));
+        Assert.Equal((RowPass.Frames, true), w.Due(Ms(2000), true));
+    }
+
+    [Fact]
+    public void An_unread_timer_identifies_at_once_with_the_boss_text()
+    {
+        var (strip, scale) = Slots(false, true);   // a 빛암 icon with no "N초" under it
+        var (_, _, text) = HdStrip("bitam_100", 100);
+        var w = Settled(new AmsuLayout(scale, text, HdSlots(100), Timed: true), strip);
+        Assert.Equal((RowPass.Frames, true), w.Due(Ms(1200), true));   // the boss's HP read too: the bombs aren't dropped
+    }
+
     [Fact]
     public void Slots_are_numbered_from_the_layouts_first_slot_not_from_where_the_walk_began()
     {
@@ -205,7 +338,7 @@ public class AmsuReaderTests
     public void 빛암_and_its_seconds_are_read_at_every_boss_size(string name, int size, int seconds)
     {
         var (strip, scale, text) = HdStrip(name, size);
-        var (_, found, _, _) = AmsuReader.Locate(strip, scale, HdSlots(size), lockedY: null);
+        var (_, found, _, _, _) = AmsuReader.Locate(strip, scale, HdSlots(size), lockedY: null);
         var bomb = Assert.Single(found);
         Assert.Equal(new BombRead(Bomb.빛암, seconds), new BombRead(bomb.Kind, AmsuReader.ReadSeconds(strip, bomb, text)));
     }
@@ -214,7 +347,7 @@ public class AmsuReaderTests
     public void A_locked_line_is_tried_first_and_a_wrong_one_falls_back_to_the_candidates()
     {
         var (strip, scale, _) = HdStrip("bitam_100", 100);
-        var (y, found, _, _) = AmsuReader.Locate(strip, scale, HdSlots(100), lockedY: 5);   // a stale line from another boss's layout
+        var (y, found, _, _, _) = AmsuReader.Locate(strip, scale, HdSlots(100), lockedY: 5);   // a stale line from another boss's layout
         Assert.Single(found);
         Assert.InRange(y!.Value, 47, 51);   // the row's top, strip px (screen 169)
     }

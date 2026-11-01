@@ -29,7 +29,7 @@ public partial class SettingsWindow
         canvas.GestureStarted += RecordStep;
         canvas.Changed += () => { ResetBaseline(); SettingsChanged?.Invoke(); LayoutChanged?.Invoke(); };
         canvas.Note += text => { if (text is not null) _canvasNote.Text = text; else ShowCanvasNote(); };
-        CanvasHost.Child = canvas;
+        CanvasHost.Child = WithScreenBox(canvas);
         InspectorHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         InspectorHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         InspectorFoot.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);

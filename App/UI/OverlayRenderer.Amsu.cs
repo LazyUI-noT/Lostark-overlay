@@ -31,7 +31,8 @@ public sealed partial class OverlayRenderer
     public bool AmsuOnly { get; set; }
 
     /// <summary>Whether the window counts down: the "N초" is read only from 보스 디버프 크기 100% (Amsu.Timed); under it, the icon alone.</summary>
-    bool AmsuTimed => Amsu.Timed(Settings.Debuffs.BossIconSize);
+    // In game the engine's answer (the game area too: 90% on a 1440p screen is timed); in previews the size alone.
+    bool AmsuTimed => _player?.Snapshot.AmsuTimed ?? Amsu.Timed(Settings.Debuffs.BossIconSize);
 
     /// <summary>The icon and the part beside it (막대's bar, 숫자's text; none for 원, 숫자 on the icon, or untimed).</summary>
     (Rect Icon, Rect? Side) AmsuCells()

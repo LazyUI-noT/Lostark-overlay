@@ -97,9 +97,15 @@ public sealed partial class OverlayCanvas : Border
 
         SizeChanged += (_, _) =>
         {
-            if (_v is not null && !scene || ActualWidth <= 0) return;   // the scene always fits the whole screen
-            _v = scene ? EditorView.Whole(ActualWidth, ActualHeight, _screen.Width, _screen.Height)
-                : EditorView.Initial(ActualWidth, ActualHeight, _screen.Width, _screen.Height);
+            if (_v is not null && !scene || ActualWidth <= 0) return;
+            if (scene)   // the scene fits round its windows at every size
+            {
+                _v ??= EditorView.Whole(ActualWidth, ActualHeight, _screen.Width, _screen.Height);
+                _sceneFitted = false;
+                Relayout();
+                return;
+            }
+            _v = EditorView.Initial(ActualWidth, ActualHeight, _screen.Width, _screen.Height);
             ShowView();
         };
         Unloaded += (_, _) => Play.Stop();   // a running ▶ timer would keep ticking (and the canvas alive)
@@ -247,7 +253,11 @@ public sealed partial class OverlayCanvas : Border
             Canvas.SetLeft(r, l - _screen.Left);
             Canvas.SetTop(r, t + Strip - _screen.Top);
         }
-        if (_scene) ShowFaint(all);
+        if (_scene)
+        {
+            if (!_sceneFitted) FitScene(all);   // once (and on a resize): the looks cycling mustn't move the zoom
+            ShowFaint(all);
+        }
         if (_pickedDebuff is not null && _debuffs.Visibility != Visibility.Visible) Pick(null, null);   // 디버프 창 turned off
         ShowPick();
     }

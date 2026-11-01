@@ -166,6 +166,7 @@ public partial class App
         ApplyUi();
         _overlay.Show();
         foreach (var w in Others) w.Show();
+        (_meterInUse, _countInUse) = (true, true);   // the demo's figures are always "read": --meter and --raid show their windows
         UpdateVisibility();
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);

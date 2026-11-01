@@ -287,6 +287,9 @@ public partial class App
         {
             // The engine doesn't know the class: yours is added here, for the party and for your own gauge's glow rule.
             var mine = latest is { } s ? s with { ClassId = characters.ClassId } : null;
+            _meterReadAt = WindowLinger.LastRead(mine?.Meter);
+            _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
+            CheckInUse();
             if (mine is not null) party.Publish(mine, PartyName(), settings.Party.SendGroups(), settings.Party.SendGauge);
             if (mine?.Meter is { } status && !ReferenceEquals(status, meterView.From)) meterView = (status, StepMeter(status));
             else if (mine?.Meter is null && meterView.From is not null) (meterHistory, meterAlign, meterView) = (new(), new(), (null, null));   // off: graphs start over
@@ -693,6 +696,7 @@ public partial class App
         // Saving: debounced edits are flushed by a light timer; everything is flushed on exit.
         new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,
             (_, _) => { if (debounce.Due(Clock.Now())) Write(); }, Dispatcher).Start();
+        new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => CheckInUse(), Dispatcher).Start();   // hides them once reads stop
 
         Configure();
         _overlay.Show();

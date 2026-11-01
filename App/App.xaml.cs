@@ -107,6 +107,19 @@ public partial class App : Application
     Hotkeys _hotkeys = null!;
     Action _changed = null!;
     bool _gameForeground = true, _hudVisible = true, _ownForeground;   // own: one of the app's windows (설정) is in front
+    // The DPS 미터기 and the 줄 수 창 show only while a boss is read, and 10 s after (WindowLinger); they read all the time.
+    TimeSpan? _meterReadAt, _countReadAt;
+    bool _meterInUse, _countInUse;
+
+    /// <summary>Re-shows or hides the 미터기 and 줄 수 창 when their last read comes into or goes out of <see cref="WindowLinger.For"/>.</summary>
+    void CheckInUse()
+    {
+        var now = Clock.Now();
+        var (meter, count) = (WindowLinger.InUse(_meterReadAt, now), WindowLinger.InUse(_countReadAt, now));
+        if ((meter, count) == (_meterInUse, _countInUse)) return;
+        (_meterInUse, _countInUse) = (meter, count);
+        UpdateVisibility();
+    }
 
     /// <param name="changed">Runs after any edit of the settings object (settings window, first run, tray).</param>
     void BuildUi(Settings settings, CharacterService characters, Action changed)
@@ -276,11 +289,12 @@ public partial class App : Application
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
         _debuffs.Visibility = _settings.Raids.DebuffShown() ? _overlay.Visibility : Visibility.Hidden;
-        _raid.Visibility = _settings.Raids.CountShown() ? _overlay.Visibility : Visibility.Hidden;
+        bool placing = _overlay.EditMode || _ownForeground;   // 편집 모드 or 설정 in front: shown to be placed, read or not
+        _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
         bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
             gameForeground: _gameForeground, hudVisible: true, hideWithoutHud: false, firstRunDone: _settings.FirstRunDone);
-        _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter ? Visibility.Visible : Visibility.Hidden;
+        _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }

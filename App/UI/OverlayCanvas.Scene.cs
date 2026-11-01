@@ -13,14 +13,29 @@ namespace GaugeOverlay.App.UI;
 public sealed partial class OverlayCanvas
 {
     const double FaintOpacity = 0.3;
-    // In screen pixels: the scene shows the whole screen at about a third, so these read at about 13 px and 2 px.
-    const double FaintFont = 40, FaintStroke = 5;
+    const double FrameStroke = 3;   // screen px: the screen's edge, where the zoom shows it
+    // In view pixels, whatever the zoom: an off window's name and outline.
+    const double FaintFont = 13, FaintStroke = 1.7;
+    // Screen px round the windows in the zoomed scene (user, 2026-11-01: the windows, not the whole screen).
+    const double SceneMargin = 60;
+    bool _sceneFitted;
+
+    /// <summary>Zooms the scene to the box round every window shown, plus <see cref="SceneMargin"/> (EditorView.Around).</summary>
+    void FitScene(IReadOnlyCollection<OverlayRenderer> all)
+    {
+        var shown = all.Where(r => r.Visibility == Visibility.Visible && r.DesiredSize.Width > 0).ToList();
+        if (shown.Count == 0 || ActualWidth <= 0 || ActualHeight <= 0) return;
+        double l = shown.Min(Canvas.GetLeft), t = shown.Min(Canvas.GetTop);
+        double r = shown.Max(w => Canvas.GetLeft(w) + w.DesiredSize.Width), b = shown.Max(w => Canvas.GetTop(w) + w.DesiredSize.Height);
+        (_v, _sceneFitted) = (EditorView.Around(ActualWidth, ActualHeight, l, t, r - l, b - t, SceneMargin), true);
+        ShowView();
+    }
 
     /// <summary>The game screen's edge, so the scene shows where each window stands on it.</summary>
     Rectangle ScreenFrame() => new()
     {
         Width = _screen.Width, Height = _screen.Height, Fill = new SolidColorBrush(Color.FromRgb(0x10, 0x11, 0x14)),
-        Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x4C, 0x55)), StrokeThickness = FaintStroke, IsHitTestVisible = false,
+        Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x4C, 0x55)), StrokeThickness = FrameStroke, IsHitTestVisible = false,
     };
 
     /// <summary>Whether a window is on in the real settings (the copy drawn has every window on).</summary>
@@ -81,19 +96,20 @@ public sealed partial class OverlayCanvas
             r.Opacity = on ? 1 : FaintOpacity;
             if (on || r.Visibility != Visibility.Visible) continue;
             var (l, t, size) = (Canvas.GetLeft(r), Canvas.GetTop(r), r.DesiredSize);
+            double perView = 1 / (_v?.Scale ?? 1);   // view px to screen px at this zoom
             var outline = new Rectangle
             {
                 Width = size.Width, Height = size.Height, Stroke = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)),
-                StrokeThickness = FaintStroke, StrokeDashArray = [2, 1.5], IsHitTestVisible = false,
+                StrokeThickness = FaintStroke * perView, StrokeDashArray = [2, 1.5], IsHitTestVisible = false,
             };
             Add(outline, l, t);
             if (r.Peer > 0) continue;
             string name = Tray.PartNames.First(n => n.Part == part).Name;
             Add(new TextBlock
             {
-                Text = $" {name} · 꺼짐 ", Foreground = Brushes.White, FontSize = FaintFont, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false,
+                Text = $" {name} · 꺼짐 ", Foreground = Brushes.White, FontSize = FaintFont * perView, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false,
                 Background = new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)),
-            }, l, t - FaintFont * 1.4);
+            }, l, t - FaintFont * perView * 1.4);
         }
     }
 

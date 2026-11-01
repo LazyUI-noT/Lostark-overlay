@@ -14,7 +14,10 @@ public partial class SettingsWindow
         p.Children.Add(Check("암흑수류탄 읽기", a.On, v => a.On = v, () => { Changed(); Dispatcher.BeginInvoke(FillAmsu); },
             "보스 체력바 아래 디버프 줄에서 읽습니다. 모든 보스에서 읽습니다."));
         if (!a.On) return;
-        p.Children.Add(Note("보스 디버프 크기를 게임과 같게 맞추세요. 남은 시간은 100% 이상에서만 읽습니다. 100%보다 작으면 글자가 작아 시간을 읽지 않고, 폭탄이 걸려 있는 동안 아이콘만 보여줍니다(막대·원·숫자 없음). 디버프가 많아 '+N'으로 밀려나면 마지막에 읽은 시간부터 흐리게 계속 셉니다."));
+        // The same setting as 버프/디버프 → 디버프's, which shows only while a gate's 디버프 창 is on (user, 2026-11-01: none here).
+        p.Children.Add(HelpRow("게임의 보스 디버프 크기 (%)", "게임 설정의 보스 디버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 디버프 줄을 이 크기로 읽습니다.",
+            BossSizeCombo()));
+        p.Children.Add(Note("보스 디버프 크기를 게임과 같게 맞추세요. 남은 시간은 100% 이상에서만 읽습니다 (게임 화면 높이 1080 기준: 21:9 강제처럼 화면이 낮으면 그만큼 더 커야 합니다). 그보다 작으면 글자가 작아 시간을 읽지 않고, 폭탄이 걸려 있는 동안 아이콘만 보여줍니다(막대·원·숫자 없음). 디버프가 많아 '+N'으로 밀려나면 마지막에 읽은 시간부터 흐리게 계속 셉니다."));
 
         p.Children.Add(Row("표시 방식", EnumCombo([(AmsuLook.막대, "막대"), (AmsuLook.원, "원"), (AmsuLook.숫자, "숫자")], a.Look,
             v => { a.Look = v; Dispatcher.BeginInvoke(FillAmsu); })));

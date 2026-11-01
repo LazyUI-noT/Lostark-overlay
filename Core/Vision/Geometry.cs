@@ -214,10 +214,14 @@ public static class Geometry
 
     /// <summary>The boss icons' size at the game's boss size <paramref name="bossSize"/> against <see cref="RefBossSize"/>, by the buff
     /// row's measured pitch law (linear in the size, not proportional to it): the boss icon at 120% is the buff icon's size there
-    /// (31.7 px against 31.2 at 1080p). ponytail: boss sizes other than 120% are unmeasured; a shot at 80% or 100% settles whether
-    /// this law holds for the boss too.</summary>
+    /// (31.7 px against 31.2 at 1080p). The boss row's own spacing (<see cref="BossPitch"/>) runs up to 3% wider below 120%.</summary>
     public static double BossSizeShare(int bossSize) =>
         (BuffPitchPerSize * bossSize / 100.0 + BuffPitchOffset) / (BuffPitchPerSize * RefBossSize / 100.0 + BuffPitchOffset);
+
+    /// <summary>The boss row's icon spacing in screen px at 1080p and HUD 100 or more, measured on 빛암 80_90 / 120_110_100: the
+    /// debuffs and the green boss buffs both 22, 25, 28, 31, 34 px apart at 80–120% (frames 2 px apart).</summary>
+    public static double BossPitch(Viewport vp, Fit fit, int bossSize) =>
+        (0.3 * bossSize - 2) * GameBossScale(vp, fit) * (fit.BossSize ?? 100) / 100.0;
 
     /// <summary>Where in <see cref="RefBossRow"/> (reference px from its left) the boss's buffs and debuffs mirror: the slash in
     /// "모든 면역 / 관통 면역" at x 919. A 수동 조정 icon size keeps it in place.</summary>
@@ -268,8 +272,9 @@ public static class Geometry
         var r = BossRow(vp, fit, bossSize);
         double s = BossScale(vp, fit, bossSize);
         int pad = (int)Math.Round(BossRowPad * s), drop = (int)Math.Round(BossRowDrop * GameBossScale(vp, fit));
-        // Out to the last debuff slot the size shows, and a pad past it.
-        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + (MaxBossDebuffs(bossSize) * DebuffReader.BossSlotPitch + BossRowPad) * s));
+        // Out to the last debuff slot the size shows at the row's measured spacing, and a pad past it.
+        double pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
+        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxBossDebuffs(bossSize) * pitch + BossRowPad * s));
         return new(r.X, r.Y - pad, right - r.X, r.Height + 2 * pad + drop);
     }
 

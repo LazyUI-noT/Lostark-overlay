@@ -295,9 +295,9 @@ public sealed partial class Engine : IDisposable
         int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? testSize ?? set : null;
         int debuffSize = previewSize ?? testSize ?? config.DebuffSize;
         // Debuff cadence v2: a frame pass 5/s (the filled boxes and the next), a timer pass 10/s in between for the timers under 2 s.
-        var debuffPass = _debuffsOn ? DebuffSchedule.Due(_slots, now) : DebuffPass.None;
-        bool debuffIcons = debuffPass == DebuffPass.Frames;
-        IReadOnlyList<int> fastTimers = debuffPass == DebuffPass.Timers ? DebuffSchedule.FastTimers(_slots) : [];
+        var debuffPass = _debuffsOn ? DebuffSchedule.Due(_slots, now) : RowPass.None;
+        bool debuffIcons = debuffPass == RowPass.Frames;
+        IReadOnlyList<int> fastTimers = debuffPass == RowPass.Timers ? DebuffSchedule.FastTimers(_slots) : [];
         bool debuffs = debuffIcons || fastTimers.Count > 0, boss = debuffIcons && Elapsed(now, _lastBoss, BossEvery);
         int debuffBoxes = DebuffSchedule.Boxes(_slots);
         if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
@@ -518,8 +518,7 @@ public sealed partial class Engine : IDisposable
         var origin = Geometry.DebuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var boxes = Geometry.DebuffBoxes(_vp, _fit!, size);
-        int filled = 0;
-        while (filled < count && DebuffReader.Filled(area, Local(boxes[filled].Icon))) filled++;
+        int filled = RowCadence.Filled(count, i => DebuffReader.Filled(area, Local(boxes[i].Icon)));   // one hidden frame passed
         if (filled < count && _config.Debug) BoxDebug($"디버프 {filled + 1}", area, Local(boxes[filled].Icon), Local(boxes[filled].Timer), "없음", null);
         bool classify = DebuffSchedule.Classify(_slots, filled, t);
         var kinds = new DebuffKind?[filled];
@@ -581,6 +580,7 @@ public sealed partial class Engine : IDisposable
             Meter = _meterOn ? _meter : null,
             Dungeon = _meterOn ? _dungeon : null,
             Amsu = _amsuOn ? _amsu : null,
+            AmsuTimed = _amsuTimed,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,

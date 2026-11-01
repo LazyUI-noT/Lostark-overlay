@@ -287,6 +287,7 @@ public partial class SettingsWindow : Window
 
     void FillFit()
     {
+        FillScreenBox();   // the canvas box shows the same values
         var p = Refill(_secFit, "스킬창 맞추기", "스킬을 쓸 수 있는 곳에서 모든 스킬이 쿨 돈 상태로 가만히 서서 누르세요 (수련장에서는 쿨초). 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
         if (_s.Fits.Count == 0) p.Children.Add(Label("아직 맞춘 적이 없습니다.", 0.7));
         foreach (var (size, fit) in _s.Fits)
@@ -457,7 +458,8 @@ public partial class SettingsWindow : Window
         var toRaid = new Button { Content = "레이드 열기", Margin = new(0, 2, 0, 2) };
         toRaid.Click += (_, _) => Go(AreaRaid);
         p.Children.Add(Row("디버프 창", Label(_s.Raids.DebuffShown() ? "켜짐 (레이드에서 관문마다)" : "꺼짐 (레이드에서 관문마다 켭니다)", 0.7), toRaid));
-        sizes.Children.Add(HelpRow("게임의 보스 디버프 크기 (%)", "게임 설정의 보스 디버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 아이콘과 빨강·파랑 숫자를 이 크기로 읽습니다. 내 버프·디버프의 크기(게임의 버프 크기)와는 따로입니다.", BossSizeCombo()));
+        // Always shown (user, 2026-11-01): 암수 and 모르둠's sigils read the boss rows at this size, 디버프 창 or not.
+        p.Children.Add(HelpRow("게임의 보스 디버프 크기 (%)", "게임 설정의 보스 디버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 아이콘(암수 · 빛암, 모르둠 문양)과 빨강·파랑 숫자를 이 크기로 읽습니다. 내 버프·디버프의 크기(게임의 버프 크기)와는 따로입니다.", BossSizeCombo()));
         sizes.Children.Add(Row("비었을 때", Check("디버프 없을 때 숨김", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,
             "디버프가 없는 칸(색을 아직 모를 때, 교체·번개·결투자가 없을 때)을 숨깁니다. 다른 칸은 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
         sizes.Children.Add(SubHeading("칸 크기", "칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " + "화면에서 칸의 오른쪽 아래 모서리를 끌어도 됩니다."));
@@ -779,7 +781,14 @@ public partial class SettingsWindow : Window
         var size = Combo();
         size.ItemsSource = Settings.BuffSizes.Append(_s.Debuffs.BossIconSize).Distinct().Order().ToList();
         size.SelectedItem = _s.Debuffs.BossIconSize;
-        size.SelectionChanged += (_, _) => { if (size.SelectedItem is int v && v != _s.Debuffs.BossIconSize) { _s.Debuffs.BossIconSize = v; Changed(); } };
+        // Its other copies (디버프, 암흑수류탄, the canvas box) refill to show the new size.
+        size.SelectionChanged += (_, _) =>
+        {
+            if (size.SelectedItem is not int v || v == _s.Debuffs.BossIconSize) return;
+            _s.Debuffs.BossIconSize = v;
+            Changed();
+            Dispatcher.BeginInvoke(() => { FillBuffs(); FillAmsu(); FillFit(); });
+        };
         return size;
     }
 

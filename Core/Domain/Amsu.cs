@@ -56,6 +56,10 @@ public static class Amsu
     /// only that a bomb is up, while its icon is seen.</summary>
     public static bool Timed(int bossSize) => bossSize >= AmsuReader.ReadableFrom;
 
+    /// <summary>The same on screen (user, 2026-11-01): the "N초" as large as 100% at 1080 high, so a game area shorter than 1080
+    /// (forced 21:9 at 1920×1080: 810) needs more, a taller one less. Replay 14 misread the digits at 1920×810 and 100%.</summary>
+    public static bool Timed(Viewport vp, int bossSize) => Geometry.BuffScale(vp, bossSize) >= AmsuReader.ReadableFrom / 100.0 - 0.005;
+
     // Untimed (iconsOnly): a bomb lasts while its icon is seen, and this long after (a popup or a damage number hides it a moment).
     static readonly TimeSpan IconGrace = TimeSpan.FromSeconds(1.5);
 
@@ -93,7 +97,9 @@ public static class Amsu
                     with { Slot = read.Slot ?? t.Slot });
             // Just ended: the icon lingers a moment past our 0, so only a fresh throw starts it again (not a phantom full time).
             // Untimed, the icon seen is the evidence: no wait for a fresh "N초" that is never read (review 2026-11-01).
+            // A bomb first seen in its last second ("0.1초") is about to end: nothing to start (it stood in at the full time).
             else if (!(!iconsOnly && ended.TryGetValue(kind, out var end) && now - end.At < Linger && !IsFresh(read)) && (read.Seconds is not null || iconsOnly)
+                     && !(read.Seconds is < 1)
                      && !OtherKindsTime(up, read, now))
                 up = up.SetItem(kind, (iconsOnly ? new(now + IconGrace, now) : New(read, now)) with { Slot = read.Slot });   // timed: needs its seconds
         }
@@ -111,7 +117,7 @@ public static class Amsu
     {
         double full = Duration(read.Kind);
         if (FirstSeconds(read) is not { } sec || sec > full + Off) return new(now + TimeSpan.FromSeconds(full), now);
-        return sec >= full - Fresh ? new(now + TimeSpan.FromSeconds(sec), now)
+        return sec >= full - Fresh ? new(now + TimeSpan.FromSeconds(sec), now)   // the bottom of its second: the next reads pull it up, the first step down dates it
             : new(now + TimeSpan.FromSeconds(full), now, Pending: sec, PendingAt: now, Agreeing: 1);
     }
 
@@ -122,6 +128,9 @@ public static class Amsu
         double left = (t.EndsAt - now).TotalSeconds;
         // A lost tens is put back near the read waiting for agreement, if any (the countdown may still be a stand-in full time).
         double sec = Restored(shown, t.Pending is { } q ? q - (now - t.PendingAt).TotalSeconds : left, kind);
+        // Within a second of its window: the end pulled into it, as buffs are (BuffTracker.Window), so a step down dates it.
+        if (left >= sec - 1 && left <= Top(sec) + 1)
+            return t with { EndsAt = now + TimeSpan.FromSeconds(Math.Clamp(left, sec, Top(sec))), Pending = null, Agreeing = 0 };
         if (Math.Abs(sec - left) <= Off) return t with { Pending = null, Agreeing = 0 };
         bool higher = sec > left;
         // Up, but not to a just-thrown time: a misread ("11" as "17", replay 8). A re-throw reads 20/19 (25/24) at its first read.
@@ -140,6 +149,10 @@ public static class Amsu
     /// replay 4): the candidate up to the bomb's length nearest <paramref name="near"/>, as BuffTracker.RestoreTens does.</summary>
     static double Restored(double shown, double near, Bomb kind) =>
         Tens(shown).Where(c => c <= Duration(kind) + Off).MinBy(c => Math.Abs(c - near));
+
+    /// <summary>The top of a read's window: the game rounds whole seconds down ("16초" is 16.0–16.9 s left) and shows tenths
+    /// under 1 s as they are (user, 2026-11-01; BuffTracker.Window).</summary>
+    static double Top(double shown) => shown >= 1 && shown == Math.Floor(shown) ? shown + 1 : shown;
 
     /// <summary>What a read may have been: a whole second under 10 with its tens lost, or itself.</summary>
     static double[] Tens(double shown) => shown >= 10 || shown != Math.Floor(shown) ? [shown] : [shown, shown + 10, shown + 20];
@@ -170,17 +183,9 @@ public static class Amsu
     }
 }
 
-/// <summary>When to read the boss row for 암수 (user, 2026-11-01): the icons every 0.5 s; the "N초" with each icon read that finds a
-/// bomb, and also every 0.25 s while the time left is under 7 s (the exact end, or a re-throw at once). Pure.</summary>
+/// <summary>When the 암수 loop searches the boss row for its line (the read cadence itself is RowCadence's). Pure.</summary>
 public static class AmsuSchedule
 {
-    public static readonly TimeSpan IconEvery = TimeSpan.FromSeconds(0.5), FastEvery = TimeSpan.FromSeconds(0.25);
-    public const double FastUnder = 7;
-
-    /// <summary>(icons due, timer due) given the time left shown (null: none) and the time since each read.</summary>
-    public static (bool Icons, bool Timer) Due(double? left, TimeSpan sinceIcons, TimeSpan sinceTimer) =>
-        (sinceIcons >= IconEvery, left is < FastUnder && sinceTimer >= FastEvery);
-
     public static readonly TimeSpan LineSearchEvery = TimeSpan.FromSeconds(2);
 
     /// <summary>Whether an icon read that misses on the settled line also tries the candidate lines: without a settled line, every

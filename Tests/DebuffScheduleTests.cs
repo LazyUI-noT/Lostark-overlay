@@ -15,10 +15,10 @@ public class DebuffScheduleTests
     {
         var s = DebuffSlots.None;
         Assert.Equal(1, DebuffSchedule.Boxes(s));
-        Assert.Equal(DebuffPass.Frames, DebuffSchedule.Due(s, Ms(1000)));
+        Assert.Equal(RowPass.Frames, DebuffSchedule.Due(s, Ms(1000)));
         s = DebuffSchedule.Frames(s, 0, [], [], Ms(1000));
-        Assert.Equal(DebuffPass.None, DebuffSchedule.Due(s, Ms(1150)));
-        Assert.Equal(DebuffPass.Frames, DebuffSchedule.Due(s, Ms(1200)));
+        Assert.Equal(RowPass.None, DebuffSchedule.Due(s, Ms(1150)));
+        Assert.Equal(RowPass.Frames, DebuffSchedule.Due(s, Ms(1200)));
     }
 
     [Fact]
@@ -53,11 +53,11 @@ public class DebuffScheduleTests
     {
         var s = DebuffSchedule.Frames(DebuffSlots.None, 2, [DebuffKind.빨강, DebuffKind.번개], [null, 1.5], Ms(0));
         Assert.Equal([1], DebuffSchedule.FastTimers(s));
-        Assert.Equal(DebuffPass.None, DebuffSchedule.Due(s, Ms(50)));
-        Assert.Equal(DebuffPass.Timers, DebuffSchedule.Due(s, Ms(100)));
+        Assert.Equal(RowPass.None, DebuffSchedule.Due(s, Ms(50)));
+        Assert.Equal(RowPass.Timers, DebuffSchedule.Due(s, Ms(100)));
         s = DebuffSchedule.Timers(s, new Dictionary<int, double?> { [1] = 1.4 }, Ms(100));
         Assert.Equal([null, 1.4], s.Seconds);
-        Assert.Equal(DebuffPass.Frames, DebuffSchedule.Due(s, Ms(200)));   // the frame pass wins when both are due
+        Assert.Equal(RowPass.Frames, DebuffSchedule.Due(s, Ms(200)));   // the frame pass wins when both are due
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class DebuffScheduleTests
     {
         var s = DebuffSchedule.Frames(DebuffSlots.None, 1, [DebuffKind.교체], [2.0], Ms(0));
         Assert.Empty(DebuffSchedule.FastTimers(s));
-        Assert.Equal(DebuffPass.None, DebuffSchedule.Due(s, Ms(150)));
+        Assert.Equal(RowPass.None, DebuffSchedule.Due(s, Ms(150)));
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class DebuffScheduleTests
         // old engine read it 10/s throughout).
         var s = DebuffSchedule.Frames(DebuffSlots.None, 2, [DebuffKind.파랑, DebuffKind.결투자], [null, 38.0], Ms(0));
         Assert.Equal([1], DebuffSchedule.FastTimers(s));
-        Assert.Equal(DebuffPass.Timers, DebuffSchedule.Due(s, Ms(100)));
+        Assert.Equal(RowPass.Timers, DebuffSchedule.Due(s, Ms(100)));
     }
 
     [Fact]

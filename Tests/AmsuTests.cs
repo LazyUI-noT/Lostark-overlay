@@ -90,6 +90,17 @@ public class AmsuTests
     [InlineData(120, true)]
     public void The_time_is_read_from_100_percent(int bossSize, bool timed) => Assert.Equal(timed, Amsu.Timed(bossSize));
 
+    // The text's size on screen, not the setting alone (user, 2026-11-01): a 21:9 game shown at 1920×810 draws 100% at 75%
+    // (replay 14 misread its digits); 1440p draws it larger.
+    [Theory]
+    [InlineData(1080, 100, true)]
+    [InlineData(810, 100, false)]    // forced 21:9 at 1920×1080, or a 2560×1080 game on a 1920 screen
+    [InlineData(810, 120, false)]    // 90% on screen
+    [InlineData(1440, 80, true)]     // 107% on screen
+    [InlineData(1620, 100, true)]    // 4K forced 21:9
+    public void The_time_is_read_where_the_text_is_100_percent_on_screen(int gameHeight, int bossSize, bool timed) =>
+        Assert.Equal(timed, Amsu.Timed(new Viewport(0, 0, gameHeight * 2, gameHeight), bossSize));
+
     [Fact]
     public void Where_the_seconds_read_an_icon_without_them_starts_nothing()
     {
@@ -268,6 +279,43 @@ public class AmsuTests
     // Replay (2026-11-01): reads that lose a tens digit ("19" as "9", "24" as "4") or misread a digit ("1" as "7") repeat, so
     // two agreeing reads aren't proof. A bomb's time only counts down or jumps back near its full length (a re-throw).
 
+    // The game shows whole seconds above 1 s, rounded down ("16초" for 16.0–16.9), and tenths under it ("0.7초"); the bar ended
+    // ~0.5 s early taking "N초" as N. As buffs are read (BuffTracker.Window, user 2026-11-01): a read is a window and pulls the
+    // end into it, so the end is the latest the reads prove: one read's interval from the truth once the number steps down.
+    [Fact]
+    public void Reads_that_stay_on_a_second_pull_the_end_up_into_it()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.빛암, 24)));   // 24.0–24.9 left: held at 24 for now
+        s = Step(s, 0.6, Row(new BombRead(Bomb.빛암, 24)));   // still 24 at 0.6 s: at least 24.6 were left at 0
+        Assert.Equal(24, View(s, 0.6).Left, 1);
+    }
+
+    [Fact]
+    public void The_step_to_the_next_second_dates_the_countdown()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.빛암, 24)));
+        s = Step(s, 0.2, Row(new BombRead(Bomb.빛암, 24)));   // still 24: at least 24.2 s were left at 0
+        s = Step(s, 0.4, Row(new BombRead(Bomb.빛암, 23)));   // 23 by 0.4: the end lies in 24.2–24.4
+        Assert.InRange(View(s, 0.4).Left, 23.79, 24.0);
+    }
+
+    [Fact]
+    public void A_bomb_first_seen_in_its_last_second_starts_nothing()
+    {
+        // 빛암debug at 1 s: the bomb from before the clip read "0.1초"; a first read waiting for agreement stood in at the full 25 s.
+        var s = Step(AmsuState.None, 1, Row(new BombRead(Bomb.빛암, 0.1)));
+        Assert.Null(View(s, 1).Shown);
+    }
+
+    [Fact]
+    public void A_tenths_read_under_a_second_is_taken_as_shown()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.빛암, 24)));
+        s = Step(s, 0.9, Row(new BombRead(Bomb.빛암, 24)));   // the end at least 24.9
+        s = Step(s, 24.2, Row(new BombRead(Bomb.빛암, 0.6)));
+        Assert.Equal(0.6, View(s, 24.2).Left, 1);
+    }
+
     [Fact]
     public void A_first_read_that_lost_its_tens_is_put_back_near_the_full_time()
     {
@@ -371,15 +419,6 @@ public class AmsuTests
         var d = Step(c, 40, Row());
         Assert.Equal([new AmsuEdge(Bomb.빛암, AmsuChange.끝, 0)], Amsu.Edges(c, d, T(40)));
     }
-
-    [Theory]
-    [InlineData(0.5, 0.3, 12.0, true, false)]    // icons every 0.5 s
-    [InlineData(0.4, 0.3, 12.0, false, false)]
-    [InlineData(0.4, 0.25, 6.5, false, true)]   // under 7 s: the timer every 0.25 s between icon reads
-    [InlineData(0.4, 0.2, 6.5, false, false)]
-    [InlineData(0.4, 0.3, null, false, false)]  // nothing up: no timer read
-    public void Reads_icons_every_half_second_and_the_timer_faster_near_the_end(double sinceIcons, double sinceTimer, double? left, bool icons, bool timer) =>
-        Assert.Equal((icons, timer), AmsuSchedule.Due(left, T(sinceIcons), T(sinceTimer)));
 
     static (Bomb? Shown, double Left, bool Seen) View(AmsuState s, double at) => Amsu.View(s, T(at));
 }

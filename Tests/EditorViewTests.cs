@@ -29,6 +29,21 @@ public class EditorViewTests
         Assert.Equal((0.0, 400.0), (t, b));
     }
 
+    // 설정 → 표시 (user, 2026-11-01): the windows, not the whole screen, fill the scene.
+    [Fact]
+    public void The_view_around_the_windows_fits_them_and_a_margin_and_centres_them()
+    {
+        var v = EditorView.Around(800, 400, x: 600, y: 500, w: 700, h: 300, margin: 50);   // 800 × 400 with the margin: width decides
+        Assert.Equal(1, v.Scale, 6);
+        var (l, t) = v.ToView(550, 450);
+        var (r, b) = v.ToView(1350, 850);
+        Assert.Equal((0.0, 0.0, 800.0, 400.0), (l, t, r, b));
+    }
+
+    [Fact]
+    public void The_view_around_the_windows_never_zooms_past_the_game_size() =>
+        Assert.Equal(1, EditorView.Around(800, 400, x: 600, y: 500, w: 40, h: 20, margin: 10).Scale, 6);   // one small window: 100%, not 8×
+
     [Fact]
     public void Zoom_stays_within_its_limits()
     {

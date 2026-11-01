@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using GaugeOverlay.Core.Cooldown;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -72,7 +73,7 @@ public sealed class JeonbunSweep
     }
 
     /// <summary>GAUGE_AMSU: the 암수 loop as the engine runs it (<see cref="AmsuWatch"/>: its read times, row lock, boss HP from the
-    /// bar's text) over a video at 4 frames a second, the engine's fastest read. GAUGE_AMSU_SIZE: the 보스 디버프 크기 (default 100);
+    /// bar's text) over a video at 10 frames a second, the cadence's fastest pass. GAUGE_AMSU_SIZE: the 보스 디버프 크기 (default 100);
     /// GAUGE_AMSU_HUD (default 100); GAUGE_AMSU_VP: the game in the video "x,y,w,h" (default 0,0,1920,1080; the 21:9 clip
     /// letterboxed in 2560×1440: 0,180,2560,1080). GAUGE_SWEEP_OUT: one line per change of the window (start, restart, end),
     /// and with GAUGE_AMSU_ALL every icon read too (kind@x:seconds, the line).</summary>
@@ -90,23 +91,31 @@ public sealed class JeonbunSweep
         int top = Math.Min(text.Y, strip.Y), bottom = Math.Max(text.Bottom, strip.Bottom);
         PixelRect In(PixelRect r) => r with { Y = r.Y - top };
         var watch = new AmsuWatch();
+        int identified = 0;
+        var spent = TimeSpan.Zero;   // the reads' own time (boss text, row, timers), not the decode
+        var reads = new Dictionary<RowPass, int> { [RowPass.Frames] = 0, [RowPass.Timers] = 0 };
         var lines = new List<string>();
-        foreach (var (t, band) in Frames(video, vp.X, top, vp.Width, bottom - top, fps: 4))
+        foreach (var (t, band) in Frames(video, vp.X, top, vp.Width, bottom - top, fps: int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_FPS") ?? "10")))
         {
             var now = TimeSpan.FromSeconds(t);
-            var (icons, timer) = watch.Due(now, layout.Timed);
-            if (!icons && !timer) continue;
-            long? boss = icons ? BossDigits.ReadBar(band.Crop(In(text) with { X = text.X - vp.X }), Geometry.Scale(vp, fit)).Hp?.Max : null;
+            var (pass, bossText) = watch.Due(now, layout.Timed);
+            if (pass == RowPass.None) continue;
+            reads[pass]++;
+            var sw = Stopwatch.StartNew();
+            long? boss = bossText ? BossDigits.ReadBar(band.Crop(In(text) with { X = text.X - vp.X }), Geometry.Scale(vp, fit)).Hp?.Max : null;
             var s = band.Crop(In(strip) with { X = strip.X - vp.X });
-            var (edges, _) = watch.Read(layout, icons, boss, s, now);
+            var (edges, _) = watch.Read(layout, pass, boss, s, now);
+            spent += sw.Elapsed;
+            if (watch.ClassifiedAt == now) identified++;
             foreach (var e in edges) lines.Add($"{t:0.00} {e.Kind} {e.Change} {e.Left:0.0} (line {watch.Line})");
-            if (all && icons)
+            if (all && pass == RowPass.Frames)
             {
                 var view = Amsu.View(watch.State, now);
                 var bombs = string.Join(" ", watch.LastRow?.Bombs.Select(b => $"{b.Kind}@{b.Slot}:{b.Seconds?.ToString() ?? "-"}") ?? []);
                 lines.Add($"   {t:0.00} boss {(boss is null ? "-" : "ok")} line {watch.Line} [{bombs}] | {view.Shown} {view.Left:0.0}{(view.Seen ? "" : " unseen")}");
             }
         }
+        lines.Add($"passes: {reads[RowPass.Frames]} frame, {reads[RowPass.Timers]} timer, {identified} identified, {spent.TotalMilliseconds:0} ms");
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 

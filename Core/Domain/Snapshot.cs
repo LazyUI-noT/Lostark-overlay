@@ -38,6 +38,10 @@ public sealed record Snapshot(
     /// <summary>The DPS 미터기's own reads (yours; the party's figures travel as MeterSample); null while it is off.</summary>
     public MeterStatus? Meter { get; init; }
 
+    /// <summary>Whether the 암수 창 counts down: the "N초" is read where it is 100% on screen (Amsu.Timed with the game area); null
+    /// where no game is read (previews, demos), which then follow the 보스 디버프 크기 alone.</summary>
+    public bool? AmsuTimed { get; init; }
+
     /// <summary>The dungeon the top-left panel last showed (read while the meter is on); null while unknown or the meter is off.</summary>
     public DungeonInfo? Dungeon { get; init; }
 
