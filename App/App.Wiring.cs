@@ -276,7 +276,7 @@ public partial class App
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate));
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();

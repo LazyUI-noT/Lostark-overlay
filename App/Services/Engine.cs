@@ -38,7 +38,7 @@ public sealed partial class Engine : IDisposable
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
-        AmsuRate AmsuRate = AmsuRate.높음)
+        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -124,6 +124,7 @@ public sealed partial class Engine : IDisposable
     string? _adenFile;   // the 아덴2 calibration file the 아덴 calibrations were loaded for (class, spots, 수동 조정)
     readonly SlotCalibration?[] _cal = new SlotCalibration?[SlotInfo.All.Length];
     readonly Dictionary<PixelRect, Image> _buffers = [];
+    TimeSpan _lastStep = TimeSpan.MinValue;   // the last read step (ReadSteps)
     ICaptureSource? _source;
     IntPtr _hwnd, _monitor;
     PixelRect _client;
@@ -275,11 +276,22 @@ public sealed partial class Engine : IDisposable
         if (_subclassRequested) { _subclassRequested = false; _subclassPending = true; }
 
         var config = _config;
+        // 초당 읽기 횟수: at most this many read steps a second, whatever the monitor's refresh rate (ReadSteps).
+        if (!ReadSteps.Due(_lastStep, config.ReadsPerSecond, now))
+        {
+            if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
+            Thread.Sleep(1);
+            return;
+        }
+        _lastStep = ReadSteps.Next(_lastStep, config.ReadsPerSecond, now);
+        // What is due is judged half a step ahead: each cadence counts from its last frame, a little after that step's slot,
+        // so a 100 ms read would otherwise often slip a whole step (ReadSteps.Slack). Presence and the clocks keep now.
+        var due = now + ReadSteps.Slack(config.ReadsPerSecond);
         // A slot or label that is neither shown nor sent isn't read (ClassProfiles.Reads).
-        var slots = _scheduler.Due(now, _states).Where(s => !config.Reads.Skip.Contains(s)).ToList();
-        bool wantLabel = config.Reads.Label && Elapsed(now, _lastLabel, LabelEvery);
+        var slots = _scheduler.Due(due, _states).Where(s => !config.Reads.Skip.Contains(s)).ToList();
+        bool wantLabel = config.Reads.Label && Elapsed(due, _lastLabel, LabelEvery);
         // The buff row is polled every 100 ms and the gauge by GaugePace, whether or not a slot is due.
-        bool poll = Elapsed(now, _lastPoll, PollEvery);
+        bool poll = Elapsed(due, _lastPoll, PollEvery);
         var gaugeDef = config.Reads.Gauge ? config.Gauge : null;
         if (config.Gauge != _gaugeFrom) { (_gaugeFrom, _gauge) = (config.Gauge, null); _gaugeFilter.Reset(); _spender.Reset(); }   // another character: not its value
         if (config.Character != _gainsFor) SwitchGains(config.Character);
@@ -297,20 +309,20 @@ public sealed partial class Engine : IDisposable
         int? buffSize = poll && config.Reads.BuffSize is { } set ? previewSize ?? testSize ?? set : null;
         int debuffSize = previewSize ?? testSize ?? config.DebuffSize;
         // Debuff cadence v2: a frame pass 5/s (the filled boxes and the next), a timer pass 10/s in between for the timers under 2 s.
-        var debuffPass = _debuffsOn ? DebuffSchedule.Due(_slots, now) : RowPass.None;
+        var debuffPass = _debuffsOn ? DebuffSchedule.Due(_slots, due) : RowPass.None;
         bool debuffIcons = debuffPass == RowPass.Frames;
         IReadOnlyList<int> fastTimers = debuffPass == RowPass.Timers ? DebuffSchedule.FastTimers(_slots) : [];
-        bool debuffs = debuffIcons || fastTimers.Count > 0, boss = debuffIcons && Elapsed(now, _lastBoss, BossEvery);
+        bool debuffs = debuffIcons || fastTimers.Count > 0, boss = debuffIcons && Elapsed(due, _lastBoss, BossEvery);
         int debuffBoxes = DebuffSchedule.Boxes(_slots);
-        if (!Elapsed(now, _lastGauge, _gaugeFilter.Armed(now) ? GaugePace.Fast : GaugePace.Every(now, _castAt))) gaugeDef = null;
-        bool preview = _previewing && Elapsed(now, _lastPreview, PreviewEvery);
-        var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, now);
+        if (!Elapsed(due, _lastGauge, _gaugeFilter.Armed(due) ? GaugePace.Fast : GaugePace.Every(due, _castAt))) gaugeDef = null;
+        bool preview = _previewing && Elapsed(due, _lastPreview, PreviewEvery);
+        var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, due);
         bool judging = judgRow is not null || judgBand is not null;
-        var (raidName, raidCount, raidHp) = RaidRects(config, poll, now);
+        var (raidName, raidCount, raidHp) = RaidRects(config, poll, due);
         bool raiding = raidName is not null || raidCount is not null;
-        var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, now);
+        var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, due);
         raiding |= meterHp is not null;
-        var (bossProbe, meterProbe) = (BossProbeRect(config, now), MeterProbeRect(config, now));
+        var (bossProbe, meterProbe) = (BossProbeRect(config, due), MeterProbeRect(config, due));
         bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null;   // ride on this step's capture: no frame wait of their own
         if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
@@ -340,7 +352,7 @@ public sealed partial class Engine : IDisposable
         int meterAt = rects.Count;
         if (meterHp is { } hpRect) rects.Add(hpRect);
         if (meterPanel is { } panelRect) rects.Add(panelRect);
-        var (amsuText, amsuStrip) = AmsuRects(config, poll, now);
+        var (amsuText, amsuStrip) = AmsuRects(config, poll, due);
         int amsuAt = rects.Count;
         if (amsuText is { } amsuTextRect) rects.Add(amsuTextRect);
         if (amsuStrip is { } amsuStripRect) rects.Add(amsuStripRect);

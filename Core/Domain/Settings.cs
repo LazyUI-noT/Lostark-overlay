@@ -27,6 +27,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public JudgmentSettings Judgment { get; set; } = new();
     /// <summary>설정 → 암흑수류탄: the 암수 창 (amsu.design.md).</summary>
     public AmsuSettings Amsu { get; set; } = new();
+    /// <summary>초당 읽기 횟수 (ReadSteps): the read loop's steps a second, 5–30.</summary>
+    public int ReadsPerSecond { get; set; } = ReadSteps.Default;
     public UpdateSettings Updates { get; set; } = new();
     /// <summary>설정 → 레이드: the 줄 수 창, boss recognition and each gate's switches (project B).</summary>
     public RaidSettings Raids { get; set; } = new();

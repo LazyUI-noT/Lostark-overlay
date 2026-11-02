@@ -97,6 +97,7 @@ public sealed class SettingsStore(string path)
             if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
         s.Amsu ??= new();
         s.Amsu.Clamp();
+        s.ReadsPerSecond = ReadSteps.Clamp(s.ReadsPerSecond);
         s.Judgment ??= new();
         s.Judgment.Characters ??= [];
         if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
