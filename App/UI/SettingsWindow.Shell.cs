@@ -39,7 +39,7 @@ public partial class SettingsWindow
 
     // 업데이트 (bottom left, under 모두 기본값으로 되돌리기): 업데이트 확인 asks GitHub; once a newer release is known it
     // becomes "vX 받기", and pressing that is the user's go-ahead to download and install.
-    static readonly string BaseTitle = $"GaugeOverlay v{Updater.Current.ToString(3)} 설정";
+    static readonly string BaseTitle = $"GaugeOverlay {Updater.CurrentTag} 설정";
     static readonly TimeSpan CheckMessageFor = TimeSpan.FromSeconds(3);
     readonly Button _update = new() { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 6, 0, 0), Content = "업데이트 확인" };
     Release? _release;
@@ -70,7 +70,7 @@ public partial class SettingsWindow
     /// <summary>"vX 받기", with a yellow warning triangle in front when the update changes A or B of A.B.x (user, 2026-10-13).</summary>
     static object UpdateLabel(Release r)
     {
-        var text = $"{r.Tag} 받기";
+        var text = UpdateCheck.IsDowngrade(r, Updater.CurrentTag) ? $"{r.Tag}(안정)으로 되돌리기" : $"{r.Tag} 받기";
         if (!UpdateCheck.BreaksParty(r.Version, Updater.Current)) return text;
         const double Size = 14;
         var sign = new Grid { Width = Size, Height = Size, Margin = new(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -151,6 +151,17 @@ public partial class SettingsWindow
             CheckRequested?.Invoke();
         };
         NavFoot.Children.Add(_update);
+        // 업데이트 채널 (user, 2026-11-03): 베타 tries new features early; 안정 again takes a beta back to the stable release.
+        var channel = EnumCombo([(UpdateChannel.Stable, "안정"), (UpdateChannel.Beta, "베타")], _s.Updates.Channel, v =>
+        {
+            _s.Updates.Channel = v;
+            SetUpdate(null);
+            _checkMessage.Stop();
+            (_update.IsEnabled, _update.Content) = (false, "확인 중…");
+            CheckRequested?.Invoke();
+        });
+        channel.ToolTip = "베타: 새 기능을 먼저 써 봅니다. 문제가 있으면 안정으로 바꿔 안정 버전으로 되돌립니다(설정 파일은 백업됩니다).";
+        NavFoot.Children.Add(Wrap(Label("업데이트 채널"), channel));
         NavFoot.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);

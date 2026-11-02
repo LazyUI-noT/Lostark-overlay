@@ -25,15 +25,15 @@ public static class RowCadence
     public static bool Elapsed(TimeSpan now, TimeSpan last, TimeSpan every) => last == TimeSpan.MinValue || now - last >= every;
 
     /// <summary>The pass due at <paramref name="now"/>: frames when due, else timers when a timer is fast and due.</summary>
-    public static RowPass Due(TimeSpan framesAt, TimeSpan timersAt, bool fastTimers, TimeSpan now) =>
-        Elapsed(now, framesAt, FrameEvery) ? RowPass.Frames
+    public static RowPass Due(TimeSpan framesAt, TimeSpan timersAt, bool fastTimers, TimeSpan now, TimeSpan? frameEvery = null) =>
+        Elapsed(now, framesAt, frameEvery ?? FrameEvery) ? RowPass.Frames
         : fastTimers && Elapsed(now, timersAt, FastEvery) ? RowPass.Timers
         : RowPass.None;
 
     /// <summary>Whether a frame pass that found <paramref name="filled"/> slots (<paramref name="wasFilled"/> before) identifies
     /// their icons again.</summary>
-    public static bool Identify(int wasFilled, int filled, TimeSpan classifiedAt, bool timerUnread, TimeSpan now) =>
-        filled != wasFilled || Elapsed(now, classifiedAt, ClassifyEvery) || timerUnread;
+    public static bool Identify(int wasFilled, int filled, TimeSpan classifiedAt, bool timerUnread, TimeSpan now, TimeSpan? classifyEvery = null) =>
+        filled != wasFilled || Elapsed(now, classifiedAt, classifyEvery ?? ClassifyEvery) || timerUnread;
 
     /// <summary>A last read that puts a timer on the fast pass.</summary>
     public static bool Fast(double? seconds) => seconds is < FastUnder;

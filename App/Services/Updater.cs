@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Reflection;
 using GaugeOverlay.Core.Data;
+using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.Services;
 
@@ -19,32 +21,36 @@ public sealed class Updater : IDisposable
     /// <summary>The running version (the csproj's &lt;Version&gt;).</summary>
     public static Version Current { get; } = typeof(Updater).Assembly.GetName().Version ?? new Version(0, 0);
 
+    /// <summary>The running release's tag ("v0.15.3", "v0.16.0-beta.1"): the csproj's &lt;Version&gt; with its beta suffix.</summary>
+    public static string CurrentTag { get; } = UpdateCheck.TagOf(
+        typeof(Updater).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? Current.ToString(3));
+
     readonly HttpClient _http = new() { Timeout = DownloadTimeout };
 
     public Updater() => _http.DefaultRequestHeaders.UserAgent.ParseAdd($"GaugeOverlay/{Current}");   // GitHub's API requires one
 
 #if DEBUG
-    // GAUGE_UPDATE_URL / GAUGE_UPDATE_PREFIX: a local test server in place of GitHub. Debug builds only.
-    static string LatestUrl => Environment.GetEnvironmentVariable("GAUGE_UPDATE_URL") is { Length: > 0 } u ? u : UpdateCheck.LatestUrl;
+    // GAUGE_UPDATE_URL / GAUGE_UPDATE_PREFIX: a local test server (a releases list) in place of GitHub. Debug builds only.
+    static string ListUrl => Environment.GetEnvironmentVariable("GAUGE_UPDATE_URL") is { Length: > 0 } u ? u : UpdateCheck.ListUrl;
     static string Prefix => Environment.GetEnvironmentVariable("GAUGE_UPDATE_PREFIX") is { Length: > 0 } p ? p : UpdateCheck.DownloadPrefix;
     static bool LocalTest => Prefix.StartsWith("http://localhost:", StringComparison.Ordinal);   // plain http allowed for it
 #else
-    static string LatestUrl => UpdateCheck.LatestUrl;
+    static string ListUrl => UpdateCheck.ListUrl;
     static string Prefix => UpdateCheck.DownloadPrefix;
     const bool LocalTest = false;
 #endif
 
-    /// <summary>Whether the latest release could be read (false when offline, on a timeout, or a 404 while the repo is
-    /// private), and that release if it's newer than this one.</summary>
-    public async Task<(bool Checked, Release? Newer)> CheckAsync()
+    /// <summary>Whether the releases could be read (false when offline, on a timeout, or a 404 while the repo is
+    /// private), and the release <paramref name="channel"/> offers to this one (<see cref="UpdateCheck.Offer"/>), if any.</summary>
+    public async Task<(bool Checked, Release? Newer)> CheckAsync(UpdateChannel channel)
     {
         try
         {
             using var cts = new CancellationTokenSource(CheckTimeout);
-            using var res = await _http.GetAsync(LatestUrl, cts.Token);
+            using var res = await _http.GetAsync(ListUrl, cts.Token);
             if (!res.IsSuccessStatusCode) return (false, null);
-            var release = UpdateCheck.Parse(await res.Content.ReadAsStringAsync(cts.Token), Prefix);
-            return (true, release is not null && UpdateCheck.IsNewer(release.Version, Current) ? release : null);
+            var releases = UpdateCheck.ParseList(await res.Content.ReadAsStringAsync(cts.Token), Prefix);
+            return (true, UpdateCheck.Offer(channel, CurrentTag, releases));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {

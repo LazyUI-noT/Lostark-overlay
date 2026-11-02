@@ -31,4 +31,43 @@ public sealed class WindowLingerTests
         Assert.Null(WindowLinger.LastRead(MeterStatus.None));   // nothing read yet
         Assert.Null(WindowLinger.LastRead(null));
     }
+
+    // The DPS 미터기 window: shows from the first hit (a boss read), then stays while the player is in that dungeon (the in-game
+    // meter or a boss bar seen in RaidPresence.Hold), not only 10 s (meter-gating.plan.md).
+    [Fact]
+    public void The_meter_window_waits_for_the_first_hit()
+    {
+        var inside = RaidPresence.None.Saw(meter: true, boss: false, S(10));
+        Assert.False(WindowLinger.MeterInUse(lastRead: null, inside, S(12)));
+    }
+
+    [Fact]
+    public void The_meter_window_stays_while_in_the_dungeon_of_its_read()
+    {
+        var p = RaidPresence.None.Saw(true, false, S(10)).Saw(true, true, S(20)).Saw(true, false, S(80));
+        Assert.True(WindowLinger.MeterInUse(lastRead: S(20), p, S(80)));   // 60 s after the last boss read: the meter still shows
+        Assert.False(WindowLinger.MeterInUse(lastRead: S(20), p, S(80) + RaidPresence.Hold + S(1)));   // left the dungeon
+    }
+
+    [Fact]
+    public void A_read_from_an_earlier_dungeon_does_not_show_the_window_in_the_next()
+    {
+        var first = RaidPresence.None.Saw(true, true, S(10));
+        var next = first.Saw(true, false, S(10) + RaidPresence.Hold + S(30));   // another raid's entry, before its first hit
+        Assert.False(WindowLinger.MeterInUse(lastRead: S(10), next, S(10) + RaidPresence.Hold + S(31)));
+    }
+
+    [Fact]
+    public void Out_of_a_dungeon_the_window_keeps_its_ten_seconds() =>
+        Assert.True(WindowLinger.MeterInUse(lastRead: S(10), RaidPresence.None, S(15)));
+
+    [Fact]
+    public void The_meter_window_stays_through_a_long_cutscene()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10));
+        for (int t = 11; t <= 200; t++) p = p.Hidden(S(t));
+        p = p.Saw(true, false, S(201));   // the meter back after the cutscene, before the next hit
+        Assert.True(WindowLinger.MeterInUse(lastRead: S(10), p, S(201)));
+    }
 }
+

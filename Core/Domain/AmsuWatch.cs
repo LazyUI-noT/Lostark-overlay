@@ -26,6 +26,10 @@ public sealed class AmsuWatch
     Dictionary<Bomb, double> _seconds = [];   // each bomb's last "N초" read: under 2 s, the timer pass reads it
     AmsuRow? _last;                      // the last row read: the window redraws only when it changes
     TimeSpan _searched = TimeSpan.MinValue, _framesAt = TimeSpan.MinValue, _timersAt = TimeSpan.MinValue;
+    TimeSpan? _foundSince;               // since when bombs have been found without a break (AmsuPace's lock)
+
+    /// <summary>설정's 읽기 빈도 (AmsuPace): 높음 reads on the shared cadence, 낮음 far less.</summary>
+    public AmsuRate Rate { get; set; } = AmsuRate.높음;
 
     public AmsuState State { get; private set; } = AmsuState.None;
 
@@ -39,16 +43,28 @@ public sealed class AmsuWatch
     public int? Line => _line.Y;
 
     /// <summary>An identification due whatever the walk finds: by time, or a timed bomb's "N초" unread (the boss's HP text with it).</summary>
-    bool IdentifyDue(TimeSpan now) => _unread || RowCadence.Elapsed(now, ClassifiedAt, RowCadence.ClassifyEvery);
+    bool IdentifyDue(TimeSpan now, TimeSpan classifyEvery) => _unread || RowCadence.Elapsed(now, ClassifiedAt, classifyEvery);
+
+    /// <summary>The cadence at <paramref name="now"/> (AmsuPace): the 읽기 빈도, the bombs found and the countdown's least time left.</summary>
+    (TimeSpan Frames, TimeSpan Classify) Pace(TimeSpan now, bool timed)
+    {
+        double? left = State.Up.Count == 0 ? null : State.Up.Values.Min(b => (b.EndsAt - now).TotalSeconds);
+        // Unseen at the last frame pass on a row that showed and had room (behind "+N" or in a cutscene it is rightly unseen).
+        bool missed = _framesAt != TimeSpan.MinValue && _seen && !_full && State.Up.Values.Any(b => b.LastSeen < _framesAt);
+        bool pending = State.Up.Values.Any(b => b.Pending is not null);   // a timer jump waiting for its second read
+        return AmsuPace.Of(Rate, timed, _found.Count, left, _foundSince is { } f ? now - f : TimeSpan.Zero, missed, pending);
+    }
 
     /// <summary>The pass due at <paramref name="now"/>, and whether it reads the boss's HP text (a frame pass due to identify).</summary>
     public (RowPass Pass, bool BossText) Due(TimeSpan now, bool timed)
     {
         bool fast = timed && _found.Any(Fast);
-        var pass = RowCadence.Due(_framesAt, _timersAt, fast, now);
-        // No line to walk yet, or no bomb in the row: the next identification finds a new one (within 0.5 s: user, 2026-11-01).
-        if (pass == RowPass.Frames && (_line.Y is null || _found.Count == 0) && !IdentifyDue(now)) pass = RowPass.None;
-        return (pass, pass == RowPass.Frames && IdentifyDue(now));
+        var (frames, classify) = Pace(now, timed);
+        var pass = RowCadence.Due(_framesAt, _timersAt, fast, now, frames);
+        // No line to walk yet, or no bomb in the row: the next identification finds a new one (within 0.5 s at 높음: user,
+        // 2026-11-01; 1 s at 낮음).
+        if (pass == RowPass.Frames && (_line.Y is null || _found.Count == 0) && !IdentifyDue(now, classify)) pass = RowPass.None;
+        return (pass, pass == RowPass.Frames && IdentifyDue(now, classify));
     }
 
     /// <summary>One <paramref name="pass"/> at <paramref name="t"/> with the boss's max HP (null: unread or not read this pass).
@@ -70,11 +86,12 @@ public sealed class AmsuWatch
 
     AmsuRow? Frames(AmsuLayout layout, long? boss, Image strip, TimeSpan t)
     {
-        bool bossRead = IdentifyDue(t);
+        var (_, classify) = Pace(t, layout.Timed);
+        bool bossRead = IdentifyDue(t, classify);
         (_framesAt, _timersAt) = (t, t);
         // Identifying due by time or an unread timer: no walk first (the match walks the row itself).
         var walk = !bossRead && _line.Y is { } y ? AmsuReader.Walk(strip, layout.Scale, layout.Slots, y) : null;
-        bool identify = walk is null || RowCadence.Identify(_filled, walk.Filled.Count, ClassifiedAt, _unread, t);
+        bool identify = walk is null || RowCadence.Identify(_filled, walk.Filled.Count, ClassifiedAt, _unread, t, classify);
         // A boss read starts the search; between boss reads a walked row goes on. Untimed, a bomb already up keeps it going
         // while a popup hides the HP text (review 2026-11-01); timed, the countdown runs on through it (a cutscene hides the
         // bar, the bomb doesn't end).
@@ -103,6 +120,7 @@ public sealed class AmsuWatch
                 .OfType<BombAt>()];
             (_full, _seen, _filled) = (walk.Full, walk.Seen, walk.Filled.Count);
         }
+        _foundSince = _found.Count == 0 ? null : _foundSince ?? t;
         var row = Read(strip, layout, _found, _ => true);
         _unread = layout.Timed && row.Bombs.Any(b => b.Seconds is null);
         _seconds = [];

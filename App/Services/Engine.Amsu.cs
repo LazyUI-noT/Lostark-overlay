@@ -21,7 +21,9 @@ public sealed partial class Engine
     (PixelRect? Text, PixelRect? Strip) AmsuRects(Config config, bool poll, TimeSpan now)
     {
         if (_amsuOn != config.AmsuOn) (_amsuOn, _amsuWatch) = (config.AmsuOn, new AmsuWatch());
-        if (!_amsuOn || !poll || _fit is null) return (null, null);
+        _amsuWatch.Rate = config.AmsuRate;
+        // Only in a dungeon (the in-game meter or a boss bar, held through cutscenes); cleared on leaving (StepPresence).
+        if (!_amsuOn || !poll || _fit is null || !_presence.InDungeon(now)) return (null, null);
         _amsuTimed = Amsu.Timed(_vp, config.BossSize);
         (_amsuPass, bool bossText) = _amsuWatch.Due(now, _amsuTimed);
         if (_amsuPass == RowPass.None) return (null, null);

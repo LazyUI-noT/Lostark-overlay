@@ -33,6 +33,21 @@ public static class JeonbunFinder
         return null;
     }
 
+    /// <summary>Whether the panel is in <paramref name="crop"/> (its saved spot): the green first cell in the first row, or in
+    /// the second (before the first hit the "이전 기록을 선택하여…" line takes the first row and the row shows dashes). No digits
+    /// are read: true from timer 0, where <see cref="JeonbunReader.Read"/> has nothing yet.</summary>
+    public static bool Present(Image crop, double scale)
+    {
+        for (int row = 0; row < 2; row++)
+        {
+            int x = (int)Math.Round((CellLeft + EdgeW / 2) * scale), y = (int)Math.Round((CellTop + row * RowPitch + CellH / 2) * scale);
+            if (x >= crop.Width || y >= crop.Height || !Green(crop, x, y)) continue;
+            var (left, top) = Corner(crop, x, y);
+            if (Block(crop, left, top, scale)) return true;
+        }
+        return false;
+    }
+
     /// <summary>The panel's crop at (x, y), as tall as fits (one row needs 88, two 114), or null when it runs off the screen.</summary>
     static PixelRect? Spot(Image screen, int x, int y, double scale)
     {

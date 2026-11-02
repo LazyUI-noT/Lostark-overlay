@@ -51,4 +51,30 @@ public sealed class JeonbunFinderTests
 
     [Fact]
     public void A_screen_without_the_panel_finds_nothing() => Assert.Null(JeonbunFinder.Find(new Image(1280, 720), 1.0));
+
+    // Is the in-game meter at its saved spot (no digits read): its green first cell, in the first row or (before the first hit,
+    // under the "이전 기록을 선택하여…" line) the second. Gates the dungeon read (meter-gating.plan.md).
+    [Theory]
+    [InlineData("jeonbun_prefight")]   // 1막 at 00:00: dashes only
+    [InlineData("jeonbun_0")]
+    [InlineData("jeonbun_15")]         // support view, a flash behind it
+    [InlineData("jeonbun_22")]         // two rows, mine second
+    public void The_meter_is_present_at_its_spot(string fixture) =>
+        Assert.True(JeonbunFinder.Present(Fixture.Load(fixture).Frames[0], 1.0));
+
+    [Fact]
+    public void Before_the_first_hit_the_meter_is_present_and_reads_empty()
+    {
+        var panel = Fixture.Load("jeonbun_prefight").Frames[0];
+        Assert.True(JeonbunFinder.Present(panel, 1.0));
+        Assert.Equal(0, JeonbunReader.Read(panel)!.Timer);   // 00:00, no damage: the meter's own read sees it too
+    }
+
+    [Fact]
+    public void Hell_floors_show_no_meter_at_the_spot() =>
+        Assert.False(JeonbunFinder.Present(Fixture.Load("jeonbun_hell").Frames[0], 1.0));
+
+    [Fact]
+    public void A_blank_spot_has_no_meter() => Assert.False(JeonbunFinder.Present(new Image(470, 114), 1.0));
 }
+

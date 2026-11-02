@@ -10,6 +10,12 @@ public static class WindowLinger
     /// <summary>Whether a window last read at <paramref name="lastRead"/> (null: never) shows at <paramref name="now"/>.</summary>
     public static bool InUse(TimeSpan? lastRead, TimeSpan now) => lastRead is { } t && now - t <= For;
 
+    /// <summary>The DPS 미터기 window: from its first read (a boss hit) until <see cref="For"/> after the last, and on while the
+    /// player stays in the dungeon that read was in (<paramref name="presence"/>: the in-game meter or a boss bar still seen),
+    /// so a long phase change or cutscene doesn't hide it.</summary>
+    public static bool MeterInUse(TimeSpan? lastRead, RaidPresence presence, TimeSpan now) =>
+        InUse(lastRead, now) || lastRead is { } r && presence.Since is { } since && r >= since && presence.InDungeon(now);
+
     /// <summary>The last read after this step.</summary>
     public static TimeSpan? Seen(TimeSpan? lastRead, bool readNow, TimeSpan now) => readNow ? now : lastRead;
 

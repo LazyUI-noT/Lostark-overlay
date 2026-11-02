@@ -19,6 +19,8 @@ public partial class SettingsWindow
             BossSizeCombo()));
         p.Children.Add(Note("보스 디버프 크기를 게임과 같게 맞추세요. 남은 시간은 100% 이상에서만 읽습니다 (게임 화면 높이 1080 기준: 21:9 강제처럼 화면이 낮으면 그만큼 더 커야 합니다). 그보다 작으면 글자가 작아 시간을 읽지 않고, 폭탄이 걸려 있는 동안 아이콘만 보여줍니다(막대·원·숫자 없음). 디버프가 많아 '+N'으로 밀려나면 마지막에 읽은 시간부터 흐리게 계속 셉니다."));
 
+        p.Children.Add(HelpRow("읽기 빈도", "높음: 지금처럼 자주 읽어 바로 맞춥니다. 낮음: 폭탄이 없을 땐 1초마다 찾고, 찾은 폭탄은 1초 동안 시간을 맞춘 뒤 3초 남을 때까지 1초마다만 확인합니다 (다른 사람이 다시 던지면 1초 안에 맞춰집니다). 암흑수류탄을 켜면 프레임이 떨어질 때 낮음을 써 보세요. 시간을 읽지 않는 크기(100% 미만)에서는 낮음이어도 높음으로 읽습니다.",
+            EnumCombo([(AmsuRate.높음, "높음 (정확)"), (AmsuRate.낮음, "낮음 (가벼움)")], a.Rate, v => a.Rate = v)));
         p.Children.Add(Row("표시 방식", EnumCombo([(AmsuLook.막대, "막대"), (AmsuLook.원, "원"), (AmsuLook.숫자, "숫자")], a.Look,
             v => { a.Look = v; Dispatcher.BeginInvoke(FillAmsu); })));
         if (a.Look == AmsuLook.막대)

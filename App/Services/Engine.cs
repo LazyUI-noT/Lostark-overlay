@@ -37,7 +37,8 @@ public sealed partial class Engine : IDisposable
         ManualScreen? ManualScreen = null, IReadOnlyDictionary<string, Fit>? Adjusts = null, IReadOnlyList<CoreWatch>? CoreWatches = null,
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
-        bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false)
+        bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
+        AmsuRate AmsuRate = AmsuRate.높음)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -284,6 +285,7 @@ public sealed partial class Engine : IDisposable
         if (config.Character != _gainsFor) SwitchGains(config.Character);
         if (config.Character != _stacksFor) { _stacksFor = config.Character; _stackLearner.Reset(); }
         SwitchJudgment(config, now);
+        StepPresence(now);
         _gaugeFilter.Mode = config.ReadMode;
         // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
         if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
@@ -306,9 +308,11 @@ public sealed partial class Engine : IDisposable
         bool judging = judgRow is not null || judgBand is not null;
         var (raidName, raidCount, raidHp) = RaidRects(config, poll, now);
         bool raiding = raidName is not null || raidCount is not null;
-        var (meterHp, meterPanel) = MeterRects(config, now);
+        var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, now);
         raiding |= meterHp is not null;
-        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding)
+        var (bossProbe, meterProbe) = (BossProbeRect(config, now), MeterProbeRect(config, now));
+        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null;   // ride on this step's capture: no frame wait of their own
+        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
             Thread.Sleep(4);
@@ -342,18 +346,29 @@ public sealed partial class Engine : IDisposable
         if (amsuStrip is { } amsuStripRect) rects.Add(amsuStripRect);
         int previewAt = rects.Count;   // 위치 조정's bar score, from the same capture as the reads
         if (preview) rects.Add(FitSolver.Band(_vp));
+        int dungeonAt = rects.Count;
+        if (dungeonRect is { } dungeonPanel) rects.Add(dungeonPanel);
+        int searchAt = rects.Count;
+        if (searchRect is { } searchArea) rects.Add(searchArea);
+        int bossProbeAt = rects.Count;
+        if (bossProbe is { } bossRow) rects.Add(bossRow);
+        int meterProbeAt = rects.Count;
+        if (meterProbe is { } meterSpot) rects.Add(meterSpot);
 
         var images = rects.Select(Buffer).ToList();
         long ts = 0;
-        if (!Perf.Run("화면 캡처", () => _source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out ts)))
+        long capWall = Stopwatch.GetTimestamp(), capCpu = Perf.ThreadCpu();
+        bool captured = _source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out ts);
+        Perf.AddCpu("화면 캡처 (새 프레임 대기 포함)", Stopwatch.GetTimestamp() - capWall, Perf.ThreadCpu() - capCpu);
+        if (!captured)
         {
             now = Clock.Now();
-            if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
+            if (Advance(now) | _gaugeSpent | KeepWhileHidden(now)) { _gaugeSpent = false; Publish(now); }   // a still screen (paused cutscene) keeps the dungeon too
             Thread.Sleep(50);   // capture unavailable (lock screen, UAC) or a static screen: don't spin
             return;
         }
         var t = Clock.FromTimestamp(ts);
-        bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent;
+        bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent | KeepWhileHidden(t);
         _gaugeSpent = false;
         if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
         if (boss) _lastBoss = t;
@@ -377,6 +392,10 @@ public sealed partial class Engine : IDisposable
             changed |= Perf.Run("암수", () => ReadAmsu(config, amsuText is null ? null : images[amsuAt], amsuStrip is null ? null : images[amsuAt + (amsuText is null ? 0 : 1)], t));
         if (raidName is not null || raidCount is not null)
             changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[raidCountAt], raidHp is null ? null : images[raidHpAt], t));
+        if (bossProbe is not null) Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossProbeAt], t));
+        if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
+        if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
+        if (searchRect is not null) Perf.Run("전분 위치 찾기", () => SearchPanel(images[searchAt], t));
         if (wantLabel)
         {
             _lastLabel = t;
@@ -436,6 +455,7 @@ public sealed partial class Engine : IDisposable
         var wasVisible = _hud.Visible;
         bool? shown = _hud.Add(calibrated, unreadable);
         if (_hud.Visible != wasVisible) HudVisibleChanged?.Invoke(_hud.Visible == true);
+        if (_hud.Visible == true && wasVisible != true) WakeDungeon();
         // Only while the bar is certainly on screen in this very frame: Desktop Duplication also captures loading
         // screens, the login screen and windows covering the game. References are also added while too few exist to
         // vote at all (HudVote.MaySave), or the vote could never start.
@@ -578,6 +598,7 @@ public sealed partial class Engine : IDisposable
             Judgment = _judgmentOn ? _judgment : null,
             Raid = _raid,
             Meter = _meterOn ? _meter : null,
+            Presence = _presence,
             Dungeon = _meterOn ? _dungeon : null,
             Amsu = _amsuOn ? _amsu : null,
             AmsuTimed = _amsuTimed,

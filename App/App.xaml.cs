@@ -109,13 +109,14 @@ public partial class App : Application
     bool _gameForeground = true, _hudVisible = true, _ownForeground;   // own: one of the app's windows (설정) is in front
     // The DPS 미터기 and the 줄 수 창 show only while a boss is read, and 10 s after (WindowLinger); they read all the time.
     TimeSpan? _meterReadAt, _countReadAt;
+    RaidPresence _presence = RaidPresence.None;
     bool _meterInUse, _countInUse;
 
     /// <summary>Re-shows or hides the 미터기 and 줄 수 창 when their last read comes into or goes out of <see cref="WindowLinger.For"/>.</summary>
     void CheckInUse()
     {
         var now = Clock.Now();
-        var (meter, count) = (WindowLinger.InUse(_meterReadAt, now), WindowLinger.InUse(_countReadAt, now));
+        var (meter, count) = (WindowLinger.MeterInUse(_meterReadAt, _presence, now), WindowLinger.InUse(_countReadAt, now));
         if ((meter, count) == (_meterInUse, _countInUse)) return;
         (_meterInUse, _countInUse) = (meter, count);
         UpdateVisibility();

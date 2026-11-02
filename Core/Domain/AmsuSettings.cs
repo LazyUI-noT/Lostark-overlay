@@ -14,6 +14,8 @@ public sealed class AmsuSettings : IWindowPlace
     public const double MinOpacity = 0.1;
 
     public bool On { get; set; }
+    /// <summary>읽기 빈도: 낮음 reads far less, for frame drops (AmsuPace).</summary>
+    public AmsuRate Rate { get; set; } = AmsuRate.높음;
     public AmsuLook Look { get; set; } = AmsuLook.막대;
     public BarDirection Direction { get; set; } = BarDirection.오른쪽;
     /// <summary>숫자: the seconds beside the icon instead of on it.</summary>
@@ -36,6 +38,7 @@ public sealed class AmsuSettings : IWindowPlace
         Width = double.IsFinite(Width) ? Math.Clamp(Width, ClassProfiles.MinScale, ClassProfiles.MaxScale) : 1;
         Height = double.IsFinite(Height) ? Math.Clamp(Height, ClassProfiles.MinScale, ClassProfiles.MaxScale) : 1;
         if (!Enum.IsDefined(Look)) Look = AmsuLook.막대;
+        if (!Enum.IsDefined(Rate)) Rate = AmsuRate.높음;
         if (!Enum.IsDefined(Direction)) Direction = BarDirection.오른쪽;
         Color ??= "#9B6BFF";
         WarnColor ??= "#E05252";

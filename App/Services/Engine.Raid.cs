@@ -39,7 +39,8 @@ public sealed partial class Engine
         // The boss's max HP (raids.json "hp") recognises a gate exactly, with its difficulty: read with the name. Both the count
         // and the HP are read from the bar's whole text row (BossDigits.ReadBar), wherever a 21:9 or HUD size puts them.
         var row = Geometry.BossTextRow(_vp, _fit!);
-        return (name ? Geometry.BossName(_vp, _fit!) : null, plan.ReadCount ? row : null, name ? row : null);
+        bool count = plan.ReadCount && _presence.InDungeon(now);   // 줄 수 only in a dungeon; cleared on leaving (StepPresence)
+        return (name ? Geometry.BossName(_vp, _fit!) : null, count ? row : null, name ? row : null);
     }
 
     /// <summary>The debuff window's raid this step: the gate's 디버프 창 (RaidReadPlan.DebuffRaid).</summary>
@@ -57,6 +58,7 @@ public sealed partial class Engine
         {
             _lastName = t;
             long? maxHp = hp is null ? null : BossDigits.ReadBar(hp, scale).Hp?.Max;
+            if (maxHp is not null) Saw(meter: false, boss: true, t);   // the HP text read here is the boss bar too
             var byHp = RaidData.ByHp(gates, maxHp);
             // A boss the name read (OCR) found stays found while its max HP reads the same, with a check read every 30 s
             // instead of every 4 s (HpAnchor). Out of a raid the anchor is dropped.
@@ -64,7 +66,7 @@ public sealed partial class Engine
             var anchored = HpAnchor.Match(_hpAnchor, maxHp);
             string? ocr = null;
             string? byName = byHp is null ? BossName.Match(name, scale, config.BossNames ?? [])
-                ?? (ocr = NameByOcr(name, s, gates, scale, t, anchored is not null)) : null;
+                ?? (ocr = _presence.BossUp(t) ? NameByOcr(name, s, gates, scale, t, anchored is not null) : null) : null;   // Windows OCR waits for the boss bar: none in town or the field
             var matched = byHp?.Gate.Id ?? byName ?? anchored;
             var was = _raidRec.Gate;
             _raidRec = RaidRecognition.Update(_raidRec, matched, t);
@@ -94,6 +96,7 @@ public sealed partial class Engine
             if (count is not null)
             {
                 var bar = BossDigits.ReadBar(count, scale, hp: false);
+                if (bar.Count is not null) Saw(meter: false, boss: true, t);   // "X n" read: the boss bar is up
                 if (bar.CountArea is { } at) countPixels = count.Crop(at);
                 _bar = BarAlert.Update(_bar, bar.Count, t, BarAlert.Thresholds(s.AlertsOf(gate), s.OffsetOf(gate.Id)));
                 if (config.Debug) ExtraDebug?.Invoke(new("줄 수", count.Copy(), bar.Count?.ToString() ?? "?", _bar.Shown?.ToString() ?? "?"));

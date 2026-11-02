@@ -126,6 +126,9 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
     private const int MaxKept = 64;
     private int _made;   // staging textures made since _madeSince (logged every 10 s while any are made)
     private long _madeSince = Stopwatch.GetTimestamp();
+    // The work part of a capture (GPU copy, then the CPU waits for it and reads it back), apart from the engine's
+    // "화면 캡처 (새 프레임 대기 포함)", which also counts the wait for the game's next frame.
+    private const string WorkPart = "화면 캡처: 복사·읽기";
 
     /// <summary>GPU copy of each region (screen pixels) from <paramref name="source"/>, whose top-left pixel
     /// sits at <paramref name="sourceBounds"/>.X/Y on screen. Copies nothing and returns false if any region isn't
@@ -135,6 +138,7 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
         foreach (var r in regions)
             if (r.X < sourceBounds.X || r.Y < sourceBounds.Y || r.Right > sourceBounds.Right || r.Bottom > sourceBounds.Bottom)
                 return false;
+        long started = Stopwatch.GetTimestamp(), cpu = Services.Perf.ThreadCpu();
         var wanted = regions.Select(r => (r.Width, r.Height)).ToArray();
         _used = StagingSlots.Assign(_sizes, wanted);
         if (_used.Length > 0 && _used.Max() >= MaxKept) { Clear(); _used = StagingSlots.Assign(_sizes, wanted); }
@@ -145,12 +149,16 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
             var box = new Box(r.X - sourceBounds.X, r.Y - sourceBounds.Y, 0, r.Right - sourceBounds.X, r.Bottom - sourceBounds.Y, 1);
             context.CopySubresourceRegion(tex, 0, 0, 0, 0, source, 0, box);
         }
+        Services.Perf.AddCpu(WorkPart, Stopwatch.GetTimestamp() - started, Services.Perf.ThreadCpu() - cpu);
+        Services.Perf.Count("캡처");
+        Services.Perf.Count("캡처 영역", regions.Count);
         return true;
     }
 
     /// <summary>CPU read of the regions copied by the last <see cref="Copy"/>, same order.</summary>
     public unsafe void ReadBack(IReadOnlyList<Image> into)
     {
+        long started = Stopwatch.GetTimestamp(), cpu = Services.Perf.ThreadCpu();
         for (int i = 0; i < into.Count; i++)
         {
             var tex = _staging[_used[i]];
@@ -165,6 +173,7 @@ internal sealed class RegionCopier(ID3D11Device device, ID3D11DeviceContext cont
             }
             finally { context.Unmap(tex, 0); }
         }
+        Services.Perf.AddCpu(WorkPart, Stopwatch.GetTimestamp() - started, Services.Perf.ThreadCpu() - cpu);
     }
 
     /// <summary>The pool's texture <paramref name="slot"/>, made (and added) when the slot is new: Assign numbers new slots in order.</summary>

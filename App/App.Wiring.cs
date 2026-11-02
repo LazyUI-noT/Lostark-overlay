@@ -276,7 +276,7 @@ public partial class App
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On));
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -288,6 +288,7 @@ public partial class App
             // The engine doesn't know the class: yours is added here, for the party and for your own gauge's glow rule.
             var mine = latest is { } s ? s with { ClassId = characters.ClassId } : null;
             _meterReadAt = WindowLinger.LastRead(mine?.Meter);
+            _presence = mine?.Presence ?? RaidPresence.None;
             _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
             CheckInUse();
             if (mine is not null) party.Publish(mine, PartyName(), settings.Party.SendGroups(), settings.Party.SendGauge);
@@ -722,7 +723,7 @@ public partial class App
         {
             try
             {
-                var (ok, newer) = await updater.CheckAsync();
+                var (ok, newer) = await updater.CheckAsync(settings.Updates.Channel);
                 _settingsWindow.SetCheckResult(ok, newer);
             }
             catch (Exception ex) { Trace.WriteLine($"[update] check: {ex}"); _settingsWindow.SetCheckResult(false, null); }
@@ -736,6 +737,7 @@ public partial class App
             try
             {
                 _settingsWindow.SetUpdateBusy(true);
+                if (UpdateCheck.IsDowngrade(release, Updater.CurrentTag)) BackUpSettings(release.Tag);
                 if (await updater.InstallAsync(release, appDir) is { } why) { _settingsWindow.SetUpdateBusy(false); _tray.Notify(why); return; }
                 (settings.Updates.WhatsNewTag, settings.Updates.WhatsNew) = (release.Tag, UpdateCheck.PlainNotes(release.Notes));   // shown once by the new version
                 Save(now: true);
@@ -752,6 +754,18 @@ public partial class App
             }
         }
 
+        // Back to an older (stable) version: it may not read what this one saved, so the file is kept beside it as it is
+        // ("settings.before-v0.15.3.json"). The older version then opens settings.json as far as it understands it.
+        void BackUpSettings(string tag)
+        {
+            try
+            {
+                Save(now: true);
+                File.Copy(SettingsStore.DefaultPath, Path.Combine(Path.GetDirectoryName(SettingsStore.DefaultPath)!, $"settings.before-{tag}.json"), overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[update] settings backup: {ex.Message}"); }
+        }
+
         // The first start after an update: 설정 opens again, as it was when the update was started from it (user, 2026-10-13),
         // with what changed over it, once. The notes are dropped if this isn't the version that was installed.
         void ShowWhatsNew()
@@ -760,8 +774,7 @@ public partial class App
             if (tag.Length == 0) return;
             (settings.Updates.WhatsNewTag, settings.Updates.WhatsNew) = ("", "");
             Save(now: true);
-            bool installed = Version.TryParse(tag.TrimStart('v'), out var version)
-                && !UpdateCheck.IsNewer(version, Updater.Current) && !UpdateCheck.IsNewer(Updater.Current, version);
+            bool installed = tag == Updater.CurrentTag;
             Dispatcher.BeginInvoke(() =>
             {
                 _settingsWindow.Show();
@@ -776,8 +789,9 @@ public partial class App
         {
             try
             {
-                if ((await updater.CheckAsync()).Newer is not { } release) return;
+                if ((await updater.CheckAsync(settings.Updates.Channel)).Newer is not { } release) return;
                 _settingsWindow.SetUpdate(release);
+                if (UpdateCheck.IsDowngrade(release, Updater.CurrentTag)) return;   // going back waits for the button
                 _tray.Notify($"GaugeOverlay {release.Tag}(으)로 업데이트하는 중입니다. 끝나면 다시 켜집니다.");
                 await Install(release);
             }

@@ -20,6 +20,15 @@ public sealed class AmsuSettingsTests : IDisposable
     }
 
     [Fact]
+    public void It_reads_high_by_default_and_a_bad_rate_falls_back_to_high()
+    {
+        Assert.Equal(AmsuRate.높음, new Settings().Amsu.Rate);
+        var a = new AmsuSettings { Rate = (AmsuRate)9 };
+        a.Clamp();
+        Assert.Equal(AmsuRate.높음, a.Rate);
+    }
+
+    [Fact]
     public void Out_of_range_values_are_brought_back()
     {
         var a = new AmsuSettings { Opacity = 3, WarnSeconds = 99, Width = 50, Height = double.NaN, Look = (AmsuLook)9, Direction = (BarDirection)9 };

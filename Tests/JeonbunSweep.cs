@@ -90,7 +90,7 @@ public sealed class JeonbunSweep
         PixelRect text = Geometry.BossTextRow(vp, fit), strip = Geometry.BossRowSearch(vp, fit, size);
         int top = Math.Min(text.Y, strip.Y), bottom = Math.Max(text.Bottom, strip.Bottom);
         PixelRect In(PixelRect r) => r with { Y = r.Y - top };
-        var watch = new AmsuWatch();
+        var watch = new AmsuWatch { Rate = Environment.GetEnvironmentVariable("GAUGE_AMSU_RATE") == "low" ? AmsuRate.낮음 : AmsuRate.높음 };
         int identified = 0;
         var spent = TimeSpan.Zero;   // the reads' own time (boss text, row, timers), not the decode
         var reads = new Dictionary<RowPass, int> { [RowPass.Frames] = 0, [RowPass.Timers] = 0 };

@@ -14,6 +14,21 @@ public sealed record DungeonState(DungeonInfo? Shown, ImmutableDictionary<string
     public static readonly DungeonState None = new(null, ImmutableDictionary<string, int>.Empty);
 }
 
+/// <summary>How often the dungeon panel is read with Windows OCR (its biggest steady cost): every <see cref="Fast"/>, and every
+/// <see cref="Slow"/> once the same panel (or none) was read <see cref="SettleAfter"/> times running. Another read, or
+/// <see cref="Wake"/> (the HUD back after a loading screen), is fast again. Pure.</summary>
+// ponytail: a new dungeon can wait up to Slow to be named; the HUD wake covers entering one through a loading screen.
+public sealed record DungeonPace(DungeonInfo? Last, int Same)
+{
+    public static readonly TimeSpan Fast = TimeSpan.FromSeconds(3), Slow = TimeSpan.FromSeconds(10);
+    public const int SettleAfter = 3;
+    public static readonly DungeonPace Start = new(null, 0);
+
+    public TimeSpan Every => Same >= SettleAfter ? Slow : Fast;
+    public DungeonPace Read(DungeonInfo? d) => d == Last ? this with { Same = Same + 1 } : new(d, 0);
+    public DungeonPace Wake() => this with { Same = 0 };
+}
+
 /// <summary>The top-left dungeon panel from its OCR lines (spec § D): a raid shows "N막 : name", a difficulty in brackets
 /// ([싱글 모드] / [노말] / [하드] / [나이트메어], EX in front for EX raids) and 재시작; a guardian raid shows 목표 가디언 and
 /// 토벌 중단 instead. OCR misreads Korean now and then ("심글", "니이트에어"), so the difficulty is the word sharing the most

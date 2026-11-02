@@ -45,6 +45,9 @@ public sealed record Snapshot(
     /// <summary>The dungeon the top-left panel last showed (read while the meter is on); null while unknown or the meter is off.</summary>
     public DungeonInfo? Dungeon { get; init; }
 
+    /// <summary>Where the player is (the in-game meter, the boss bar: RaidPresence); local only, not sent to the party.</summary>
+    public RaidPresence Presence { get; init; } = RaidPresence.None;
+
     /// <summary>What the meter window draws (built by App from mine and the party's, once a second); null while it is off.</summary>
     public MeterView? MeterView { get; init; }
 
