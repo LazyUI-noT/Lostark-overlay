@@ -106,7 +106,7 @@ public sealed class BuffReader
 
     /// <summary>Correlation of two colour thumbnails with each channel's own mean removed: the same shapes in each
     /// channel, whatever the colour balance (every gold icon has R &gt; G &gt; B; colour is the hue check's job).</summary>
-    static double ChannelNcc(float[] a, float[] b)
+    internal static double ChannelNcc(float[] a, float[] b)
     {
         Span<double> ma = stackalloc double[3], mb = stackalloc double[3];
         for (int i = 0; i < a.Length; i++) { ma[i % 3] += a[i]; mb[i % 3] += b[i]; }
@@ -116,7 +116,7 @@ public sealed class BuffReader
         return saa < 1e-6 || sbb < 1e-6 ? 0 : sab / Math.Sqrt(saa * sbb);
     }
 
-    static double HueDistance(double a, double b) { double d = Math.Abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+    internal static double HueDistance(double a, double b) { double d = Math.Abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 
     // ── Timer ("7초", "0.7초") ────────────────────────────────────────────────────────────────────────────────────
     // The game's timer font does not scale in proportion to the buff size (its size steps unevenly: 80% text is 0.55

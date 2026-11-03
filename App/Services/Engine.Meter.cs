@@ -76,11 +76,10 @@ public sealed partial class Engine
     bool ReadMeter(Image hp, Image? panel, TimeSpan t)
     {
         _lastMeter = t;
-        double scale = Geometry.Scale(_vp, _fit!);
         var reading = panel is null ? null : JeonbunReader.Read(panel);
         bool present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
         _panelMisses = present ? 0 : _panelMisses + 1;
-        var read = BossDigits.ReadBar(hp, scale).Hp;   // a shield in brackets counts as HP (its breaking is damage)
+        var read = BossBar(hp).Hp;   // a shield in brackets counts as HP (its breaking is damage)
         Saw(meter: present, boss: read is not null, t);
         var next = MeterTracker.Step(_meter, read is var (cur, max, _) ? (cur, max) : null, reading, reading is not null, t, read?.Shield ?? 0);
         bool changed = next != _meter;

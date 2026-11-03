@@ -345,16 +345,10 @@ public sealed partial class Engine : IDisposable
         if (judgBand is { } band) rects.Add(band);
         int raidAt = rects.Count;
         if (raidName is { } nameRect) rects.Add(nameRect);
-        int raidCountAt = rects.Count;
-        if (raidCount is { } countRect) rects.Add(countRect);
-        int raidHpAt = rects.Count;
-        if (raidHp is { } raidHpRect) rects.Add(raidHpRect);
         int meterAt = rects.Count;
-        if (meterHp is { } hpRect) rects.Add(hpRect);
         if (meterPanel is { } panelRect) rects.Add(panelRect);
         var (amsuText, amsuStrip) = AmsuRects(config, poll, due);
         int amsuAt = rects.Count;
-        if (amsuText is { } amsuTextRect) rects.Add(amsuTextRect);
         if (amsuStrip is { } amsuStripRect) rects.Add(amsuStripRect);
         int previewAt = rects.Count;   // 위치 조정's bar score, from the same capture as the reads
         if (preview) rects.Add(FitSolver.Band(_vp));
@@ -362,10 +356,12 @@ public sealed partial class Engine : IDisposable
         if (dungeonRect is { } dungeonPanel) rects.Add(dungeonPanel);
         int searchAt = rects.Count;
         if (searchRect is { } searchArea) rects.Add(searchArea);
-        int bossProbeAt = rects.Count;
-        if (bossProbe is { } bossRow) rects.Add(bossRow);
         int meterProbeAt = rects.Count;
         if (meterProbe is { } meterSpot) rects.Add(meterSpot);
+        // The boss bar's text row (Geometry.BossTextRow) once, for all who read it this step: the 줄 수 count and the max HP, the
+        // meter's HP, 암수's HP and the boss probe. One copy and one read (BossBar) instead of up to four.
+        int bossRowAt = rects.Count;
+        if ((raidCount ?? raidHp ?? meterHp ?? amsuText ?? bossProbe) is { } bossTextRow) rects.Add(bossTextRow);
 
         var images = rects.Select(Buffer).ToList();
         long ts = 0;
@@ -380,6 +376,7 @@ public sealed partial class Engine : IDisposable
             return;
         }
         var t = Clock.FromTimestamp(ts);
+        _barRow = null;   // the buffers are reused: a new step's row is read afresh
         bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent | KeepWhileHidden(t);
         _gaugeSpent = false;
         if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
@@ -399,12 +396,12 @@ public sealed partial class Engine : IDisposable
         else if (fastTimers.Count > 0) changed |= Perf.Run("디버프 (시간)", () => ReadDebuffTimers(images, debuffAt, fastTimers, debuffSize, t));
         if (judging)
             changed |= Perf.Run("단심", () => ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t));
-        if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[meterAt], meterPanel is null ? null : images[meterAt + 1], t));
+        if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[bossRowAt], meterPanel is null ? null : images[meterAt], t));
         if (amsuText is not null || amsuStrip is not null)
-            changed |= Perf.Run("암수", () => ReadAmsu(config, amsuText is null ? null : images[amsuAt], amsuStrip is null ? null : images[amsuAt + (amsuText is null ? 0 : 1)], t));
+            changed |= Perf.RunCpu("암수", () => ReadAmsu(config, amsuText is null ? null : images[bossRowAt], amsuStrip is null ? null : images[amsuAt], t));
         if (raidName is not null || raidCount is not null)
-            changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[raidCountAt], raidHp is null ? null : images[raidHpAt], t));
-        if (bossProbe is not null) Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossProbeAt], t));
+            changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[bossRowAt], raidHp is null ? null : images[bossRowAt], t));
+        if (bossProbe is not null) Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossRowAt], t));
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
         if (searchRect is not null) Perf.Run("전분 위치 찾기", () => SearchPanel(images[searchAt], t));

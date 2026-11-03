@@ -12,7 +12,8 @@ namespace GaugeOverlay.Tests;
 public sealed class AmsuSimulationTests
 {
     static readonly Image Source = Fixture.Load("amsu_live_120_slot3").Frames[0];
-    static readonly AmsuLayout Layout = AmsuLayout.Of(new Viewport(0, 0, 1920, 1080), new Fit(110.05), 120);
+    // The row placed at its line in this strip, as the engine's BossDebuffStrip places it in its own.
+    static readonly AmsuLayout Layout = AmsuLayout.Of(new Viewport(0, 0, 1920, 1080), new Fit(110.05), 120) with { Line = Line };
     const int First = 228, Spacing = 31, Line = 41;   // the first debuff's left frame line, the slot spacing, the row's line
     const int Debuff1 = 0, Debuff2 = 1, Bitam = 2;    // cells in the source: 3초, 2초, the 빛암 (22초)
     const int CellTop = 34, CellBottom = 96;          // icon and text rows of a cell
@@ -83,7 +84,7 @@ public sealed class AmsuSimulationTests
         int top = (int)Math.Round(ScreenTop - (Line - CellTop) * f) - rect.Y;
         for (int slot = 0; slot < cells.Length; slot++)
             Paste(row, Shrunk(cells[slot] is { } c ? Cell(c) : BackgroundCell(), f), ScreenFirst + slot * spacing - rect.X, top);
-        return (row, AmsuLayout.Of(Hd, Hud, size), ScreenTop - rect.Y);
+        return (row, AmsuLayout.Of(Hd, Hud, size) with { Line = ScreenTop - rect.Y }, ScreenTop - rect.Y);
     }
 
     static Image Shrunk(Image cell, double f) => ImageOps.Resample(cell, new PixelRect(0, 0, cell.Width, cell.Height), f);

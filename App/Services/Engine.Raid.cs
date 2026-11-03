@@ -57,7 +57,7 @@ public sealed partial class Engine
         if (name is not null)
         {
             _lastName = t;
-            long? maxHp = hp is null ? null : BossDigits.ReadBar(hp, scale).Hp?.Max;
+            long? maxHp = hp is null ? null : BossBar(hp).Hp?.Max;
             if (maxHp is not null) Saw(meter: false, boss: true, t);   // the HP text read here is the boss bar too
             var byHp = RaidData.ByHp(gates, maxHp);
             // A boss the name read (OCR) found stays found while its max HP reads the same, with a check read every 30 s
@@ -95,7 +95,7 @@ public sealed partial class Engine
             Image? countPixels = null;   // "X n" alone, for 화면 그대로
             if (count is not null)
             {
-                var bar = BossDigits.ReadBar(count, scale, hp: false);
+                var bar = BossBar(count, hp: false);
                 if (bar.Count is not null) Saw(meter: false, boss: true, t);   // "X n" read: the boss bar is up
                 if (bar.CountArea is { } at) countPixels = count.Crop(at);
                 _bar = BarAlert.Update(_bar, bar.Count, t, BarAlert.Thresholds(s.AlertsOf(gate), s.OffsetOf(gate.Id)));

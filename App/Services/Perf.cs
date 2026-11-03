@@ -25,6 +25,15 @@ public static partial class Perf
 
     public static void Run(string part, Action work) => Run(part, () => { work(); return 0; });
 
+    /// <summary><see cref="Run{T}"/> with the thread's own CPU time too (<see cref="AddCpu"/>): the wall time alone counts
+    /// waits for other programs (a video player in a replay, a slower core after idling).</summary>
+    public static T RunCpu<T>(string part, Func<T> work)
+    {
+        long t0 = Stopwatch.GetTimestamp(), cpu0 = ThreadCpu();
+        try { return work(); }
+        finally { AddCpu(part, Stopwatch.GetTimestamp() - t0, ThreadCpu() - cpu0); }
+    }
+
     public static void Add(string part, long ticks)
     {
         string? line = null;

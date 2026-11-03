@@ -87,13 +87,16 @@ public sealed class JeonbunSweep
         var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_HUD") ?? "100"));
         bool all = Environment.GetEnvironmentVariable("GAUGE_AMSU_ALL") is not null;
         var layout = AmsuLayout.Of(vp, fit, size);
-        PixelRect text = Geometry.BossTextRow(vp, fit), strip = Geometry.BossRowSearch(vp, fit, size);
+        PixelRect text = Geometry.BossTextRow(vp, fit), strip = Geometry.BossDebuffStrip(vp, fit, size);
         int top = Math.Min(text.Y, strip.Y), bottom = Math.Max(text.Bottom, strip.Bottom);
         PixelRect In(PixelRect r) => r with { Y = r.Y - top };
         var watch = new AmsuWatch { Rate = Environment.GetEnvironmentVariable("GAUGE_AMSU_RATE") == "low" ? AmsuRate.낮음 : AmsuRate.높음 };
         int identified = 0;
         var spent = TimeSpan.Zero;   // the reads' own time (boss text, row, timers), not the decode
         var reads = new Dictionary<RowPass, int> { [RowPass.Frames] = 0, [RowPass.Timers] = 0 };
+        // Where the time goes: identifications (template match, maybe a line search), walks (kept bombs), timer passes.
+        var cost = new Dictionary<string, (int N, TimeSpan T)> { ["walk"] = (0, TimeSpan.Zero), ["timers"] = (0, TimeSpan.Zero), ["boss text"] = (0, TimeSpan.Zero), ["resample"] = (0, TimeSpan.Zero) };
+        void Add(string k, TimeSpan d) => cost[k] = (cost[k].N + 1, cost[k].T + d);
         var lines = new List<string>();
         foreach (var (t, band) in Frames(video, vp.X, top, vp.Width, bottom - top, fps: int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_FPS") ?? "10")))
         {
@@ -103,10 +106,23 @@ public sealed class JeonbunSweep
             reads[pass]++;
             var sw = Stopwatch.StartNew();
             long? boss = bossText ? BossDigits.ReadBar(band.Crop(In(text) with { X = text.X - vp.X }), Geometry.Scale(vp, fit)).Hp?.Max : null;
+            if (bossText) Add("boss text", sw.Elapsed);
+            var rowStart = sw.Elapsed;
             var s = band.Crop(In(strip) with { X = strip.X - vp.X });
+            if (Environment.GetEnvironmentVariable("GAUGE_AMSU_RESAMPLE") is not null)   // the strip to reference size alone, once per pass
+            {
+                sw.Stop();
+                var rs = Stopwatch.StartNew();
+                _ = DebuffReader.ToReference(s, layout.Scale);
+                Add("resample", rs.Elapsed);
+                sw.Start();
+            }
             var (edges, _) = watch.Read(layout, pass, boss, s, now);
             spent += sw.Elapsed;
             if (watch.ClassifiedAt == now) identified++;
+            string kind = pass == RowPass.Timers ? "timers" : watch.ClassifiedAt != now ? "walk" : watch.State.Up.Count > 0 ? "identify (bomb up)" : "identify (no bomb)";
+            if (!cost.ContainsKey(kind)) cost[kind] = (0, TimeSpan.Zero);
+            Add(kind, sw.Elapsed - rowStart);
             foreach (var e in edges) lines.Add($"{t:0.00} {e.Kind} {e.Change} {e.Left:0.0} (line {watch.Line})");
             if (all && pass == RowPass.Frames)
             {
@@ -116,6 +132,44 @@ public sealed class JeonbunSweep
             }
         }
         lines.Add($"passes: {reads[RowPass.Frames]} frame, {reads[RowPass.Timers]} timer, {identified} identified, {spent.TotalMilliseconds:0} ms");
+        foreach (var (k, (n, d)) in cost) lines.Add($"  {k}: {n} x {(n == 0 ? 0 : d.TotalMilliseconds / n):0.00} ms = {d.TotalMilliseconds:0} ms");
+        File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
+    }
+
+    /// <summary>GAUGE_AMSU_BENCH: each step of a 암수 read timed alone over a video's frames (2 a second), each run 5 times over
+    /// them so the times are steady: the strip resized, the walk on the line, an identification on the line, a line search, the
+    /// boss's HP text. GAUGE_AMSU_SIZE, GAUGE_AMSU_VP and GAUGE_AMSU_LINE (strip px, default 53) as GAUGE_AMSU.</summary>
+    [Fact]
+    public void Amsu_steps_timed_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_AMSU_BENCH") is not { } video) return;
+        int size = int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_SIZE") ?? "100");
+        int[] a = (Environment.GetEnvironmentVariable("GAUGE_AMSU_VP") ?? "0,0,1920,1080").Split(',').Select(int.Parse).ToArray();
+        int line = int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_LINE") ?? "53");
+        var vp = new Viewport(a[0], a[1], a[2], a[3]);
+        var fit = new Fit(100);
+        var layout = AmsuLayout.Of(vp, fit, size);
+        PixelRect text = Geometry.BossTextRow(vp, fit), strip = Geometry.BossDebuffStrip(vp, fit, size);
+        int top = Math.Min(text.Y, strip.Y), bottom = Math.Max(text.Bottom, strip.Bottom);
+        var frames = Frames(video, vp.X, top, vp.Width, bottom - top, fps: 2)
+            .Select(f => (Strip: f.Image.Crop(strip with { X = strip.X - vp.X, Y = strip.Y - top }), Text: f.Image.Crop(text with { X = text.X - vp.X, Y = text.Y - top })))
+            .ToList();
+        var sized = frames.Select(f => DebuffReader.ToReference(f.Strip, layout.Scale)).ToList();
+        double scale = Geometry.Scale(vp, fit);
+        var lines = new List<string> { $"{frames.Count} frames, strip {strip.Width}x{strip.Height}, scale {layout.Scale:0.###}" };
+        void Time(string name, Action<int> step)
+        {
+            for (int i = 0; i < frames.Count; i++) step(i);   // warm up
+            var sw = Stopwatch.StartNew();
+            for (int run = 0; run < 5; run++) for (int i = 0; i < frames.Count; i++) step(i);
+            lines.Add($"{name}: {sw.Elapsed.TotalMilliseconds / (5 * frames.Count):0.000} ms");
+        }
+        Time("resize strip", i => DebuffReader.ToReference(frames[i].Strip, layout.Scale));
+        Time("walk on the line (sized)", i => AmsuReader.WalkIn(sized[i], layout.Scale, layout.Slots, line));
+        Time("identify on the line (sized)", i => AmsuReader.LocateIn(sized[i], layout.Scale, layout.Slots, line, search: false));
+        Time("line search (sized, no lock)", i => AmsuReader.LocateIn(sized[i], layout.Scale, layout.Slots, null, search: true));
+        Time("row lines only (sized)", i => DebuffReader.RowYs(sized[i], layout.Scale));
+        Time("boss HP text", i => BossDigits.ReadBar(frames[i].Text, scale));
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 

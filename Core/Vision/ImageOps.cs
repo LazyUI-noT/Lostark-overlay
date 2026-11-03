@@ -20,26 +20,41 @@ public static class ImageOps
     {
         int w = Math.Max(1, (int)Math.Round(r.Width * f)), h = Math.Max(1, (int)Math.Round(r.Height * f));
         var dst = new Image(w, h);
+        // Each column's source pixels and weight once (the same values the per-pixel sum used: the picture is unchanged).
+        var x0s = new int[w];
+        var x1s = new int[w];
+        var fxs = new double[w];
+        for (int x = 0; x < w; x++)
+        {
+            double sx = Math.Clamp(r.X + (x + 0.5) / f - 0.5, 0, img.Width - 1);
+            x0s[x] = (int)sx;
+            x1s[x] = Math.Min(img.Width - 1, x0s[x] + 1);
+            fxs[x] = sx - x0s[x];
+        }
+        byte[] src = img.Bgra, to = dst.Bgra;
         for (int y = 0; y < h; y++)
         {
             double sy = Math.Clamp(r.Y + (y + 0.5) / f - 0.5, 0, img.Height - 1);
             int y0 = (int)sy, y1 = Math.Min(img.Height - 1, y0 + 1);
-            double fy = sy - y0;
-            for (int x = 0; x < w; x++)
+            double fy = sy - y0, gy = 1 - fy;
+            int top = y0 * img.Stride, bottom = y1 * img.Stride, o = y * dst.Stride;
+            for (int x = 0; x < w; x++, o += 4)
             {
-                double sx = Math.Clamp(r.X + (x + 0.5) / f - 0.5, 0, img.Width - 1);
-                int x0 = (int)sx, x1 = Math.Min(img.Width - 1, x0 + 1);
-                double fx = sx - x0;
-                for (int c = 0; c < 4; c++)
-                {
-                    double t = img.Bgra[y0 * img.Stride + x0 * 4 + c] * (1 - fx) + img.Bgra[y0 * img.Stride + x1 * 4 + c] * fx;
-                    double b = img.Bgra[y1 * img.Stride + x0 * 4 + c] * (1 - fx) + img.Bgra[y1 * img.Stride + x1 * 4 + c] * fx;
-                    dst.Bgra[y * dst.Stride + x * 4 + c] = (byte)Math.Round(t * (1 - fy) + b * fy);
-                }
+                int a = x0s[x] * 4, b = x1s[x] * 4;
+                double fx = fxs[x], gx = 1 - fx;
+                to[o] = Mix(src, top + a, top + b, bottom + a, bottom + b, gx, fx, gy, fy);
+                to[o + 1] = Mix(src, top + a + 1, top + b + 1, bottom + a + 1, bottom + b + 1, gx, fx, gy, fy);
+                to[o + 2] = Mix(src, top + a + 2, top + b + 2, bottom + a + 2, bottom + b + 2, gx, fx, gy, fy);
+                to[o + 3] = Mix(src, top + a + 3, top + b + 3, bottom + a + 3, bottom + b + 3, gx, fx, gy, fy);
             }
         }
         return dst;
     }
+
+    /// <summary>One channel of a bilinear pixel: the top pair, the bottom pair, then the two rows.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    static byte Mix(byte[] s, int tl, int tr, int bl, int br, double gx, double fx, double gy, double fy) =>
+        (byte)Math.Round((s[tl] * gx + s[tr] * fx) * gy + (s[bl] * gx + s[br] * fx) * fy);
 
     /// <summary>Bilinear resample of a <paramref name="sw"/>×<paramref name="sh"/> grey image to <paramref name="w"/>×<paramref name="h"/>.</summary>
     public static float[] Resample(float[] src, int sw, int sh, int w, int h)

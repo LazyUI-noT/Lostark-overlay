@@ -56,6 +56,14 @@ public static class Amsu
     /// only that a bomb is up, while its icon is seen.</summary>
     public static bool Timed(int bossSize) => bossSize >= AmsuReader.ReadableFrom;
 
+    /// <summary>Whether bombs are read at all: the boss debuff icons at least <see cref="MinIconPx"/> on screen (user, 2026-11-04:
+    /// 80% at 1080p is not supported). Smaller, a 빛암's 1 px frame blurs and the walk loses it behind a red-art icon (빛암 80_90).</summary>
+    public static bool Readable(Viewport vp, Fit fit, int bossSize) =>
+        DebuffReader.BossIconSize * Geometry.BossScale(vp, fit, bossSize) >= MinIconPx;
+
+    /// <summary>Icon side in screen px: 80% at 1080p HUD 110 is 20 px (fails), 90% 23 px (reads).</summary>
+    public const double MinIconPx = 21.5;
+
     /// <summary>The same on screen (user, 2026-11-01): the "N초" as large as 100% at 1080 high, so a game area shorter than 1080
     /// (forced 21:9 at 1920×1080: 810) needs more, a taller one less. Replay 14 misread the digits at 1920×810 and 100%.</summary>
     public static bool Timed(Viewport vp, int bossSize) => Geometry.BuffScale(vp, bossSize) >= AmsuReader.ReadableFrom / 100.0 - 0.005;
@@ -186,10 +194,13 @@ public static class Amsu
 /// <summary>When the 암수 loop searches the boss row for its line (the read cadence itself is RowCadence's). Pure.</summary>
 public static class AmsuSchedule
 {
+    /// <summary>A settled line with no bomb up is searched past this often: nothing but the game's settings moves the row (user,
+    /// 2026-11-04), but the app's 보스 디버프 크기 may not match the game's (the 80_90 clip read at one size: 10 s started bombs up
+    /// to 7 s late, 2 s within 1.5 s).</summary>
     public static readonly TimeSpan LineSearchEvery = TimeSpan.FromSeconds(2);
 
-    /// <summary>Whether an icon read that misses on the settled line also tries the candidate lines: without a settled line, every
-    /// <see cref="LineSearchEvery"/> (a line that moved), and at once while a bomb is up: a bomb unseen 1.5 s on a visible row
+    /// <summary>Whether an icon read that misses on the settled line also tries the candidate lines: always without a settled line,
+    /// every <see cref="LineSearchEvery"/> with one, and at once while a bomb is up: a bomb unseen 1.5 s on a visible row
     /// ends, so a miss on a stale line made it blink (user, 2026-11-01). Locate tries the candidates only after that miss.</summary>
     public static bool SearchLines(bool settled, TimeSpan sinceSearch, bool bombUp) =>
         !settled || bombUp || sinceSearch >= LineSearchEvery;

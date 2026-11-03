@@ -78,10 +78,22 @@ public class AmsuTests
     [Theory]
     [InlineData(false, 0.5, false, true)]    // no settled line yet: search
     [InlineData(true, 0.5, false, false)]    // the settled line alone: cheap
-    [InlineData(true, 2.0, false, true)]     // every 2 s the candidates too (a line that moved)
+    [InlineData(true, 1.5, false, false)]    // a settled line alone: nothing moves the row but the settings (user, 2026-11-04)
+    [InlineData(true, 2.0, false, true)]     // every 2 s the candidates too: the app's 보스 디버프 크기 may not match the game's
     [InlineData(true, 0.5, true, true)]      // a bomb up: at once, or a miss on the settled line ends it (user: 암수 blinked)
     public void The_candidate_lines_are_searched_when_needed(bool settled, double since, bool bombUp, bool search) =>
         Assert.Equal(search, AmsuSchedule.SearchLines(settled, T(since), bombUp));
+
+    // Icons under about 21.5 px on screen aren't read at all (user, 2026-11-04): at 80% (1080p, HUD 110: 20 px) a 빛암's 1 px
+    // frame blurs and the walk loses it behind a red-art icon (빛암 80_90 at 41–46 s); at 90% (23 px) it reads.
+    [Theory]
+    [InlineData(1080, 110, 80, false)]
+    [InlineData(1080, 110, 90, true)]
+    [InlineData(1080, 100, 100, true)]
+    [InlineData(1440, 110, 80, true)]    // 1440p: 80% is 27 px
+    [InlineData(810, 110, 90, false)]    // forced 21:9 at 1920×1080: 90% is 17 px
+    public void Bombs_are_read_only_where_the_icons_are_big_enough(int gameHeight, double hud, int bossSize, bool readable) =>
+        Assert.Equal(readable, Amsu.Readable(new Viewport(0, 0, gameHeight * 2, gameHeight), new Fit(hud), bossSize));
 
     [Theory]
     [InlineData(80, false)]

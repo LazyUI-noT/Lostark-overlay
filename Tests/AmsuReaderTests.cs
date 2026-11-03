@@ -277,6 +277,48 @@ public class AmsuReaderTests
         Assert.True(w.State.Up.ContainsKey(Bomb.빛암), "not found on the first read after the row moved");
     }
 
+    // The row's line is set by the game's settings alone (HUD 크기, 보스 디버프 크기, resolution: user, 2026-11-04): it settles on
+    // the boss's red-framed debuffs before any bomb, so the candidate lines aren't searched on every identification.
+    [Fact]
+    public void A_row_of_debuffs_without_a_bomb_names_its_line()
+    {
+        var find = AmsuReader.Locate(Strip("amsu_35"), Scale, WideSlots, null);
+        Assert.Empty(find.Bombs);
+        Assert.InRange(find.FramedY ?? -99, ClipRowY - 2, ClipRowY + 2);
+    }
+
+    [Fact]
+    public void A_row_of_debuffs_without_a_bomb_settles_the_line()
+    {
+        var layout = new AmsuLayout(Scale, TextScale, WideSlots, Timed: true);
+        var w = new AmsuWatch();
+        foreach (double at in new[] { 0.0, 500, 1000 }) w.Read(layout, RowPass.Frames, Boss, Strip("amsu_35"), Ms(at));
+        Assert.Empty(w.State.Up);
+        Assert.InRange(w.Line ?? -99, ClipRowY - 2, ClipRowY + 2);
+    }
+
+    [Fact]
+    public void The_snap_keeps_the_placed_line_unless_another_shows_more_debuffs()
+    {
+        var (strip, scale, _) = HdStrip("bitam_100", 100);
+        var r = DebuffReader.ToReference(strip, scale);
+        int line = AmsuReader.Locate(strip, scale, HdSlots(100), null).Y!.Value;
+        Assert.Equal(line, AmsuReader.SnapIn(r, scale, HdSlots(100), line, 2));
+        int off = line + 1;   // placed a px off: the frames read as well there, so the placed line stays (a tie)
+        Assert.InRange(AmsuReader.SnapIn(r, scale, HdSlots(100), off, 2) ?? -99, line - 1, line + 2);
+        Assert.Null(AmsuReader.SnapIn(new Image(strip.Width, strip.Height), scale, HdSlots(100), line, 2));   // no debuffs: no snap
+    }
+
+    [Fact]
+    public void Another_layout_forgets_the_line()   // a settings change moves the row: it is learnt again
+    {
+        var (strip, scale, text) = HdStrip("bitam_100", 100);
+        var w = Settled(new AmsuLayout(scale, text, HdSlots(100), Timed: true), strip);
+        var (strip110, scale110, text110) = HdStrip("bitam_110", 110);
+        w.Read(new AmsuLayout(scale110, text110, HdSlots(110), Timed: true), RowPass.Frames, Boss, strip110, Ms(1500));
+        Assert.Null(w.Line);   // one read of the new row: not settled yet
+    }
+
     [Fact]
     public void A_row_without_a_bomb_waits_for_the_next_identification()   // user, 2026-11-01: a new bomb seen within 0.5 s is fine
     {

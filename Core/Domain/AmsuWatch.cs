@@ -4,11 +4,13 @@ using GaugeOverlay.Core.Vision;
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>How the boss row reads at the current layout: the icons' scale, the "N초" scale, the debuff slots in the strip, and
-/// whether the time is read at all (<see cref="Amsu.Timed"/>).</summary>
-public sealed record AmsuLayout(double Scale, double TextScale, BossSlots Slots, bool Timed)
+/// whether the time is read at all (<see cref="Amsu.Timed"/>), and the row's line in the strip when it is placed (the engine's
+/// <see cref="Geometry.BossDebuffStrip"/>: HUD and resolution set it, user 2026-11-04); null: found in the strip (a search strip).</summary>
+public sealed record AmsuLayout(double Scale, double TextScale, BossSlots Slots, bool Timed, int? Line = null)
 {
     public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize) =>
-        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize), Amsu.Timed(vp, bossSize));
+        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize), Amsu.Timed(vp, bossSize),
+            Geometry.BossDebuffLine);
 }
 
 /// <summary>The 암수 read loop (amsu.design.md) as the engine runs it on its captures and the dev sweep on a video, on the cadence
@@ -25,6 +27,7 @@ public sealed class AmsuWatch
     bool _unread;                        // a timed bomb's "N초" unread on the last frame pass: identify again
     Dictionary<Bomb, double> _seconds = [];   // each bomb's last "N초" read: under 2 s, the timer pass reads it
     AmsuRow? _last;                      // the last row read: the window redraws only when it changes
+    AmsuLayout? _layout;                 // the layout the line was learnt at
     TimeSpan _searched = TimeSpan.MinValue, _framesAt = TimeSpan.MinValue, _timersAt = TimeSpan.MinValue;
     TimeSpan? _foundSince;               // since when bombs have been found without a break (AmsuPace's lock)
 
@@ -40,7 +43,12 @@ public sealed class AmsuWatch
     public AmsuRow? LastRow => _last;
 
     /// <summary>The row's settled line (strip px), for the log.</summary>
-    public int? Line => _line.Y;
+    public int? Line => LineY;
+
+    /// <summary>The line walked: the placed one, snapped once to the frames (<see cref="Geometry.BossLineSnap"/>), else the settled one.</summary>
+    int? LineY => _layout?.Line is { } placed ? placed + _snap : _line.Y;
+    int _snap;          // px the placed line moved to sit on the frames
+    bool _snapped;      // the snap is done for this layout
 
     /// <summary>An identification due whatever the walk finds: by time, or a timed bomb's "N초" unread (the boss's HP text with it).</summary>
     bool IdentifyDue(TimeSpan now, TimeSpan classifyEvery) => _unread || RowCadence.Elapsed(now, ClassifiedAt, classifyEvery);
@@ -63,7 +71,7 @@ public sealed class AmsuWatch
         var pass = RowCadence.Due(_framesAt, _timersAt, fast, now, frames);
         // No line to walk yet, or no bomb in the row: the next identification finds a new one (within 0.5 s at 높음: user,
         // 2026-11-01; 1 s at 낮음).
-        if (pass == RowPass.Frames && (_line.Y is null || _found.Count == 0) && !IdentifyDue(now, classify)) pass = RowPass.None;
+        if (pass == RowPass.Frames && (LineY is null || _found.Count == 0) && !IdentifyDue(now, classify)) pass = RowPass.None;
         return (pass, pass == RowPass.Frames && IdentifyDue(now, classify));
     }
 
@@ -89,8 +97,12 @@ public sealed class AmsuWatch
         var (_, classify) = Pace(t, layout.Timed);
         bool bossRead = IdentifyDue(t, classify);
         (_framesAt, _timersAt) = (t, t);
+        if (layout != _layout) (_layout, _line, _snap, _snapped) = (layout, RowLock.None, 0, false);   // another HUD, size or resolution: placed again
+        // The strip at reference size, once for the pass: the walk and the identification both use it.
+        Image? sized = null;
+        Image Sized() => sized ??= DebuffReader.ToReference(strip, layout.Scale);
         // Identifying due by time or an unread timer: no walk first (the match walks the row itself).
-        var walk = !bossRead && _line.Y is { } y ? AmsuReader.Walk(strip, layout.Scale, layout.Slots, y) : null;
+        var walk = !bossRead && LineY is { } y ? AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, y) : null;
         bool identify = walk is null || RowCadence.Identify(_filled, walk.Filled.Count, ClassifiedAt, _unread, t, classify);
         // A boss read starts the search; between boss reads a walked row goes on. Untimed, a bomb already up keeps it going
         // while a popup hides the HP text (review 2026-11-01); timed, the countdown runs on through it (a cutscene hides the
@@ -98,8 +110,8 @@ public sealed class AmsuWatch
         bool allowed = boss is not null || !bossRead && walk is not null || State.Up.Count > 0 && !layout.Timed;
         // Due but the HP text unread: the bombs found go on along the settled line, as between identifications (replay 14: an
         // unread "N초" asked for one every pass, each dropped the bombs, and they went unseen until a missed match ended one).
-        if (identify && !allowed && _found.Count > 0 && _line.Y is { } kept)
-            (walk, identify) = (AmsuReader.Walk(strip, layout.Scale, layout.Slots, kept), false);
+        if (identify && !allowed && _found.Count > 0 && LineY is { } kept)
+            (walk, identify) = (AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, kept), false);
         if (identify)
         {
             if (!allowed)
@@ -108,10 +120,16 @@ public sealed class AmsuWatch
                 return null;
             }
             // Without a boss read only the settled line is matched: a search could take another row's icon for a bomb.
-            bool search = boss is not null && AmsuSchedule.SearchLines(_line.Y is not null, Since(t, _searched), State.Up.Count > 0);
+            // A placed line: snapped once to the boss's debuff frames, then read there alone; no search.
+            if (layout.Line is { } placed && !_snapped && AmsuReader.SnapIn(Sized(), layout.Scale, layout.Slots, placed, Geometry.BossLineSnap) is { } snapped)
+                (_snap, _snapped) = (snapped - placed, true);
+            bool search = layout.Line is null && boss is not null && AmsuSchedule.SearchLines(_line.Y is not null, Since(t, _searched), State.Up.Count > 0);
             if (search) _searched = t;
-            var find = AmsuReader.Locate(strip, layout.Scale, layout.Slots, _line.Y, search);
-            _line = _line.Next(find.Bombs.Count > 0 ? find.Y : null);   // a line counts only where a bomb was found on it
+            var find = AmsuReader.LocateIn(Sized(), layout.Scale, layout.Slots, LineY, search);
+            // A bomb's line, else the line of the boss's red-framed debuffs: only the game's settings move the row (user,
+            // 2026-11-04), so it settles before any bomb and the candidates aren't searched on every identification.
+            // Once settled, only a bomb moves it: a frames-only read of the held line would reset a move a bomb elsewhere began.
+            if (layout.Line is null) _line = _line.Next(find.Bombs.Count > 0 ? find.Y : _line.Y is null ? find.FramedY : null);
             (_found, _full, _seen, _filled, ClassifiedAt) = (find.Bombs, find.Full, find.Seen, find.Filled, t);
         }
         else if (walk is not null)   // the same row (no identification means a walk): the bombs kept, each moved to its slot's box (gone with its slot)

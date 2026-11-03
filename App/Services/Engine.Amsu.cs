@@ -24,16 +24,21 @@ public sealed partial class Engine
         _amsuWatch.Rate = config.AmsuRate;
         // Only in a dungeon (the in-game meter or a boss bar, held through cutscenes); cleared on leaving (StepPresence).
         if (!_amsuOn || !poll || _fit is null || !_presence.InDungeon(now)) return (null, null);
+        if (!Amsu.Readable(_vp, _fit, config.BossSize))   // icons too small to read (80% at 1080p): nothing shown, a bomb up cleared
+        {
+            if (_amsu.Up.Count > 0) { _amsuWatch = new AmsuWatch(); Publish(now); }
+            return (null, null);
+        }
         _amsuTimed = Amsu.Timed(_vp, config.BossSize);
         (_amsuPass, bool bossText) = _amsuWatch.Due(now, _amsuTimed);
         if (_amsuPass == RowPass.None) return (null, null);
-        return (bossText ? Geometry.BossTextRow(_vp, _fit) : null, Geometry.BossRowSearch(_vp, _fit, config.BossSize));
+        return (bossText ? Geometry.BossTextRow(_vp, _fit) : null, Geometry.BossDebuffStrip(_vp, _fit, config.BossSize));
     }
 
     /// <summary>Reads what <see cref="AmsuRects"/> captured and steps the countdown. True when the window changes.</summary>
     bool ReadAmsu(Config config, Image? text, Image? strip, TimeSpan t)
     {
-        long? boss = text is null ? null : BossDigits.ReadBar(text, Geometry.Scale(_vp, _fit!)).Hp?.Max;
+        long? boss = text is null ? null : BossBar(text).Hp?.Max;
         var (edges, changed) = _amsuWatch.Read(AmsuLayout.Of(_vp, _fit!, config.BossSize), _amsuPass, boss, strip, t);
         foreach (var e in edges)
             System.Diagnostics.Trace.WriteLine($"[amsu] {e.Kind} {e.Change}" + (e.Change == AmsuChange.끝 ? "" : $", {e.Left:0.0} s left") + $" (line {_amsuWatch.Line})");
@@ -51,7 +56,7 @@ public sealed partial class Engine
         var row = _amsuWatch.LastRow;
         var view = Amsu.View(_amsuWatch.State, t);
         System.Diagnostics.Trace.WriteLine($"[amsu-trace] t={t.TotalSeconds:0.00} {_amsuPass} boss={(boss is null ? "-" : "ok")} "
-            + $"rect={Geometry.BossRowSearch(_vp, _fit!, config.BossSize)} strip={strip?.Width}x{strip?.Height} line={_amsuWatch.Line} "
+            + $"rect={Geometry.BossDebuffStrip(_vp, _fit!, config.BossSize)} strip={strip?.Width}x{strip?.Height} line={_amsuWatch.Line} "
             + $"[{string.Join(" ", row?.Bombs.Select(b => $"{b.Kind}@{b.Slot}:{b.Seconds?.ToString() ?? "-"}") ?? [])}] full={row?.Full} seen={row?.Seen} "
             + $"| {view.Shown} {view.Left:0.0}{(view.Seen ? "" : " unseen")} timed={_amsuTimed} vp={_vp} hud={_fit!.Hud:0.##}");
         // A read with the boss's HP that found no bomb: the strip as the game showed it (once a second, at most ShotsMax), so

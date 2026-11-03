@@ -55,7 +55,12 @@ public static class AmsuReader
         FindOn(DebuffReader.ToReference(strip, scale), scale, rowY, slots).Bombs;
 
     /// <summary>The bombs found on a line, whether every slot the size shows was taken, and whether the row was there at all.</summary>
-    public sealed record RowFind(int? Y, IReadOnlyList<BombAt> Bombs, bool Full, bool Seen, int Filled = 0);
+    public sealed record RowFind(int? Y, IReadOnlyList<BombAt> Bombs, bool Full, bool Seen, int Filled = 0)
+    {
+        /// <summary>No bomb found: the first line tried that holds the boss's red-framed debuffs from the zone's first slot (the
+        /// row's line, which only the game's settings move), else null. With a bomb: <see cref="Y"/>.</summary>
+        public int? FramedY { get; init; }
+    }
 
     /// <summary>The bombs and the line they were found on (strip px): <paramref name="lockedY"/> first (RowLock's), then, when
     /// <paramref name="search"/>, DebuffReader.FindRowYs' candidates; the first line with a bomb wins. None found: the best
@@ -63,21 +68,31 @@ public static class AmsuReader
     /// <remarks><c>Full</c>: every slot the size shows holds a debuff, so a bomb missing from the row may be behind "+N" (else
     /// it is gone). <c>Seen</c>: a red or green frame on the line, so the row is on screen. Without a bomb, both are the locked
     /// line's (no locked line: not seen).</remarks>
-    public static RowFind Locate(Image strip, double scale, BossSlots slots, int? lockedY, bool search = true)
+    public static RowFind Locate(Image strip, double scale, BossSlots slots, int? lockedY, bool search = true) =>
+        LocateIn(DebuffReader.ToReference(strip, scale), scale, slots, lockedY, search);
+
+    /// <summary><see cref="Locate"/> on the strip already at reference size (<see cref="DebuffReader.ToReference"/>): a pass that
+    /// walks and then identifies resizes the strip once.</summary>
+    internal static RowFind LocateIn(Image r, double scale, BossSlots slots, int? lockedY, bool search = true)
     {
-        var r = DebuffReader.ToReference(strip, scale);
         (bool Full, bool Seen, int Filled) locked = (false, false, 0);
+        int? framed = null;
         if (lockedY is { } l)
         {
             var there = FindOn(r, scale, l, slots);
-            if (there.Bombs.Count > 0) return new(l, there.Bombs, there.Full, true, there.Filled);   // the usual case: one line matched
+            if (there.Bombs.Count > 0) return new(l, there.Bombs, there.Full, true, there.Filled) { FramedY = l };   // the usual case: one line matched
             locked = (there.Full, there.Seen, there.Filled);
+            if (there.Filled > 0) framed = l;
         }
-        if (!search) return new(lockedY, [], locked.Full, locked.Seen, locked.Filled);
+        if (!search) return new(lockedY, [], locked.Full, locked.Seen, locked.Filled) { FramedY = framed };
         var lines = DebuffReader.RowYs(r, scale);
         foreach (int y in lines.Where(c => lockedY is not { } l2 || Math.Abs(c - l2) > 2))
-            if (FindOn(r, scale, y, slots) is { Bombs.Count: > 0 } found) return new(y, found.Bombs, found.Full, true, found.Filled);
-        return new(lines.Count > 0 ? lines[0] : null, [], locked.Full, locked.Seen, locked.Filled);
+        {
+            var found = FindOn(r, scale, y, slots);
+            if (found.Bombs.Count > 0) return new(y, found.Bombs, found.Full, true, found.Filled) { FramedY = y };
+            if (found.Filled > 0) framed ??= y;
+        }
+        return new(lines.Count > 0 ? lines[0] : null, [], locked.Full, locked.Seen, locked.Filled) { FramedY = framed };
     }
 
     /// <summary>A debuff's slot in the boss debuff zone: its number from the layout's first slot and its icon box (strip px).</summary>
@@ -90,6 +105,20 @@ public static class AmsuReader
     /// <remarks>The whole strip is brought to reference size, as <see cref="Locate"/> does: a band cut out of it resamples on
     /// another sub-pixel grid, and the frame check is sharp enough (0.54 on the frame, 0.25 2 px off) to count the slots apart.</remarks>
     public static RowWalk Walk(Image strip, double scale, BossSlots slots, int rowY) => Walk(DebuffReader.ToReference(strip, scale), scale, rowY, slots);
+
+    /// <summary>The line within <paramref name="reach"/> px of <paramref name="line"/> (strip px) where the walk finds the most
+    /// red-framed debuffs from the zone's first slot: another line only when it finds more than the placed one (a tie, an icon's
+    /// red art or a damage number keeps the placed line); null when none shows any.</summary>
+    internal static int? SnapIn(Image r, double scale, BossSlots slots, int line, int reach)
+    {
+        var counts = Enumerable.Range(line - reach, 2 * reach + 1).Select(y => (Y: y, Filled: Walk(r, scale, y, slots).Filled.Count)).ToList();
+        var best = counts.OrderByDescending(c => c.Filled).ThenBy(c => Math.Abs(c.Y - line)).First();
+        int placed = counts.First(c => c.Y == line).Filled;
+        return best.Filled == 0 ? null : best.Filled > placed ? best.Y : line;
+    }
+
+    /// <summary><see cref="Walk(Image, double, BossSlots, int)"/> on the strip already at reference size.</summary>
+    internal static RowWalk WalkIn(Image r, double scale, BossSlots slots, int rowY) => Walk(r, scale, rowY, slots);
 
     /// <summary>Bombs on line <paramref name="rowY"/> (strip px) of <paramref name="r"/> (the strip at reference size): the walk, then
     /// one match per filled slot (7 debuffs cost 7 matches and one empty slot's frame check).</summary>
@@ -112,7 +141,11 @@ public static class AmsuReader
         int y = (int)Math.Round(rowY / scale), last = r.Width - Icon;
         var filled = new List<SlotAt>();
         if (y < 0 || y + Icon > r.Height || last < 0) return new(filled, false, false);
-        double Red(int x) => DebuffReader.FrameColours(r, new PixelRect(x, y, Icon, Icon)).Red;
+        // Each column's checks are asked for many times over (the line search goes back and forth): each is worked out once.
+        var reds = new double?[r.Width];
+        var lines = new bool?[r.Width + 1];
+        var borders = new bool?[r.Width + 1];
+        double Red(int x) => reds[x] ??= DebuffReader.FrameColours(r, new PixelRect(x, y, Icon, Icon)).Red;
         // Each slot onto its frame: the red share peaks where the window's band lies on the 1–2 px frame lines (0.54 there, 0.25
         // 2 px off, bitam_100), even on a red scene (amsu_15: 0.88 against 0.48 around it). The first slot's place is known to
         // ±4 px (x 927–929 at 1080p, 3 px right of it on the 21:9 clip).
@@ -121,7 +154,7 @@ public static class AmsuReader
         // Each icon is put on its own frame lines (left and right, the column nearly all red), and the next one looked for just
         // after its right line, so the walk follows the icons' real spacing (31 px at 120%, not Pitch: amsu_live_120_slot3);
         // where no lines are found (a blurred small size) the window's peak and share decide as before.
-        bool Line(int x) => x >= 0 && x < r.Width && DebuffReader.FrameColours(r, new PixelRect(x, y + 2, 1, Icon - 4)).Red >= LineShare;
+        bool Line(int x) => x >= 0 && x < r.Width && (lines[x] ??= DebuffReader.FrameColours(r, new PixelRect(x, y + 2, 1, Icon - 4)).Red >= LineShare);
         // A frame's outer line has the gap beside it: a column run of red is icon art (a fire icon at 100%: 34 columns), whose
         // last column would take the next icon's left line for this one's right (clip 빛암 120_110_100 at 102 s).
         int? Edge(int from, int to) => Enumerable.Range(from, Math.Max(0, to - from + 1)).Cast<int?>().FirstOrDefault(x => Line(x!.Value) && !Line(x.Value - 1));
@@ -141,7 +174,8 @@ public static class AmsuReader
                 if (!BorderOn(e + 1)) return e;
             return null;
         }
-        bool BorderOn(int x)
+        bool BorderOn(int x) => x is >= 0 && x < r.Width ? borders[x] ??= Border(x) : Border(x);
+        bool Border(int x)
         {
             int red = 0, all = 0;
             foreach (int row in new[] { y - 1, y, y + 1, y + 2, y + Icon - 3, y + Icon - 2, y + Icon - 1, y + Icon })
@@ -203,11 +237,48 @@ public static class AmsuReader
     }
 
     /// <summary><see cref="Best"/> at the slot's left frame line and up to <see cref="MatchSlack"/> px either side: the templates
-    /// sit a px or two inside the frame line, more or less with the size (100%: 1–2 px right of it).</summary>
-    static (Bomb Kind, double Score, int X)? Around(Image r, int x, int y) =>
-        Enumerable.Range(x - MatchSlack, 2 * MatchSlack + 1)
-            .Select(at => Best(r, new PixelRect(at, y, Icon, Icon)) is { } h ? (h.Kind, h.Score, X: at) : ((Bomb Kind, double Score, int X)?)null)
-            .OfType<(Bomb Kind, double Score, int X)>().DefaultIfEmpty().MaxBy(h => h.Score) is { Score: > 0 } hit ? hit : null;
+    /// sit a px or two inside the frame line, more or less with the size (100%: 1–2 px right of it). The tries overlap (each
+    /// matches ±s px around itself), so each box is taken once and its scores reused: 45 boxes instead of 125 at 100%, the
+    /// same answer (AmsuMatchTests).</summary>
+    internal static (Bomb Kind, double Score, int X)? Around(Image r, int x, int y)
+    {
+        var inner = BuffReader.Interior(new PixelRect(x, y, Icon, Icon));
+        int s = Math.Max(1, inner.Width / 12), span = MatchSlack + s, w = 2 * span + 1;
+        var boxes = new (double[] Ncc, double Hue)?[w * (2 * s + 1)];
+        (double[] Ncc, double Hue)? Box(int dx, int dy)   // dx from inner.X (−span…span), dy from inner.Y; null off the image
+        {
+            var rect = inner with { X = inner.X + dx, Y = inner.Y + dy };
+            if (rect.X < 0 || rect.Y < 0 || rect.Right > r.Width || rect.Bottom > r.Height) return null;
+            ref var box = ref boxes[(dy + s) * w + dx + span];
+            if (box is null)
+            {
+                var crop = ImageOps.Crop(r, rect);
+                var thumb = BuffReader.Thumb(crop);
+                box = ([.. KindThumbs.Select(t => BuffReader.ChannelNcc(thumb, t))], SlotClassifier.ColourStats(crop).MeanHue);
+            }
+            return box;
+        }
+        (Bomb Kind, double Score, int X)? hit = null;
+        var best = new double[Kinds.Length];
+        var hue = new double[Kinds.Length];
+        for (int at = -MatchSlack; at <= MatchSlack; at++)
+        {
+            // One try, as BuffReader.Match then Best do it: each kind's best box (the first on a tie), its hue, the kind over the bar.
+            Array.Fill(best, -2.0);
+            for (int dy = -s; dy <= s; dy++)
+                for (int dx = -s; dx <= s; dx++)
+                {
+                    if (Box(at + dx, dy) is not { } b) continue;
+                    for (int k = 0; k < Kinds.Length; k++)
+                        if (b.Ncc[k] > best[k]) (best[k], hue[k]) = (b.Ncc[k], BuffReader.HueDistance(b.Hue, KindHues[k]));
+                }
+            int pick = -1;
+            for (int k = 0; k < Kinds.Length; k++)
+                if (hue[k] <= BuffReader.MaxHueDistance && best[k] >= MinBomb && (pick < 0 || best[k] > best[pick])) pick = k;
+            if (pick >= 0 && (hit is null || best[pick] > hit.Value.Score)) hit = ((Bomb)Kinds[pick], best[pick], x + at);
+        }
+        return hit;
+    }
 
     const int MatchSlack = 2;
 

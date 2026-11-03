@@ -83,4 +83,23 @@ public class BossRowTests
         var r = ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), 1 / scale);
         return (r, (int)Math.Round(DebuffReader.FindRowY(img, scale)!.Value / scale));
     }
+
+    // The row's top follows the HUD and the resolution only (user and the clips, 2026-11-04): measured from the boss HP bar, the
+    // icons' top is at 169–170 on the 프로켈 clips (1920×1080, HUD 110: the bar at y 69–95 as RefBossBar) at every 보스 디버프 크기,
+    // and at 154 on the friend's 21:9 clip (2560×1080, HUD 100: the bar 0.909 of it). The strip holds that line and the "N초".
+    [Theory]
+    [InlineData(1920, 1080, 110, 80, 169.5)]
+    [InlineData(1920, 1080, 110, 100, 169.5)]
+    [InlineData(1920, 1080, 110, 120, 169.5)]
+    [InlineData(2560, 1080, 100, 100, 154)]
+    public void The_debuff_strip_puts_its_line_on_the_icons_top(int w, int h, double hud, int size, double iconTop)
+    {
+        var vp = new Viewport(0, 0, w, h);
+        var fit = new Fit(hud);
+        var strip = Geometry.BossDebuffStrip(vp, fit, size);
+        Assert.InRange(strip.Y + Geometry.BossDebuffLine, iconTop - 1.5, iconTop + 1.5);
+        double icon = DebuffReader.BossIconSize * Geometry.BossScale(vp, fit, size);
+        Assert.True(strip.Bottom >= iconTop + icon + 14 * Geometry.BuffScale(vp, size), $"{strip}: the \"N초\" under the icons is cut");
+        Assert.Equal(Geometry.BossRowSearch(vp, fit, size).X, strip.X);   // the slots (BossSlotsIn) count from the same left edge
+    }
 }

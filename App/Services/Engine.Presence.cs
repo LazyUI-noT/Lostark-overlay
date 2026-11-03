@@ -61,8 +61,20 @@ public sealed partial class Engine
     void ReadBossProbe(Image row, TimeSpan t)
     {
         _lastBossProbe = t;
-        var bar = BossDigits.ReadBar(row, Geometry.Scale(_vp, _fit!));
+        var bar = BossBar(row);
         Saw(meter: false, boss: bar.Hp is not null || bar.Count is not null, t);
+    }
+
+    // The boss text row's read, shared by the step's readers (they get the same captured image): the full read and the count
+    // alone (the 줄 수 창's, which reads from the right and stops at the count) each at most once a step.
+    Image? _barRow;
+    (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea)? _barFull, _barCount;
+
+    (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) BossBar(Image row, bool hp = true)
+    {
+        if (!ReferenceEquals(row, _barRow)) (_barRow, _barFull, _barCount) = (row, null, null);
+        double scale = Geometry.Scale(_vp, _fit!);
+        return hp ? _barFull ??= BossDigits.ReadBar(row, scale) : _barCount ??= BossDigits.ReadBar(row, scale, hp: false);
     }
 
     /// <summary>The meter's saved spot, with the overlay's meter off while a raid read is on and a probe is due.</summary>
