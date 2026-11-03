@@ -32,8 +32,9 @@ public static class RaidReadPlan
     {
         GateSettings? Row(RaidGate g) => s.Gates.GetValueOrDefault(g.Id);
         bool Count(GateSettings r) => s.CountEnabled && r.CountWindow;   // the main 줄 수 switch gates every gate's own
-        if (!gates.Any(g => Row(g) is { } r && (Count(r) || r.DebuffWindow))) return (false, false, null);
-        bool readName = s.Auto && gates.Any(g => Row(g) is { } r && (Count(r) && r.CountAuto || r.DebuffWindow && r.DebuffAuto));
+        bool debuffAuto = s.DebuffsAuto && gates.Any(g => g.DebuffRaid != Raid.없음);   // 디버프 창 자동 waits for a gate with debuffs
+        if (!debuffAuto && !gates.Any(g => Row(g) is { } r && Count(r))) return (false, false, null);
+        bool readName = s.Auto && (debuffAuto || gates.Any(g => Row(g) is { } r && Count(r) && r.CountAuto));
         // 자동: the recognised gate while its 줄 수 창 is on, else the gate whose 줄 수 창 shows without waiting.
         var seen = RaidData.Find(gates, recognised);
         var fixedGate = gates.FirstOrDefault(g => Row(g) is { CountAuto: false } r && Count(r));
@@ -42,9 +43,11 @@ public static class RaidReadPlan
         return (readName, gate is not null && Row(gate) is { } gr && Count(gr), gate);
     }
 
-    /// <summary>The debuff window's raid: the first gate with a debuff raid whose 디버프 창 is on, shown always (자동 off) or
-    /// while that gate is the one recognised (or picked by hand); 없음 when none.</summary>
-    public static Raid DebuffRaid(RaidSettings s, IReadOnlyList<RaidGate> gates, string? recognised) =>
-        gates.FirstOrDefault(g => g.DebuffRaid != Raid.없음 && s.Gates.GetValueOrDefault(g.Id) is { DebuffWindow: true } r
-            && (!r.DebuffAuto || (s.Auto ? recognised : s.ManualGate) == g.Id))?.DebuffRaid ?? Raid.없음;
+    /// <summary>The debuff window's raid (user, 2026-11-04): the raid picked in the tray (<paramref name="picked"/>), else with
+    /// 디버프 창 자동 the recognised gate's (or the gate picked by hand), else 없음; never outside a dungeon (it showed in 지옥).</summary>
+    public static Raid DebuffRaid(RaidSettings s, IReadOnlyList<RaidGate> gates, string? recognised, bool inDungeon, Raid picked) =>
+        !inDungeon ? Raid.없음
+        : picked != Raid.없음 ? picked
+        : s.DebuffsAuto && RaidData.Find(gates, s.Auto ? recognised : s.ManualGate) is { } g ? g.DebuffRaid
+        : Raid.없음;
 }

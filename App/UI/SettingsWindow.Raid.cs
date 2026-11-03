@@ -43,10 +43,7 @@ public partial class SettingsWindow
         var r = _s.Raids;
         bool open = _raidOpen!.Contains(name);
         int counts = gates.Count(g => r.Gates.GetValueOrDefault(g.Id)?.CountWindow == true);
-        var debuffGates = gates.Where(g => g.DebuffRaid != Raid.없음).ToList();
-        int debuffs = debuffGates.Count(g => r.Gates.GetValueOrDefault(g.Id)?.DebuffWindow == true);
-        string summary = (r.CountEnabled ? $"줄 수 창 {counts}/{gates.Count}" : "줄 수 읽기 꺼짐")
-            + (debuffGates.Count > 0 ? $" · 디버프 창 {debuffs}/{debuffGates.Count}" : "");
+        string summary = r.CountEnabled ? $"줄 수 창 {counts}/{gates.Count}" : "줄 수 읽기 꺼짐";
 
         var icons = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
         var chevron = new TextBlock { Text = open ? "" : "", FontFamily = icons, FontSize = 12, Margin = new(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -93,6 +90,10 @@ public partial class SettingsWindow
             "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창은 그대로 남아, 다시 켜면 돌아옵니다. " +
             "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다.")));
         if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 그대로 남아 있고, 다시 켜면 그대로 돌아옵니다."));
+        // One 디버프 창 switch for every raid (user, 2026-11-04); a raid turned on by hand is the tray's (표시 → 디버프 창).
+        p.Children.Add(Row("", Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
+            "켜면 디버프가 있는 레이드(3막 모르둠)의 보스를 알아본 동안 그 레이드의 디버프 창을 보여 줍니다. " +
+            "알아보지 못해도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요: 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽도 보이지 않습니다.")));
 
         p.Children.Add(SubHeading("보스 인식"));
         p.Children.Add(Row("", Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
@@ -170,18 +171,6 @@ public partial class SettingsWindow
             if (g.Esthers.Count > 0) EstherPlanRows(p, g);
         }
         if (r.OffsetPerGate) p.Children.Add(OffsetRow("± 줄 (이 관문)", row.Offset, v => r.Gate(g.Id).Offset = v));
-        if (g.DebuffRaid == Raid.없음)
-        {
-            p.Children.Add(Row("디버프 창", Label("디버프 없음", 0.7)));
-            Extras();
-            return;
-        }
-        var demo = new Button { Content = "예시 보기", Margin = new(0, 2, 0, 2), IsEnabled = row.DebuffWindow, ToolTip = "내 오버레이에서 디버프 창의 예시를 보여 줍니다." };
-        demo.Click += (_, _) => GoTo(new(AreaOverlay, "디버프", new("Debuff", null, 0)));
-        p.Children.Add(Row("디버프 창",
-            Check("켜기", row.DebuffWindow, v => { r.Gate(g.Id).DebuffWindow = v; r.SyncDebuffRaid(_s.Debuffs); }, () => { Changed(); again(); FillBuffs(); }),
-            Check("자동", row.DebuffAuto, v => r.Gate(g.Id).DebuffAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 늘 보여 줍니다."),
-            demo));
         Extras();
     }
 

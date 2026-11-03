@@ -72,8 +72,7 @@ public partial class App
         if (args.Contains("--detach-buffs")) settings.Buffs.Detached = true;
         if (args.Contains("--debuffs") || args.Contains("--duelist"))
         {
-            settings.Raids.Gate(RaidSettings.MordumGate).DebuffWindow = true;
-            settings.Raids.SyncDebuffRaid(settings.Debuffs);
+            settings.Debuffs.Raid = Raid.모르둠;
         }
         if (args.Contains("--meter")) (settings.Meter.On, settings.Meter.Scope) = (true, MeterScope.파티별);
         if (Enum.TryParse<MeterLook>(Flag("meter-look"), out var look)) (settings.Meter.Look, settings.Meter.Graph) = (look, true);

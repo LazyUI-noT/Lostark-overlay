@@ -289,7 +289,7 @@ public partial class App : Application
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
-        _debuffs.Visibility = _settings.Raids.DebuffShown() ? _overlay.Visibility : Visibility.Hidden;
+        _debuffs.Visibility = _settings.Raids.DebuffShown(_settings.Debuffs) ? _overlay.Visibility : Visibility.Hidden;
         bool placing = _overlay.EditMode || _ownForeground;   // 편집 모드 or 설정 in front: shown to be placed, read or not
         _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.

@@ -344,6 +344,20 @@ public static class Geometry
         return k / (vp.Height / ReferenceHeight) * ReferenceHud;
     }
 
+    // ── Loading screen ──────────────────────────────────────────────────────────────────────────────────────────────
+    /// <summary>The loading screen's bar and a band of black above and below it, at 1080p in the 16:9 frame: the track runs
+    /// x 55–1855, y 1030–1037 (v4, 지옥 and the 21:9 clips).</summary>
+    public static readonly PixelRect RefLoadingBar = new(45, 1018, 1820, 32);
+
+    /// <summary>Where the loading bar is read. The loading art is 16:9 in the game area's middle (a forced 21:9 game shows it
+    /// centred), so the strip follows the game area's height and centre only: not the HUD 크기 or the other in-game sizes.</summary>
+    public static PixelRect LoadingBar(Viewport vp)
+    {
+        double s = vp.Height / ReferenceHeight, left = vp.X + vp.Width / 2.0 - ReferenceHeight * 16 / 9 / 2 * s;
+        return new((int)Math.Round(left + RefLoadingBar.X * s), (int)Math.Round(vp.Y + RefLoadingBar.Y * s),
+            (int)Math.Round(RefLoadingBar.Width * s), (int)Math.Round(RefLoadingBar.Height * s));
+    }
+
     /// <summary>The HUD % that makes the bar <paramref name="width"/> screen pixels wide.</summary>
     public static double HudForWidth(Viewport vp, double width) => width / RefBar.Width / (vp.Height / ReferenceHeight) * ReferenceHud;
 }

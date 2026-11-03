@@ -18,7 +18,7 @@ public class RaidSettingsTests
         var r = new Settings().Raids;
         Assert.True(r.Auto);
         Assert.False(r.Gate("act3-g3").CountWindow);
-        Assert.False(r.Gate("act3-g3").DebuffWindow);
+        Assert.True(r.DebuffsAuto);   // 디버프 창 자동, every raid
         Assert.Equal((GlowUntil.Seconds, 20, 5), (r.GlowUntil, r.GlowSeconds, r.GlowBars));
     }
 
@@ -36,29 +36,61 @@ public class RaidSettingsTests
     }
 
     [Fact]
-    public void Old_모르둠_debuff_raid_turns_on_the_gate_debuff_window_always_shown()
+    public void Old_모르둠_debuff_raid_before_the_table_stays_the_tray_pick()
     {
         var s = new Settings();
         s.Debuffs.Raid = Raid.모르둠;
         s.Raids.Migrated = false;   // a file saved before the 레이드 table
-        var g = RoundTrip(s).Raids.Gate(RaidSettings.MordumGate);
-        Assert.True(g.DebuffWindow);
-        Assert.False(g.DebuffAuto);   // as before: shown without waiting for 자동 인식
+        var back = RoundTrip(s);
+        Assert.Equal(Raid.모르둠, back.Debuffs.Raid);   // shown by hand in any dungeon, as before
+        Assert.True(back.Raids.DebuffsMigrated);
+    }
+
+    // 0.13–0.16.0: the 디버프 창 per gate, mirrored into Debuffs.Raid (자동 or not). Now: one 자동 switch and the tray's pick.
+    [Theory]
+    [InlineData(true, false, "모르둠", false)]   // always shown → the tray's pick
+    [InlineData(true, true, "없음", true)]       // 자동 → 디버프 창 자동
+    [InlineData(false, true, "없음", false)]     // off stays off (user, 2026-11-04)
+    public void The_per_gate_debuff_window_becomes_the_one_switch_and_the_tray_pick(bool window, bool auto, string picked, bool debuffsAuto)
+    {
+        var s = new Settings();
+        (s.Raids.Gate(RaidSettings.MordumGate).DebuffWindow, s.Raids.Gate(RaidSettings.MordumGate).DebuffAuto) = (window, auto);
+        s.Debuffs.Raid = window ? Raid.모르둠 : Raid.없음;   // as SyncDebuffRaid mirrored it
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.SerializeToUtf8Bytes(s, SettingsStore.Json))!.AsObject();
+        node["Raids"]!.AsObject().Remove("DebuffsMigrated");   // as 0.16.0 saved it
+        node["Raids"]!.AsObject().Remove("DebuffsAuto");
+        var back = SettingsStore.Normalize(node.Deserialize<Settings>(SettingsStore.Json)!);
+        Assert.Equal(Enum.Parse<Raid>(picked), back.Debuffs.Raid);
+        Assert.Equal(debuffsAuto, back.Raids.DebuffsAuto);
+        Assert.False(back.Raids.Gate(RaidSettings.MordumGate).DebuffWindow);   // read once, then left off
     }
 
     [Fact]
-    public void A_file_with_no_Raids_key_is_migrated_and_a_new_install_is_not()
+    public void A_new_install_keeps_디버프_창_자동_on_after_a_save_and_a_load()
+    {
+        var back = RoundTrip(new Settings());   // saved with DebuffsMigrated: nothing to carry over
+        Assert.True(back.Raids.DebuffsAuto);
+        Assert.True(RoundTrip(back).Raids.DebuffsAuto);
+    }
+
+    [Fact]
+    public void 디버프_창_자동_turned_off_stays_off_after_a_load()
+    {
+        var s = new Settings();
+        s.Raids.DebuffsAuto = false;
+        Assert.False(RoundTrip(s).Raids.DebuffsAuto);
+    }
+
+    [Fact]
+    public void A_file_with_no_Raids_key_keeps_its_tray_pick()
     {
         var old = new Settings();
         old.Debuffs.Raid = Raid.모르둠;
         var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.SerializeToUtf8Bytes(old, SettingsStore.Json))!.AsObject();
         node.Remove("Raids");   // as 0.12 saved it
         var loaded = SettingsStore.Normalize(node.Deserialize<Settings>(SettingsStore.Json)!);
-        Assert.True(loaded.Raids.Gate(RaidSettings.MordumGate).DebuffWindow);
-        Assert.True(loaded.Raids.Migrated);
-
-        var fresh = SettingsStore.Normalize(new Settings());
-        Assert.False(fresh.Raids.Gate(RaidSettings.MordumGate).DebuffWindow);
+        Assert.Equal(Raid.모르둠, loaded.Debuffs.Raid);
+        Assert.Equal(Raid.없음, SettingsStore.Normalize(new Settings()).Debuffs.Raid);
     }
 
     [Fact]
@@ -68,8 +100,8 @@ public class RaidSettingsTests
         s.Debuffs.Raid = Raid.모르둠;
         s.Raids.Migrated = false;
         s = RoundTrip(s);
-        s.Raids.Gate(RaidSettings.MordumGate).DebuffWindow = false;   // the user turns it off afterwards
-        Assert.False(RoundTrip(s).Raids.Gate(RaidSettings.MordumGate).DebuffWindow);
+        s.Debuffs.Raid = Raid.없음;   // the user turns it off afterwards
+        Assert.Equal(Raid.없음, RoundTrip(s).Debuffs.Raid);
     }
 
     [Fact]
@@ -118,15 +150,17 @@ public class RaidSettingsTests
     }
 
     [Fact]
-    public void The_windows_shown_follow_the_gate_rows()
+    public void The_windows_shown_follow_the_switches()
     {
-        var r = new RaidSettings();
-        Assert.False(r.CountShown() || r.DebuffShown());
-        r.Gate("act3-g3").CountWindow = true;
-        Assert.True(r.CountShown());
-        Assert.False(r.DebuffShown());
-        r.Gate("act3-g3").DebuffWindow = true;
-        Assert.True(r.DebuffShown());
+        var s = new Settings();
+        Assert.False(s.Raids.CountShown());
+        Assert.True(s.Raids.DebuffShown(s.Debuffs));   // 디버프 창 자동
+        s.Raids.Gate("act3-g3").CountWindow = true;
+        Assert.True(s.Raids.CountShown());
+        s.Raids.DebuffsAuto = false;
+        Assert.False(s.Raids.DebuffShown(s.Debuffs));
+        s.Debuffs.Raid = Raid.모르둠;   // picked in the tray
+        Assert.True(s.Raids.DebuffShown(s.Debuffs));
     }
 
     [Fact]
@@ -148,18 +182,6 @@ public class RaidSettingsTests
         var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.SerializeToUtf8Bytes(new Settings(), SettingsStore.Json))!.AsObject();
         node["Raids"]!.AsObject().Remove("CountEnabled");
         Assert.True(SettingsStore.Normalize(node.Deserialize<Settings>(SettingsStore.Json)!).Raids.CountEnabled);
-    }
-
-    [Fact]
-    public void The_old_debuff_raid_mirrors_the_table_for_older_versions()
-    {
-        var s = new Settings();
-        s.Raids.Gate(Mordum.Id).DebuffWindow = true;
-        s.Raids.SyncDebuffRaid(s.Debuffs);
-        Assert.Equal(Raid.모르둠, s.Debuffs.Raid);
-        s.Raids.Gate(Mordum.Id).DebuffWindow = false;
-        s.Raids.SyncDebuffRaid(s.Debuffs);
-        Assert.Equal(Raid.없음, s.Debuffs.Raid);
     }
 
     [Fact]

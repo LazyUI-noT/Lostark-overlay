@@ -18,9 +18,10 @@ public sealed class GateSettings
     public bool CountAuto { get; set; } = true;
     /// <summary>The counts the window glows at; null = the gate's defaults (Profiles/raids.json). An emptied list is kept empty.</summary>
     public List<int>? Alerts { get; set; }
-    /// <summary>디버프 창 on for this gate (only gates whose data names a debuff raid).</summary>
+    /// <summary>Old (0.13–0.16.0): this gate's 디버프 창. Read once by <see cref="RaidSettings.Normalize"/> into
+    /// <see cref="RaidSettings.DebuffsAuto"/> / <see cref="DebuffSettings.Raid"/>, then left off.</summary>
     public bool DebuffWindow { get; set; }
-    /// <summary>자동: the debuff window shows only while this gate's boss is recognised; off = always, as before the 레이드 table.</summary>
+    /// <summary>Old (0.13–0.16.0): with <see cref="DebuffWindow"/>, 자동 (true) or always (false).</summary>
     public bool DebuffAuto { get; set; } = true;
     /// <summary>This gate's ± bars, used when <see cref="RaidSettings.OffsetPerGate"/> is on.</summary>
     public int Offset { get; set; }
@@ -39,8 +40,11 @@ public sealed class GateSettings
 
 /// <summary>설정 → 레이드 (spec § B): boss recognition (자동, or a gate picked by hand), the gates' rows, the alert offset and
 /// glow, and the 줄 수 창's look and place (NaN = next to the overlay until first placed).</summary>
-public sealed class RaidSettings : IWindowPlace
+public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.IJsonOnDeserializing
 {
+    /// <summary>A file saved before 0.16.1 has no "DebuffsMigrated": its per-gate 디버프 창 is carried over once (Normalize).</summary>
+    void System.Text.Json.Serialization.IJsonOnDeserializing.OnDeserializing() => DebuffsMigrated = false;
+
     /// <summary>The gate 모르둠's old debuff switch (<see cref="DebuffSettings.Raid"/>) carries over to.</summary>
     public const string MordumGate = "act3-g3";
     public const int MaxGlowSeconds = 600, MaxGlowBars = 200, MaxOffset = 999;
@@ -52,6 +56,13 @@ public sealed class RaidSettings : IWindowPlace
     /// <see cref="GateSettings.CountWindow"/> kept as it is. The 디버프 창 doesn't follow it.</summary>
     public bool CountEnabled { get; set; } = true;
     public Dictionary<string, GateSettings> Gates { get; set; } = [];
+    /// <summary>디버프 창 자동, for every raid (user, 2026-11-04: no per-gate switch): a raid's debuff window shows while its gate
+    /// is recognised (or picked by hand). A raid turned on in the tray (<see cref="DebuffSettings.Raid"/>) shows in any dungeon
+    /// and wins over this.</summary>
+    public bool DebuffsAuto { get; set; } = true;
+    /// <summary>The per-gate 디버프 창 (0.13–0.16.0) has been carried over to <see cref="DebuffsAuto"/> and the tray's pick (false
+    /// only while loading a file saved without it).</summary>
+    public bool DebuffsMigrated { get; set; } = true;
     /// <summary>± bars added to every alert ("전 관문 공통"); per gate when <see cref="OffsetPerGate"/>. Target 750, +5 → 755.</summary>
     public int Offset { get; set; }
     public bool OffsetPerGate { get; set; }
@@ -89,13 +100,8 @@ public sealed class RaidSettings : IWindowPlace
     public bool CountShown() => CountEnabled && Gates.Values.Any(g => g.CountWindow);
     /// <summary>Gate <paramref name="id"/>'s 줄 수 창 is on, with the main switch.</summary>
     public bool CountOn(string id) => CountEnabled && Gates.TryGetValue(id, out var g) && g.CountWindow;
-    /// <summary>A gate's 디버프 창 is on.</summary>
-    public bool DebuffShown() => Gates.Values.Any(g => g.DebuffWindow);
-
-    /// <summary>Writes the 디버프 창 into the old <see cref="DebuffSettings.Raid"/> too, so a version before the 레이드 table
-    /// (0.12) still shows it. ponytail: 모르둠 is the only gate with debuffs; a second one maps its own DebuffRaid here.</summary>
-    public void SyncDebuffRaid(DebuffSettings debuffs) =>
-        debuffs.Raid = Gates.TryGetValue(MordumGate, out var g) && g.DebuffWindow ? Raid.모르둠 : Raid.없음;
+    /// <summary>The 디버프 창 may show: 자동 or a raid picked in the tray (what it shows waits for a dungeon).</summary>
+    public bool DebuffShown(DebuffSettings debuffs) => DebuffsAuto || debuffs.Raid != Raid.없음;
 
     public int OffsetOf(string id) => OffsetPerGate ? (Gates.TryGetValue(id, out var g) ? g.Offset : 0) : Offset;
 
@@ -122,8 +128,13 @@ public sealed class RaidSettings : IWindowPlace
         (GlowSeconds, GlowBars) = (Math.Clamp(GlowSeconds, 1, MaxGlowSeconds), Math.Clamp(GlowBars, 1, MaxGlowBars));
         Offset = Math.Clamp(Offset, -MaxOffset, MaxOffset);
         Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, 0.1, 1) : 1;
-        if (Migrated) return;
-        if (debuffs.Raid == Raid.모르둠) (Gate(MordumGate).DebuffWindow, Gate(MordumGate).DebuffAuto) = (true, false);
-        Migrated = true;
+        if (DebuffsMigrated) return;
+        // 0.13–0.16.0 kept the 디버프 창 per gate (and mirrored it into debuffs.Raid, 자동 or not): a gate on "always" becomes
+        // the tray's pick, one on 자동 keeps 디버프 창 자동 on, one off turns it off (user, 2026-11-04: off stays off). Before the
+        // table (Migrated false) debuffs.Raid was the switch, and 자동 keeps its default.
+        if (Migrated && Gates.GetValueOrDefault(MordumGate) is var mordum)
+            (debuffs.Raid, DebuffsAuto) = (mordum is { DebuffWindow: true, DebuffAuto: false } ? Raid.모르둠 : Raid.없음, mordum is { DebuffWindow: true, DebuffAuto: true });
+        foreach (var g in Gates.Values) (g.DebuffWindow, g.DebuffAuto) = (false, true);
+        (Migrated, DebuffsMigrated) = (true, true);
     }
 }

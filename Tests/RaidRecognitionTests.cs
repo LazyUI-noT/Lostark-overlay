@@ -32,14 +32,14 @@ public class RaidRecognitionTests
 
     static RaidSettings Count(bool auto = true, bool countAuto = true)
     {
-        var s = new RaidSettings { Auto = auto, ManualGate = auto ? null : "act3-g3" };
+        var s = new RaidSettings { Auto = auto, ManualGate = auto ? null : "act3-g3", DebuffsAuto = false };   // the 줄 수 창 alone
         (s.Gate("act3-g3").CountWindow, s.Gate("act3-g3").CountAuto) = (true, countAuto);
         return s;
     }
 
     [Fact]
     public void Windows_off_read_nothing() =>
-        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings(), Gates, "act3-g3"));
+        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false }, Gates, "act3-g3"));
 
     [Fact]
     public void Unrecognised_with_자동_reads_the_name_and_shows_no_count() =>
@@ -62,28 +62,46 @@ public class RaidRecognitionTests
         Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(Count(countAuto: false), Gates, null));   // nothing waits on the name
 
     [Fact]
-    public void A_debuff_window_on_자동_needs_the_name_read()
+    public void 디버프_창_자동_reads_the_name_and_off_reads_nothing()
+    {
+        Assert.Equal((true, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings(), Gates, null));   // on by default
+        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false }, Gates, null));
+    }
+
+    // One 디버프 창 switch for every raid; a raid picked in the tray wins (user, 2026-11-04).
+    [Fact]
+    public void The_debuff_window_follows_the_recognised_gate_or_the_tray_pick()
     {
         var s = new RaidSettings();
-        s.Gate("act3-g3").DebuffWindow = true;
-        Assert.Equal((true, false, (RaidGate?)null), RaidReadPlan.Of(s, Gates, null));
-        s.Gate("act3-g3").DebuffAuto = false;
-        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(s, Gates, null));
+        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));         // 자동, not recognised
+        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, "act3-g3", inDungeon: true, Raid.없음));
+        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, "act3-g2", inDungeon: true, Raid.없음));    // a gate without debuffs
+        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, "act3-g2", inDungeon: true, Raid.모르둠));  // the tray's pick wins
+        (s.Auto, s.ManualGate) = (false, "act3-g3");
+        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));       // gate picked by hand
+        s.DebuffsAuto = false;
+        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));         // 자동 off: only the tray
+        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.모르둠));
     }
 
     [Fact]
-    public void The_debuff_window_follows_its_gate()
+    public void A_gate_picked_by_hand_feeds_the_debuff_window_without_reading_the_name()
     {
-        var s = new RaidSettings();
-        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, "act3-g3"));   // off
-        s.Gate("act3-g3").DebuffWindow = true;
-        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null));        // 자동, not recognised
-        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, "act3-g3"));
-        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, "act3-g2"));
-        (s.Auto, s.ManualGate) = (false, "act3-g3");
-        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, null));      // picked by hand
-        (s.Auto, s.Gate("act3-g3").DebuffAuto) = (true, false);
-        Assert.Equal(Raid.모르둠, RaidReadPlan.DebuffRaid(s, Gates, null));      // always, as before the 레이드 table
+        var s = new RaidSettings { Auto = false, ManualGate = "act3-g3" };
+        Assert.Equal((false, false, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
+        s.ManualGate = "act3-g2";   // a gate without debuffs
+        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));
+    }
+
+    // User, 2026-11-04: the replay showed the 모르둠 디버프 창 in 지옥. Nothing shows it outside a dungeon.
+    [Theory]
+    [InlineData("act3-g3", null, "없음")]   // 자동, recognised (a stale gate after leaving)
+    [InlineData(null, "act3-g3", "없음")]   // 자동 인식 off, the gate picked by hand
+    [InlineData(null, null, "모르둠")]      // picked in the tray
+    public void The_debuff_window_shows_nowhere_outside_a_dungeon(string? recognised, string? manualGate, string picked)
+    {
+        var s = new RaidSettings { Auto = manualGate is null, ManualGate = manualGate };
+        Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, recognised, inDungeon: false, Enum.Parse<Raid>(picked)));
     }
 
     [Fact]
@@ -101,14 +119,14 @@ public class RaidRecognitionTests
     public void The_main_줄_수_switch_off_leaves_the_debuff_window_reading_the_name()
     {
         var s = Count();
-        (s.CountEnabled, s.Gate("act3-g3").DebuffWindow) = (false, true);
+        (s.CountEnabled, s.DebuffsAuto) = (false, true);
         Assert.Equal((true, false, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, "act3-g3"));
     }
 
     [Fact]
     public void A_gate_that_always_shows_its_count_still_does_while_another_is_recognised()
     {
-        var s = new RaidSettings();
+        var s = new RaidSettings { DebuffsAuto = false };
         (s.Gate("act3-g3").CountWindow, s.Gate("act3-g3").CountAuto) = (true, false);
         Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, "act3-g2"));
     }

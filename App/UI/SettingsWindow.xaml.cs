@@ -349,6 +349,9 @@ public partial class SettingsWindow : Window
                 p.Children.Add(revert);
             }
         }
+        p.Children.Add(SubHeading("성능"));
+        p.Children.Add(SliderRow("초당 읽기 횟수", ReadSteps.Min, ReadSteps.Max, _s.ReadsPerSecond, 1, v => $"{v:0}회", v => _s.ReadsPerSecond = (int)v, Changed,
+            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 자원(CPU)을 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
         // The main action first; fixing a fit that went wrong comes after it, under its own heading.
         p.Children.Add(SubHeading("인식이 어긋날 때"));
         var adjustButton = new Button { Content = "위치 조정", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 4), IsEnabled = _gameRunning };
@@ -452,12 +455,13 @@ public partial class SettingsWindow : Window
         }
 
         p.Children.Add(Divider());
-        p.Children.Add(Heading("디버프", first: true, help: "레이드 → 관문의 디버프 창을 켜면 MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " + "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 번개 칸에는 결투자도 보입니다(4에서 0까지 카운트다운 뒤 아이콘, 처음 보인 뒤 30초 동안 유지). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " + "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
+        p.Children.Add(Heading("디버프", first: true, help: "레이드의 디버프 창 자동을 켜 두거나 트레이에서 디버프 창을 켜면 MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " + "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 번개 칸에는 결투자도 보입니다(4에서 0까지 카운트다운 뒤 아이콘, 처음 보인 뒤 30초 동안 유지). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " + "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
         // The box sizes only while a gate's 디버프 창 is on (레이드): otherwise there is no debuff window to size.
-        var sizes = new CardStack { Visibility = Shown(_s.Raids.DebuffShown()) };
+        var sizes = new CardStack { Visibility = Shown(_s.Raids.DebuffShown(_s.Debuffs)) };
         var toRaid = new Button { Content = "레이드 열기", Margin = new(0, 2, 0, 2) };
         toRaid.Click += (_, _) => Go(AreaRaid);
-        p.Children.Add(Row("디버프 창", Label(_s.Raids.DebuffShown() ? "켜짐 (레이드에서 관문마다)" : "꺼짐 (레이드에서 관문마다 켭니다)", 0.7), toRaid));
+        string debuffState = _s.Debuffs.Raid != Raid.없음 ? "켜짐 (트레이에서 켬: 레이드 안에서 늘)" : _s.Raids.DebuffsAuto ? "자동 (보스를 알아본 레이드에서)" : "꺼짐 (레이드에서 자동을 켭니다)";
+        p.Children.Add(Row("디버프 창", Label(debuffState, 0.7), toRaid));
         // Always shown (user, 2026-11-01): 암수 and 모르둠's sigils read the boss rows at this size, 디버프 창 or not.
         p.Children.Add(HelpRow("게임의 보스 디버프 크기 (%)", "게임 설정의 보스 디버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 아이콘(암수 · 빛암, 모르둠 문양)과 빨강·파랑 숫자를 이 크기로 읽습니다. 내 버프·디버프의 크기(게임의 버프 크기)와는 따로입니다.", BossSizeCombo()));
         sizes.Children.Add(Row("비었을 때", Check("디버프 없을 때 숨김", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,

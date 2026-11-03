@@ -35,7 +35,7 @@ public sealed partial class Engine
         _raidWaits = plan.ReadName;
         if (!plan.ReadCount && _raid is not null) { _raid = null; Publish(now); }
         if (!poll) return (null, null, null);
-        bool name = plan.ReadName && Elapsed(now, _lastName, NameEvery);
+        bool name = plan.ReadName && _presence.InDungeon(now) && Elapsed(now, _lastName, NameEvery);   // no boss to name outside a dungeon
         // The boss's max HP (raids.json "hp") recognises a gate exactly, with its difficulty: read with the name. Both the count
         // and the HP are read from the bar's whole text row (BossDigits.ReadBar), wherever a 21:9 or HUD size puts them.
         var row = Geometry.BossTextRow(_vp, _fit!);
@@ -44,8 +44,8 @@ public sealed partial class Engine
     }
 
     /// <summary>The debuff window's raid this step: the gate's 디버프 창 (RaidReadPlan.DebuffRaid).</summary>
-    Raid DebuffRaid(Config config) =>
-        config.Raids is { } s ? RaidReadPlan.DebuffRaid(s, config.RaidGates ?? [], _raidRec.Gate) : Raid.없음;
+    Raid DebuffRaid(Config config, TimeSpan now) =>
+        config.Raids is { } s ? RaidReadPlan.DebuffRaid(s, config.RaidGates ?? [], _raidRec.Gate, _presence.InDungeon(now), config.DebuffPick) : Raid.없음;
 
     /// <summary>Reads the captured name and count (either may be null) and moves recognition and the alerts. True when the
     /// 줄 수 창 changed.</summary>
@@ -135,7 +135,8 @@ public sealed partial class Engine
             var copy = name.Copy();   // the capture buffer is reused
             // The panel's raid and difficulty narrow the gates (종막 2-1 vs EX 2-1); a boss still of two goes to the one with a window on.
             var candidates = BossNameText.Candidates(gates, panel);
-            var on = s.Gates.Where(g => g.Value.CountWindow || g.Value.DebuffWindow).Select(g => g.Key).ToHashSet();
+            var on = s.Gates.Where(g => g.Value.CountWindow).Select(g => g.Key)
+                .Concat(s.DebuffsAuto ? gates.Where(g => g.DebuffRaid != Raid.없음).Select(g => g.Id) : []).ToHashSet();
             _ = Task.Run(() => ReadNameOcr(copy, candidates, on, scale, t));
         }
         return done is { } r && t - r.At <= 2 * NameEvery ? r.Gate : null;

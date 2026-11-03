@@ -78,11 +78,13 @@ public class TrayTogglesTests
     public void Party_windows_are_shown_by_default() => Assert.True(TrayToggles.IsShown(new Settings(), OverlayPart.Party));
 
     [Fact]
-    public void The_tray_debuff_switch_shows_the_window_always_as_before()
+    public void The_tray_debuff_switch_picks_the_raid_by_hand_and_leaves_자동()
     {
         var s = new Settings();
         TrayToggles.Show(s, OverlayPart.Debuffs, true);
-        Assert.False(s.Raids.Gate(RaidSettings.MordumGate).DebuffAuto);   // recognition is not checked on footage yet
         Assert.Equal(Raid.모르둠, s.Debuffs.Raid);
+        TrayToggles.Show(s, OverlayPart.Debuffs, false);
+        Assert.Equal(Raid.없음, s.Debuffs.Raid);
+        Assert.True(s.Raids.DebuffsAuto);   // 설정 → 레이드's switch, not the tray's
     }
 }

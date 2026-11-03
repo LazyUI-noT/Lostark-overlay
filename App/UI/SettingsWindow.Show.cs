@@ -172,7 +172,7 @@ public partial class SettingsWindow
         OverlayPart.Skills => "지금 캐릭터의 스킬 칸 전부입니다. 끄기 전에 꺼 둔 칸은 다시 켤 때 그대로 꺼져 있습니다.",
         OverlayPart.Gauge => "지금 캐릭터의 아덴 게이지입니다.",
         OverlayPart.Buffs => "공증, 아덴 피증, 초각스 피증, 뎀증 막대 전부입니다. 끄기 전에 꺼 둔 막대는 다시 켤 때 그대로입니다.",
-        OverlayPart.Debuffs => "레이드의 디버프 창(3막 모르둠)입니다. 켜면 늘 보입니다. 관문마다는 레이드에서 정합니다.",
+        OverlayPart.Debuffs => "3막 모르둠의 디버프 창을 직접 켭니다: 레이드 안에서는 늘 보입니다. 끄면 레이드의 디버프 창 자동만 따릅니다 (보스를 알아본 동안).",
         OverlayPart.Judgment => "지금 캐릭터의 단심 창입니다.",
         OverlayPart.Amsu => "보스에 걸린 암흑수류탄의 남은 시간입니다. 켜면 모든 보스에서 읽습니다.",
         OverlayPart.Meter => "끄면 창만 숨깁니다. 전투 기록을 위해 계속 읽습니다. 읽기까지 끄려면 DPS 미터기에서 끕니다.",

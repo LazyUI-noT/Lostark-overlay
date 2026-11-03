@@ -227,7 +227,7 @@ public sealed partial class OverlayCanvas : Border
         _s.SyncPlace();   // the class picked may have a spot of its own
         _mine.Visibility = Shown(_showMine);
         _buffs.Visibility = Shown(_showMine && _s.Buffs.Detached);
-        _debuffs.Visibility = Shown(_showMine && _s.Raids.DebuffShown());
+        _debuffs.Visibility = Shown(_showMine && _s.Raids.DebuffShown(_s.Debuffs));
         _raid.Visibility = Shown(_showMine && _s.Raids.CountShown());
         _judgment.Visibility = Shown(_showMine && _s.Judgment.On(_s.ActiveCharacter));
         _amsu.Visibility = Shown(_showMine && _s.Amsu.On);

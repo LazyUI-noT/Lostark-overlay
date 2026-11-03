@@ -22,6 +22,9 @@ public sealed partial class Engine
     readonly object _paceLock = new();
     DungeonInfo? _dungeon => _dungeonState.Shown;
     int _dungeonBusy, _dungeonNew;
+    // Loading screens seen (Engine.Presence): a read started before the latest one is dropped, and the first read after it
+    // votes afresh, so another gate's votes don't carry over. _dungeonVoted is the pool read's own (one read at a time).
+    int _dungeonGen, _dungeonVoted;
 
     /// <summary>The HUD is back after a loading screen: maybe another dungeon, so read fast again.</summary>
     void WakeDungeon() { lock (_paceLock) _dungeonPace = _dungeonPace.Wake(); }
@@ -49,7 +52,8 @@ public sealed partial class Engine
         if (Interlocked.CompareExchange(ref _dungeonBusy, 1, 0) != 0) return;
         _lastDungeon = t;
         var img = captured.Copy();
-        _ = Task.Run(() => ReadDungeon(img, t));
+        int gen = Volatile.Read(ref _dungeonGen);
+        _ = Task.Run(() => ReadDungeon(img, t, gen));
     }
 
     // The dungeon panel and the boss name share the one OCR engine: one recognition at a time.
@@ -62,7 +66,7 @@ public sealed partial class Engine
         finally { OcrGate.Release(); }
     }
 
-    async Task ReadDungeon(Image img, TimeSpan at)
+    async Task ReadDungeon(Image img, TimeSpan at, int gen)
     {
         long t0 = Stopwatch.GetTimestamp();
         try
@@ -70,10 +74,13 @@ public sealed partial class Engine
             var big = ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), 2);   // OCR reads small Hangul far better at 2×
             using var bmp = SoftwareBitmap.CreateCopyFromBuffer(big.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, big.Width, big.Height, BitmapAlphaMode.Premultiplied);
             var was = _dungeon;
-            if (DungeonPanel.Parse(await RecognizeLines(bmp)) is { } d)
+            var lines = await RecognizeLines(bmp);
+            if (gen != Volatile.Read(ref _dungeonGen)) return;   // captured before a loading screen: maybe the last gate's panel
+            if (DungeonPanel.Parse(lines) is { } d)
             {
                 _dungeonSeen = at;
-                _dungeonState = DungeonPanel.Next(_dungeonState, d);   // the name read most wins over a misread
+                var from = gen != _dungeonVoted ? DungeonState.None : _dungeonState;   // another gate's votes don't carry over
+                (_dungeonVoted, _dungeonState) = (gen, DungeonPanel.Next(from, d));   // the name read most wins over a misread
             }
             lock (_paceLock) _dungeonPace = _dungeonPace.Read(_dungeon);   // the settled panel, so one misread or a cutscene doesn't speed it up
             if (_dungeon == was) return;

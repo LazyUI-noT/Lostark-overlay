@@ -33,8 +33,6 @@ public partial class SettingsWindow
     {
         const string lead = "읽는 칸마다 화면에서 잘라 낸 그림, 읽은 값과 상태입니다. 인식이 이상할 때 어느 칸이 어떻게 읽히는지 봅니다. 이 화면을 보는 동안만 채웁니다.";
         var p = Refill(_secDiag, SecDiag, lead);
-        p.Children.Add(SliderRow("초당 읽기 횟수", ReadSteps.Min, ReadSteps.Max, _s.ReadsPerSecond, 1, v => $"{v:0}회", v => _s.ReadsPerSecond = (int)v, Changed,
-            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 자원(CPU)을 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
         Detach(_diag);
         p.Children.Add(_diag);
         UiBuild.Report?.Invoke(SecDiag, lead, _diag, null);   // the table has no labelled rows: search finds the section by its name

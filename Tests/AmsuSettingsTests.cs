@@ -56,6 +56,6 @@ public sealed class AmsuSettingsTests : IDisposable
         Assert.True(s.Amsu.On && TrayToggles.IsShown(s, OverlayPart.Amsu));
         TrayToggles.Show(s, OverlayPart.Amsu, false);
         Assert.False(s.Amsu.On);
-        Assert.False(s.Raids.DebuffShown());   // not the 디버프 창's switch
+        Assert.Equal(Raid.없음, s.Debuffs.Raid);   // not the 디버프 창's switch
     }
 }

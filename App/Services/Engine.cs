@@ -30,6 +30,7 @@ public sealed partial class Engine : IDisposable
     /// <param name="BuffCount">버프 읽을 칸 수: how many buff boxes are read, from the row's right end.</param>
     /// <param name="BossSize">The game's 보스 디버프 크기 (%), apart from <paramref name="DebuffSize"/> (버프 크기, your own rows).</param>
     /// <param name="Raids">설정 → 레이드, a copy (RaidSettings.Clone); null reads nothing for it.</param>
+    /// <param name="DebuffPick">The raid whose 디버프 창 the tray turned on by hand (DebuffSettings.Raid).</param>
     /// <param name="RaidGates">The gates (Profiles/raids.json) and <paramref name="BossNames"/> their name templates (Profiles/bossnames).</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
@@ -38,7 +39,7 @@ public sealed partial class Engine : IDisposable
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
-        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default)
+        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -301,7 +302,7 @@ public sealed partial class Engine : IDisposable
         _gaugeFilter.Mode = config.ReadMode;
         // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
         if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
-        (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, DebuffRaid(config) != Raid.없음);
+        (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, DebuffRaid(config, now) != Raid.없음);
         // 위치 조정 tries a 버프 크기 live: both rows read at it until 적용 stores it in 설정 or the panel closes.
         int? previewSize = _previewing ? _previewBuffSize : null;
         // 테스트 모드: the 버프 크기 위치 조정 applied for the video (memory only), else 설정's.
@@ -322,8 +323,8 @@ public sealed partial class Engine : IDisposable
         bool raiding = raidName is not null || raidCount is not null;
         var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, due);
         raiding |= meterHp is not null;
-        var (bossProbe, meterProbe) = (BossProbeRect(config, due), MeterProbeRect(config, due));
-        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null;   // ride on this step's capture: no frame wait of their own
+        var (bossProbe, meterProbe, loadingBar) = (BossProbeRect(config, due), MeterProbeRect(config, due), LoadingRect(config, due));
+        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null;   // ride on this step's capture: no frame wait of their own
         if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
@@ -358,6 +359,8 @@ public sealed partial class Engine : IDisposable
         if (searchRect is { } searchArea) rects.Add(searchArea);
         int meterProbeAt = rects.Count;
         if (meterProbe is { } meterSpot) rects.Add(meterSpot);
+        int loadingAt = rects.Count;
+        if (loadingBar is { } loadingStrip) rects.Add(loadingStrip);
         // The boss bar's text row (Geometry.BossTextRow) once, for all who read it this step: the 줄 수 count and the max HP, the
         // meter's HP, 암수's HP and the boss probe. One copy and one read (BossBar) instead of up to four.
         int bossRowAt = rects.Count;
@@ -403,6 +406,7 @@ public sealed partial class Engine : IDisposable
             changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[bossRowAt], raidHp is null ? null : images[bossRowAt], t));
         if (bossProbe is not null) Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossRowAt], t));
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
+        if (loadingBar is not null) ReadLoading(images[loadingAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
         if (searchRect is not null) Perf.Run("전분 위치 찾기", () => SearchPanel(images[searchAt], t));
         if (wantLabel)
@@ -464,7 +468,7 @@ public sealed partial class Engine : IDisposable
         var wasVisible = _hud.Visible;
         bool? shown = _hud.Add(calibrated, unreadable);
         if (_hud.Visible != wasVisible) HudVisibleChanged?.Invoke(_hud.Visible == true);
-        if (_hud.Visible == true && wasVisible != true) WakeDungeon();
+        if (_hud.Visible == true && wasVisible != true) { WakeDungeon(); LoadingOver(t); }
         // Only while the bar is certainly on screen in this very frame: Desktop Duplication also captures loading
         // screens, the login screen and windows covering the game. References are also added while too few exist to
         // vote at all (HudVote.MaySave), or the vote could never start.

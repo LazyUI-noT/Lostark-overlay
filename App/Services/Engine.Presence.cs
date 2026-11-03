@@ -31,18 +31,51 @@ public sealed partial class Engine
 
     bool _wasInDungeon;
 
-    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수. They need the probes when nothing
+    // The loading screen (meter-gating.plan.md phase 2): its bar read 4/s while the HUD is hidden or not yet known (the app
+    // started on a loading screen) and presence matters.
+    static readonly TimeSpan LoadingEvery = TimeSpan.FromMilliseconds(250);
+    LoadingWatch _loading = LoadingWatch.None;
+    TimeSpan _lastLoading = TimeSpan.MinValue;
+
+    PixelRect? LoadingRect(Config config, TimeSpan now) =>
+        _hud.Visible != true && (_meterOn || RaidReadsOn(config)) && Elapsed(now, _lastLoading, LoadingEvery)
+        && Geometry.LoadingBar(_vp) is var r && r.Inside(_vp) ? r : null;
+
+    void ReadLoading(Image strip, TimeSpan t)
+    {
+        _lastLoading = t;
+        bool was = _loading.Loading;
+        _loading = _loading.Read(LoadingScreen.Is(strip, _vp.Height / Geometry.ReferenceHeight), _presence, t);
+        if (was || !_loading.Loading) return;
+        Interlocked.Increment(ref _dungeonGen);   // maybe another gate: its name gets fresh votes
+        Trace.WriteLine($"[presence] loading screen{(_presence.InDungeon(t) ? " (in a dungeon)" : "")}");
+    }
+
+    /// <summary>The HUD is back: after a loading screen, look for the meter at once and start the wait for it.</summary>
+    void LoadingOver(TimeSpan t)
+    {
+        if (_loading.Loading) (_lastMeterProbe, _lastMeter) = (TimeSpan.MinValue, TimeSpan.MinValue);   // look for the meter at once
+        _loading = _loading.HudBack(t);
+    }
+
+    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수, the raid's 디버프 창. They need the probes when nothing
     /// else tells where the player is (the overlay's meter off).</summary>
     bool RaidReadsOn(Config config)
     {
         var plan = config.Raids is { } s ? RaidReadPlan.Of(s, config.RaidGates ?? [], _raidRec.Gate) : default;
-        return plan.ReadName || plan.ReadCount || config.AmsuOn;
+        return plan.ReadName || plan.ReadCount || config.AmsuOn || config.DebuffPick != Raid.없음 || config.Raids?.DebuffsAuto == true;   // the 디버프 창 waits for a dungeon too
     }
 
     /// <summary>At each step: on leaving a dungeon, 줄 수 and 암수 stop reading, so their state is cleared here (a read that just
     /// stops would freeze the count and the countdown on screen).</summary>
     void StepPresence(TimeSpan now)
     {
+        _loading = _loading.Tick(_hud.Visible == true && _foreground, now);
+        if (_loading.Left)
+        {
+            (_presence, _loading) = (RaidPresence.None, LoadingWatch.None);
+            Trace.WriteLine($"[presence] no meter {LoadingWatch.MeterWait.TotalSeconds:0} s after a loading screen: left");
+        }
         bool inside = _presence.InDungeon(now);
         if (_wasInDungeon && !inside)
         {
@@ -94,6 +127,7 @@ public sealed partial class Engine
     {
         bool was = _presence.InDungeon(t);
         _presence = _presence.Saw(meter, boss, t);
+        if (meter || boss) _loading = _loading.Saw();
         if (!was && _presence.InDungeon(t)) Trace.WriteLine($"[presence] in a dungeon (by {(meter ? "the meter" : "a boss bar")})");
     }
 }

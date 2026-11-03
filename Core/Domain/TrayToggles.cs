@@ -18,7 +18,7 @@ public static class TrayToggles
         OverlayPart.BarCount => s.Raids.CountEnabled,
         OverlayPart.Party => s.Party.ShowMembers,
         OverlayPart.Amsu => s.Amsu.On,
-        _ => s.Raids.DebuffShown(),
+        _ => s.Debuffs.Raid != Raid.없음,   // the raid picked by hand; 디버프 창 자동 is 설정 → 레이드's
     };
 
     public static void Show(Settings s, OverlayPart part, bool on)
@@ -59,16 +59,9 @@ public static class TrayToggles
                 s.Amsu.On = on;
                 break;
             default:
-                // ponytail: 모르둠 is the only gate with debuffs; a second one needs "the last one shown" remembered here.
-                if (on)
-                {
-                    bool fresh = !s.Raids.Gates.ContainsKey(RaidSettings.MordumGate);
-                    var g = s.Raids.Gate(RaidSettings.MordumGate);
-                    g.DebuffWindow = true;
-                    if (fresh) g.DebuffAuto = false;   // always shown, as this switch did before the 레이드 table (자동 not checked on footage)
-                }
-                else foreach (var g in s.Raids.Gates.Values) g.DebuffWindow = false;
-                s.Raids.SyncDebuffRaid(s.Debuffs);
+                // The raid shown by hand in any dungeon. ponytail: 모르둠 is the only raid with debuffs; a second one gets its
+                // own tray entry (a raid per entry) instead of this one switch.
+                s.Debuffs.Raid = on ? Raid.모르둠 : Raid.없음;
                 break;
         }
     }

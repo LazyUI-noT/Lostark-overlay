@@ -65,7 +65,7 @@ public sealed partial class Settings : IJsonOnDeserializing
 
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
-    void IJsonOnDeserializing.OnDeserializing() => (Theme, Raids.Migrated, RecordKeepMigrated) = (UiTheme.DeepTeal, false, false);
+    void IJsonOnDeserializing.OnDeserializing() => (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated) = (UiTheme.DeepTeal, false, false, false);
     /// <summary>The 아덴 게이지 bar per "클래스/직업각인" (GaugeBar.Key): only the ones changed in the 게이지 tab; the
     /// rest use the classes.json default.</summary>
     public Dictionary<string, GaugeBarSettings> GaugeBars { get; set; } = [];
