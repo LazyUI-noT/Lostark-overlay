@@ -56,7 +56,7 @@ public static class Amsu
     /// only that a bomb is up, while its icon is seen.</summary>
     public static bool Timed(int bossSize) => bossSize >= AmsuReader.ReadableFrom;
 
-    /// <summary>Whether bombs are read at all: the boss debuff icons at least <see cref="MinIconPx"/> on screen (user, 2026-11-04:
+    /// <summary>Whether bombs are read at all: the boss debuff icons at least <see cref="MinIconPx"/> on screen (user, 2026-11-03:
     /// 80% at 1080p is not supported). Smaller, a 빛암's 1 px frame blurs and the walk loses it behind a red-art icon (빛암 80_90).</summary>
     public static bool Readable(Viewport vp, Fit fit, int bossSize) =>
         DebuffReader.BossIconSize * Geometry.BossScale(vp, fit, bossSize) >= MinIconPx;

@@ -75,7 +75,7 @@ public class AmsuTests
         Assert.Equal(Bomb.빛암, View(s, 2.5).Shown);
     }
 
-    // Icons under about 21.5 px on screen aren't read at all (user, 2026-11-04): at 80% (1080p, HUD 110: 20 px) a 빛암's 1 px
+    // Icons under about 21.5 px on screen aren't read at all (user, 2026-11-03): at 80% (1080p, HUD 110: 20 px) a 빛암's 1 px
     // frame blurs and the walk loses it behind a red-art icon (빛암 80_90 at 41–46 s); at 90% (23 px) it reads.
     [Theory]
     [InlineData(1080, 110, 80, false)]

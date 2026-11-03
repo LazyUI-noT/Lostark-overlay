@@ -258,7 +258,7 @@ public static class Geometry
         (int)Math.Round(vp.X + vp.Width / 2.0 + (RefFirstBossDebuffX - RefCenterX) * Scale(vp, fit) + fit.BossShift.X);
 
     /// <summary>The 암수 strip: the boss debuff row and the "N초" under it, no taller. The row's top is set by the HUD and the
-    /// resolution only (its icons grow downward with 보스 디버프 크기; 21:9 the same: the clips, 2026-11-04), so it is placed, not
+    /// resolution only (its icons grow downward with 보스 디버프 크기; 21:9 the same: the clips, 2026-11-03), so it is placed, not
     /// searched for: <see cref="BossDebuffLine"/> px from the top, with <see cref="BossLineSnap"/> px either side for a snap.
     /// Across: from <see cref="BossRow"/>'s left out to the last debuff slot the size shows at the row's measured spacing.</summary>
     public static PixelRect BossDebuffStrip(Viewport vp, Fit fit, int bossSize = RefBossSize)

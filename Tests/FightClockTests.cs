@@ -49,4 +49,16 @@ public class FightClockTests
 
     [Fact]
     public void The_first_read_starts_fight_one() => Assert.Equal(1, Run((40, 0)).Fight);
+
+    /// <summary>The next gate has no loading screen, but its 전분 record starts at 00:00 (user, 2026-11-03): a record after
+    /// another one is a restart; the first one seen, and a lower read not yet confirmed, are not.</summary>
+    [Fact]
+    public void A_record_after_another_one_is_a_restart()
+    {
+        var before = Run((12, 0), (13, 1));
+        Assert.False(FightClock.Restarted(FightClockState.None, Run((40, 0))));
+        Assert.False(FightClock.Restarted(before, Run((12, 0), (13, 1), (0, 2))));
+        Assert.True(FightClock.Restarted(Run((12, 0), (13, 1), (0, 2)), Run((12, 0), (13, 1), (0, 2), (1, 3))));
+        Assert.False(FightClock.Restarted(before, before));
+    }
 }

@@ -93,6 +93,24 @@ public class MeterViewTests
         MeterStatus.None with { Panel = new(damage, 0, 10, false), PanelFound = true, Clock = FightClockState.None with { Fight = fight } };
 
     [Fact]
+    public void The_graph_follows_the_전분_timer_and_stops_while_it_is_stopped()
+    {
+        var h = new MeterHistory();
+        var clock = FightClockState.None;
+        void Second(int timer, double at)
+        {
+            clock = FightClock.Update(clock, timer, S(at));
+            var mine = MeterStatus.None with { Panel = new(10 * Eok, Eok, timer, false), PanelFound = true, Clock = clock };
+            MeterView.Build(mine, MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(at));
+        }
+        for (int t = 0; t <= 5; t++) Second(t, t);
+        for (int at = 6; at <= 20; at++) Second(5, at);        // a phase change: the timer stopped for 15 s
+        for (int t = 6; t <= 8; t++) Second(t, t + 15);
+        var points = h.Series(0).Select(p => p.At.TotalSeconds).ToList();
+        Assert.Equal([0, 1, 2, 3, 4, 5, 6, 7, 8], points);   // one point per 전분 second, none for the stop
+    }
+
+    [Fact]
     public void Buff_coverage_is_the_share_of_my_damage_dealt_while_each_buff_was_on()
     {
         var h = new MeterHistory();

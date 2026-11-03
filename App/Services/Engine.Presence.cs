@@ -51,6 +51,15 @@ public sealed partial class Engine
         Trace.WriteLine($"[presence] loading screen{(_presence.InDungeon(t) ? " (in a dungeon)" : "")}");
     }
 
+    /// <summary>A new 전분 record after another one: between gates there is no loading screen, but the record starts at 00:00
+    /// (user, 2026-11-03). As after a loading screen, the dungeon panel gets fresh votes, read fast.</summary>
+    void NewGate()
+    {
+        Interlocked.Increment(ref _dungeonGen);
+        WakeDungeon();
+        Trace.WriteLine("[presence] new 전분 record: the dungeon panel read afresh");
+    }
+
     /// <summary>The HUD is back: after a loading screen, look for the meter at once and start the wait for it.</summary>
     void LoadingOver(TimeSpan t)
     {

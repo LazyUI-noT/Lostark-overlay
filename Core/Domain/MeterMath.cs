@@ -45,8 +45,8 @@ public static class MeterMath
         bossTaken < DashUnder ? null : Math.Max(0, 1 - rows.Where(r => r.Role == MeterRole.딜러).Sum(r => (double)r.Damage / bossTaken));
 }
 
-/// <summary>The meter's 1 Hz history of one 전분 record: each member's share and DPS over time, for the 10 s trend and the
-/// graphs. A new record (<c>fight</c>) starts it over.</summary>
+/// <summary>The meter's 1 Hz history of one 전분 record: each member's share and DPS on the record's clock (one point per
+/// second), for the 10 s trend and the graphs. A new record (<c>fight</c>) starts it over.</summary>
 public sealed class MeterHistory
 {
     readonly Dictionary<ulong, List<(TimeSpan At, double? Share, long Dps)>> _series = [];
@@ -67,7 +67,8 @@ public sealed class MeterHistory
         foreach (var r in rows)
         {
             if (!_series.TryGetValue(r.Id, out var list)) _series[r.Id] = list = [];
-            list.Add((at, r.Share, r.Dps));
+            if (list.Count > 0 && list[^1].At >= at) list[^1] = (list[^1].At, r.Share, r.Dps);   // the same 전분 second read again
+            else list.Add((at, r.Share, r.Dps));
         }
     }
 

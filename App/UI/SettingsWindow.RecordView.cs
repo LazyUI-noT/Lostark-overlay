@@ -57,8 +57,8 @@ public partial class SettingsWindow
         if (picked.Count == 1)
         {
             bar.Children.Add(KeepBox(first));
-            if (Timeline.AmsuGain(first.Record) is var (mine, all))   // 10.35% of the damage done while a bomb was up
-                bar.Children.Add(BarText($"암수 이득: 내 {TimelineView.Amount(mine)} · 전체 {TimelineView.Amount(all)}"));
+            if (Timeline.AmsuGain(first.Record) is var (mine, all, share))   // 10.35% of the damage done while a bomb was up
+                bar.Children.Add(BarText($"암수 이득: 내 {TimelineView.Amount(mine)} ({share * 100:0.0}%) · 전체 {TimelineView.Amount(all)}"));
         }
         else bar.Children.Add(AlignBox(picked));
         if (_hasIcons) AddLaneToggles(bar);

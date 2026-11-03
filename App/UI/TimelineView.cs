@@ -190,7 +190,7 @@ sealed class TimelineView : FrameworkElement
         dc.Pop();
     }
 
-    // A line per buff, lit (with a soft glow) while it was up; the label has its uptime.
+    // A line per buff, lit (with a soft glow) while it was up; the label has the share of my damage dealt under it.
     void DrawBuffs(DrawingContext dc, FightRecord r, double offset, TimeWindow seen, bool zoomed, double y, Brush fg)
     {
         var spans = Timeline.BuffSpans(r);
@@ -198,8 +198,8 @@ sealed class TimelineView : FrameworkElement
         foreach (var (kind, name, color) in Buffs)
         {
             double cy = y + BuffH / 2;
-            double whole = Timeline.Uptime(r, kind, new TimeWindow(0, r.Duration));
-            Text(dc, $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.Uptime(r, kind, seen) * 100:0}%)" : ""), new(0, y), 11, fg);
+            double whole = Timeline.BuffShare(r, kind, new TimeWindow(0, r.Duration));
+            Text(dc, $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.BuffShare(r, kind, seen) * 100:0}%)" : ""), new(0, y), 11, fg);
             dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
             var glow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, color.R, color.G, color.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
             var lit = Frozen(new Pen(Frozen(new SolidColorBrush(color)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
@@ -215,13 +215,14 @@ sealed class TimelineView : FrameworkElement
         if (r.AmsuOn) DrawBombs(dc, r, offset, seen, zoomed, y, fg, track);
     }
 
-    // The 암수 line: lit while a bomb was on the boss (암수 and 빛암 in their own shades), its uptime in the label.
+    // The 암수 line: lit while a bomb was on the boss (암수 and 빛암 in their own shades); the label has what the bombs added
+    // as a share of my damage (the top bar's 암수 이득 %).
     void DrawBombs(DrawingContext dc, FightRecord r, double offset, TimeWindow seen, bool zoomed, double y, Brush fg, Pen track)
     {
         var spans = Timeline.AmsuSpans(r);
-        double Up(TimeWindow w) => w.Span <= 0 ? 0 : spans.Sum(s => Math.Max(0, Math.Min(s.To, w.To) - Math.Max(s.From, w.From))) / w.Span;
         double cy = y + BuffH / 2;
-        Text(dc, $"암수 {Up(new TimeWindow(0, r.Duration)) * 100:0}%" + (zoomed ? $" ({Up(seen) * 100:0}%)" : ""), new(0, y), 11, fg);
+        double Gain(TimeWindow w) => Timeline.BombShare(r, w) * Timeline.AmsuShare;
+        Text(dc, $"암수 {Gain(new TimeWindow(0, r.Duration)) * 100:0.0}%" + (zoomed ? $" ({Gain(seen) * 100:0.0}%)" : ""), new(0, y), 11, fg);
         dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
         foreach (var (from, to, kind) in spans)
         {

@@ -1,6 +1,6 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>What a loading screen means for where the player is (meter-gating.plan.md phase 2, user 2026-11-04). The bar is
+/// <summary>What a loading screen means for where the player is (meter-gating.plan.md phase 2, user 2026-11-03). The bar is
 /// read only while the HUD is hidden; <see cref="Needed"/> reads in a row make a loading. When the HUD is back, a stay the
 /// in-game meter showed ends if neither the meter nor a boss bar is seen within <see cref="MeterWait"/>: the raid is over, no
 /// 60 s hold. A stay shown by a boss bar alone (the meter hidden) keeps the hold: no meter proves nothing there. The wait

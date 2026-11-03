@@ -47,9 +47,14 @@ public static class BuffTracker
             : prev.EndsAt is not null && now - prev.ChangedAt <= ResumeWindow ? prev with { Active = true }
             : new BuffState(prev.Kind, true, null, null, false, now);
         double? longest = mine.Max(r => r.Seconds);
-        // 공증 icons beside a held 8 s bar that all show under 2 s are the 1 s AoE's (1sdoublebuff.mp4): the bar follows its
-        // own icon to 0, and once that one is gone the AoE's is a reset, taken at once as the 1 s bar.
-        if (OwnRead(seen, mine, now) is { } own) (longest, seen) = (own, seen with { Resets = ResetsToShort - 1 });
+        // 공증 icons beside a held 8 s bar that all show under 2 s are the 1 s AoE's (1sdoublebuff.mp4). Once the 8 s one has
+        // under 2 s left the AoE's lasts longer (stood on, it shows "1" on), so the bar is a full 1 s bar at once (공증overlap.mp4,
+        // user 2026-11-03); before that the bar follows its own icon, and if that one goes the AoE's is taken at once as the 1 s bar.
+        if (Beside(seen, mine, now) is var (own, aoe))
+        {
+            if (seen.EndsAt - now < TimeSpan.FromSeconds(LongFrom)) return Start(seen with { Total = null }, Math.Max(own, aoe), now);
+            (longest, seen) = (own, seen with { Resets = ResetsToShort - 1 });
+        }
         if (longest is not { } shown) return seen with { Estimated = true };
         if (seen.EndsAt is not { } end) return Start(seen, FirstRead(seen.Kind, shown), now);
 
@@ -83,7 +88,7 @@ public static class BuffTracker
             var agreed = now + TimeSpan.FromSeconds(again);
             if ((pending - agreed).Duration() <= Second)
                 return agreed > end
-                    ? Start(seen with { ChangedAt = now, Total = null }, again, now)   // recast
+                    ? Start(seen with { Total = null }, again, now)   // recast: still on, so ChangedAt (when it came on) stays
                     : seen with { EndsAt = agreed, Estimated = false, Pending = null };
         }
         return seen with { Pending = now + TimeSpan.FromSeconds(hi > end ? FirstRead(seen.Kind, shown) : seconds), Estimated = true };
@@ -97,9 +102,10 @@ public static class BuffTracker
         return s with { EndsAt = end < now + total ? end : now + total, Total = total, Estimated = false, Pending = null, Resets = 0 };
     }
 
-    /// <summary>Of two or more 공증 reads while an 8 s bar is held: the one nearest the held end, when every other one
-    /// shows under <see cref="LongFrom"/> (the 1 s AoE); else null, and the longest counts (a second support's 8 s).</summary>
-    static double? OwnRead(BuffState s, List<BuffReading> mine, TimeSpan now)
+    /// <summary>Of two or more 공증 reads while an 8 s bar is held: the one nearest the held end and the longest of the others,
+    /// when every other one shows under <see cref="LongFrom"/> (the 1 s AoE); else null, and the longest counts (a second
+    /// support's 8 s).</summary>
+    static (double Own, double Aoe)? Beside(BuffState s, List<BuffReading> mine, TimeSpan now)
     {
         if (s.Kind != BuffKind.공증 || !(s.Total > Second) || s.EndsAt is not { } held) return null;
         var reads = mine.Select(r => r.Seconds).OfType<double>().ToList();
@@ -107,7 +113,8 @@ public static class BuffTracker
         double Gap(double v) => Window(v, now) is var (lo, hi) && held < lo ? (lo - held).TotalSeconds
             : held > hi ? (held - hi).TotalSeconds : 0;
         int own = reads.IndexOf(reads.MinBy(Gap));
-        return reads.Where((v, i) => i != own).All(v => v < LongFrom) ? reads[own] : null;
+        var others = reads.Where((v, i) => i != own).ToList();
+        return others.All(v => v < LongFrom) ? (reads[own], others.Max()) : null;
     }
 
     /// <summary>A whole read past the buff's longest duration can only be tenths whose "0." the reader lost on a bright

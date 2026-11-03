@@ -15,6 +15,12 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     public const int MaxEntries = 200_000;
     public static readonly TimeSpan EndAfterFrozen = TimeSpan.FromSeconds(120);   // PauseLimit's default
     public const long ClearUnder = 10_000;
+    /// <summary>A boss HP read this recent counts as the bar still shown (the boss probe reads it 2/s).</summary>
+    static readonly TimeSpan HpFresh = TimeSpan.FromSeconds(1.5);
+    /// <summary>Fight seconds the timer runs on with no boss bar before the end that make it a clear, at any HP it last showed
+    /// (a read missed now and then is not). A wipe keeps the bar up and read (종막's 공략에 실패하였습니다, user 2026-11-03);
+    /// 구원의 종탑 (2026-11-03): 9 s at 9.8% (1관문's gimmick kill), 4 s at 0.4% (2관문).</summary>
+    const double BarGoneFor = 3;
 
     /// <summary>The dungeon panel says raid: only then does a fight start (set by the app each second).</summary>
     public bool InRaid { get; set; } = true;
@@ -38,6 +44,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     bool _started, _stopped;
     DateTime _startedAt;
     string? _gate;
+    double? _hpSeen;   // the fight second the boss bar was last read
     List<RecordEvent> _events = [];
     List<RecordSample> _samples = [];
     List<RecordBoss> _boss = [];
@@ -129,6 +136,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
                 _samples.Add(new RecordSample(t, s.Name, s.Damage, s.Dps));
             }
             _boss.Add(new RecordBoss(t, bossTaken, status.Boss.Last, status.Boss.Max));
+            if (now - status.HpAt <= HpFresh) _hpSeen = t;
             return _events.Count + _samples.Count >= maxEntries ? Finish() : null;
         }
         if (c.Frozen && !_stopped) { _stopped = true; _pending.Clear(); }
@@ -153,10 +161,14 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         _started = false;
         Array.Clear(_committed);
         _bombCommitted = null;
-        bool? cleared = _boss.LastOrDefault(b => b.Current is not null)?.Current is { } hp ? hp < ClearUnder : null;
-        var r = new FightRecord(_startedAt, _gate, _boss.Count > 0 ? _boss[^1].T : 0, _phases, Me, MyClass, MySubclass,
+        double end = _boss.Count > 0 ? _boss[^1].T : 0;
+        // The bar goes when the boss dies, so its last read is rarely under ClearUnder (구원의 종탑 1관문: 1124억 left, a
+        // gimmick kill); a bar gone for BarGoneFor while the timer still ran is a clear too.
+        bool? cleared = _boss.LastOrDefault(b => b.Current is not null)?.Current is { } hp
+            ? hp < ClearUnder || _hpSeen is { } seen && end - seen >= BarGoneFor : null;
+        var r = new FightRecord(_startedAt, _gate, end, _phases, Me, MyClass, MySubclass,
             [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn);
-        (_events, _samples, _boss, _phases, _members, _gate) = ([], [], [], [], [], null);
+        (_events, _samples, _boss, _phases, _members, _gate, _hpSeen) = ([], [], [], [], [], null, null);
         return r;
     }
 }

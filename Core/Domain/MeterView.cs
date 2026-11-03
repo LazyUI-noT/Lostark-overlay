@@ -31,10 +31,13 @@ public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long
         // The boss figure comes from what was shared (mine is in it only when I send), so every PC divides by the same number;
         // my local figure stands in only when nobody shares.
         long boss = MeterMath.BossFigure(session.Count > 0 ? session : samples, host == 0 ? me : host);
-        var rows = MeterMath.Rows(samples, me, host == 0 ? me : host, settings.Scope, history.SharesAt(now - TrendOver), boss);
+        // The history is on the 전분 timer's seconds, as the game's own graph: a stopped timer (a phase change, the end) adds
+        // nothing, so the graph stops with it and goes on without a gap.
+        var fightAt = TimeSpan.FromSeconds(mine.Clock.Timer ?? 0);
+        var rows = MeterMath.Rows(samples, me, host == 0 ? me : host, settings.Scope, history.SharesAt(fightAt - TrendOver), boss);
         // The panel lost (a cutscene, the inventory over it): the last figures and the graph stay, marked by PanelFound.
         if (mine.Panel is null && history.LastRows is { Count: > 0 } last) rows = last;
-        else history.Add(now, mine.Clock.Fight, rows);
+        else if (mine.Clock.Timer is not null && !mine.Clock.Frozen) history.Add(fightAt, mine.Clock.Fight, rows);
         if (mine.Panel is { } p)
             history.Cover(mine.Clock.Fight, p.Damage, buffs, now, [.. samples.Where(s => s.Id != me && s.Role == MeterRole.딜러)]);
         // A dealer sees the buffs' part of their own damage; a support (whose 조력 피해량 is the dealers' damage) sees each buff

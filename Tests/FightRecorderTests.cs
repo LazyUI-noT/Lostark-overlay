@@ -241,11 +241,50 @@ public class FightRecorderTests
 
     // Step 3 (spec § D, the user's rules): start only in a raid; a clear ends at once (timer stopped, boss under 10,000);
     // a wipe or a hidden timer pauses, then ends after the pause length or on a restart (a new 전분 record).
-    FightRecord? TickHp(int? timer, double at, long hp)
+    double _hpAt;
+
+    /// <summary>A second with the boss at <paramref name="hp"/>; <paramref name="read"/> false: the bar was not read this second
+    /// (the boss's last HP held).</summary>
+    FightRecord? TickHp(int? timer, double at, long hp, bool read = true)
     {
         _clock = FightClock.Update(_clock, timer, S(at));
+        if (read) _hpAt = at;
         var boss = BossDamageState.None with { Last = hp, Max = 7_752_830_141 };
-        return _r.Step(MeterStatus.None with { Clock = _clock, Boss = boss }, [Me(100)], [], 0, null, S(at), Wall);
+        return _r.Step(MeterStatus.None with { Clock = _clock, Boss = boss, HpAt = S(_hpAt) }, [Me(100)], [], 0, null, S(at), Wall);
+    }
+
+    [Fact]
+    public void A_boss_bar_gone_while_the_timer_runs_is_a_clear()
+    {
+        // 구원의 종탑 1관문 (2026-11-03): the bar's last read showed 9.8% left, then the boss died and the timer ran on 9 s.
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 760_000_000);
+        for (int t = 11; t <= 15; t++) TickHp(t, t, 760_000_000, read: false);
+        Assert.True(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_bar_missed_for_two_seconds_at_the_end_is_still_a_fail()
+    {
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 760_000_000);
+        for (int t = 11; t <= 12; t++) TickHp(t, t, 760_000_000, read: false);
+        Assert.False(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_bar_gone_with_much_hp_left_is_still_a_clear()
+    {
+        // A gimmick kill with 65% left: the boss is gone, so is its bar.
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 5_000_000_000);
+        for (int t = 11; t <= 20; t++) TickHp(t, t, 5_000_000_000, read: false);
+        Assert.True(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_wipe_near_the_end_is_a_fail_as_its_bar_stays()
+    {
+        // 공략에 실패하였습니다 with a line and a half left (종막, user 2026-11-03): the bar stays up and read.
+        for (int t = 0; t <= 20; t++) TickHp(t, t, 50_000_000);
+        Assert.False(_r.Finish()!.Cleared);
     }
 
     [Fact]

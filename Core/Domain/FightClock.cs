@@ -24,4 +24,8 @@ public static class FightClock
         if (t > was) return new(t, now, now, s.Fight, false);
         return s with { SeenAt = now, Lower = null, Frozen = now - s.MovedAt >= FrozenAfter };
     }
+
+    /// <summary>A new record after another one: the next gate (no loading screen between gates, its record starts at 00:00)
+    /// or a retry. The first record seen is not one.</summary>
+    public static bool Restarted(FightClockState was, FightClockState now) => was.Fight > 0 && now.Fight != was.Fight;
 }

@@ -39,9 +39,23 @@ public static class Timeline
         [.. r.Events.Where(e => e.Name == r.Me && e.Kind == RecordEventKind.사용 && Enum.IsDefined((SlotId)e.What))
             .Select(e => (SlotId)e.What).Distinct().Order()];
 
-    /// <summary>The share of <paramref name="w"/> that my <paramref name="kind"/> buff was up (0 for an empty window).</summary>
-    public static double Uptime(FightRecord r, BuffKind kind, TimeWindow w) =>
-        w.Span <= 0 ? 0 : BuffSpans(r).Where(s => s.Kind == kind).Sum(s => Math.Max(0, Math.Min(s.To, w.To) - Math.Max(s.From, w.From))) / w.Span;
+    /// <summary>The share of my damage in <paramref name="w"/> dealt while my <paramref name="kind"/> buff was up, as the DPS
+    /// 미터기's 버프 적용률 counts it (MeterMath.Cover); 0 when I dealt none in it.</summary>
+    public static double BuffShare(FightRecord r, BuffKind kind, TimeWindow w) =>
+        DamageShare(r, BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)), w);
+
+    /// <summary>The share of my damage in <paramref name="w"/> dealt while a bomb was on the boss, as <see cref="BuffShare"/>.</summary>
+    public static double BombShare(FightRecord r, TimeWindow w) => DamageShare(r, AmsuSpans(r).Select(s => (s.From, s.To)), w);
+
+    static double DamageShare(FightRecord r, IEnumerable<(double From, double To)> spans, TimeWindow w)
+    {
+        var mine = MyDamage(r);
+        double total = At(mine, w.To) - At(mine, w.From);
+        if (total <= 0) return 0;
+        double under = spans.Where(s => s.To > w.From && s.From < w.To)
+            .Sum(s => At(mine, Math.Min(s.To, w.To)) - At(mine, Math.Max(s.From, w.From)));
+        return under / total;
+    }
 
     /// <summary>Each player's average DPS over <paramref name="w"/> (their samples in it): me first, then highest first.</summary>
     public static IReadOnlyList<(string Name, double Dps)> DpsAverages(FightRecord r, TimeWindow w) =>
@@ -81,17 +95,23 @@ public static class Timeline
     /// <summary>What a bomb adds to the damage dealt while it is up (user, 2026-11-01: a flat 10.35%).</summary>
     public const double AmsuShare = 0.1035;
 
-    /// <summary>The 암수 gain over the fight: my 피해량 and the boss's damage taken within the bomb windows × <see cref="AmsuShare"/>;
-    /// null when 암수 was not read in this fight (the windows would be missing, not empty).</summary>
-    public static (double Mine, double Total)? AmsuGain(FightRecord r)
+    /// <summary>The 암수 gain over the fight: my 피해량 and the boss's damage taken within the bomb windows × <see cref="AmsuShare"/>,
+    /// and my gain as a share of all my damage (0 when I dealt none); null when 암수 was not read in this fight (the windows
+    /// would be missing, not empty).</summary>
+    public static (double Mine, double Total, double MyShare)? AmsuGain(FightRecord r)
     {
         if (!r.AmsuOn) return null;
         var spans = AmsuSpans(r);
-        var mine = r.Samples.Where(s => s.Name == r.Me).OrderBy(s => s.T).Select(s => (s.T, (double)s.Damage)).ToList();
+        var mine = MyDamage(r);
         var boss = r.Boss.OrderBy(b => b.T).Select(b => (b.T, (double)b.Taken)).ToList();
         double Within(List<(double T, double V)> line) => spans.Sum(s => At(line, s.To) - At(line, s.From));
-        return (Within(mine) * AmsuShare, Within(boss) * AmsuShare);
+        double gain = Within(mine) * AmsuShare, all = At(mine, r.Duration) - At(mine, 0);
+        return (gain, Within(boss) * AmsuShare, all > 0 ? gain / all : 0);
     }
+
+    /// <summary>My running 피해량 through the fight, for <see cref="At"/>.</summary>
+    static List<(double T, double V)> MyDamage(FightRecord r) =>
+        [.. r.Samples.Where(s => s.Name == r.Me).OrderBy(s => s.T).Select(s => (s.T, (double)s.Damage))];
 
     /// <summary>A running total at second <paramref name="t"/>: linear between samples, held past the ends.</summary>
     static double At(List<(double T, double V)> line, double t)

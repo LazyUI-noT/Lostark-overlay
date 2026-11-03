@@ -171,6 +171,47 @@ public sealed class JeonbunSweep
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 
+    /// <summary>GAUGE_BUFF: the buff row read and tracked as the engine does (BuffReader, BuffTracker) at 10 frames a second.
+    /// GAUGE_BUFF_HUD (default 100), GAUGE_BUFF_SIZE (버프 크기, default 100), GAUGE_BUFF_COUNT (boxes read, default 7),
+    /// GAUGE_BUFF_FROM / _TO (video seconds printed, default all). GAUGE_SWEEP_OUT: per frame each box's kind:seconds and the
+    /// 공증 bar (on/off, total, left).</summary>
+    [Fact]
+    public void Buffs_in_a_video_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_BUFF") is not { } video) return;
+        var vp = new Viewport(0, 0, 1920, 1080);
+        var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_HUD") ?? "100"));
+        int size = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_SIZE") ?? "100");
+        int count = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_COUNT") ?? "7");
+        double from = double.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_FROM") ?? "0");
+        double to = double.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_TO") ?? "1e9");
+        var area = Geometry.BuffArea(vp, fit, size, count);
+        var boxes = Geometry.BuffBoxes(vp, fit, size, count);
+        PixelRect Local(PixelRect r) => r with { X = r.X - area.X, Y = r.Y - area.Y };
+        var reader = new BuffReader(Geometry.BuffScale(vp, size));
+        var states = Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero)).ToArray();
+        var lines = new List<string>();
+        foreach (var (sec, img) in Frames(video, area.X, area.Y, area.Width, area.Height, fps: 10))
+        {
+            var now = TimeSpan.FromSeconds(sec);
+            var readings = new List<BuffReading>();
+            var cells = new List<string>();
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                var kind = BuffReader.Classify(img, Local(boxes[i].Icon));
+                double? s = kind is null ? null : reader.ReadTimer(img, Local(boxes[i].Timer));
+                if (kind is { } k) readings.Add(new(k, s, now));
+                cells.Add(kind is null ? "-" : $"{kind}:{s}");
+            }
+            states = [.. states.Select(b => BuffTracker.Update(b, readings, now, true))];
+            var g = states[(int)BuffKind.공증];
+            if (sec >= from && sec <= to)
+                lines.Add($"{sec:0.0} | {string.Join(" ", cells)} | 공증 {(g.Active ? "on" : "off")} total {g.Total?.TotalSeconds} left {g.Remaining(now).TotalSeconds:0.0}");
+            if (sec > to) break;
+        }
+        File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
+    }
+
     /// <summary>The rectangle of every half second of the video (FFMPEG decodes it), with its video second.</summary>
     internal static IEnumerable<(double T, Image Image)> Frames(string video, int x, int y, int w, int h, int fps = 2)
     {

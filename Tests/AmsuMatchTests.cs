@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>The bomb match at a slot (AmsuReader.Around): each box the tries look at is computed once (amsu-match, 2026-11-04).
+/// <summary>The bomb match at a slot (AmsuReader.Around): each box the tries look at is computed once (amsu-match, 2026-11-03).
 /// It must answer exactly as the old one did: five tries at x−2…x+2, each its own ±2 px match.</summary>
 public class AmsuMatchTests
 {

@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>What a loading screen means for where the player is (meter-gating.plan.md phase 2, user 2026-11-04): two bar reads
+/// <summary>What a loading screen means for where the player is (meter-gating.plan.md phase 2, user 2026-11-03): two bar reads
 /// in a row while the HUD is hidden make a loading; after it, a stay the meter showed ends when no meter or boss bar comes back
 /// within 5 s of the HUD.</summary>
 public class LoadingWatchTests
@@ -70,7 +70,7 @@ public class LoadingWatchTests
         Assert.True(Run(w, 45, 50, counting: true).Left);
     }
 
-    // Review HIGH (2026-11-04): an intro cutscene right after the loading hides the HUD and the meter for long; the wait must
+    // Review HIGH (2026-11-03): an intro cutscene right after the loading hides the HUD and the meter for long; the wait must
     // not run through it. Nor while the game is behind another window (alt-tab).
     [Fact]
     public void The_wait_pauses_while_the_HUD_is_hidden_again_or_the_game_is_not_in_front()

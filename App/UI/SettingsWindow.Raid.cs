@@ -90,7 +90,7 @@ public partial class SettingsWindow
             "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창은 그대로 남아, 다시 켜면 돌아옵니다. " +
             "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다.")));
         if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 그대로 남아 있고, 다시 켜면 그대로 돌아옵니다."));
-        // One 디버프 창 switch for every raid (user, 2026-11-04); a raid turned on by hand is the tray's (표시 → 디버프 창).
+        // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시 → 디버프 창).
         p.Children.Add(Row("", Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
             "켜면 디버프가 있는 레이드(3막 모르둠)의 보스를 알아본 동안 그 레이드의 디버프 창을 보여 줍니다. " +
             "알아보지 못해도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요: 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽도 보이지 않습니다.")));

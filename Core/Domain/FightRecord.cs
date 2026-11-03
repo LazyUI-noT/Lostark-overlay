@@ -18,7 +18,7 @@ public sealed record RecordBoss(double T, long Taken, long? Current, long? Max);
 public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, int What);
 
 /// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
-/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (the boss's last HP under 10,000; null: never read), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
+/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (the boss's last HP under 10,000, or its bar gone while the timer ran on; null: never read), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
 public sealed record FightRecord(
     DateTime StartedAt,
     string? Gate,
@@ -37,8 +37,14 @@ public sealed record FightRecord(
     bool? Cleared = null,
     bool AmsuOn = false)
 {
-    /// <summary>My share at the end (my last figure over the last boss figure); null under the meter's dash rule.</summary>
+    /// <summary>My share at the end (my last figure over the last boss figure; on a clear over all the boss's HP, the part its
+    /// bar showed last counted as taken); null under the meter's dash rule.</summary>
     public double? MyShare =>
         Samples.LastOrDefault(s => s.Name == Me) is { Damage: >= MeterMath.DashUnder } mine && Boss.LastOrDefault() is { Taken: >= MeterMath.DashUnder } boss
-            ? (double)mine.Damage / boss.Taken : null;
+            ? (double)mine.Damage / BossTotal(boss) : null;
+
+    /// <summary>The boss's damage taken in all: as read, or on a clear the HP its bar showed last as well (the kill is often
+    /// unread), and at least the bar's whole HP (a record that started a read late).</summary>
+    long BossTotal(RecordBoss last) =>
+        Cleared == true && last.Current is { } left ? Math.Max(last.Taken + left, last.Max ?? 0) : last.Taken;
 }

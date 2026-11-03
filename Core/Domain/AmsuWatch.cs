@@ -5,7 +5,7 @@ namespace GaugeOverlay.Core.Domain;
 
 /// <summary>How the boss row reads at the current layout: the icons' scale, the "N초" scale, the debuff slots in the strip, and
 /// whether the time is read at all (<see cref="Amsu.Timed"/>), and the row's line in the strip (<see cref="Geometry.BossDebuffStrip"/>:
-/// HUD and resolution place it, user 2026-11-04).</summary>
+/// HUD and resolution place it, user 2026-11-03).</summary>
 public sealed record AmsuLayout(double Scale, double TextScale, BossSlots Slots, bool Timed, int Line)
 {
     public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize) =>

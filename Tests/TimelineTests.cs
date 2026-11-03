@@ -62,15 +62,20 @@ public class TimelineTests
     }
 
     [Fact]
-    public void Buff_uptime_is_the_share_of_the_window_it_was_up()
+    public void Buff_share_is_the_part_of_my_damage_in_the_window_dealt_under_it()
     {
+        // 100 damage a second from 0 to 20 s, none after: the buff's 4 s (5–9) take 400, the open one from 50 s nothing.
         var r = R(60, null,
             E(5, "나", RecordEventKind.버프시작, (int)BuffKind.아덴피증), E(9, "나", RecordEventKind.버프끝, (int)BuffKind.아덴피증),
-            E(50, "나", RecordEventKind.버프시작, (int)BuffKind.아덴피증));
-        Assert.Equal(14.0 / 60, Timeline.Uptime(r, BuffKind.아덴피증, new TimeWindow(0, 60)), 6);
-        Assert.Equal(4.0 / 10, Timeline.Uptime(r, BuffKind.아덴피증, new TimeWindow(0, 10)), 6);
-        Assert.Equal(0, Timeline.Uptime(r, BuffKind.초각스피증, new TimeWindow(0, 60)));
-        Assert.Equal(0, Timeline.Uptime(r, BuffKind.아덴피증, new TimeWindow(20, 20)));
+            E(50, "나", RecordEventKind.버프시작, (int)BuffKind.아덴피증)) with
+        {
+            Samples = [new(0, "나", 0, 0), new(20, "나", 2000, 100), new(60, "나", 2000, 0), new(30, "철수", 99_999, 0)],
+        };
+        Assert.Equal(400.0 / 2000, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(0, 60)), 6);
+        Assert.Equal(400.0 / 1000, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(0, 10)), 6);
+        Assert.Equal(0, Timeline.BuffShare(r, BuffKind.초각스피증, new TimeWindow(0, 60)));
+        Assert.Equal(0, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(40, 60)));   // no damage in it
+        Assert.Equal(0, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(20, 20)));
     }
 
     [Fact]
@@ -103,15 +108,32 @@ public class TimelineTests
     [Fact]
     public void 암수_gain_is_10_35_percent_of_the_damage_done_while_a_bomb_was_up()
     {
-        var (mine, total) = Timeline.AmsuGain(Bombed(amsuOn: true))!.Value;
+        var (mine, total, share) = Timeline.AmsuGain(Bombed(amsuOn: true))!.Value;
         Assert.Equal(103_500_000_000, mine, 0);    // 1조 × 10.35% = 1035억
         Assert.Equal(207_000_000_000, total, 0);   // the boss's 2조 likewise
+        Assert.Equal(0.1035, share, 6);            // all my 1조 was under the bomb
+    }
+
+    [Fact]
+    public void The_암수_line_is_the_part_of_my_damage_dealt_under_a_bomb()
+    {
+        var r = Bombed(amsuOn: true, from: 20, to: 30);   // my 1조 grows evenly from 10 to 30 s: half of it under the bomb
+        Assert.Equal(0.5, Timeline.BombShare(r, new TimeWindow(0, 40)), 6);
+        Assert.Equal(1, Timeline.BombShare(r, new TimeWindow(20, 30)), 6);
+        Assert.Equal(0, Timeline.BombShare(r, new TimeWindow(30, 40)));   // no damage in it
+    }
+
+    [Fact]
+    public void 암수_share_is_my_gain_over_all_my_damage()
+    {
+        Assert.Equal(0.05175, Timeline.AmsuGain(Bombed(amsuOn: true, from: 20, to: 30))!.Value.MyShare, 6);   // half of 1조 under it
+        Assert.Equal(0, Timeline.AmsuGain(R(40) with { AmsuOn = true })!.Value.MyShare);                       // no damage at all
     }
 
     [Fact]
     public void Only_the_damage_inside_the_bomb_windows_counts()
     {
-        var (mine, _) = Timeline.AmsuGain(Bombed(amsuOn: true, from: 20, to: 30))!.Value;   // half of the growth
+        var (mine, _, _) = Timeline.AmsuGain(Bombed(amsuOn: true, from: 20, to: 30))!.Value;   // half of the growth
         Assert.Equal(51_750_000_000, mine, 0);
     }
 

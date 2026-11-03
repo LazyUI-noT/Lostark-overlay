@@ -50,7 +50,7 @@ public class RaidSettingsTests
     [Theory]
     [InlineData(true, false, "모르둠", false)]   // always shown → the tray's pick
     [InlineData(true, true, "없음", true)]       // 자동 → 디버프 창 자동
-    [InlineData(false, true, "없음", false)]     // off stays off (user, 2026-11-04)
+    [InlineData(false, true, "없음", false)]     // off stays off (user, 2026-11-03)
     public void The_per_gate_debuff_window_becomes_the_one_switch_and_the_tray_pick(bool window, bool auto, string picked, bool debuffsAuto)
     {
         var s = new Settings();

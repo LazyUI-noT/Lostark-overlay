@@ -68,7 +68,7 @@ public class RaidRecognitionTests
         Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false }, Gates, null));
     }
 
-    // One 디버프 창 switch for every raid; a raid picked in the tray wins (user, 2026-11-04).
+    // One 디버프 창 switch for every raid; a raid picked in the tray wins (user, 2026-11-03).
     [Fact]
     public void The_debuff_window_follows_the_recognised_gate_or_the_tray_pick()
     {
@@ -93,7 +93,7 @@ public class RaidRecognitionTests
         Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));
     }
 
-    // User, 2026-11-04: the replay showed the 모르둠 디버프 창 in 지옥. Nothing shows it outside a dungeon.
+    // User, 2026-11-03: the replay showed the 모르둠 디버프 창 in 지옥. Nothing shows it outside a dungeon.
     [Theory]
     [InlineData("act3-g3", null, "없음")]   // 자동, recognised (a stale gate after leaving)
     [InlineData(null, "act3-g3", "없음")]   // 자동 인식 off, the gate picked by hand

@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Vision;
 namespace GaugeOverlay.Tests;
 
 /// <summary>ImageOps.Resample (every strip and icon brought to reference size): its weights are worked out once per column and
-/// row (amsu-match, 2026-11-04). The picture must be the old one, byte for byte.</summary>
+/// row (amsu-match, 2026-11-03). The picture must be the old one, byte for byte.</summary>
 public class ResampleTests
 {
     /// <summary>The old resample, per pixel.</summary>

@@ -56,7 +56,7 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <see cref="GateSettings.CountWindow"/> kept as it is. The 디버프 창 doesn't follow it.</summary>
     public bool CountEnabled { get; set; } = true;
     public Dictionary<string, GateSettings> Gates { get; set; } = [];
-    /// <summary>디버프 창 자동, for every raid (user, 2026-11-04: no per-gate switch): a raid's debuff window shows while its gate
+    /// <summary>디버프 창 자동, for every raid (user, 2026-11-03: no per-gate switch): a raid's debuff window shows while its gate
     /// is recognised (or picked by hand). A raid turned on in the tray (<see cref="DebuffSettings.Raid"/>) shows in any dungeon
     /// and wins over this.</summary>
     public bool DebuffsAuto { get; set; } = true;
@@ -130,7 +130,7 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
         Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, 0.1, 1) : 1;
         if (DebuffsMigrated) return;
         // 0.13–0.16.0 kept the 디버프 창 per gate (and mirrored it into debuffs.Raid, 자동 or not): a gate on "always" becomes
-        // the tray's pick, one on 자동 keeps 디버프 창 자동 on, one off turns it off (user, 2026-11-04: off stays off). Before the
+        // the tray's pick, one on 자동 keeps 디버프 창 자동 on, one off turns it off (user, 2026-11-03: off stays off). Before the
         // table (Migrated false) debuffs.Raid was the switch, and 자동 keeps its default.
         if (Migrated && Gates.GetValueOrDefault(MordumGate) is var mordum)
             (debuffs.Raid, DebuffsAuto) = (mordum is { DebuffWindow: true, DebuffAuto: false } ? Raid.모르둠 : Raid.없음, mordum is { DebuffWindow: true, DebuffAuto: true });

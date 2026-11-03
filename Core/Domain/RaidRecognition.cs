@@ -43,7 +43,7 @@ public static class RaidReadPlan
         return (readName, gate is not null && Row(gate) is { } gr && Count(gr), gate);
     }
 
-    /// <summary>The debuff window's raid (user, 2026-11-04): the raid picked in the tray (<paramref name="picked"/>), else with
+    /// <summary>The debuff window's raid (user, 2026-11-03): the raid picked in the tray (<paramref name="picked"/>), else with
     /// 디버프 창 자동 the recognised gate's (or the gate picked by hand), else 없음; never outside a dungeon (it showed in 지옥).</summary>
     public static Raid DebuffRaid(RaidSettings s, IReadOnlyList<RaidGate> gates, string? recognised, bool inDungeon, Raid picked) =>
         !inDungeon ? Raid.없음

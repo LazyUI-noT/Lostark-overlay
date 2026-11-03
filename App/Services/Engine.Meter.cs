@@ -82,6 +82,7 @@ public sealed partial class Engine
         var read = BossBar(hp).Hp;   // a shield in brackets counts as HP (its breaking is damage)
         Saw(meter: present, boss: read is not null, t);
         var next = MeterTracker.Step(_meter, read is var (cur, max, _) ? (cur, max) : null, reading, reading is not null, t, read?.Shield ?? 0);
+        if (FightClock.Restarted(_meter.Clock, next.Clock)) NewGate();
         bool changed = next != _meter;
         _meter = next;
         return changed;

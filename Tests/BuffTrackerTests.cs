@@ -86,7 +86,7 @@ public class BuffTrackerTests
         Assert.InRange(s.EndsAt!.Value, T(3), T(4));
         s = BuffTracker.Update(s, [R(BuffKind.공증, 8, 0.2)], T(0.2), true);
         Assert.InRange(s.EndsAt!.Value, T(8.2), T(9.2));
-        Assert.Equal(T(0.2), s.ChangedAt);
+        Assert.Equal(T(0), s.ChangedAt);   // still on since 0: the meter's share (MeterMath.OnFor) counts the whole second
         Assert.Equal(T(8), s.Total);
     }
 
@@ -247,23 +247,44 @@ public class BuffTrackerTests
         Assert.True(wrong.Count == 0, string.Join(" | ", wrong));
     }
 
-    /// <summary>The 1 s 공증's AoE icon beside the 8 s one (two icons): the 8 s bar follows its own icon to 0, not the AoE's
-    /// longer "1".</summary>
+    /// <summary>The 1 s 공증's AoE icon beside an 8 s one with under 2 s left (two icons): the AoE's lasts longer (stood on,
+    /// it shows "1" on), so the bar is a full 1 s bar at once, not the 8 s one drained to 0 first (user, 2026-11-03).</summary>
     [Fact]
-    public void Beside_the_AoE_icon_the_8s_공증_drains_on_its_own_icon()
+    public void Beside_the_AoE_icon_an_8s_공증_under_2s_left_turns_into_the_full_1s_bar()
     {
-        var s = Run(BuffKind.공증, (1.1, [7]), (7.1, [1]), (7.5, [1, 1]), (8.5, [0.5, 1]));
-        Assert.Equal((T(8), T(9.0)), (s.Total, s.EndsAt));
+        var s = Run(BuffKind.공증, (1.1, [7]), (7.1, [1]), (7.5, [1, 1]));
+        Assert.Equal((T(1), T(8.5), T(1.1)), (s.Total, s.EndsAt, s.ChangedAt));   // on since 1.1 throughout
+        s = BuffTracker.Update(s, [R(BuffKind.공증, 0.5, 8.5), R(BuffKind.공증, 1, 8.5)], T(8.5), true);
+        Assert.Equal(T(1), s.Total);
+        Assert.InRange(s.Progress(T(8.5)), 0.9, 1);   // stood on: full
+    }
+
+    /// <summary>The AoE icon draining ("0.4") beside an 8 s one at "1": the 1 s bar follows the one that ends last, the 8 s.</summary>
+    [Fact]
+    public void At_the_switch_the_1s_bar_takes_the_later_of_the_two_ends()
+    {
+        var s = Run(BuffKind.공증, (1.1, [7]), (7.1, [1]), (7.5, [1, 0.4]));
+        Assert.Equal((T(1), T(8.5)), (s.Total, s.EndsAt));
+    }
+
+    /// <summary>An AoE icon beside an 8 s 공증 with 2 s or more left: the 8 s one lasts longer, so the bar keeps it.</summary>
+    [Fact]
+    public void Beside_the_AoE_icon_an_8s_공증_with_2s_left_keeps_its_bar()
+    {
+        var s = Run(BuffKind.공증, (0, [8]), (1, [7, 1]));
+        Assert.Equal(T(8), s.Total);
+        Assert.InRange(s.EndsAt!.Value, T(8), T(9));
     }
 
     /// <summary>도화가 clips (HUD 110, buff 120%, 10 fps; crop 600,870 260×90 for the 도화가support ones): the 공증 bar refills
     /// only at a real cast or stepping onto the AoE, never on a misread (a dropped "0.", the AoE icon's decimals beside
-    /// the 8 s one). 도화가support: 8 s at 1.8 s, AoE at 11.3 s, 8 s at 16.8 s. (2): AoE at 3.1 s, 8 s at 11.5 s, AoE at 26.4 s and again at 29.5 s, 8 s at 33 s.
-    /// 1sdoublebuff: 8 s at 1.1 s, AoE once the 8 s icon is gone (9.4 s).</summary>
+    /// the 8 s one). 도화가support: 8 s at 1.8 s, AoE at 11.3 s, 8 s at 16.8 s. (2): AoE at 3.1 s, 8 s at 11.5 s, AoE beside it with
+    /// under 2 s left at 17.8 s (it ends at 20.0 s, after the 8 s one), AoE at 26.4 s and again at 29.5 s, 8 s at 33 s.
+    /// 1sdoublebuff: 8 s at 1.1 s, AoE as its icon joins the 8 s one at "1초" (7.5 s).</summary>
     [Theory]
     [InlineData("buffrow_dohwa1", new[] { 1.8, 11.3, 16.8 })]
-    [InlineData("buffrow_dohwa2", new[] { 3.1, 11.5, 26.4, 29.5, 33.0 })]
-    [InlineData("buffrow_dbl", new[] { 1.1, 9.4 })]
+    [InlineData("buffrow_dohwa2", new[] { 3.1, 11.5, 17.8, 26.4, 29.5, 33.0 })]
+    [InlineData("buffrow_dbl", new[] { 1.1, 7.5 })]
     public void The_공증_bar_refills_only_at_real_casts(string fixture, double[] refills)
     {
         var f = Fixture.Load(fixture);
@@ -290,7 +311,7 @@ public class BuffTrackerTests
 
     /// <summary>1sdoublebuff.mp4 (도화가 party, set up as buff_gameplay) at 10 fps: an 8 s 공증 first read "7" at 1.1 s, the
     /// AoE's 1 s 공증 beside it from 7.5 s reading "1" while stood on, the 8 s icon at 0 by 9.0 s and gone at 9.4 s, the
-    /// AoE one draining 0.9 → 0 from 11.0 s. The bar drains 8 → 0, then is a full 1 s bar, then drains 1 → 0.</summary>
+    /// AoE one draining 0.9 → 0 from 11.0 s. The bar drains 8 → 1, is a full 1 s bar from the AoE icon on, then drains 1 → 0.</summary>
     [Fact]
     public void The_8s_공증_then_the_AoE_replays_as_8s_then_1s()
     {
@@ -309,8 +330,9 @@ public class BuffTrackerTests
             at[Math.Round(i / 10.0, 1)] = s;
         }
         Assert.Equal(T(8), at[5.0].Total);
-        Assert.Equal(T(8), at[8.5].Total);
-        Assert.InRange(at[8.5].Remaining(T(8.5)).TotalSeconds, 0.4, 0.7);   // its own icon, not the AoE's "1"
+        Assert.Equal(T(8), at[7.2].Total);
+        Assert.Equal(T(1), at[8.5].Total);                                   // the AoE's icon beside it: the 1 s bar at once
+        Assert.InRange(at[8.5].Progress(T(8.5)), 0.9, 1);
         Assert.Equal(T(1), at[9.8].Total);
         Assert.InRange(at[9.8].Progress(T(9.8)), 0.9, 1);                   // stood on: full
         Assert.Equal(T(1), at[11.5].Total);
@@ -319,7 +341,7 @@ public class BuffTrackerTests
 
     /// <summary>공증bug.mp4 (HUD 100, buff 120%, the 도화가 crop) at 10 fps: the 8 s 공증 at "1초" from 2.2 s when the AoE's icon joins it at 2.6 s;
     /// the 8 s one drains 0.9 → 0 over 3.2–4.2 s and goes; the AoE one shows "1초" while stood on until 6.6 s, then
-    /// drains 0.9 → 0 by 7.4 s. The bar follows the 8 s icon down, then is a full 1 s bar, then drains.</summary>
+    /// drains 0.9 → 0 by 7.4 s. The bar is a full 1 s bar from the AoE's icon on (the 8 s one has under 2 s left), then drains.</summary>
     [Fact]
     public void The_AoE_cast_near_the_end_of_the_8s_공증_becomes_the_1s_bar()
     {
@@ -341,9 +363,8 @@ public class BuffTrackerTests
                       $"{(s.Active ? "on" : "off")} total {s.Total?.TotalSeconds} left {s.Remaining(now).TotalSeconds:0.00}");
         }
         string log = string.Join("\n", trace);
-        Assert.True(at[3.5].Total == T(8), log);
-        Assert.True(at[3.5].Remaining(T(3.5)).TotalSeconds is >= 0.3 and <= 0.7, log);   // its own icon
-        foreach (double t in new[] { 5.0, 5.5, 6.0 })
+        Assert.True(at[2.4].Total == T(8), log);
+        foreach (double t in new[] { 3.5, 5.0, 5.5, 6.0 })
         {
             Assert.True(at[t].Active && at[t].Total == T(1), $"{t}\n{log}");
             Assert.True(at[t].Progress(T(t)) >= 0.9, $"{t}\n{log}");                        // stood on: full

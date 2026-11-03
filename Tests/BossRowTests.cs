@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Vision;
 namespace GaugeOverlay.Tests;
 
 /// <summary>The boss debuff row under the boss bar: its top is set by HUD 크기 and the resolution alone (user and the clips,
-/// 2026-11-04), so the 암수 strip (Geometry.BossDebuffStrip) is placed, not searched for, and snapped once ±2 px to the frames.</summary>
+/// 2026-11-03), so the 암수 strip (Geometry.BossDebuffStrip) is placed, not searched for, and snapped once ±2 px to the frames.</summary>
 public class BossRowTests
 {
     // amsu_*: a friend's 2560×1080 (21:9) game at HUD 100 and 보스 디버프 크기 100; each fixture is the game area from (1000, 100).
