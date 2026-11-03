@@ -105,4 +105,16 @@ public class SubclassMatcherTests
         Assert.False(SubclassMatcher.Greyed(colours));
         Assert.All(colours, c => Assert.True(c > 60, $"{c}"));
     }
+
+    /// <summary>직업각인 등록 saves a ready 초각스's art (<see cref="SubclassMatcher.Art"/>) as the 직업각인's icon: the later ready
+    /// reads pick it, beside the class's other icon.</summary>
+    [Theory]
+    [InlineData("subclass_valk", 0, "해방자", "빛의기사", new[] { 1, 2, 16, 17, 18, 19 })]
+    [InlineData("subclass_bard", 0, "절실한구원", "진실된용맹", new[] { 1, 2, 3, 4, 5 })]
+    public void A_registered_초각스_picks_its_직업각인_later(string fixture, int at, string mine, string other, int[] ready)
+    {
+        var frames = Fixture.Load(fixture).Frames;
+        var icons = new Dictionary<string, Image> { [mine] = SubclassMatcher.Art(frames[at]), [other] = Fixture.Load("icon_" + other).Frames[0] };
+        foreach (int i in ready) Assert.True(SubclassMatcher.Pick(frames[i], icons) == mine, $"{fixture} {i} s");
+    }
 }

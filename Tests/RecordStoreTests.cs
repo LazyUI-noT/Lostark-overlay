@@ -210,4 +210,42 @@ public sealed class RecordStoreTests : IDisposable
         store.SetKept(file, true);
         Assert.NotSame(first, Assert.Single(store.List()).Record);   // rewritten: read again
     }
+
+    [Fact]
+    public void An_edit_rewrites_the_record_under_its_new_name()
+    {
+        var file = Store.Save(R(0) with { Gate = null, MyClassName = "워로드" });
+        var now = Store.Edit(file, R(0) with { Gate = "3막 · 3관문", Difficulty = "하드", Cleared = true, MyClassName = "워로드" });
+        Assert.Equal("20261030-200000_3막 · 3관문_하드_워로드 고독한기사.json.gz", now);
+        var (name, back) = Assert.Single(Store.List());
+        Assert.Equal(now, name);
+        Assert.Equal(("3막 · 3관문", "하드", (bool?)true), (back.Gate, back.Difficulty, back.Cleared));
+    }
+
+    [Fact]
+    public void A_record_moved_to_a_full_character_drops_that_characters_oldest_automatic_one_never_itself()
+    {
+        var store = Store;
+        string moved = store.Save(R(0) with { MyClassName = "바드", MySubclass = "절실한구원" }, keep: 2);
+        string oldest = store.Save(R(1) with { MyClassName = "워로드" }, keep: 2);
+        string kept = store.Save(R(2, kept: true) with { MyClassName = "워로드" }, keep: 2);
+        string newer = store.Save(R(3) with { MyClassName = "워로드" }, keep: 2);
+
+        var now = store.Edit(moved, R(0) with { MyClassName = "워로드" }, keep: 2);
+
+        var files = store.List().Select(x => x.File).ToList();
+        Assert.Contains(now, files);   // the moved one is the group's oldest, but it is the one the user just put there
+        Assert.Contains(kept, files);
+        Assert.Contains(newer, files);
+        Assert.DoesNotContain(oldest, files);
+        Assert.DoesNotContain(moved, files);
+    }
+
+    [Fact]
+    public void The_held_fight_stays_held_when_edited()
+    {
+        Store.Hold(R(0));
+        Assert.Equal(RecordStore.Held, Store.Edit(RecordStore.Held, R(0) with { Gate = "카제로스" }));
+        Assert.Equal("카제로스", Assert.Single(Store.List()).Record.Gate);
+    }
 }

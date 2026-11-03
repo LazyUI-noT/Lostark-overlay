@@ -200,7 +200,8 @@ public partial class App
         IReadOnlySet<SlotId> NeededIcons()
         {
             var look = ClassProfiles.Mine(settings);
-            return SkillIcon.Needed(look.Effects?.Icons ?? new HashSet<SlotGroup>(), look.Groups, look.Hidden, characters.AdenSlots);
+            return SkillIcon.Needed(look.Effects?.Icons ?? new HashSet<SlotGroup>(), look.Groups, look.Hidden, characters.AdenSlots,
+                settings.Meter.On && settings.Meter.Record ? ClassProfiles.Reads(settings, characters.AdenSlots).Skip : null);   // 전투 기록 draws them
         }
         // The character or its 직업각인 changed: its saved icons are drawn at once, and a copy run starts only if some are missing.
         void LoadIcons()
@@ -311,6 +312,7 @@ public partial class App
             _amsu.Update(mine is not null ? new Player("", mine) : null);
             _raid.Update(mine is not null ? new Player("", hiddenStatus is not null && mine.Meter is not null ? mine with { Raid = hiddenStatus } : mine) : null);
             _meter.Update(mine is not null ? new Player("", mine) : null);
+            _shadow.Update(mine?.Shadow, _overlay.Visibility == Visibility.Visible || _meter.Visibility == Visibility.Visible);
             ShowPeers(peers);
         }
 
@@ -323,7 +325,11 @@ public partial class App
             if (!settings.Meter.Send) samples = [];   // not sharing: nobody else's figures, in the meter or the record
             _meter.Renderer.MeterMe = me;
             int myParty = party.Members.FirstOrDefault(m => m.Id == me)?.Party ?? 1;
-            var view = MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs);
+            // A 4-man raid (the gate by its HP, else the one recognised; any guardian raid): the buffs' party share too.
+            bool small = (RaidData.ByHp(HpGates(), status.Boss.Max)?.Gate ?? RaidData.Find(raidGates, _raidSeen))?.SmallParty == true
+                || latest?.Dungeon?.Kind == DungeonKind.Guardian;
+            var view = MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small)
+                with { BossName = HeaderBoss(status.Boss.Max) };
             RecordStep(status, role, samples, me, myParty, view.BossTaken);
             StepHidden(status, Everyone(status, role, samples, me, myParty), myParty);
             return view;
@@ -380,7 +386,9 @@ public partial class App
         void RecordStep(MeterStatus status, MeterRole role, IReadOnlyList<MeterSample> samples, ulong me, int myParty, long bossTaken)
         {
             if (!settings.Meter.Record) { recorder.Finish(); return; }   // 전투 기록 off: a fight under way is dropped, not saved
-            recorder.InRaid = latest?.Dungeon?.Kind == DungeonKind.Raid;   // records start only in a raid (the dungeon panel)
+            // Any dungeon but a guardian raid (user, 2026-11-03): its panel read, or unread with a boss bar (saved as 알 수 없음,
+            // named in 편집). The 전분 timer alone (a dummy, the field) starts nothing.
+            recorder.InRaid = latest?.Dungeon is { } dungeon ? dungeon.Kind != DungeonKind.Guardian : status.Boss.Max is not null;
             recorder.AmsuOn = settings.Amsu.On;   // the bombs are recorded (and their gain shown) only while read
             recorder.PauseLimit = TimeSpan.FromSeconds(Math.Clamp(settings.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause));
             // My name as the party knows it (a taken name gets a number there), so no member's lane is mine.
@@ -407,6 +415,16 @@ public partial class App
 
         // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
         // content and aren't kept.
+        // The meter header's boss and difficulty: by its max HP (raids.json, then the bosses learned from fights), else the
+        // recognised gate with the dungeon panel's difficulty.
+        string? HeaderBoss(long? max)
+        {
+            static string With(string name, string? level) => string.IsNullOrEmpty(level) ? name : $"{name} [{level}]";
+            if (RaidData.ByHp(HpGates(), max) is var (g, level)) return With(g.Bosses.FirstOrDefault() ?? RaidData.Label(g), level);
+            if (max is { } hp && settings.BossBook.TryGetValue(hp, out var learned)) return With(learned.Name, learned.Difficulty);
+            return RaidData.Find(raidGates, _raidSeen) is { } seen ? With(seen.Bosses.FirstOrDefault() ?? RaidData.Label(seen), latest?.Dungeon?.Difficulty) : null;
+        }
+
         // Returns the saved file's name once written (null: not saved).
         Task<string?> SaveRecord(FightRecord fight)
         {
@@ -622,6 +640,7 @@ public partial class App
         // With a 수동 조정 applied to this game area it asks first: drop it and fit (자동), or keep it and only detect the class.
         void Refit()
         {
+            characters.ForgetRequests();   // a 직업각인 read asked for earlier and never captured isn't this refit's
             if (engine.GameAreaKey is { } key && settings.AdjustActive(key))
             {
                 if (MessageBox.Show("수동 조정을 버리고 스킬창을 다시 맞출까요?\n\n아니요: 수동 조정은 그대로 두고 클래스와 직업각인만 다시 확인합니다.",
@@ -656,6 +675,16 @@ public partial class App
         }
         _tray.DetectSubclass += RedetectSubclass;
         _settingsWindow.SubclassRedetectRequested += RedetectSubclass;
+        // 직업각인 등록 (설정 → 캐릭터): the next ready 초각스 is saved as the 직업각인's icon (CharacterService.RegisterSubclass).
+        _settingsWindow.SubclassRegisterRequested += () =>
+        {
+            if (characters.RegisterSubclass() is { } why) { _tray.Notify(why); return; }
+            FrontForRead(engine);
+            engine.RequestSubclass();
+            _tray.Notify("초각스가 준비되면 그 아이콘을 지금 직업각인으로 등록합니다.");
+        };
+        // 로딩 뒤 직업각인 자동 감지: told only when it changes the 직업각인 (CharacterService.AutoRedetect).
+        engine.LoadingEnded += () => Dispatcher.BeginInvoke(() => { if (characters.AutoRedetect()) engine.RequestSubclass(); });
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectSubclass)) Dispatcher.BeginInvoke(RedetectSubclass); };
         _tray.RereadIcons += RereadIcons;
         _settingsWindow.IconRereadRequested += RereadIcons;

@@ -20,6 +20,13 @@ public class RaidDataTests
     }
 
     [Fact]
+    public void Only_세르카_and_구원의_종탑_are_4_man()
+    {
+        var small = RaidData.Load(Profiles).Where(g => g.SmallParty).Select(g => g.Id).Order();
+        Assert.Equal(["belltower-g1", "belltower-g2", "serka-g1", "serka-g2"], small);
+    }
+
+    [Fact]
     public void A_missing_or_broken_file_gives_no_gates()
     {
         var dir = Directory.CreateTempSubdirectory().FullName;

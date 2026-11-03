@@ -18,7 +18,7 @@ public sealed record RecordBoss(double T, long Taken, long? Current, long? Max);
 public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, int What);
 
 /// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
-/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (the boss's last HP under 10,000, or its bar gone while the timer ran on; null: never read), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
+/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (FightRecorder, FightVerdict, or set in 편집; null: 알 수 없음), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
 public sealed record FightRecord(
     DateTime StartedAt,
     string? Gate,

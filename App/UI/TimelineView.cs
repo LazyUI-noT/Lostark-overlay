@@ -8,19 +8,32 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>전투 기록's timeline (spec § D Timeline view): for each record shown (two for 비교, on one time axis lined up at
-/// their offsets), one chart with each player's DPS (solid, left scale) and 누적 피해 (dashed, right scale), mine gold and on
-/// top; below it one row of my skill casts in time order (my skill icon where I have one, else its key); then a line per buff (공증 red,
-/// 아덴 피증 yellow, 초각스 피증 blue) lit while it was up, with its share of the fight (and of the seconds shown when zoomed).
-/// Phase markers dashed. Hovering shows each player's figures, my buffs and casts at that second (as the game's 전투 분석기).
-/// Wheel or +/− zooms around the cursor, dragging or ←/→ scrubs. Draws only while shown.</summary>
+/// <summary>전투 기록's timeline (spec § D Timeline view): the fight opened, one chart with each player's DPS (solid, left scale)
+/// and 누적 피해 (dashed, right scale), mine gold and on top; fights picked for 비교 (the same raid) add my curves on the same
+/// chart, lined up at their offsets, thinner and in their own colours (user, 2026-11-03). Below it one row of my skill casts in
+/// time order (my skill icon where I have one, else its key; larger as the view zooms in, up to twice); then a line per buff
+/// (공증 red, 아덴 피증 yellow, 초각스 피증 blue) lit while it was up, with its share of the fight (and of the seconds shown when
+/// zoomed). Phase markers dashed. Hovering shows each player's figures, my buffs and casts at that second (as the game's 전투
+/// 분석기). Text and rows follow <see cref="FontScale"/>. Wheel or +/− zooms around the cursor, dragging or ←/→ scrubs. Draws
+/// only while shown.</summary>
 sealed class TimelineView : FrameworkElement
 {
-    const double LabelW = 96, RightW = 52, HeadH = 20, LegendH = 18, CurveH = 150, SkillH = 3 * (Icon + 2) + 4, BuffH = 16, AxisH = 18, Gap = 12, Icon = 16;
+    const double CurveH = 150, Gap = 12, BaseIcon = 16;
+    double _font = 1;
+    double LabelW => 96 * _font;
+    double RightW => 52 * _font;
+    double HeadH => 20 * _font;
+    double LegendH => 18 * _font;
+    double BuffH => 16 * _font;
+    double AxisH => 18 * _font;
+    double Icon => BaseIcon * Timeline.IconScale(_length, _window.Span);
+    double SkillH => 3 * (Icon + 2) + 4;
     double BlockHeight => HeadH + LegendH + CurveH + 8 + SkillH + 4 + Lanes * BuffH;   // one record's natural height
     double _curveH = CurveH;   // its curves: taller when the view is taller than its records (the full page)
     double Block => HeadH + LegendH + _curveH + 8 + SkillH + 4 + Lanes * BuffH;
     double Natural => _shown.Count * (BlockHeight + Gap) + AxisH;
+    static readonly Color[] Compared = [Color.FromRgb(0xFF, 0x7A, 0x59), Color.FromRgb(0x4F, 0xD1, 0xC5), Color.FromRgb(0xB7, 0x94, 0xF4)];
+    IReadOnlyList<(FightRecord Record, double Offset)> _compared = [];
     /// <summary>The buffs' lines, and the 암수 line when a fight shown had 암수 on (every record the same, so 비교 lines up).</summary>
     int Lanes => Buffs.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
     static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, Color.FromRgb(0x9B, 0x6B, 0xFF)), BombPens(Bomb.빛암, Color.FromRgb(0xD8, 0xA8, 0xFF))];
@@ -54,14 +67,26 @@ sealed class TimelineView : FrameworkElement
 
     public TimelineView() => (Focusable, ClipToBounds, Cursor) = (true, true, Cursors.SizeWE);
 
-    /// <summary>The records to draw, each with the second that lines up at 0 and my skill icons; the whole length shows.</summary>
-    public void Show(IReadOnlyList<(FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons)> shown)
+    /// <summary>The fight to draw, with the second that lines up at 0 and my skill icons, and the fights compared with it (their
+    /// curves on its chart, each lined up at its own second); the whole length shows.</summary>
+    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened,
+        IReadOnlyList<(FightRecord Record, double Offset)> compared)
     {
-        _shown = shown;
-        _length = shown.Count == 0 ? 0 : shown.Max(s => s.Record.Duration - s.Offset);
+        (_shown, _compared) = ([opened], compared);
+        _length = Math.Max(opened.Record.Duration - opened.Offset, compared.Count == 0 ? 0 : compared.Max(c => c.Record.Duration - c.Offset));
         _window = TimeWindow.Whole(_length);
         InvalidateMeasure();
         InvalidateVisual();
+    }
+
+    /// <summary>The opened fight is a 4-man raid: each buff line shows the party's share too (Timeline.PartyBuffShare).</summary>
+    public bool SmallParty { get; set; }
+
+    /// <summary>글자 크기: the text and the rows around it, 1 = as designed.</summary>
+    public double FontScale
+    {
+        get => _font;
+        set { if (value == _font) return; _font = value; InvalidateMeasure(); InvalidateVisual(); }
     }
 
     /// <summary>My skill keys (Settings.Keys): the mark of a cast with no icon, and every mark when 키 is on.</summary>
@@ -99,7 +124,8 @@ sealed class TimelineView : FrameworkElement
         var seen = new TimeWindow(_window.From + offset, _window.To + offset);   // the seconds shown, on this record's clock
         bool zoomed = _window.From > 0 || _window.To < r.Duration - offset;
         double bottom = y + Block;
-        Text(dc, $"{r.StartedAt:MM-dd HH:mm} · {r.Gate ?? "알 수 없음"} · {Clock(r.Duration)}", new(0, y + 2), 12, fg, bold: true, width: ActualWidth);
+        string level = string.IsNullOrEmpty(r.Difficulty) ? "" : $" [{r.Difficulty}]";
+        Text(dc, $"{r.StartedAt:MM-dd HH:mm} · {r.Gate ?? "알 수 없음"}{level} · {Clock(r.Duration)}", new(0, y + 2), 12, fg, bold: true, width: ActualWidth);
         y += HeadH;
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, bottom - y)));
         foreach (double p in r.Phases) { double px = X(p, offset); dc.DrawLine(PhasePen, new(px, y), new(px, bottom)); }
@@ -114,8 +140,19 @@ sealed class TimelineView : FrameworkElement
         double lx = LabelW;
         foreach (var (name, dps) in players)
         {
+            // Mine also has my share of the boss's damage over the fight (내 몫, as the list shows it).
+            string share = name == r.Me && r.MyShare is { } s ? $" · 기여 {s * 100:0.0}%" : "";
             dc.DrawRectangle(Frozen(new SolidColorBrush(colours[name])), null, new(lx, y + 5, 8, 8));
-            lx += 11 + Text(dc, $"{name} {Amount(dps)}", new(lx + 11, y + 1), 11, fg, bold: name == r.Me) + 12;
+            lx += 11 + Text(dc, $"{name} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg, bold: name == r.Me) + 12;
+        }
+        for (int i = 0; i < _compared.Count; i++)   // the fights compared: their date, my average DPS and share
+        {
+            var (c, cOffset) = _compared[i];
+            var cSeen = new TimeWindow(_window.From + cOffset, _window.To + cOffset);
+            double dps = Timeline.DpsAverages(c, cSeen).FirstOrDefault(p => p.Name == c.Me).Dps;
+            string share = c.MyShare is { } s ? $" · 기여 {s * 100:0.0}%" : "";
+            dc.DrawRectangle(Frozen(new SolidColorBrush(Compared[i % Compared.Length])), null, new(lx, y + 5, 8, 8));
+            lx += 11 + Text(dc, $"{c.StartedAt:MM-dd HH:mm} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
         }
         y += LegendH;
         DrawCurves(dc, r, offset, seen, colours, y, fg);
@@ -137,7 +174,12 @@ sealed class TimelineView : FrameworkElement
             Text(dc, "전분 수치 없음 (피해량 · 초당 피해량이 기록되지 않았습니다)", new(LabelW + 8, y + _curveH / 2 - 8), 11, fg, opacity: 0.6, width: PlotW - 16);
             return;
         }
-        var (dpsPeak, dmgPeak) = Timeline.Peaks(r, seen);   // the scales fit the seconds shown, both of them
+        var (dpsPeak, dmgPeak) = Timeline.Peaks(r, seen);   // the scales fit the seconds shown, both of them, and the fights compared
+        foreach (var (c, cOffset) in _compared)
+        {
+            var (cDps, cDmg) = Timeline.Peaks(c with { Samples = [.. c.Samples.Where(s => s.Name == c.Me)] }, new TimeWindow(_window.From + cOffset, _window.To + cOffset));
+            (dpsPeak, dmgPeak) = (Math.Max(dpsPeak, cDps), Math.Max(dmgPeak, cDmg));
+        }
         var (dpsStep, dpsTop) = GridScale.Values(dpsPeak);
         var (dmgStep, dmgTop) = GridScale.Values(dmgPeak);
         DrawScaleLines(dc, grid, fg, y, dpsStep, dpsTop, "/초", right: false);   // 초당 피해량 on the left
@@ -145,16 +187,23 @@ sealed class TimelineView : FrameworkElement
         DrawTimeLines(dc, grid, y);
         Text(dc, "— 초당 피해량   ┄ 피해량 (오른쪽)", new(LabelW + 4, y + 2), 10, fg, opacity: 0.6);
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, _curveH)));
-        foreach (var g in r.Samples.GroupBy(s => s.Name).OrderBy(g => g.Key == r.Me))
+        bool comparing = _compared.Count > 0;   // the opened fight's other players step back, its own curve thickens
+        void Curves(IEnumerable<RecordSample> samples, double at, TimeWindow w, Color colour, double dpsWidth, double dmgWidth, double opacity)
         {
-            var near = g.Where(s => s.T >= seen.From - 1 && s.T <= seen.To + 1).ToList();
-            if (near.Count < 2) continue;
-            var brush = Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])));
-            bool me = g.Key == r.Me;
-            Line(dc, near.Select(s => new Point(X(s.T, offset), y + _curveH - 4 - (_curveH - 8) * s.Dps / dpsTop)), new Pen(brush, me ? 2 : 1.2));
-            Line(dc, near.Select(s => new Point(X(s.T, offset), y + _curveH - 4 - (_curveH - 8) * s.Damage / dmgTop)),
-                new Pen(brush, me ? 1.6 : 1) { DashStyle = Dashed });
+            var near = samples.Where(s => s.T >= w.From - 1 && s.T <= w.To + 1).ToList();
+            if (near.Count < 2) return;
+            var brush = Frozen(new SolidColorBrush(colour) { Opacity = opacity });
+            Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Dps / dpsTop)), new Pen(brush, dpsWidth));
+            Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Damage / dmgTop)), new Pen(brush, dmgWidth) { DashStyle = Dashed });
         }
+        foreach (var g in r.Samples.GroupBy(s => s.Name).Where(g => g.Key != r.Me))
+            Curves(g, offset, seen, colours.GetValueOrDefault(g.Key, Others[0]), 1.2, 1, comparing ? 0.35 : 1);
+        for (int i = 0; i < _compared.Count; i++)
+        {
+            var (c, cOffset) = _compared[i];
+            Curves(c.Samples.Where(s => s.Name == c.Me), cOffset, new TimeWindow(_window.From + cOffset, _window.To + cOffset), Compared[i % Compared.Length], 1.4, 1.1, 0.9);
+        }
+        Curves(r.Samples.Where(s => s.Name == r.Me), offset, seen, colours.GetValueOrDefault(r.Me, Mine), comparing ? 2.8 : 2, comparing ? 2 : 1.6, 1);   // on top
         dc.Pop();
     }
 
@@ -200,6 +249,9 @@ sealed class TimelineView : FrameworkElement
             double cy = y + BuffH / 2;
             double whole = Timeline.BuffShare(r, kind, new TimeWindow(0, r.Duration));
             Text(dc, $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.BuffShare(r, kind, seen) * 100:0}%)" : ""), new(0, y), 11, fg);
+            // A 4-man raid: the party's share (the boss HP lost under it) at the line's right end, for the window shown.
+            if (SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
+                Text(dc, $"파티 {party * 100:0}%", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
             dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
             var glow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, color.R, color.G, color.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
             var lit = Frozen(new Pen(Frozen(new SolidColorBrush(color)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
@@ -247,6 +299,12 @@ sealed class TimelineView : FrameworkElement
         foreach (var g in r.Samples.GroupBy(s => s.Name).OrderBy(g => g.Key != r.Me))
             if (g.LastOrDefault(s => s.T <= t) is { } s)
                 lines.Add(($"{g.Key}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])))));
+        for (int i = 0; i < _compared.Count; i++)   // the fights compared, at the same second on their own clocks
+        {
+            var (c, cOffset) = _compared[i];
+            if (c.Samples.LastOrDefault(s => s.Name == c.Me && s.T <= t - offset + cOffset) is { } s)
+                lines.Add(($"{c.StartedAt:MM-dd HH:mm}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(Compared[i % Compared.Length]))));
+        }
         var on = Timeline.BuffSpans(r).Where(b => b.From <= t && t < b.To).Select(b => Buffs.First(x => x.Kind == b.Kind).Name).Distinct().ToList();
         lines.Add(($"버프: {(on.Count == 0 ? "없음" : string.Join(", ", on))}", TipText));
         if (r.AmsuOn)
@@ -255,11 +313,11 @@ sealed class TimelineView : FrameworkElement
             .Select(e => SlotName((SlotId)e.What)).ToList();
         if (casts.Count > 0) lines.Add(($"스킬: {string.Join(", ", casts)}", TipText));
 
-        var texts = lines.Select(l => Format(l.Text, 11, l.Brush, false, 400)).ToList();
-        double w = texts.Max(f => f.WidthIncludingTrailingWhitespace) + 16, h = texts.Count * 16 + 10;
+        var texts = lines.Select(l => Format(l.Text, 11 * _font, l.Brush, false, 400 * _font)).ToList();
+        double lineH = 16 * _font, w = texts.Max(f => f.WidthIncludingTrailingWhitespace) + 16, h = texts.Count * lineH + 10;
         double x = hx + 12 + w > ActualWidth ? hx - 12 - w : hx + 12;
         dc.DrawRoundedRectangle(TipBack, null, new Rect(x, top + 4, w, h), 4, 4);
-        for (int i = 0; i < texts.Count; i++) dc.DrawText(texts[i], new(x + 8, top + 9 + i * 16));
+        for (int i = 0; i < texts.Count; i++) dc.DrawText(texts[i], new(x + 8, top + 9 + i * lineH));
     }
 
     void DrawAxis(DrawingContext dc, double y, Brush fg)
@@ -326,7 +384,7 @@ sealed class TimelineView : FrameworkElement
     double Text(DrawingContext dc, string text, Point at, double size, Brush fg, bool bold = false, double opacity = 1, double? width = null,
         bool right = false)
     {
-        var ft = Format(text, size, fg, bold, width ?? (at.X < LabelW ? LabelW - 4 : 240));
+        var ft = Format(text, size * _font, fg, bold, width ?? (at.X < LabelW ? LabelW - 4 : 240 * _font));
         if (right) ft.TextAlignment = TextAlignment.Right;
         dc.PushOpacity(opacity);
         dc.DrawText(ft, at);
@@ -342,7 +400,7 @@ sealed class TimelineView : FrameworkElement
 
     static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
-    void Move(TimeWindow w) { _window = w; InvalidateVisual(); }
+    void Move(TimeWindow w) { _window = w; InvalidateMeasure(); InvalidateVisual(); }   // the icons' rows grow with the zoom
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {

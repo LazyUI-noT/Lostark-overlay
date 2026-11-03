@@ -1,7 +1,8 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>How the 암수 창 shows the time left: a bar, a circle eaten away clockwise, or the seconds as a number.</summary>
-public enum AmsuLook { 막대, 원, 숫자 }
+/// <summary>How the 암수 창 shows the time left: a bar, a circle eaten away clockwise, the seconds as a number, or an upright
+/// buff-style bar with no icon emptying top to bottom (세로막대, user 2026-11-04). Saved by number: add at the end.</summary>
+public enum AmsuLook { 막대, 원, 숫자, 세로막대 }
 
 /// <summary>Which way the 막대 empties toward.</summary>
 public enum BarDirection { 오른쪽, 왼쪽, 위, 아래 }
@@ -20,6 +21,8 @@ public sealed class AmsuSettings : IWindowPlace
     public BarDirection Direction { get; set; } = BarDirection.오른쪽;
     /// <summary>숫자: the seconds beside the icon instead of on it.</summary>
     public bool NumberBeside { get; set; }
+    /// <summary>세로막대: the seconds left over the bar.</summary>
+    public bool ShowSeconds { get; set; } = true;
     public double Opacity { get; set; } = 1.0;
     public string Color { get; set; } = "#9B6BFF";
     public string WarnColor { get; set; } = "#E05252";

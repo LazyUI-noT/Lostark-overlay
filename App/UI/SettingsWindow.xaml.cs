@@ -51,6 +51,8 @@ public partial class SettingsWindow : Window
 
     /// <summary>캐릭터·인식 → 캐릭터 → "직업각인 다시 감지".</summary>
     public event Action? SubclassRedetectRequested;
+    /// <summary>캐릭터 → "직업각인 등록": the next ready 초각스 becomes the active 직업각인's icon.</summary>
+    public event Action? SubclassRegisterRequested;
 
     /// <summary>내 오버레이 → 스킬 칸 → "아이콘 다시 읽기".</summary>
     public event Action? IconRereadRequested;
@@ -210,6 +212,12 @@ public partial class SettingsWindow : Window
         redetect.Click += (_, _) => SubclassRedetectRequested?.Invoke();
         redetect.IsEnabled = _chars.ActiveClass is not null && _chars.SameSkillsNote is null;
         p.Children.Add(Wrap(redetect, HelpMark("기록을 무시하고 초각스가 준비됐을 때 직업각인을 다시 읽어 기록을 고칩니다. 알아보지 못하면 기록은 그대로 둡니다.")));
+        var register = new Button { Content = "직업각인 등록", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
+        register.Click += (_, _) => SubclassRegisterRequested?.Invoke();
+        register.IsEnabled = _chars.Active is { Subclass.Length: > 0 } && _chars.ActiveClass is not null;
+        p.Children.Add(Wrap(register, HelpMark("지금 고른 직업각인으로 플레이하면서 누르세요. 초각스가 준비됐을 때 그 아이콘을 이 직업각인의 것으로 저장합니다. 클래스의 직업각인을 모두 등록하면 직업각인 다시 감지와 자동 감지가 됩니다.")));
+        p.Children.Add(Check("로딩 뒤 직업각인 자동 감지", _s.AutoSubclass, v => _s.AutoSubclass = v, Changed,
+            "모든 클래스: 로딩 화면이 끝나고 초각스가 준비되면 직업각인을 읽어 다르면 바꿉니다. 클래스는 바꾸지 않습니다. 직업각인 아이콘이 모두 있는 클래스만 됩니다 (기본 제공이나 직업각인 등록)."));
         if (_chars.SameSkillsNote is { } same) p.Children.Add(Note(same));
         CoreRows(p);
         p.Children.Add(SubHeading("지원하는 직업각인", "직업각인 감지 '자동': 스킬창 다시 맞추기 때 초각스 아이콘으로 직업각인을 알아봅니다. 아덴 게이지와 아덴 스킬이 있는 직업각인은 그것도 읽습니다. " + "표에 없는 클래스도 쿨타임, 버프 막대, 파티 공유는 모두 됩니다. NEW는 지난번에 이 화면을 본 뒤 추가된 것입니다."));

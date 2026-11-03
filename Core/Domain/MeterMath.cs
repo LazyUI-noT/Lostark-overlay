@@ -96,10 +96,24 @@ public sealed class MeterHistory
     int _coverFight = -1;
     bool _buffsRead;
 
-    public void Cover(int fight, long damage, IReadOnlyList<BuffState>? buffs, TimeSpan now, IReadOnlyList<MeterSample>? otherDealers = null)
+    // The party's (4-man raids, user 2026-11-04): the boss HP lost this record and the part lost while each buff was on, in
+    // 1,000,000 HP units (BossUnit); the boss figure is the whole party's damage when only one party hits it.
+    const long BossUnit = 1_000_000;
+    readonly double[] _bossUnder = new double[Covering.Length];
+    long _bossTotal, _lastBoss;
+
+    public void Cover(int fight, long damage, IReadOnlyList<BuffState>? buffs, TimeSpan now, IReadOnlyList<MeterSample>? otherDealers = null,
+        long bossTaken = 0)
     {
+        long boss = bossTaken / BossUnit;
         // A new record: counted from its first reading on (damage before it, joined mid-fight, is nobody's guess).
-        if (fight != _coverFight) { (_coverFight, _total, _lastDamage) = (fight, 0, damage); Array.Clear(_under); _others.Clear(); }
+        if (fight != _coverFight)
+        {
+            (_coverFight, _total, _lastDamage, _bossTotal, _lastBoss) = (fight, 0, damage, 0, boss);
+            Array.Clear(_under);
+            Array.Clear(_bossUnder);
+            _others.Clear();
+        }
         var from = _lastAt;
         _lastAt = now;
         _buffsRead = buffs is { Count: > 0 };
@@ -113,6 +127,13 @@ public sealed class MeterHistory
         {
             _total += added;
             for (int i = 0; i < Covering.Length; i++) _under[i] += added * on[i];
+        }
+        long lost = boss - _lastBoss;
+        _lastBoss = boss;
+        if (lost > 0 && _buffsRead)
+        {
+            _bossTotal += lost;
+            for (int i = 0; i < Covering.Length; i++) _bossUnder[i] += lost * on[i];
         }
         foreach (var s in otherDealers ?? [])
         {
@@ -154,4 +175,8 @@ public sealed class MeterHistory
 
     /// <summary>공증 / 아덴 피증 / 초각스 피증's share of my damage this record; null while the buff row isn't read.</summary>
     public IReadOnlyList<double>? Covered => !_buffsRead ? null : [.. _under.Select(u => _total > 0 ? (double)u / _total : 0)];
+
+    /// <summary>The same buffs' share of the boss HP lost this record (the party's damage in a 4-man raid); null while the buff
+    /// row isn't read or no boss HP was lost yet.</summary>
+    public IReadOnlyList<double>? PartyCovered => !_buffsRead || _bossTotal == 0 ? null : [.. _bossUnder.Select(u => u / _bossTotal)];
 }

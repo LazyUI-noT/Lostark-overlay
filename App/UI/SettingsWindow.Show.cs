@@ -157,7 +157,7 @@ public partial class SettingsWindow
         OverlayPart.Skills => new(3, (s, i) => s.Overlay.CooldownStyle = (CooldownStyle)i, s => (int)s.Overlay.CooldownStyle),
         OverlayPart.Buffs => new(4, (s, i) => (s.Buffs.Side, s.Buffs.Drain) = (i % 2 == 1, i < 2), s => (s.Buffs.Side ? 1 : 0) + (s.Buffs.Drain ? 0 : 2)),
         OverlayPart.Judgment => new(2, (s, i) => s.Judgment.Display = (JudgmentDisplay)i, s => (int)s.Judgment.Display),
-        OverlayPart.Amsu => new(3, (s, i) => s.Amsu.Look = (AmsuLook)i, s => (int)s.Amsu.Look),
+        OverlayPart.Amsu => new(4, (s, i) => s.Amsu.Look = (AmsuLook)i, s => (int)s.Amsu.Look),
         OverlayPart.Meter => new(5, (s, i) =>
         {
             s.Meter.Look = (MeterLook)i;

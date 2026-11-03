@@ -116,7 +116,15 @@ public partial class SettingsWindow
         // Opened at first: the raid recognised now, else the one recognised last.
         _raidOpen ??= RaidData.Find(RaidGates, _raidSeen ?? _raidLast) is { } open ? [open.Raid] : [];
         foreach (var raid in RaidGates.Where(g => g.TabName == tab).GroupBy(g => g.Raid))
+        {
             p.Children.Add(RaidBox(raid.Key, [.. raid], Again));
+            if (tab != "그림자 레이드") continue;
+            string name = raid.Key;
+            p.Children.Add(Row("", Check($"{name}: 기믹 중 보스 체력 표시", r.ShadowHpOn(name),
+                v => { r.ShadowHpOff.Remove(name); if (!v) r.ShadowHpOff.Add(name); }, Changed,
+                "보스 체력바가 사라지고 채우는 막대와 숫자가 나오는 기믹 동안, 마지막 체력에서 그 숫자(기믹 중 넣은 피해)를 빼서 남은 줄과 체력을 체력바 자리에 보여 줍니다. " +
+                "DPS 미터기가 켜져 있어야 읽습니다. 기믹 중에 보스가 죽으면 전투 기록을 클리어로 끝냅니다.")));
+        }
         HpChangeRows(p, Again);
 
         p.Children.Add(SubHeading("알림", "목표 줄 수에 ±줄을 더한 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));

@@ -309,6 +309,12 @@ public static class Geometry
     public static readonly PixelRect RefBossTextRow = new(590, 60, 730, 36);
 
     public static PixelRect BossTextRow(Viewport vp, Fit fit) => FromTop(RefBossTextRow, vp, fit);
+
+    /// <summary>The 그림자 레이드 gimmick's number above its fill bar, where the boss bar was ("134,046,661,186": x 882–1035,
+    /// y 62–82 at 1080p HUD 110, Lost Ark 2026.11.03 - 21.46.27.02.mp4 9:03; popping up to 1.5× as it jumps). Follows the HUD
+    /// and the resolution from the top centre like the boss bar; 21:9 and other HUD sizes untested on footage.</summary>
+    public static readonly PixelRect RefShadowNumber = new(760, 56, 400, 30);
+    public static PixelRect ShadowNumber(Viewport vp, Fit fit) => FromTop(RefShadowNumber, vp, fit);
     public static PixelRect BossBar(Viewport vp, Fit fit) => FromTop(RefBossBar, vp, fit);
     public static PixelRect BossCount(Viewport vp, Fit fit) => FromTop(RefBossCount, vp, fit);
     public static PixelRect BossHpText(Viewport vp, Fit fit) => FromTop(RefBossHpText, vp, fit);

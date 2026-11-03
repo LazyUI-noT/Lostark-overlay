@@ -93,6 +93,15 @@ public class MeterViewTests
         MeterStatus.None with { Panel = new(damage, 0, 10, false), PanelFound = true, Clock = FightClockState.None with { Fight = fight } };
 
     [Fact]
+    public void The_header_names_the_boss_and_my_share()
+    {
+        var v = MeterView.Build(Mine(40 * Eok, 100 * Eok), MeterRole.딜러, "나", 3, [], me: 0, host: 0, new MeterSettings(), new MeterHistory(), S(3));
+        Assert.Equal("고통의 마녀, 세르카 · 내 40.0%", (v with { BossName = "고통의 마녀, 세르카" }).Header(0, x => $"{x / Eok}억"));
+        Assert.Equal("보스 · 내 40.0%", v.Header(0, x => $"{x / Eok}억"));   // no name known
+        Assert.Equal("보스 100억", (v with { Rows = [] }).Header(0, x => $"{x / Eok}억"));   // no share of mine: the boss damage
+    }
+
+    [Fact]
     public void The_graph_follows_the_전분_timer_and_stops_while_it_is_stopped()
     {
         var h = new MeterHistory();
@@ -120,6 +129,32 @@ public class MeterViewTests
         V(80 * Eok, Buffs(true, false, false));   // +20: 공증 only
         var v = V(100 * Eok, Buffs(false, false, true));   // +20: 초각스 only
         Assert.Equal([0.8, 0.6, 0.2], v.BuffCover!.Select(x => Math.Round(x, 6)));
+    }
+
+    static MeterStatus AtBoss(long damage, long bossTaken) => At(damage) with { Boss = BossDamageState.None with { Done = bossTaken } };
+
+    [Fact]
+    public void In_a_4_man_raid_each_buffs_party_share_is_the_boss_hp_lost_while_it_was_on()
+    {
+        var h = new MeterHistory();
+        MeterView V(long damage, long boss, BuffState[] b, bool small = true) =>
+            MeterView.Build(AtBoss(damage, boss), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(1), buffs: b, smallParty: small);
+        V(0, 0, Buffs(false, false, false));
+        V(60 * Eok, 100 * Eok, Buffs(true, true, false));    // the boss lost 100: 공증 and 아덴 on
+        V(80 * Eok, 300 * Eok, Buffs(true, false, false));   // 200: 공증 only
+        var v = V(100 * Eok, 400 * Eok + 999_999, Buffs(false, false, true));   // 100 (and under a million, not counted): 초각스 only
+        Assert.Equal([0.75, 0.25, 0.25], v.BuffParty!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([0.8, 0.6, 0.2], v.BuffCover!.Select(x => Math.Round(x, 6)));   // mine as before
+        Assert.Null(V(110 * Eok, 500 * Eok, Buffs(true, false, false), small: false).BuffParty);   // 8-man: the boss mixes two parties
+    }
+
+    [Fact]
+    public void No_party_share_before_the_boss_hp_is_read()
+    {
+        var h = new MeterHistory();
+        MeterView.Build(At(0), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(1), buffs: Buffs(true, false, false), smallParty: true);
+        var v = MeterView.Build(At(50 * Eok), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(2), buffs: Buffs(true, false, false), smallParty: true);
+        Assert.Null(v.BuffParty);
     }
 
     [Fact]

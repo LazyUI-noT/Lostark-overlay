@@ -21,8 +21,10 @@ public partial class SettingsWindow
 
         p.Children.Add(HelpRow("읽기 빈도", "높음: 지금처럼 자주 읽어 바로 맞춥니다. 낮음: 폭탄이 없을 땐 1초마다 찾고, 찾은 폭탄은 1초 동안 시간을 맞춘 뒤 3초 남을 때까지 1초마다만 확인합니다 (다른 사람이 다시 던지면 1초 안에 맞춰집니다). 암흑수류탄을 켜면 프레임이 떨어질 때 낮음을 써 보세요. 시간을 읽지 않는 크기(100% 미만)에서는 낮음이어도 높음으로 읽습니다.",
             EnumCombo([(AmsuRate.높음, "높음 (정확)"), (AmsuRate.낮음, "낮음 (가벼움)")], a.Rate, v => a.Rate = v)));
-        p.Children.Add(Row("표시 방식", EnumCombo([(AmsuLook.막대, "막대"), (AmsuLook.원, "원"), (AmsuLook.숫자, "숫자")], a.Look,
+        p.Children.Add(Row("표시 방식", EnumCombo([(AmsuLook.막대, "막대"), (AmsuLook.원, "원"), (AmsuLook.숫자, "숫자"), (AmsuLook.세로막대, "세로 막대 (버프 모양)")], a.Look,
             v => { a.Look = v; Dispatcher.BeginInvoke(FillAmsu); })));
+        if (a.Look == AmsuLook.세로막대)
+            p.Children.Add(Check("남은 초 표시", a.ShowSeconds, v => a.ShowSeconds = v, Changed, "아이콘 없이 버프 막대처럼 위에서 아래로 줄어듭니다. 켜면 막대 위쪽에 남은 초를 씁니다."));
         if (a.Look == AmsuLook.막대)
             p.Children.Add(Row("줄어드는 쪽", EnumCombo([(BarDirection.오른쪽, "오른쪽"), (BarDirection.왼쪽, "왼쪽"), (BarDirection.위, "위"), (BarDirection.아래, "아래")],
                 a.Direction, v => a.Direction = v)));
@@ -33,7 +35,7 @@ public partial class SettingsWindow
             v => a.WarnSeconds = (int)Math.Round(v), Changed));
         if (a.WarnSeconds > 0) p.Children.Add(ColorRow(Label("경고 색"), a.WarnColor, v => a.WarnColor = v, swatch: false));
         p.Children.Add(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, a.Height, 0.05, v => $"{v * 100:0}%", v => a.Height = v, Changed));
-        if (a.Look == AmsuLook.막대)
+        if (a.Look is AmsuLook.막대 or AmsuLook.세로막대)
             p.Children.Add(SliderRow("막대 길이", ClassProfiles.MinScale, ClassProfiles.MaxScale, a.Width, 0.05, v => $"{v * 100:0}%", v => a.Width = v, Changed));
         p.Children.Add(SliderRow("불투명도", AmsuSettings.MinOpacity, 1, a.Opacity, 0.05, v => $"{v * 100:0}%", v => a.Opacity = v, Changed));
         p.Children.Add(Note("편집 모드에서 암수 창을 끌어 옮기고, 모서리를 끌어 크기를 바꿀 수도 있습니다."));

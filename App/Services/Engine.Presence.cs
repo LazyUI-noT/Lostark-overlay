@@ -57,13 +57,17 @@ public sealed partial class Engine
     {
         Interlocked.Increment(ref _dungeonGen);
         WakeDungeon();
+        ShadowReset();   // the next gate's boss
         Trace.WriteLine("[presence] new 전분 record: the dungeon panel read afresh");
     }
+
+    /// <summary>The HUD is back after a loading screen (로딩 뒤 직업각인 자동 감지).</summary>
+    public event Action? LoadingEnded;
 
     /// <summary>The HUD is back: after a loading screen, look for the meter at once and start the wait for it.</summary>
     void LoadingOver(TimeSpan t)
     {
-        if (_loading.Loading) (_lastMeterProbe, _lastMeter) = (TimeSpan.MinValue, TimeSpan.MinValue);   // look for the meter at once
+        if (_loading.Loading) { (_lastMeterProbe, _lastMeter) = (TimeSpan.MinValue, TimeSpan.MinValue); LoadingEnded?.Invoke(); }   // look for the meter at once
         _loading = _loading.HudBack(t);
     }
 
@@ -89,6 +93,7 @@ public sealed partial class Engine
         if (_wasInDungeon && !inside)
         {
             (_amsuWatch, _bar, _raid) = (new AmsuWatch(), BarCountState.None, null);
+            ShadowReset();
             Ocr = NewOcr();   // the OCR engine is let go until the next dungeon, which starts with a fresh one (user, 2026-11-03)
             Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared, OCR closed");
             Publish(now);

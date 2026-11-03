@@ -5,8 +5,8 @@ namespace GaugeOverlay.Core.Domain;
 /// come with <see cref="Step"/>; their casts are not recorded).
 /// Event times are on the fight clock: the 전분 timer plus the capture clock since it last moved. They are held until
 /// <see cref="Step"/> sees the timer move past them, and dropped if it stops first. Once a second, while the timer runs,
-/// <see cref="Step"/> adds everyone's figures and the boss. A fight starts only while <see cref="InRaid"/> (the dungeon panel
-/// says raid), and ends: on a kill (the timer stops on a dead boss), when a new 전분 record
+/// <see cref="Step"/> adds everyone's figures and the boss. A fight starts only while <see cref="InRaid"/> (not a guardian
+/// raid), and ends: on a kill (the timer stops on a dead boss), when a new 전분 record
 /// starts (a restart), when the timer hasn't moved for <see cref="PauseLimit"/> (stopped by a wipe, or hidden by a cutscene or
 /// the inventory: a shorter pause resumes the same record), at the size cap, or on <see cref="Finish"/>. Mutable; one thread
 /// (the UI's).</summary>
@@ -35,7 +35,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     /// 구원의 종탑 (2026-11-03): 9 s at 9.8% (1관문's gimmick kill), 4 s at 0.4% (2관문).</summary>
     const double BarGoneFor = 3;
 
-    /// <summary>The dungeon panel says raid: only then does a fight start (set by the app each second).</summary>
+    /// <summary>A fight may start: any dungeon but a guardian raid (set by the app each second).</summary>
     public bool InRaid { get; set; } = true;
     /// <summary>How long the timer may stay stopped or hidden before the fight ends (설정 → 전투 기록).</summary>
     public TimeSpan PauseLimit { get; set; } = EndAfterFrozen;

@@ -66,6 +66,9 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <summary>± bars added to every alert ("전 관문 공통"); per gate when <see cref="OffsetPerGate"/>. Target 750, +5 → 755.</summary>
     public int Offset { get; set; }
     public bool OffsetPerGate { get; set; }
+    /// <summary>그림자 레이드 기믹 체력 (ShadowHp): the raids (RaidGate.Raid) it is turned off for; on for every other (user, 2026-11-04).</summary>
+    public List<string> ShadowHpOff { get; set; } = [];
+    public bool ShadowHpOn(string raid) => !ShadowHpOff.Contains(raid);
     public bool Glow { get; set; } = true;
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;

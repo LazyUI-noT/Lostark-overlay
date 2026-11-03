@@ -4,8 +4,14 @@ namespace GaugeOverlay.Core.Domain;
 /// the 전분 timer and whether it runs, whether the panel is read at all ("전분 없음" when not), and each row's history.</summary>
 public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long BossTaken, int? Timer, bool Running, bool PanelFound,
     MeterHistory History, IReadOnlyList<double>? BuffCover = null, bool ShowBuffBars = true,
-    IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>>? BuffSplit = null)
+    IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>>? BuffSplit = null, string? BossName = null,
+    IReadOnlyList<double>? BuffParty = null)
 {
+    /// <summary>The header's right side: the boss's name (else "보스") and my share of its damage, else the boss damage.</summary>
+    public string? Header(ulong me, Func<long, string> amount) =>
+        Rows.FirstOrDefault(r => r.Id == me)?.Share is { } mine ? $"{BossName ?? "보스"} · 내 {mine * 100:0.0}%"
+        : BossTaken > 0 ? $"{BossName ?? "보스"} {amount(BossTaken)}" : null;
+
     /// <summary>The line graph's rows: the dealers and always me (alone, or as a support), me first.</summary>
     public IEnumerable<MeterRow> Lines(ulong me, int max) =>
         Rows.Where(r => r.Role == MeterRole.딜러 || r.Id == me).OrderByDescending(r => r.Id == me).Take(max);
@@ -17,10 +23,12 @@ public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long
     /// follows my own 전분 record, never a figure from the wire; this second is added to <paramref name="history"/>.
     /// <paramref name="myParty"/>: my 1·2파티 from the roster (the session's samples hold mine only when I send).
     /// <paramref name="align"/>: lines the figures up on one 전분 second (null: as they arrived). <paramref name="buffs"/>: my buff
-    /// indicators this second (by BuffKind; empty or null when the buff row isn't read), for 버프 적용률.</summary>
+    /// indicators this second (by BuffKind; empty or null when the buff row isn't read), for 버프 적용률.
+    /// <paramref name="smallParty"/>: a 4-man raid, where the boss HP lost is the party's damage: each buff's share of it too
+    /// (<see cref="BuffParty"/>).</summary>
     public static MeterView Build(MeterStatus mine, MeterRole role, string myName, int classId, IReadOnlyList<MeterSample> session,
         ulong me, ulong host, MeterSettings settings, MeterHistory history, TimeSpan now, int myParty = 1,
-        MeterAlign? align = null, IReadOnlyList<BuffState>? buffs = null)
+        MeterAlign? align = null, IReadOnlyList<BuffState>? buffs = null, bool smallParty = false)
     {
         if (!settings.Send) session = [];   // only someone who shares sees the others
         myParty = session.FirstOrDefault(s => s.Id == me)?.Party ?? myParty;
@@ -39,11 +47,15 @@ public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long
         if (mine.Panel is null && history.LastRows is { Count: > 0 } last) rows = last;
         else if (mine.Clock.Timer is not null && !mine.Clock.Frozen) history.Add(fightAt, mine.Clock.Fight, rows);
         if (mine.Panel is { } p)
-            history.Cover(mine.Clock.Fight, p.Damage, buffs, now, [.. samples.Where(s => s.Id != me && s.Role == MeterRole.딜러)]);
+            history.Cover(mine.Clock.Fight, p.Damage, buffs, now, [.. samples.Where(s => s.Id != me && s.Role == MeterRole.딜러)], BossDamage.Taken(mine.Boss));
         // A dealer sees the buffs' part of their own damage; a support (whose 조력 피해량 is the dealers' damage) sees each buff
         // split between the dealers, never itself.
         var split = role == MeterRole.서포터 ? history.Split(me, myName, iDeal: false) : null;
+        // A support's own figure is 조력 피해량, so its "mine" is no share: in a 4-man raid it sees the party's alone.
+        var party = smallParty ? history.PartyCovered : null;
+        bool support = role == MeterRole.서포터;
         return new(rows, settings.Other ? MeterMath.Other(rows, boss) : null, boss, mine.Panel?.Timer, !mine.Clock.Frozen,
-            mine.PanelFound, history, history.Covered, ShowBuffBars: role != MeterRole.서포터 || split is not null, BuffSplit: split);
+            mine.PanelFound, history, support ? null : history.Covered, ShowBuffBars: !support || split is not null || party is not null,
+            BuffSplit: split, BuffParty: party);
     }
 }

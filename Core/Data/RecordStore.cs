@@ -52,17 +52,33 @@ public sealed class RecordStore(string dir)
         return new string(string.Join('_', parts).Select(c => bad.Contains(c) ? '-' : c).ToArray()).Replace("..", "-");
     }
 
-    string SaveLocked(FightRecord r, int keep)
+    string SaveLocked(FightRecord r, int keep, string? replacing = null)
     {
         Directory.CreateDirectory(dir);
         foreach (var tmp in Directory.EnumerateFiles(dir, "*" + Ext + ".tmp")) File.Delete(tmp);   // left by a crash mid-write
         string stem = Stem(r), name = stem + Ext;
-        for (int n = 2; File.Exists(Path.Combine(dir, name)); n++) name = $"{stem}-{n}{Ext}";
+        for (int n = 2; name != replacing && File.Exists(Path.Combine(dir, name)); n++) name = $"{stem}-{n}{Ext}";
         Write(name, r);
+        if (replacing is not null && replacing != name) File.Delete(Path.Combine(dir, replacing));   // only once the new one is written
         string mine = RecordCharacter.Of(r);   // per character: another character's fights never push these out
-        foreach (var (file, _) in List().Where(x => !x.Record.Kept && !IsHeld(x.File) && RecordCharacter.Of(x.Record) == mine).Skip(keep))
+        // The one just written stays, even when older than the rest (moved here by an edit): the others make room.
+        foreach (var (file, _) in List().Where(x => x.File != name && !x.Record.Kept && !IsHeld(x.File) && RecordCharacter.Of(x.Record) == mine)
+                     .Skip(r.Kept ? keep : keep - 1))
             File.Delete(Path.Combine(dir, file));
         return name;
+    }
+
+    /// <summary>전투 기록 편집: the record rewritten as edited, under the name its new gate, difficulty and class give (the held
+    /// fight stays held). Moved to another character, that one's oldest automatic records make room (<paramref name="keep"/>).
+    /// Returns its file name.</summary>
+    public string Edit(string file, FightRecord edited, int keep = Keep)
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(Path.Combine(dir, Checked(file)))) throw new FileNotFoundException("the record is gone", file);
+            if (IsHeld(file)) { Write(Held, edited with { Kept = false }); return Held; }
+            return SaveLocked(edited, Math.Clamp(keep, MinKeep, MaxKeep), replacing: file);
+        }
     }
 
     /// <summary>Every readable record, newest first.</summary>

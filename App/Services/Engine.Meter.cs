@@ -77,7 +77,7 @@ public sealed partial class Engine
     }
 
     /// <summary>Reads the captured HP text and panel (null: no spot) and steps the meter. True: publish.</summary>
-    bool ReadMeter(Image hp, Image? panel, TimeSpan t)
+    bool ReadMeter(Image hp, Image? panel, Image? shadow, TimeSpan t)
     {
         _lastBossHp = t;
         bool present = false;
@@ -89,9 +89,12 @@ public sealed partial class Engine
             present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
             _panelMisses = present ? 0 : _panelMisses + 1;
         }
-        var read = BossBar(hp).Hp;   // a shield in brackets counts as HP (its breaking is damage)
-        Saw(meter: present, boss: read is not null, t);
-        var next = MeterTracker.Step(_meter, read is var (cur, max, _) ? (cur, max) : null, reading, reading is not null, t, read?.Shield ?? 0);
+        var bar = BossBar(hp);
+        var read = bar.Hp;   // a shield in brackets counts as HP (its breaking is damage)
+        // The 그림자 gimmick: no bar, its number gives the HP (Engine.Shadow.cs).
+        var hpRead = ShadowStep(bar, shadow, t) ?? (read is var (cur, max, _) ? (cur, max) : null);
+        Saw(meter: present, boss: hpRead is not null, t);
+        var next = MeterTracker.Step(_meter, hpRead, reading, reading is not null, t, read?.Shield ?? 0);
         if (FightClock.Restarted(_meter.Clock, next.Clock)) NewGate();
         _meterChanged |= next != _meter;
         _meter = next;

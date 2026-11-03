@@ -109,7 +109,8 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     public void Pick(string family, string className, string subclass)
     {
         settings.PickCharacter(family, className, subclass, remember: true);
-        (_picked, _redetect) = (true, false);
+        _picked = true;
+        ForgetRequests();
         Picked?.Invoke();
     }
 
@@ -117,7 +118,8 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     public void PickDefault()
     {
         settings.ActiveCharacter = null;
-        (_picked, _redetect) = (false, false);
+        _picked = false;
+        ForgetRequests();
     }
 
     string? _confirmed;   // the class the centre piece showed at the last detection
@@ -218,9 +220,10 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// (<see cref="RedetectSubclass"/>); a 직업각인 read, or confirmed, goes into the history.</remarks>
     public string? OnSubclassSlot(Image slot, IReadOnlyList<Image>? greyedSkills)
     {
-        bool asked = _redetect;
-        _redetect = false;
+        bool asked = _redetect, quiet = _quiet;   // quiet: 로딩 뒤 자동 감지, told only when the 직업각인 changes
+        (_redetect, _quiet) = (false, false);
         if (Active is not { } c || ActiveClass is not { } cls) return null;
+        if (_register) return Register(slot, greyedSkills is not null, cls, c.Subclass);
         if (!asked && (cls.SameSkills || cls.Remembered(settings.SubclassHistory) is not null)) return null;
         bool greyed = greyedSkills is not null;
         // Kept only once loaded, so icons added (or a file unlocked) while running are picked up at the next capture.
@@ -230,7 +233,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         if (_icons is not null)
         {
             (sub, bool unlike) = SubclassMatcher.Match(slot, _icons, greyed);
-            (_missFor, _misses) = (cls.Name, unlike ? (_missFor == cls.Name ? _misses + 1 : 1) : 0);
+            if (!quiet) (_missFor, _misses) = (cls.Name, unlike ? (_missFor == cls.Name ? _misses + 1 : 1) : 0);   // 자동 감지 warns of nothing
             // Asked for (직업각인 다시 감지) the class stands: an unlike icon is one it can't tell.
             if (unlike && !asked && _confirmed != cls.Name)
             {
@@ -240,14 +243,14 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         }
         if (sub is null && greyedSkills is not null) sub = SkillPool.Pick(greyedSkills, _skills.Load(cls.Name, cls.Subclasses.Keys));
         if (sub is null)
-            return !asked ? null : _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {c.Subclass}(으)로 둡니다."
+            return !asked || quiet ? null : _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {c.Subclass}(으)로 둡니다."
                 : $"직업각인을 알아보지 못해 {c.Subclass}(으)로 둡니다.";
         if (sub != c.Subclass) return Detected(sub);
         settings.SubclassHistory[cls.Name] = sub;
-        return asked ? $"직업각인이 {sub}(으)로 맞습니다." : null;
+        return asked && !quiet ? $"직업각인이 {sub}(으)로 맞습니다." : null;
     }
 
-    bool _redetect;
+    bool _redetect, _quiet, _register;
 
     /// <summary>직업각인 다시 감지: the next ready 초각스 is read past the history. Returns why it can't be (no class, or a class whose
     /// 직업각인 have the same skills), or null when the engine should capture it.</summary>
@@ -255,9 +258,55 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     {
         if (ActiveClass is not { } cls) return NoSubclass;
         if (cls.SameSkills) return SameSkillsNote;
-        _redetect = true;
+        (_redetect, _quiet, _register) = (true, false, false);
         return null;
     }
+
+    /// <summary>Drops a 직업각인 read asked for (다시 감지, 자동 감지, 등록) and not captured yet: a pick or a refit came first.</summary>
+    public void ForgetRequests() => (_redetect, _quiet, _register) = (false, false, false);
+
+    /// <summary>로딩 뒤 직업각인 자동 감지 (Settings.AutoSubclass, user 2026-11-03): after a loading screen the next ready 초각스 is read
+    /// as by 직업각인 다시 감지, but only the 직업각인 changes (never the class or 기본) and only a change is told. Only for a class
+    /// with an icon for every 직업각인 (shipped or 직업각인 등록). Returns true when the engine should capture it.</summary>
+    public bool AutoRedetect()
+    {
+        if (!settings.AutoSubclass || _register || ActiveClass is not { SameSkills: false } cls || Active is not { Subclass.Length: > 0 }) return false;
+        if (_iconsFor != cls.Name || _icons is null) (_iconsFor, _icons) = (cls.Name, LoadIcons(cls));
+        if (_icons is null) return false;
+        (_redetect, _quiet) = (true, true);
+        return true;
+    }
+
+    /// <summary>직업각인 등록: the next ready 초각스 is saved as the active 직업각인's icon (SubclassIconStore), for a class shipped
+    /// without one. Returns why it can't be, or null when the engine should capture it.</summary>
+    public string? RegisterSubclass()
+    {
+        if (Active is not { Subclass.Length: > 0 } || ActiveClass is null) return NoSubclass;
+        (_register, _redetect, _quiet) = (true, false, false);
+        return null;
+    }
+
+    string Register(Image slot, bool greyed, ClassInfo cls, string sub)
+    {
+        _register = false;
+        if (greyed) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
+        try { _subclassIcons.Save(cls.Name, sub, SubclassMatcher.Art(slot)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[subclass] register: {ex.Message}");
+            return "직업각인 아이콘을 저장하지 못했습니다: " + ex.Message;
+        }
+        _icons = null;   // loaded again at the next read
+        settings.SubclassHistory[cls.Name] = sub;
+        var missing = cls.Subclasses.Keys.Where(s => s != sub && !HasIcon(cls, s)).ToList();
+        return missing.Count == 0 ? $"{cls.Name} · {sub}의 초각스 아이콘을 등록했습니다. 이제 직업각인을 알아볼 수 있습니다."
+            : $"{cls.Name} · {sub}의 초각스 아이콘을 등록했습니다. {string.Join(", ", missing)}도 등록하면 직업각인을 알아볼 수 있습니다.";
+    }
+
+    readonly SubclassIconStore _subclassIcons = new(SubclassIconStore.DefaultDir);
+
+    bool HasIcon(ClassInfo cls, string sub) =>
+        File.Exists(Path.Combine(profilesDir, "subclass", cls.Name, sub + ".png")) || _subclassIcons.Load(cls.Name, [sub]).Count > 0;
 
     /// <summary>Why the active class's 직업각인 is only picked by hand, or null.</summary>
     public string? SameSkillsNote => ActiveClass is { SameSkills: true } ? SameSkills : null;
@@ -310,6 +359,11 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             var files = cls.Subclasses.Keys.ToDictionary(s => s, s => Path.Combine(dir, s + ".png"));
             var missing = files.Where(f => !File.Exists(f.Value)).Select(f => f.Key).ToList();
             if (missing.Count == 0) return files.ToDictionary(f => f.Key, f => Platform.Png.Load(f.Value));
+            // 직업각인 등록 fills in what isn't shipped; matched only once every 직업각인 has one, or another is "unlike".
+            var registered = _subclassIcons.Load(cls.Name, missing);
+            if (registered.Count == missing.Count)
+                return files.Where(f => !missing.Contains(f.Key)).ToDictionary(f => f.Key, f => Platform.Png.Load(f.Value))
+                    .Concat(registered).ToDictionary(kv => kv.Key, kv => kv.Value);
             // None at all is a class without icons yet; some is a misnamed or lost file.
             if (missing.Count < files.Count) System.Diagnostics.Trace.WriteLine($"[subclass] {dir}: no icon for {string.Join(", ", missing)}");
             return null;

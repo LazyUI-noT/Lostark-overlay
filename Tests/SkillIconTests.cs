@@ -60,6 +60,16 @@ public class SkillIconTests
     }
 
     [Fact]
+    public void While_fights_are_recorded_every_slot_read_but_the_aden_skills_is_needed_whatever_the_look()
+    {
+        var groups = new Dictionary<SlotGroup, bool> { [SlotGroup.초각스] = false };
+        var needed = SkillIcon.Needed([], groups, new HashSet<SlotId> { SlotId.일반8 }, [SlotId.아덴1, SlotId.아덴2],
+            unreadWhileRecording: new HashSet<SlotId> { SlotId.일반7 });   // a slot the engine skips never reads ready
+        Assert.Equal([SlotId.각성기, SlotId.초각스, SlotId.일반1, SlotId.일반2, SlotId.일반3, SlotId.일반4, SlotId.일반5, SlotId.일반6,
+            SlotId.일반8], needed.Order());
+    }
+
+    [Fact]
     public void No_group_shown_as_icons_needs_nothing() =>
         Assert.Empty(SkillIcon.Needed([], AllShown, new HashSet<SlotId>(), NoAden));
 

@@ -8,6 +8,26 @@ namespace GaugeOverlay.Tests;
 /// panel, used from then on; a new HP (a nerf, another difficulty) is learned again.</summary>
 public sealed class BossBookTests
 {
+    static FightRecord Fight(string? gate, string? difficulty, long? max) =>
+        new(DateTime.Now, gate, 60, [], "나", 3, null, [], [], [new RecordBoss(1, 10, 5, max)], [], Difficulty: difficulty);
+
+    [Fact]
+    public void A_fight_named_by_hand_teaches_its_hp()
+    {
+        Assert.Equal((Belgardin, new BossBookEntry("벨가르딘", "하드")),
+            BossBook.Taught(Fight(null, null, Belgardin), Fight("벨가르딘", "하드", Belgardin)));
+        Assert.Equal((Belgardin, new BossBookEntry("벨가르딘", "하드")),
+            BossBook.Taught(Fight("벨가르딘", "노말", Belgardin), Fight("벨가르딘", "하드", Belgardin)));
+    }
+
+    [Fact]
+    public void An_edit_that_leaves_the_name_or_has_no_hp_or_name_teaches_nothing()
+    {
+        Assert.Null(BossBook.Taught(Fight("벨가르딘", "노말", Belgardin), Fight("벨가르딘", "노말", Belgardin) with { Cleared = true }));
+        Assert.Null(BossBook.Taught(Fight(null, null, null), Fight("벨가르딘", "노말", null)));
+        Assert.Null(BossBook.Taught(Fight("벨가르딘", "노말", Belgardin), Fight(" ", "노말", Belgardin)));
+    }
+
     const long Belgardin = 1_950_577_229_952, Act1 = 7_752_830_141;
     static readonly Dictionary<long, BossBookEntry> Empty = [];
     static readonly DungeonInfo Panel = new(DungeonKind.Raid, "죽음의 계율자, 벨가르딘", "노말");

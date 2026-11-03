@@ -73,7 +73,7 @@ public sealed partial class OverlayRenderer
         string timer = v?.Timer is { } t ? $"{t / 60:00}:{t % 60:00}" : "--:--";
         string state = v is null ? "" : v.Running ? "▶" : "■";
         MeterText(dc, new(r.X, r.Y + r.Height * 0.2), $"{state} {timer}", r.Height * 0.5, 1);
-        if (v is { BossTaken: > 0 }) MeterTextRight(dc, new(r.Right, r.Y + r.Height * 0.2), $"보스 {Eok(v.BossTaken)}", r.Height * 0.45, 0.8);
+        if (v?.Header(MeterMe, Eok) is { } right) MeterTextRight(dc, new(r.Right, r.Y + r.Height * 0.2), right, r.Height * 0.45, 0.8);
     }
 
     Color MeterColor(MeterRow r)
@@ -253,16 +253,22 @@ public sealed partial class OverlayRenderer
     {
         double each = r.Height / 3, font = each * 0.75, label = r.Width * 0.3;
         if (v?.BuffSplit is { } split) { MeterBuffSplit(dc, r, v, split, each, font, label); return; }
-        if (v?.BuffCover is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프를 켜면 보입니다", font, 0.6); return; }
+        // A 4-man raid: the party's share (boss HP lost under the buff) in brackets after mine; a support sees the party's alone.
+        var party = v?.BuffParty;
+        if ((v?.BuffCover ?? party) is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프를 켜면 보입니다", font, 0.6); return; }
+        bool mine = v!.BuffCover is not null;
+        double text = font * (mine && party is not null ? 6 : 3.2);
         for (int i = 0; i < TimelineView.Buffs.Length && i < cover.Count; i++)
         {
             var (_, name, color) = TimelineView.Buffs[i];
             double y = r.Y + i * each, share = Math.Clamp(cover[i], 0, 1);
             MeterText(dc, new(r.X, y), name, font, 0.8);
-            var bar = new Rect(r.X + label, y + each * 0.15, r.Width - label - font * 3.2, each * 0.7);
+            var bar = new Rect(r.X + label, y + each * 0.15, Math.Max(0, r.Width - label - text), each * 0.7);
             dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, bar);
             dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * share });
-            MeterTextRight(dc, new(r.Right, y), $"{share * 100:0}%", font, 0.9);
+            string figure = !mine ? $"({share * 100:0}%)"
+                : party is not null && i < party.Count ? $"{share * 100:0}% ({Math.Clamp(party[i], 0, 1) * 100:0}%)" : $"{share * 100:0}%";
+            MeterTextRight(dc, new(r.Right, y), figure, font, 0.9);
         }
     }
 

@@ -34,6 +34,14 @@ public sealed record TimeWindow(double From, double To)
 /// <summary>What the timeline draws for a record (spec § D Timeline view). Pure.</summary>
 public static class Timeline
 {
+    /// <summary>Two fights 비교 can line up: the same known gate at the same difficulty (user, 2026-11-03).</summary>
+    public static bool SameRaid(FightRecord a, FightRecord b) =>
+        !string.IsNullOrEmpty(a.Gate) && a.Gate == b.Gate && a.Difficulty == b.Difficulty;
+
+    /// <summary>How much bigger the skill icons draw at a zoom: the whole fight over the seconds shown, at most twice (user,
+    /// 2026-11-03), so zooming in spreads the casts and enlarges them.</summary>
+    public static double IconScale(double whole, double shown) => shown <= 0 ? 1 : Math.Clamp(whole / shown, 1, 2);
+
     /// <summary>The skills I used in the fight, in bar order: one row each.</summary>
     public static IReadOnlyList<SlotId> MySkills(FightRecord r) =>
         [.. r.Events.Where(e => e.Name == r.Me && e.Kind == RecordEventKind.사용 && Enum.IsDefined((SlotId)e.What))
@@ -47,9 +55,19 @@ public static class Timeline
     /// <summary>The share of my damage in <paramref name="w"/> dealt while a bomb was on the boss, as <see cref="BuffShare"/>.</summary>
     public static double BombShare(FightRecord r, TimeWindow w) => DamageShare(r, AmsuSpans(r).Select(s => (s.From, s.To)), w);
 
-    static double DamageShare(FightRecord r, IEnumerable<(double From, double To)> spans, TimeWindow w)
+    /// <summary>The share of the boss HP lost in <paramref name="w"/> while my <paramref name="kind"/> buff was up: the party's in a
+    /// 4-man raid (MeterView.BuffParty), whose damage is all the boss takes; null when no boss HP was lost in it.</summary>
+    public static double? PartyBuffShare(FightRecord r, BuffKind kind, TimeWindow w)
     {
-        var mine = MyDamage(r);
+        var boss = r.Boss.OrderBy(b => b.T).Select(b => (b.T, (double)b.Taken)).ToList();
+        if (At(boss, w.To) - At(boss, w.From) <= 0) return null;
+        return Share(boss, BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)), w);
+    }
+
+    static double DamageShare(FightRecord r, IEnumerable<(double From, double To)> spans, TimeWindow w) => Share(MyDamage(r), spans, w);
+
+    static double Share(List<(double T, double V)> mine, IEnumerable<(double From, double To)> spans, TimeWindow w)
+    {
         double total = At(mine, w.To) - At(mine, w.From);
         if (total <= 0) return 0;
         double under = spans.Where(s => s.To > w.From && s.From < w.To)

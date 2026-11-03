@@ -43,6 +43,9 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>전투 기록: how long the 전분 timer may stay stopped (a wipe) or hidden (a cutscene) before the fight ends.</summary>
     public int RecordPauseSeconds { get; set; } = 120;
     public const int MinRecordPause = 10, MaxRecordPause = 600;
+    /// <summary>전투 기록's 글자 크기: the timeline's text, in % (user, 2026-11-03).</summary>
+    public int RecordFontPercent { get; set; } = 100;
+    public const int MinRecordFont = 100, MaxRecordFont = 200;
     /// <summary>전투 기록's names by boss max HP (<see cref="Domain.BossBook"/>): learned from the dungeon panel, editable by hand.</summary>
     public Dictionary<long, BossBookEntry> BossBook { get; set; } = [];
     /// <summary>설정's colour theme (the window only; the overlay's colours are its own). New installs start on 로스트아크;
@@ -92,6 +95,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>The 직업각인 last played per class (picked by hand or read off the bar): a class detected with one takes it
     /// and its 직업각인 isn't read again until asked (직업각인 다시 감지).</summary>
     public Dictionary<string, string> SubclassHistory { get; set; } = [];
+
+    /// <summary>로딩 뒤 직업각인 자동 감지 (user, 2026-11-03; off by default, every class): after a loading screen the ready 초각스
+    /// sets the 직업각인 only (CharacterService.AutoRedetect).</summary>
+    public bool AutoSubclass { get; set; }
 
     /// <summary>설정 → 캐릭터's supported 직업각인 and features the user has seen (Core.Data.ClassSupport keys): anything shipped
     /// later shows NEW until the tab is opened. Null: never recorded (set at start-up, so a first run marks nothing).</summary>

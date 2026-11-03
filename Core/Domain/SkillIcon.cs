@@ -9,11 +9,15 @@ public static class SkillIcon
         reading.Kind == ReadKind.Ready && !sent && SlotInfo.GroupOf(slot, adenSlots) != SlotGroup.아덴스킬;
 
     /// <summary>The slots drawn as icons: in a group with 아이콘으로 표시 on (<paramref name="iconGroups"/>), the group shown
-    /// (<paramref name="groups"/>, shown when absent), the slot not hidden, and not a 아덴 skill.</summary>
+    /// (<paramref name="groups"/>, shown when absent), the slot not hidden, and not a 아덴 skill. While fights are recorded
+    /// (<paramref name="unreadWhileRecording"/>: the slots the engine skips, ReadPlan.Skip; null when not recording) also every
+    /// slot it reads but the 아덴 skills, whatever the look: the 전투 기록 timeline draws them. A skipped slot never reads ready,
+    /// so it can't be needed.</summary>
     public static IReadOnlySet<SlotId> Needed(IReadOnlyCollection<SlotGroup> iconGroups, IReadOnlyDictionary<SlotGroup, bool> groups,
-        IReadOnlySet<SlotId> hidden, IReadOnlyCollection<SlotId> adenSlots) =>
-        SlotInfo.All.Where(slot => SlotInfo.GroupOf(slot, adenSlots) is var g && g != SlotGroup.아덴스킬 && iconGroups.Contains(g)
-            && groups.GetValueOrDefault(g, true) && !hidden.Contains(slot)).ToHashSet();
+        IReadOnlySet<SlotId> hidden, IReadOnlyCollection<SlotId> adenSlots, IReadOnlySet<SlotId>? unreadWhileRecording = null) =>
+        SlotInfo.All.Where(slot => SlotInfo.GroupOf(slot, adenSlots) is var g && g != SlotGroup.아덴스킬
+            && (unreadWhileRecording is { } skip && !skip.Contains(slot)
+                || iconGroups.Contains(g) && groups.GetValueOrDefault(g, true) && !hidden.Contains(slot))).ToHashSet();
 
     /// <summary>Every needed slot has a saved icon: no copy run is needed.</summary>
     public static bool Complete(IReadOnlySet<SlotId> saved, IEnumerable<SlotId> needed) => needed.All(saved.Contains);

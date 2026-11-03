@@ -62,6 +62,24 @@ public class TimelineTests
     }
 
     [Fact]
+    public void Only_the_same_gate_and_difficulty_compare()
+    {
+        var a = R(60) with { Gate = "고통의 마녀 · 1관문", Difficulty = "하드" };
+        Assert.True(Timeline.SameRaid(a, a with { StartedAt = DateTime.MaxValue }));
+        Assert.False(Timeline.SameRaid(a, a with { Difficulty = "나이트메어" }));
+        Assert.False(Timeline.SameRaid(a, a with { Gate = "고통의 마녀 · 2관문" }));
+        Assert.False(Timeline.SameRaid(a with { Gate = null }, a with { Gate = null }));   // 알 수 없음 is no raid to match
+    }
+
+    [Theory]
+    [InlineData(300, 300, 1)]     // the whole fight
+    [InlineData(300, 200, 1.5)]
+    [InlineData(300, 150, 2)]
+    [InlineData(300, 10, 2)]      // far in: at most twice
+    public void Icons_grow_with_the_zoom_up_to_twice(double whole, double shown, double scale) =>
+        Assert.Equal(scale, Timeline.IconScale(whole, shown), 6);
+
+    [Fact]
     public void Buff_share_is_the_part_of_my_damage_in_the_window_dealt_under_it()
     {
         // 100 damage a second from 0 to 20 s, none after: the buff's 4 s (5–9) take 400, the open one from 50 s nothing.
@@ -76,6 +94,20 @@ public class TimelineTests
         Assert.Equal(0, Timeline.BuffShare(r, BuffKind.초각스피증, new TimeWindow(0, 60)));
         Assert.Equal(0, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(40, 60)));   // no damage in it
         Assert.Equal(0, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(20, 20)));
+    }
+
+    [Fact]
+    public void Party_buff_share_is_the_part_of_the_boss_hp_lost_under_my_buff()
+    {
+        // The boss loses 10M a second from 0 to 20 s: 공증 from 5 to 9 s takes 40M of 200M. Mine is a different curve.
+        var r = R(60, null, E(5, "나", RecordEventKind.버프시작, (int)BuffKind.공증), E(9, "나", RecordEventKind.버프끝, (int)BuffKind.공증)) with
+        {
+            Samples = [new(0, "나", 0, 0), new(5, "나", 0, 0), new(9, "나", 1000, 0), new(20, "나", 1000, 0)],
+            Boss = [new(0, 0, null, null), new(20, 200_000_000, null, null), new(60, 200_000_000, null, null)],
+        };
+        Assert.Equal(0.2, Timeline.PartyBuffShare(r, BuffKind.공증, new TimeWindow(0, 60))!.Value, 6);
+        Assert.Equal(1.0, Timeline.BuffShare(r, BuffKind.공증, new TimeWindow(0, 60)), 6);
+        Assert.Null(Timeline.PartyBuffShare(r with { Boss = [] }, BuffKind.공증, new TimeWindow(0, 60)));   // no boss read
     }
 
     [Fact]

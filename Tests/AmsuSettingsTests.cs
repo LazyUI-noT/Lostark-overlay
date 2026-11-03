@@ -20,6 +20,18 @@ public sealed class AmsuSettingsTests : IDisposable
     }
 
     [Fact]
+    public void The_upright_bar_look_and_its_seconds_switch_survive_a_save()
+    {
+        Directory.CreateDirectory(_dir);
+        var s = new Settings();
+        Assert.True(s.Amsu.ShowSeconds);
+        (s.Amsu.Look, s.Amsu.ShowSeconds) = (AmsuLook.세로막대, false);
+        new SettingsStore(FilePath).Save(s);
+        var back = new SettingsStore(FilePath).Load(out _).Amsu;
+        Assert.Equal((AmsuLook.세로막대, false), (back.Look, back.ShowSeconds));
+    }
+
+    [Fact]
     public void It_reads_high_by_default_and_a_bad_rate_falls_back_to_high()
     {
         Assert.Equal(AmsuRate.높음, new Settings().Amsu.Rate);

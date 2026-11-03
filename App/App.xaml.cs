@@ -96,6 +96,7 @@ public partial class App : Application
     OverlayWindow _amsu = null!;   // 암수 창: the bomb on the boss
     OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
     OverlayWindow _meter = null!;   // DPS 미터기
+    ShadowHpWindow _shadow = null!;   // 그림자 레이드 기믹 체력, at the boss bar's place
     PartyService? _partyService;   // set by StartApp (null in the demo)
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
     string? _raidSeen;   // the gate 자동 인식 recognises now
@@ -135,6 +136,7 @@ public partial class App : Application
         _amsu = new OverlayWindow(settings, amsu: true);
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
+        _shadow = new ShadowHpWindow();
         _settingsWindow = new SettingsWindow(settings, characters);
         _layer = new AdjustLayer();
         _tray = new Tray();

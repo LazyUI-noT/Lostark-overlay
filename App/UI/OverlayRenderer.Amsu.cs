@@ -16,6 +16,7 @@ public sealed partial class OverlayRenderer
     const double AmsuBarLength = 3, AmsuBarThickness = 0.45;   // × the icon: the bar's length (× 너비) and thickness
     const double AmsuIconInDisc = 0.72, AmsuBeside = 1.2;       // 원: the icon's share of the disc; 숫자 옆: the text's width × the icon
     const double AmsuText = 0.55, AmsuUnseen = 0.55, AmsuGap = 2;
+    const double AmsuUprightWidth = 0.6;   // 세로막대's width × the icon size (크기); its height is 막대 길이
     const double BlinkHz = 2, BlinkLow = 0.6;
     static readonly ImageSource?[] BombIcons = [.. Enum.GetValues<Bomb>().Select(b => BombImage(AmsuReader.IconOf(b)))];
 
@@ -40,6 +41,8 @@ public sealed partial class OverlayRenderer
         var a = Settings.Amsu;
         double s = BoxSize(a.Height);
         var icon = new Rect(Bleed, Bleed, s, s);
+        if (a.Look == AmsuLook.세로막대)   // no icon: the bar alone, the seconds over its top part
+            return (Rect.Empty, new Rect(Bleed, Bleed, Math.Round(s * AmsuUprightWidth), BoxSize(a.Width, AmsuBarLength)));
         if (!AmsuTimed) return (icon, null);
         switch (a.Look)
         {
@@ -59,7 +62,7 @@ public sealed partial class OverlayRenderer
     Size AmsuPanelSize()
     {
         var (icon, side) = AmsuCells();
-        var all = side is { } r ? Rect.Union(icon, r) : icon;
+        var all = side is { } r ? icon.IsEmpty ? r : Rect.Union(icon, r) : icon;
         return new(all.Right + Bleed, all.Bottom + Bleed);
     }
 
@@ -75,7 +78,8 @@ public sealed partial class OverlayRenderer
         var image = BombIcons[(int)kind] ?? BombIcons[(int)Bomb.암수];   // 빛암 has no template yet
 
         dc.PushOpacity(Math.Clamp(a.Opacity, AmsuSettings.MinOpacity, 1) * (seen ? 1 : AmsuUnseen) * blink);
-        switch (timed ? a.Look : (AmsuLook?)null)
+        if (a.Look == AmsuLook.세로막대) DrawUprightBomb(dc, side!.Value, timed ? share : 1, colour, timed && a.ShowSeconds ? left : null);
+        else switch (timed ? a.Look : (AmsuLook?)null)
         {
             case null:   // untimed: the bomb is up, no time to show
                 if (image is not null) dc.DrawImage(image, icon);
@@ -96,6 +100,20 @@ public sealed partial class OverlayRenderer
         }
         dc.Pop();
         if (_frozenAt is null) _moving = true;   // the countdown runs (and the blink)
+    }
+
+    /// <summary>세로막대: a buff bar standing up (the dim track of its colour, rounded), the time left anchored at the bottom so it
+    /// empties top to bottom, and the seconds over its top when shown. Untimed: full while the bomb is up.</summary>
+    void DrawUprightBomb(DrawingContext dc, Rect r, double share, Color colour, double? seconds)
+    {
+        dc.DrawRoundedRectangle(Solid(Level(colour, ChangedOffLevel)), null, r, BoxRadius, BoxRadius);
+        dc.PushClip(BoxClip(r));
+        if (share > 0) dc.DrawRectangle(Solid(colour), null, new Rect(r.X, r.Bottom - r.Height * share, r.Width, r.Height * share));
+        dc.Pop();
+        if (seconds is not { } sec) return;
+        var top = new Rect(r.X, r.Y, r.Width, Math.Min(r.Width, r.Height));
+        DrawOutlined(dc, top, Math.Ceiling(sec).ToString(CultureInfo.InvariantCulture),
+            Math.Max(TimerFontStep, Math.Round(top.Width * AmsuText / TimerFontStep) * TimerFontStep));
     }
 
     /// <summary>The empty track, then the time left anchored on the side away from <paramref name="toward"/>.</summary>

@@ -365,6 +365,9 @@ public sealed partial class Engine : IDisposable
         // meter's HP, 암수's HP and the boss probe. One copy and one read (BossBar) instead of up to four.
         int bossRowAt = rects.Count;
         if ((raidCount ?? raidHp ?? meterHp ?? amsuText ?? bossProbe) is { } bossTextRow) rects.Add(bossTextRow);
+        int shadowAt = rects.Count;   // the 그림자 gimmick's number, in its gates (Engine.Shadow.cs)
+        var shadowRect = ShadowRect(config, meterHp);
+        if (shadowRect is { } shadowNumber) rects.Add(shadowNumber);
 
         var images = rects.Select(Buffer).ToList();
         long ts = 0;
@@ -399,7 +402,7 @@ public sealed partial class Engine : IDisposable
         else if (fastTimers.Count > 0) changed |= Perf.Run("디버프 (시간)", () => ReadDebuffTimers(images, debuffAt, fastTimers, debuffSize, t));
         if (judging)
             changed |= Perf.Run("단심", () => ReadJudgment(config.Judgment!, judgRow is null ? null : images[judgAt], judgBand is null ? null : images[judgAt + (judgRow is null ? 0 : 1)], t));
-        if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[bossRowAt], meterPanel is null ? null : images[meterAt], t));
+        if (meterHp is not null) changed |= Perf.Run("DPS 미터기 (보스 HP · 전분)", () => ReadMeter(images[bossRowAt], meterPanel is null ? null : images[meterAt], shadowRect is null ? null : images[shadowAt], t));
         if (amsuText is not null || amsuStrip is not null)
             changed |= Perf.RunCpu("암수", () => ReadAmsu(config, amsuText is null ? null : images[bossRowAt], amsuStrip is null ? null : images[amsuAt], t));
         if (raidName is not null || raidCount is not null)
@@ -615,6 +618,7 @@ public sealed partial class Engine : IDisposable
             Dungeon = _meterOn ? _dungeon : null,
             Amsu = _amsuOn ? _amsu : null,
             AmsuTimed = _amsuTimed,
+            Shadow = _meterOn && _shadow is { Dead: false } s && _shadowBar is { } bar ? new ShadowView(s.Remaining, s.Lines, bar) : null,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,

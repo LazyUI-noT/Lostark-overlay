@@ -28,6 +28,23 @@ public static class BossDigits
     static readonly (char Ch, float[] Grid)[] Templates =
         [.. BossDigitTemplates.Glyphs.Select(t => (t.Ch, t.Rows.SelectMany(r => r.Select(c => (float)DigitReader.GreyRamp.IndexOf(c))).ToArray()))];
 
+    /// <summary>The 그림자 레이드 gimmick's number (the damage dealt in it, "134,046,661,186"), or null: digits grouped by commas,
+    /// nothing else (the bar's "current/max" fails on its '/'). It pops up to half as big again as it jumps.</summary>
+    public static long? ReadNumber(Image area, double scale)
+    {
+        if (Glyphs(area, scale * NumberPop) is not { Count: >= 5 } g || g.Any(x => x.Mark)) return null;
+        var text = new StringBuilder();
+        foreach (var x in g)
+            if (x.Comma) text.Append(',');
+            else if (Best(x.Grid!, char.IsAsciiDigit) is (var d, >= MinGlyph)) text.Append(d);
+            else return null;
+        // Specks of the fill bar's frame below the line read as commas at either end (shadow_number 8, 19): not the number's.
+        string number = text.ToString().Trim(',');
+        return Grouped.IsMatch(number) ? long.Parse(number.Replace(",", "")) : null;
+    }
+    const double NumberPop = 1.5;
+    static readonly Regex Grouped = new(@"^\d{1,3}(?:,\d{3})+$", RegexOptions.CultureInvariant);
+
     /// <summary>The bar count ("X 494" → 494), or null.</summary>
     public static int? ReadCount(Image area, double scale)
     {

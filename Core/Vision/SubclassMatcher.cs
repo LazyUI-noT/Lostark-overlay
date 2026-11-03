@@ -53,6 +53,15 @@ public static class SubclassMatcher
         return (scored.Count > 1 && scored[0].Score - scored[1].Score < MinLead ? null : scored[0].Name, false);
     }
 
+    /// <summary>직업각인 등록: the art of a ready 초각스 slot crop, kept as the 직업각인's icon. A square of the slot's middle, of a
+    /// side <see cref="Squares"/> searches, so a later crop of the same slot holds it.</summary>
+    public static Image Art(Image slot)
+    {
+        int w = Math.Min(slot.Width, slot.Height), s = (int)(w * ArtSide);
+        return ImageOps.Crop(slot, new PixelRect((slot.Width - s) / 2, (slot.Height - s) / 2, s, s));
+    }
+    const double ArtSide = 0.78;   // the art's side at 1080p (above)
+
     /// <summary>How alike two 일반 slot crops look greyed out: the correlation of their greyed thumbnails, both whole (-1…1).</summary>
     public static double SkillScore(Image a, Image b) =>
         ImageOps.Correlate(Thumb(Grey(a), new PixelRect(0, 0, a.Width, a.Height)), Thumb(Grey(b), new PixelRect(0, 0, b.Width, b.Height)));
