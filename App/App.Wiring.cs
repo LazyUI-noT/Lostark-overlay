@@ -86,6 +86,9 @@ public partial class App
         var testRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "test"));   // 테스트 모드's fights: apart, own count
         RecordStore StoreNow() => GameWindow.TestMode ? testRecords : records;
         Task lastSave = Task.CompletedTask;
+        // A fight ended by a new 전분 record: its 클리어 / 실패 is settled by that record's boss once its bar is read (FightVerdict).
+        // Only while that same record runs: a later record (left and came back) says nothing about this fight.
+        (FightRecord Fight, Task<string?> Saving, RecordStore Store, int NextRecord)? toSettle = null;
         // --record-test (dev): with no 전분 reader yet, a stand-in clock (seconds since start) runs the recorder over what the
         // overlay reads while 테스트 모드 is on (footage), one record per test-mode run, saved when it is turned off. No figures,
         // so the DPS lines stay empty.
@@ -390,7 +393,12 @@ public partial class App
                 .. party.Members.Where(m => m.Id != me).Select(m => new RecordMember(m.Name, peers.FirstOrDefault(p => p.Name == m.Name)?.Snapshot.ClassId ?? 0, null, m.Party)),
             ];
             string? gate = RaidData.Find(raidGates, _raidSeen) is { } g ? RaidData.Label(g) : null;
-            if (recorder.Step(status, all, members, bossTaken, gate, Clock.Now(), DateTime.Now) is { } fight) SaveRecord(fight);
+            if (recorder.Step(status, all, members, bossTaken, gate, Clock.Now(), DateTime.Now) is { } fight)
+            {
+                var saving = SaveRecord(fight);
+                toSettle = recorder.Restarted ? (fight, saving, StoreNow(), status.Clock.Fight) : null;
+            }
+            else Settle(status);
         }
 
         // Written once, off the UI thread, when a fight ends (spec § D Cost budget).
@@ -399,16 +407,14 @@ public partial class App
 
         // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
         // content and aren't kept.
-        void SaveRecord(FightRecord fight)
+        // Returns the saved file's name once written (null: not saved).
+        Task<string?> SaveRecord(FightRecord fight)
         {
             var dungeon = latest?.Dungeon;
-            if (dungeon?.Kind == DungeonKind.Guardian) { Trace.WriteLine("[records] guardian raid: not saved"); return; }
+            if (dungeon?.Kind == DungeonKind.Guardian) { Trace.WriteLine("[records] guardian raid: not saved"); return Task.FromResult<string?>(null); }
             long? hp = BossBook.FightHp(fight.Boss);   // one per gate and difficulty: names the fight once learned
             if (RaidData.ByHp(HpGates(), hp) is var (shipped, level))   // a gate raids.json knows by HP: its own name
-            {
-                Store(fight with { Gate = RaidData.Label(shipped), Difficulty = level });
-                return;
-            }
+                return Store(fight with { Gate = RaidData.Label(shipped), Difficulty = level });
             // A video's fight names nothing for the game: boss names are learned only from real fights.
             if (!GameWindow.TestMode && BossBook.ToLearn(settings.BossBook, hp, dungeon) is { } learned)
             {
@@ -417,21 +423,43 @@ public partial class App
                 Save(now: false);
             }
             var (name, difficulty) = BossBook.Resolve(settings.BossBook, hp, dungeon, fight.Gate);
-            Store(fight with { Gate = name, Difficulty = difficulty });
+            return Store(fight with { Gate = name, Difficulty = difficulty });
         }
 
-        void Store(FightRecord fight)
+        Task<string?> Store(FightRecord fight)
         {
             var store = StoreNow();   // read now: test mode may end before the save runs
-            lastSave = Task.Run(() =>
+            var saving = Task.Run(() =>
             {
                 try
                 {
-                    if (settings.RecordAutoSave) store.Save(Named(fight), settings.RecordKeep);
-                    else store.Hold(Named(fight));   // 자동 저장 off: only the last fight, until 보관 or the next one
+                    string file;
+                    if (settings.RecordAutoSave) file = store.Save(Named(fight), settings.RecordKeep);
+                    else { store.Hold(Named(fight)); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
                     _settingsWindow.RefreshRecords();
+                    return file;
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] save failed: {ex.Message}"); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] save failed: {ex.Message}"); return null; }
+            });
+            lastSave = saving;
+            return saving;
+        }
+
+        // By the new boss's max HP only: the recognised gate name still holds the last boss until the new name is read.
+        void Settle(MeterStatus status)
+        {
+            if (toSettle is not { } s) return;
+            if (status.Clock.Fight != s.NextRecord) { toSettle = null; return; }
+            // Not until the new boss has taken damage: the last boss's bar may still be read while the gate changes.
+            if (status.Boss.Max is not { } max || BossDamage.Taken(status.Boss) <= 0 || !s.Saving.IsCompleted) return;
+            toSettle = null;
+            if (s.Saving.Result is not { } file || FightVerdict.ByNext(s.Fight, max, null) is not { } cleared) return;
+            if (cleared == s.Fight.Cleared) return;
+            Trace.WriteLine($"[records] {file}: {(cleared ? "클리어" : "실패")} by the next record's boss");
+            _ = Task.Run(() =>
+            {
+                try { s.Store.SetCleared(file, cleared); _settingsWindow.RefreshRecords(); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] result not written: {ex.Message}"); }
             });
         }
 

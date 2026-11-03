@@ -242,6 +242,7 @@ public class FightRecorderTests
     // Step 3 (spec § D, the user's rules): start only in a raid; a clear ends at once (timer stopped, boss under 10,000);
     // a wipe or a hidden timer pauses, then ends after the pause length or on a restart (a new 전분 record).
     double _hpAt;
+    long _max = 1_000_000_000_000;
 
     /// <summary>A second with the boss at <paramref name="hp"/>; <paramref name="read"/> false: the bar was not read this second
     /// (the boss's last HP held).</summary>
@@ -249,42 +250,83 @@ public class FightRecorderTests
     {
         _clock = FightClock.Update(_clock, timer, S(at));
         if (read) _hpAt = at;
-        var boss = BossDamageState.None with { Last = hp, Max = 7_752_830_141 };
+        var boss = BossDamageState.None with { Last = hp, Max = _max };
         return _r.Step(MeterStatus.None with { Clock = _clock, Boss = boss, HpAt = S(_hpAt) }, [Me(100)], [], 0, null, S(at), Wall);
     }
 
     [Fact]
     public void A_boss_bar_gone_while_the_timer_runs_is_a_clear()
     {
-        // 구원의 종탑 1관문 (2026-11-03): the bar's last read showed 9.8% left, then the boss died and the timer ran on 9 s.
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 760_000_000);
-        for (int t = 11; t <= 15; t++) TickHp(t, t, 760_000_000, read: false);
+        // 구원의 종탑 1관문 (2026-11-03): the bar's last read showed 1124억 left, then the boss died and the timer ran on 9 s.
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 112_393_993_321);
+        for (int t = 11; t <= 15; t++) TickHp(t, t, 112_393_993_321, read: false);
         Assert.True(_r.Finish()!.Cleared);
     }
 
     [Fact]
     public void A_bar_missed_for_two_seconds_at_the_end_is_still_a_fail()
     {
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 760_000_000);
-        for (int t = 11; t <= 12; t++) TickHp(t, t, 760_000_000, read: false);
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
+        for (int t = 11; t <= 12; t++) TickHp(t, t, 600_000_000_000, read: false);
         Assert.False(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_small_boss_is_a_clear_only_near_its_end()
+    {
+        // An older raid's 77억 boss: all of it is under 500억, so 5% of its max (3.9억) is the line.
+        _max = 7_752_830_141;
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 1_000_000_000);
+        Assert.False(_r.Finish()!.Cleared);
+        for (int t = 20; t <= 30; t++) TickHp(t, t, 300_000_000);
+        Assert.True(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_stopped_timer_ends_the_record_at_once_only_on_a_dead_boss()
+    {
+        // A phase change stops the timer with a phase bar under 500억: the fight goes on, it isn't cut there.
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 40_000_000_000);
+        for (int at = 11; at <= 15; at++) Assert.Null(TickHp(10, at, 40_000_000_000));
+        for (int t = 16; t <= 20; t++) Assert.Null(TickHp(t - 5, t, 600_000_000_000));
+        Assert.Equal(15, _r.Finish()!.Duration);
+    }
+
+    [Fact]
+    public void A_boss_last_read_under_500억_is_a_clear()
+    {
+        // A finishing skill can take 100~300억 in one hit (user, 2026-11-03): the last read may show that much left.
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 49_000_000_000);
+        Assert.True(_r.Finish()!.Cleared);
     }
 
     [Fact]
     public void A_bar_gone_with_much_hp_left_is_still_a_clear()
     {
         // A gimmick kill with 65% left: the boss is gone, so is its bar.
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 5_000_000_000);
-        for (int t = 11; t <= 20; t++) TickHp(t, t, 5_000_000_000, read: false);
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
+        for (int t = 11; t <= 20; t++) TickHp(t, t, 600_000_000_000, read: false);
         Assert.True(_r.Finish()!.Cleared);
     }
 
     [Fact]
     public void A_wipe_near_the_end_is_a_fail_as_its_bar_stays()
     {
-        // 공략에 실패하였습니다 with a line and a half left (종막, user 2026-11-03): the bar stays up and read.
-        for (int t = 0; t <= 20; t++) TickHp(t, t, 50_000_000);
+        // 공략에 실패하였습니다 (종막, user 2026-11-03): the bar stays up and read.
+        for (int t = 0; t <= 20; t++) TickHp(t, t, 600_000_000_000);
         Assert.False(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_record_ended_by_a_new_전분_record_says_so()
+    {
+        for (int t = 0; t <= 20; t++) TickHp(t, t, 600_000_000_000);
+        Assert.Null(TickHp(2, 21, 600_000_000_000));   // the lower timer waits a read to confirm the new record
+        Assert.NotNull(TickHp(3, 22, 600_000_000_000));
+        Assert.True(_r.Restarted);
+        TickHp(4, 23, 600_000_000_000);
+        Assert.NotNull(_r.Finish());
+        Assert.False(_r.Restarted);
     }
 
     [Fact]
@@ -309,9 +351,9 @@ public class FightRecorderTests
     public void A_wipe_pauses_then_ends_as_a_fail_after_the_pause_length()
     {
         _r.PauseLimit = S(30);
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 5_000_000_000);
-        for (int at = 11; at < 40; at++) Assert.Null(TickHp(10, at, 5_000_000_000));
-        var r = TickHp(10, 40, 5_000_000_000);
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
+        for (int at = 11; at < 40; at++) Assert.Null(TickHp(10, at, 600_000_000_000));
+        var r = TickHp(10, 40, 600_000_000_000);
         Assert.False(r!.Cleared);
     }
 
@@ -319,28 +361,28 @@ public class FightRecorderTests
     public void A_hidden_timer_ends_the_record_after_the_pause_length_too()
     {
         _r.PauseLimit = S(30);
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 5_000_000_000);
-        for (int at = 11; at < 40; at++) Assert.Null(TickHp(null, at, 5_000_000_000));
-        Assert.NotNull(TickHp(null, 40, 5_000_000_000));
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
+        for (int at = 11; at < 40; at++) Assert.Null(TickHp(null, at, 600_000_000_000));
+        Assert.NotNull(TickHp(null, 40, 600_000_000_000));
     }
 
     [Fact]
     public void A_cutscene_shorter_than_the_pause_resumes_the_same_record()
     {
         _r.PauseLimit = S(30);
-        for (int t = 0; t <= 10; t++) TickHp(t, t, 5_000_000_000);
-        for (int at = 11; at < 30; at++) Assert.Null(TickHp(null, at, 5_000_000_000));
-        for (int t = 30; t <= 35; t++) Assert.Null(TickHp(t, t, 4_000_000_000));
+        for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
+        for (int at = 11; at < 30; at++) Assert.Null(TickHp(null, at, 600_000_000_000));
+        for (int t = 30; t <= 35; t++) Assert.Null(TickHp(t, t, 550_000_000_000));
         Assert.Equal(35, _r.Finish()!.Duration);
     }
 
     [Fact]
     public void A_restart_saves_the_wipe_and_the_next_try_is_a_new_record()
     {
-        for (int t = 0; t <= 148; t++) TickHp(t, t, 5_000_000_000);
-        for (int at = 149; at < 170; at++) TickHp(148, at, 5_000_000_000);   // frozen through the preparation
-        Assert.Null(TickHp(3, 170, 5_000_000_000));   // re-entered: the next read confirms the reset
-        var r = TickHp(4, 171, 5_000_000_000);
+        for (int t = 0; t <= 148; t++) TickHp(t, t, 600_000_000_000);
+        for (int at = 149; at < 170; at++) TickHp(148, at, 600_000_000_000);   // frozen through the preparation
+        Assert.Null(TickHp(3, 170, 600_000_000_000));   // re-entered: the next read confirms the reset
+        var r = TickHp(4, 171, 600_000_000_000);
         Assert.False(r!.Cleared);
         Assert.Equal(148, r.Duration);
     }
@@ -348,8 +390,8 @@ public class FightRecorderTests
     [Fact]
     public void A_timer_waiting_before_the_fight_is_not_a_phase()
     {
-        for (int at = 0; at < 5; at++) TickHp(0, at, 5_000_000_000);   // frozen at 0 in the preparation
-        for (int t = 1; t <= 5; t++) TickHp(t, 4 + t, 5_000_000_000);
+        for (int at = 0; at < 5; at++) TickHp(0, at, 600_000_000_000);   // frozen at 0 in the preparation
+        for (int t = 1; t <= 5; t++) TickHp(t, 4 + t, 600_000_000_000);
         Assert.Empty(_r.Finish()!.Phases);
     }
 

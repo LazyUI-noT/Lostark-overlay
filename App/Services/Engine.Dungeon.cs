@@ -15,7 +15,12 @@ public sealed partial class Engine
 {
     static readonly TimeSpan DungeonForget = TimeSpan.FromSeconds(60);
     static readonly PixelRect RefDungeonPanel = new(0, 25, 450, 230);   // "N막 : name", [난이도], the gates, 재시작 (1080p, from the game area's top-left)
-    static readonly Lazy<OcrEngine?> Ocr = new(() => OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ko")));
+    // Made when first used in a dungeon, let go on leaving it (Engine.Presence) and made again after a failed recognition: an
+    // engine can break for good in a long session (2026-11-03: every read of a 0.16.2 session failed with "target of an
+    // invocation", while a fresh app read the same panel from the video). A read in flight keeps the engine it started with.
+    static Lazy<OcrEngine?> Ocr = NewOcr();
+
+    static Lazy<OcrEngine?> NewOcr() => new(() => OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ko")));
     TimeSpan _lastDungeon = TimeSpan.MinValue, _dungeonSeen;
     DungeonState _dungeonState = DungeonState.None;
     DungeonPace _dungeonPace = DungeonPace.Start;   // stepped on the pool (ReadDungeon) and woken on the engine thread: under _paceLock
@@ -63,6 +68,11 @@ public sealed partial class Engine
     {
         await OcrGate.WaitAsync();
         try { return [.. (await Ocr.Value!.RecognizeAsync(bmp)).Lines.Select(l => l.Text)]; }
+        catch
+        {
+            Ocr = NewOcr();   // under the gate: the next recognition makes a fresh engine
+            throw;
+        }
         finally { OcrGate.Release(); }
     }
 
@@ -87,7 +97,11 @@ public sealed partial class Engine
             Trace.WriteLine($"[dungeon] {_dungeon?.Kind} {_dungeon?.Title} [{_dungeon?.Difficulty}]");
             _dungeonNew = 1;
         }
-        catch (Exception ex) { Trace.WriteLine($"[dungeon] OCR failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            var e = ex.GetBaseException();   // a reflection wrapper says nothing ("target of an invocation"): the real one
+            Trace.WriteLine($"[dungeon] OCR failed: {e.GetType().Name} 0x{e.HResult:X8} {e.Message} @ {e.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+        }
         finally { _dungeonBusy = 0; Perf.Add("던전 이름 (Windows OCR)", Stopwatch.GetTimestamp() - t0); }
     }
 }

@@ -84,6 +84,16 @@ public sealed class RecordStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_saved_fight_takes_its_result_from_the_next_record()
+    {
+        var file = Store.Save(R(0) with { Cleared = true });
+        Store.SetCleared(file, false);   // the same boss came back: a retry
+        Assert.Contains(Store.List(), x => x.File == file && x.Record.Cleared == false);
+        Store.SetCleared("gone.json.gz", true);   // deleted meanwhile: nothing happens
+        Assert.Throws<ArgumentException>(() => Store.SetCleared("C:/x.json.gz", true));
+    }
+
+    [Fact]
     public void Unreadable_files_are_skipped()
     {
         Store.Save(R(0));

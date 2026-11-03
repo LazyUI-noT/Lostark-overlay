@@ -89,7 +89,8 @@ public sealed partial class Engine
         if (_wasInDungeon && !inside)
         {
             (_amsuWatch, _bar, _raid) = (new AmsuWatch(), BarCountState.None, null);
-            Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared");
+            Ocr = NewOcr();   // the OCR engine is let go until the next dungeon, which starts with a fresh one (user, 2026-11-03)
+            Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared, OCR closed");
             Publish(now);
         }
         _wasInDungeon = inside;

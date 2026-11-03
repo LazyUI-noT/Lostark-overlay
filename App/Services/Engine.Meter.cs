@@ -13,10 +13,12 @@ namespace GaugeOverlay.App.Services;
 public sealed partial class Engine
 {
     static readonly TimeSpan MeterEvery = TimeSpan.FromSeconds(1);   // 전분 updates once a second
+    // The boss HP text twice as often, so the last HP before the bar goes is fresh (a kill reads as one under 500억: FightRecorder).
+    static readonly TimeSpan BossHpEvery = TimeSpan.FromMilliseconds(500);
     static readonly TimeSpan SearchEvery = TimeSpan.FromSeconds(3);
     MeterStatus _meter = MeterStatus.None;
-    bool _meterOn;
-    TimeSpan _lastMeter = TimeSpan.MinValue, _lastSearch = TimeSpan.MinValue;
+    bool _meterOn, _meterFull, _meterChanged;   // _meterFull: this step reads the 전분 panel too, not the boss HP alone
+    TimeSpan _lastMeter = TimeSpan.MinValue, _lastBossHp = TimeSpan.MinValue, _lastSearch = TimeSpan.MinValue;
     int _panelMisses;
     (string Key, PixelRect Rect)? _foundPanel;   // found here, until the settings carry it
 
@@ -36,7 +38,9 @@ public sealed partial class Engine
         bool dungeonOn = _meterOn || _raidWaits;
         if (dungeonOn && DungeonChanged(now)) Publish(now);
         var dungeon = dungeonOn ? DungeonRect(now) : null;
-        if (!_meterOn || !Elapsed(now, _lastMeter, MeterEvery)) return (null, null, dungeon, null);
+        if (!_meterOn) return (null, null, dungeon, null);
+        _meterFull = Elapsed(now, _lastMeter, MeterEvery);
+        if (!_meterFull) return Elapsed(now, _lastBossHp, BossHpEvery) ? (Geometry.BossTextRow(_vp, _fit!), null, dungeon, null) : (null, null, dungeon, null);
         var panel = PanelSpot(config);
         bool search = PanelSearch.Due(panel is not null, _panelMisses, _presence.BossSeen, _dungeon is not null || _presence.InDungeon(now), now) && Elapsed(now, _lastSearch, SearchEvery);
         // the bar's whole text row: the HP wherever 21:9 or the HUD puts it
@@ -75,16 +79,27 @@ public sealed partial class Engine
     /// <summary>Reads the captured HP text and panel (null: no spot) and steps the meter. True: publish.</summary>
     bool ReadMeter(Image hp, Image? panel, TimeSpan t)
     {
-        _lastMeter = t;
-        var reading = panel is null ? null : JeonbunReader.Read(panel);
-        bool present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
-        _panelMisses = present ? 0 : _panelMisses + 1;
+        _lastBossHp = t;
+        bool present = false;
+        JeonbunReading? reading = null;
+        if (_meterFull)   // a half step reads the boss HP alone: no panel read, so no miss either
+        {
+            _lastMeter = t;
+            reading = panel is null ? null : JeonbunReader.Read(panel);
+            present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
+            _panelMisses = present ? 0 : _panelMisses + 1;
+        }
         var read = BossBar(hp).Hp;   // a shield in brackets counts as HP (its breaking is damage)
         Saw(meter: present, boss: read is not null, t);
         var next = MeterTracker.Step(_meter, read is var (cur, max, _) ? (cur, max) : null, reading, reading is not null, t, read?.Shield ?? 0);
         if (FightClock.Restarted(_meter.Clock, next.Clock)) NewGate();
-        bool changed = next != _meter;
+        _meterChanged |= next != _meter;
         _meter = next;
+        // Published once a second, as before: a half step's fresher boss HP goes out with the next full one (the party's meter
+        // samples stay at their rate).
+        if (!_meterFull) return false;
+        bool changed = _meterChanged;
+        _meterChanged = false;
         return changed;
     }
 }

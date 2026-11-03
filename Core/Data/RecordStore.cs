@@ -92,6 +92,13 @@ public sealed class RecordStore(string dir)
         }
     }
 
+    /// <summary>A saved fight's 클리어 / 실패, settled after it was written (FightVerdict: the next 전분 record's boss).</summary>
+    public void SetCleared(string file, bool cleared)
+    {
+        lock (_gate)
+            if (File.Exists(Path.Combine(dir, Checked(file))) && Read(file) is { } r) Write(file, r with { Cleared = cleared });
+    }
+
     public void Delete(string file)
     {
         lock (_gate) File.Delete(Path.Combine(dir, Checked(file)));

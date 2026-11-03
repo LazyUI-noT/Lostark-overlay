@@ -6,7 +6,7 @@ namespace GaugeOverlay.Core.Domain;
 /// Event times are on the fight clock: the 전분 timer plus the capture clock since it last moved. They are held until
 /// <see cref="Step"/> sees the timer move past them, and dropped if it stops first. Once a second, while the timer runs,
 /// <see cref="Step"/> adds everyone's figures and the boss. A fight starts only while <see cref="InRaid"/> (the dungeon panel
-/// says raid), and ends: on a clear (the timer stops with the boss under <see cref="ClearUnder"/>), when a new 전분 record
+/// says raid), and ends: on a kill (the timer stops on a dead boss), when a new 전분 record
 /// starts (a restart), when the timer hasn't moved for <see cref="PauseLimit"/> (stopped by a wipe, or hidden by a cutscene or
 /// the inventory: a shorter pause resumes the same record), at the size cap, or on <see cref="Finish"/>. Mutable; one thread
 /// (the UI's).</summary>
@@ -14,7 +14,20 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
 {
     public const int MaxEntries = 200_000;
     public static readonly TimeSpan EndAfterFrozen = TimeSpan.FromSeconds(120);   // PauseLimit's default
-    public const long ClearUnder = 10_000;
+    /// <summary>The boss's last HP read under this is a kill: a finishing skill takes 100~300억 in one hit, so the last read
+    /// before the bar goes may show that much (user, 2026-11-03); for a smaller boss (older raids) <see cref="KillShare"/> of
+    /// its max instead.</summary>
+    public const long ClearUnder = 50_000_000_000;
+    const double KillShare = 0.05;
+    /// <summary>A boss this low is dead: a timer stopped on it ends the record at once (a phase change stops it too, on a
+    /// phase bar that may be low but not this low).</summary>
+    const long DeadUnder = 10_000;
+
+    static bool Killed(long hp, long? max) => hp < Math.Min(ClearUnder, max is > 0 and var m ? (long)(m * KillShare) : ClearUnder);
+
+    /// <summary>The fight <see cref="Step"/> just returned ended because a new 전분 record started (a retry or the next gate):
+    /// its result is then settled by the next record's boss (<see cref="FightVerdict"/>).</summary>
+    public bool Restarted { get; private set; }
     /// <summary>A boss HP read this recent counts as the bar still shown (the boss probe reads it 2/s).</summary>
     static readonly TimeSpan HpFresh = TimeSpan.FromSeconds(1.5);
     /// <summary>Fight seconds the timer runs on with no boss bar before the end that make it a clear, at any HP it last showed
@@ -104,7 +117,12 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         var was = _clock;
         _clock = c;
         FightRecord? done = null;
-        if (c.Fight != was.Fight) { done = Finish(); return done; }   // a new 전분 record: wait for its timer to move
+        if (c.Fight != was.Fight)   // a new 전분 record: wait for its timer to move
+        {
+            done = Finish();
+            Restarted = done is not null;
+            return done;
+        }
         if (c.Timer is not { } t || was.Timer is not { } before) return null;
         if (t > before)
         {
@@ -140,7 +158,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             return _events.Count + _samples.Count >= maxEntries ? Finish() : null;
         }
         if (c.Frozen && !_stopped) { _stopped = true; _pending.Clear(); }
-        if (_started && c.Frozen && status.Boss.Last < ClearUnder) return Finish();   // cleared: the boss sits at 1 HP when it stops
+        if (_started && c.Frozen && status.Boss.Last < DeadUnder) return Finish();   // cleared: the timer stops on the kill
         return _started && now - c.MovedAt >= PauseLimit ? Finish() : null;
     }
 
@@ -155,6 +173,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     /// yet confirmed by the timer are dropped.</summary>
     public FightRecord? Finish()
     {
+        Restarted = false;
         _pending.Clear();
         _stopped = false;
         if (!_started) return null;
@@ -162,10 +181,10 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         Array.Clear(_committed);
         _bombCommitted = null;
         double end = _boss.Count > 0 ? _boss[^1].T : 0;
-        // The bar goes when the boss dies, so its last read is rarely under ClearUnder (구원의 종탑 1관문: 1124억 left, a
-        // gimmick kill); a bar gone for BarGoneFor while the timer still ran is a clear too.
-        bool? cleared = _boss.LastOrDefault(b => b.Current is not null)?.Current is { } hp
-            ? hp < ClearUnder || _hpSeen is { } seen && end - seen >= BarGoneFor : null;
+        // The bar goes when the boss dies, so its last read is rarely 0 (구원의 종탑 1관문: 1124억 left, a gimmick kill); a bar
+        // gone for BarGoneFor while the timer still ran is a clear too.
+        bool? cleared = _boss.LastOrDefault(b => b.Current is not null) is { Current: { } hp } last
+            ? Killed(hp, last.Max) || _hpSeen is { } seen && end - seen >= BarGoneFor : null;
         var r = new FightRecord(_startedAt, _gate, end, _phases, Me, MyClass, MySubclass,
             [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn);
         (_events, _samples, _boss, _phases, _members, _gate, _hpSeen) = ([], [], [], [], [], null, null);
