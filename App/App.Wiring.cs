@@ -624,6 +624,8 @@ public partial class App
             else _tray.Notify("그 창은 이미 닫혔습니다. 트레이 → 테스트 모드를 다시 열어 고르세요.");
         };
         _tray.TestOff += () => SetTest(false, 0);
+        _tray.ReinforcedToggled += on => { GameWindow.Reinforced = on; _tray.SetReinforced(on); };
+        if (Environment.GetEnvironmentVariable("GAUGE_REINFORCED") is "1") { GameWindow.Reinforced = true; _tray.SetReinforced(true); }   // dev: replays
         _tray.TestMenuOpening += () => _tray.SetTestWindows(GameWindow.Choices(), GameWindow.TestMode, GameWindow.Picked);
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.TestMode)) SetTest(!GameWindow.TestMode, 0); };
         // The picked window closed: 테스트 모드 ends (minimised, the engine just pauses). Checked again here: the engine

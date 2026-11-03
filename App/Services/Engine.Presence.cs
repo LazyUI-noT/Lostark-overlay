@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GaugeOverlay.App.Platform;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -58,6 +59,7 @@ public sealed partial class Engine
         Interlocked.Increment(ref _dungeonGen);
         WakeDungeon();
         ShadowReset();   // the next gate's boss
+        ReinforcedReset();
         Trace.WriteLine("[presence] new 전분 record: the dungeon panel read afresh");
     }
 
@@ -116,13 +118,45 @@ public sealed partial class Engine
     // The boss text row's read, shared by the step's readers (they get the same captured image): the full read and the count
     // alone (the 줄 수 창's, which reads from the right and stops at the count) each at most once a step.
     Image? _barRow;
+    TimeSpan _barAt;   // the step's time, for the 강화 HP reader
+    readonly BossHpSoftReader _bossSoft = new();   // 테스트 모드 강화 읽기: the HP checked against the fight (max holds, HP falls)
+    (TimeSpan At, (long Current, long Max, long Shield)? Hp)? _softHp;   // its read this step (another row capture reads afresh)
+    bool _reinforcedWas;
+
+    /// <summary>The 강화 readers start over: a new gate, or 강화 읽기 turned on or off.</summary>
+    void ReinforcedReset()
+    {
+        _bossSoft.Reset();
+        _jeonbunSoft.Reset();
+        _softHp = null;
+    }
+
+    /// <summary>At each step: 강화 읽기 switched since the last one starts its readers over.</summary>
+    void StepReinforced()
+    {
+        if (GameWindow.ReadsReinforced == _reinforcedWas) return;
+        _reinforcedWas = !_reinforcedWas;
+        ReinforcedReset();
+    }
+
+    /// <summary>The 강화 HP read, once a step (the readers capture the row more than once a step).</summary>
+    (long Current, long Max, long Shield)? SoftHp(Image row, double scale)
+    {
+        if (_softHp is { } done && done.At == _barAt) return done.Hp;
+        var hp = _bossSoft.Read(row, scale, _barAt);
+        _softHp = (_barAt, hp);
+        return hp;
+    }
     (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea)? _barFull, _barCount;
 
     (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) BossBar(Image row, bool hp = true)
     {
         if (!ReferenceEquals(row, _barRow)) (_barRow, _barFull, _barCount) = (row, null, null);
         double scale = Geometry.Scale(_vp, _fit!);
-        return hp ? _barFull ??= BossDigits.ReadBar(row, scale) : _barCount ??= BossDigits.ReadBar(row, scale, hp: false);
+        if (!hp) return _barCount ??= BossDigits.ReadBar(row, scale, hp: false);
+        if (_barFull is { } read) return read;
+        var bar = BossDigits.ReadBar(row, scale, hp: !GameWindow.ReadsReinforced);   // 강화: the count as captured, the HP below
+        return (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) } : bar).Value;
     }
 
     /// <summary>The meter's saved spot, with the overlay's meter off while a raid read is on and a probe is due.</summary>

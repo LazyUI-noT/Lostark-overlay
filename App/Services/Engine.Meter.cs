@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GaugeOverlay.App.Platform;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -76,6 +77,8 @@ public sealed partial class Engine
         Trace.WriteLine($"[meter] 전분 search: not on screen ({area})");
     }
 
+    readonly JeonbunSoftReader _jeonbunSoft = new();   // 테스트 모드 강화 읽기: the panel checked against the fight's clock
+
     /// <summary>Reads the captured HP text and panel (null: no spot) and steps the meter. True: publish.</summary>
     bool ReadMeter(Image hp, Image? panel, Image? shadow, TimeSpan t)
     {
@@ -85,7 +88,7 @@ public sealed partial class Engine
         if (_meterFull)   // a half step reads the boss HP alone: no panel read, so no miss either
         {
             _lastMeter = t;
-            reading = panel is null ? null : JeonbunReader.Read(panel);
+            reading = panel is null ? null : GameWindow.ReadsReinforced ? _jeonbunSoft.Read(panel, t) : JeonbunReader.Read(panel);
             present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
             _panelMisses = present ? 0 : _panelMisses + 1;
         }

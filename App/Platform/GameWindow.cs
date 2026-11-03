@@ -15,6 +15,13 @@ public static partial class GameWindow
     /// game process isn't looked for.</summary>
     public static volatile bool TestMode;
 
+    /// <summary>테스트 모드 → 강화 읽기 (reinforced-reader.plan.md): buffs, debuffs, 전분, the boss's HP and 암수 read for compressed
+    /// video (cleaned, several ways, checked against the fight; more CPU). Only with <see cref="TestMode"/>; off at start.</summary>
+    public static volatile bool Reinforced;
+
+    /// <summary>The 강화 readers are in use: 테스트 모드 with 강화 읽기 on. The game always reads as it is.</summary>
+    public static bool ReadsReinforced => TestMode && Reinforced;
+
     static IntPtr _front, _picked;
 
     /// <summary>The window last brought to the front, leaving out this app's own windows and the taskbar, desktop and

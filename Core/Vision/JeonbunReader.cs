@@ -59,16 +59,49 @@ public static class JeonbunReader
     /// <summary>My figures and the timer, or null: no panel there, covered, or not my row (the 보관 기록 view).
     /// The columns are found by their titles (<see cref="Columns"/>); a DPS column missing is the damage over the timer, a
     /// damage column missing is DPS times the timer. A column there but not read whole (a digit mid-change) gives no reading.</summary>
-    public static JeonbunReading? Read(Image panel)
+    public static JeonbunReading? Read(Image panel) => Read(panel, soft: false);
+
+    /// <summary>테스트 모드 강화 읽기: <see cref="Read"/> on video whose scaling and compression lose the small marks (720p: the
+    /// timer's ':' and an amount's '.' and ',' fade under the ink threshold while the digits stay). They are put back from the
+    /// format: the timer is always mm:ss, an amount in 억 / 만 always has two decimals. The game reads with <see cref="Read"/>.</summary>
+    public static JeonbunReading? ReadSoft(Image panel, int? clock = null) => ReadHinted(panel, clock).Reading;
+
+    /// <summary><see cref="ReadSoft"/>, and whether its timer is <paramref name="clock"/>'s (the panel's own didn't read).</summary>
+    internal static (JeonbunReading? Reading, bool Hinted) ReadHinted(Image panel, int? clock)
     {
-        if (TimerText(panel) is not { } clock || Clock.Match(clock) is not { Success: true } m) return null;
-        int timer = int.Parse(m.Groups[1].Value) * 60 + int.Parse(m.Groups[2].Value);
+        var r = Read(panel, soft: true, clock, out bool hinted);
+        return (r, hinted);
+    }
+
+    static JeonbunReading? Read(Image panel, bool soft) => Read(panel, soft, null, out _);
+
+    static JeonbunReading? Read(Image panel, bool soft, int? clockHint, out bool hinted)
+    {
+        _soft = soft;
+        try { return ReadAs(panel, soft, clockHint, out hinted); }
+        finally { _soft = false; }
+    }
+
+    /// <summary>강화: a digit counts from <see cref="SoftGlyph"/> (blur lowers every score; the format checks the rest).</summary>
+    [ThreadStatic] static bool _soft;
+    const double SoftGlyph = 0.4;
+
+    /// <param name="clockHint">강화: the timer the fight's clock expects, used when the panel's own doesn't read.</param>
+    static JeonbunReading? ReadAs(Image panel, bool soft, int? clockHint, out bool hinted)
+    {
+        hinted = false;
+        string? clock = soft ? SoftClock(panel) : TimerText(panel);
+        int timer;
+        if (clock is not null && Clock.Match(clock) is { Success: true } m) timer = int.Parse(m.Groups[1].Value) * 60 + int.Parse(m.Groups[2].Value);
+        else if (clockHint is { } hint) (timer, hinted) = (hint, true);
+        else return null;
         var kinds = Columns(panel);
         int damageAt = Array.FindIndex(kinds, k => k is JeonbunColumn.피해량 or JeonbunColumn.조력피해량), dpsAt = Array.IndexOf(kinds, JeonbunColumn.DPS);
         if (damageAt < 0 && dpsAt < 0) return null;
         var cells = Cells(panel);
-        long? damage = damageAt >= 0 && cells[damageAt] is { } d ? Amount(d) : null;
-        long? dps = dpsAt >= 0 && cells[dpsAt] is { } p ? Amount(p) : null;
+        Func<string, long?> amount = soft ? SoftAmount : Amount;
+        long? damage = damageAt >= 0 && cells[damageAt] is { } d ? amount(d) : null;
+        long? dps = dpsAt >= 0 && cells[dpsAt] is { } p ? amount(p) : null;
         if (damageAt >= 0 && damage is null || dpsAt >= 0 && dps is null) return null;
         damage ??= dps!.Value * timer;
         dps ??= timer > 0 ? damage.Value / timer : 0;
@@ -134,6 +167,37 @@ public static class JeonbunReader
         if (!m.Groups[3].Success) return (long)whole;
         decimal value = whole + decimal.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) / 100;
         return (long)(value * (m.Groups[3].Value == "억" ? 100_000_000m : 10_000m));
+    }
+
+    /// <summary><see cref="Amount"/>, else the digits and the unit with the '.' and ',' the format puts there ("221109억" →
+    /// "2,211.09억"): those marks are a few pixels and fade first.</summary>
+    internal static long? SoftAmount(string text)
+    {
+        if (Amount(text) is { } read) return read;
+        string digits = new([.. text.Where(char.IsAsciiDigit)]);
+        string unit = text.EndsWith('억') ? "억" : text.EndsWith('만') ? "만" : "";
+        if (digits.Length == 0 || text.Any(c => !char.IsAsciiDigit(c) && c is not (',' or '.') && $"{c}" != unit)) return null;
+        if (unit.Length > 0 && digits.Length < 3) return null;
+        string whole = unit.Length > 0 ? digits[..^2] : digits;
+        string grouped = long.Parse(whole).ToString("N0", CultureInfo.InvariantCulture);
+        return Amount(unit.Length > 0 ? $"{grouped}.{digits[^2..]}{unit}" : grouped);
+    }
+
+    static readonly (char Ch, float[] Grid)[] TimerDigits = [.. TimerTemplates.Where(t => char.IsAsciiDigit(t.Ch))];
+
+    /// <summary>강화: the clock from its digits alone. Blur breaks the colon into a low mark, a dot or nothing and thins a '1'
+    /// into a colon's width, so marks are dropped, of five glyphs the middle is the colon, and each digit is scored against
+    /// every digit. Null unless four digits read.</summary>
+    static string? SoftClock(Image panel)
+    {
+        if (TimerGlyphs(panel) is not { } g) return null;
+        var grids = g.Where(x => x.Grid is not null).ToList();
+        if (grids.Count == 5) grids.RemoveAt(2);
+        if (grids.Count != 4) return null;
+        var digits = grids.Select(x => Best(x.Grid!, TimerDigits, x.Narrow, any: true)).ToList();
+        if (digits.Any(d => d.Score < SoftGlyph)) return null;
+        var t = new string([.. digits.Select(d => d.Ch)]);
+        return $"{t[..2]}:{t[2..]}";
     }
 
     /// <summary>The timer as shown ("02:21"), or null.</summary>
@@ -260,8 +324,8 @@ public static class JeonbunReader
                 sb.Append(mark);
                 continue;
             }
-            var (ch, score) = Best(g.Grid!, templates, g.Narrow);
-            if (score < MinGlyph) return null;
+            var (ch, score) = Best(g.Grid!, templates, g.Narrow, any: _soft);
+            if (score < (_soft ? SoftGlyph : MinGlyph)) return null;
             sb.Append(ch);
         }
         var text = sb.ToString();
@@ -272,11 +336,13 @@ public static class JeonbunReader
         return text.Replace('m', ',');
     }
 
-    static (char Ch, double Score) Best(float[] grid, (char Ch, float[] Grid)[] templates, bool narrow)
+    /// <summary>The best template; a narrow glyph is only '1' or ':' and a wide one never, unless <paramref name="any"/> (강화:
+    /// blur fades a '7''s slant, leaving its stem narrow).</summary>
+    static (char Ch, double Score) Best(float[] grid, (char Ch, float[] Grid)[] templates, bool narrow, bool any = false)
     {
         (char, double) best = ('?', double.NegativeInfinity);
         foreach (var (ch, t) in templates)
-            if (ch is '1' or ':' == narrow && BossDigits.Ncc(grid, t) is var s && s > best.Item2) best = (ch, s);
+            if ((any || ch is '1' or ':' == narrow) && BossDigits.Ncc(grid, t) is var s && s > best.Item2) best = (ch, s);
         return best;
     }
 

@@ -16,7 +16,7 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _icon;
     readonly ContextMenuStrip _menu = new();
     readonly ToolStripMenuItem _overlay, _edit, _test, _character, _refit, _detectSubclass, _rereadIcons, _party, _host, _join, _copyToken, _leave;
-    readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _parts;
+    readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _testReinforced, _parts;
     readonly Dictionary<OverlayPart, ToolStripMenuItem> _partItems = [];
 
     /// <summary>표시 ▸'s names, in menu order (as 설정 → 표시).</summary>
@@ -41,6 +41,8 @@ public sealed class Tray : IDisposable
     public event Action<IntPtr>? TestWindowPicked;
     /// <summary>테스트 모드 → 끄기.</summary>
     public event Action? TestOff;
+    /// <summary>테스트 모드 → 강화 읽기 clicked: the new state.</summary>
+    public event Action<bool>? ReinforcedToggled;
     /// <summary>레이드 → 자동 인식 (null) or a gate picked by hand (its id).</summary>
     public event Action<string?>? RaidPicked;
     /// <summary>레이드 → 줄 수 읽기 (모든 레이드) turned on (true) or off.</summary>
@@ -61,6 +63,8 @@ public sealed class Tray : IDisposable
         _test = new ToolStripMenuItem("테스트 모드");
         _testFront = Item("맨 앞 창 따라가기", () => ToggleTestMode?.Invoke());
         _testOff = Item("끄기", () => TestOff?.Invoke());
+        _testReinforced = Item("강화 읽기 (압축된 영상)", () => ReinforcedToggled?.Invoke(!_testReinforced!.Checked));
+        _testReinforced.ToolTipText = "스트림·720p처럼 압축된 영상의 버프, 디버프, 전분, 보스 체력, 암수를 더 잘 읽습니다. CPU를 더 씁니다. 테스트 모드에서만.";
         // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
         _test.DropDownItems.Add(_testFront);
         _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
@@ -217,6 +221,9 @@ public sealed class Tray : IDisposable
         _testFront.Checked = on && picked == 0;
     }
 
+    /// <summary>Checkmark on 테스트 모드 → 강화 읽기.</summary>
+    public void SetReinforced(bool on) => _testReinforced.Checked = on;
+
     const int MaxTitle = 50;
 
     /// <summary>The 테스트 모드 submenu: 맨 앞 창 따라가기, the open windows (the picked one checked), 끄기 while on.</summary>
@@ -234,6 +241,7 @@ public sealed class Tray : IDisposable
             _test.DropDownItems.Add(item);
         }
         _test.DropDownItems.Add(new ToolStripSeparator());
+        _test.DropDownItems.Add(_testReinforced);
         _testOff.Enabled = on;
         _test.DropDownItems.Add(_testOff);
     }

@@ -1,4 +1,5 @@
 using System.IO;
+using GaugeOverlay.App.Platform;
 using GaugeOverlay.Core.Cooldown;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
@@ -39,6 +40,8 @@ public sealed partial class Engine
     bool ReadAmsu(Config config, Image? text, Image? strip, TimeSpan t)
     {
         long? boss = text is null ? null : BossBar(text).Hp?.Max;
+        // 강화 읽기: the row's levels stretched (Reinforce.Levels; 1440 → 1080 sweep 74 → 100%).
+        if (strip is not null && GameWindow.ReadsReinforced) strip = Reinforce.Levels(strip);
         var (edges, changed) = _amsuWatch.Read(AmsuLayout.Of(_vp, _fit!, config.BossSize), _amsuPass, boss, strip, t);
         foreach (var e in edges)
             System.Diagnostics.Trace.WriteLine($"[amsu] {e.Kind} {e.Change}" + (e.Change == AmsuChange.끝 ? "" : $", {e.Left:0.0} s left") + $" (line {_amsuWatch.Line})");

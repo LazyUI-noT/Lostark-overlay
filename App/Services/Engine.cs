@@ -382,7 +382,8 @@ public sealed partial class Engine : IDisposable
             return;
         }
         var t = Clock.FromTimestamp(ts);
-        _barRow = null;   // the buffers are reused: a new step's row is read afresh
+        (_barRow, _barAt) = (null, t);   // the buffers are reused: a new step's row is read afresh
+        StepReinforced();
         bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent | KeepWhileHidden(t);
         _gaugeSpent = false;
         if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
@@ -515,6 +516,7 @@ public sealed partial class Engine : IDisposable
     /// Kept apart from the slot reads: nothing here feeds the skill or gauge paths. Returns true if anything changed.</summary>
     bool ReadBuffs(Image area, int size, int count, TimeSpan t)
     {
+        area = Reinforced(area);
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
         var origin = Geometry.BuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
@@ -550,6 +552,7 @@ public sealed partial class Engine : IDisposable
     /// Returns true if anything changed.</summary>
     bool ReadDebuffs(Image area, Image? boss, int size, int bossSize, TimeSpan t, int count)
     {
+        area = Reinforced(area);   // the boss's counts (모르둠's colours) read as captured
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
         var origin = Geometry.DebuffArea(_vp, _fit!, size, count);
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
@@ -590,7 +593,7 @@ public sealed partial class Engine : IDisposable
         var reader = new BuffReader(Geometry.BuffScale(_vp, size));
         var read = new Dictionary<int, double?>();
         for (int j = 0; j < timerBoxes.Count; j++)
-            read[timerBoxes[j]] = reader.ReadTimer(images[at + j], new PixelRect(0, 0, images[at + j].Width, images[at + j].Height));
+            read[timerBoxes[j]] = reader.ReadTimer(Reinforced(images[at + j]), new PixelRect(0, 0, images[at + j].Width, images[at + j].Height));
         _slots = DebuffSchedule.Timers(_slots, read, t);
         var reads = new List<DebuffReading>();
         double? duelSeconds = null;
@@ -605,6 +608,10 @@ public sealed partial class Engine : IDisposable
         _debuffs = next;
         return changed;
     }
+
+    /// <summary>테스트 모드 강화 읽기 (GameWindow.ReadsReinforced): a buff or debuff capture sharpened against the blur of compressed
+    /// video (Reinforce.Clean; buff sweep 720p 36 → 95%); else as captured.</summary>
+    static Image Reinforced(Image capture) => GameWindow.ReadsReinforced ? Reinforce.Clean(capture) : capture;
 
     void Publish(TimeSpan t) =>
         SnapshotReady?.Invoke(new Snapshot(t, [.. _states], _awakeningChanged, _gaugeOn ? _gauge : null, [.. Enum.GetValues<SlotGroup>()], [.. _config.AdenSlots])

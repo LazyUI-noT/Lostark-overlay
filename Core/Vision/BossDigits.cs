@@ -64,9 +64,12 @@ public static class BossDigits
     /// <summary>The HP text with its shield ("…/5,794,751,037,908(+75,331,760,729)" → shield 75,331,760,729; none: 0), or null.
     /// After the max only "(+n)" may follow: the shield's digits are read up to the last full group, so a ')' or '(' read as a
     /// digit doesn't count.</summary>
-    public static (long Current, long Max, long Shield)? ReadHpWithShield(Image area, double scale)
+    /// <param name="soft">테스트 모드 강화 읽기 (BossHpSoftReader): compressed video blurs the digits (each scores lower) and fades
+    /// the commas, so a digit counts from <see cref="SoftGlyph"/> and the commas are put back where the game writes them.</param>
+    public static (long Current, long Max, long Shield)? ReadHpWithShield(Image area, double scale, bool soft = false)
     {
         if (Glyphs(area, scale) is not { Count: >= 3 } g) return null;
+        double min = soft ? SoftGlyph : MinGlyph;
         var slash = Template('/');
         int at = -1;
         double best = MinGlyph;
@@ -76,11 +79,11 @@ public static class BossDigits
         var text = new StringBuilder();
         for (int i = 0; i < g.Count; i++)
             if (i == at) text.Append('/');
-            else if (g[i].Comma) text.Append(',');
+            else if (g[i].Comma) { if (!soft) text.Append(','); }
             else if (g[i].Mark) text.Append('+');
-            else if (Best(g[i].Grid!, char.IsAsciiDigit) is (var d, >= MinGlyph)) text.Append(d);
+            else if (Best(g[i].Grid!, char.IsAsciiDigit) is (var d, var score) && score >= min) text.Append(d);
             else text.Append('?');   // a bracket, or a misread: only allowed after the max
-        if (HpText.Match(text.ToString()) is not { Success: true } m) return null;
+        if (HpText.Match(soft ? Regrouped(text.ToString()) : text.ToString()) is not { Success: true } m) return null;
         long current = long.Parse(m.Groups[1].Value.Replace(",", "")), max = long.Parse(m.Groups[2].Value.Replace(",", ""));
         long shield = 0;
         if (m.Groups[3].Value is { Length: > 0 } rest)
@@ -91,6 +94,12 @@ public static class BossDigits
         return current <= max ? (current, max, shield) : null;
     }
 
+    const double SoftGlyph = 0.4;
+
+    /// <summary>"16897047862607/17126566042900(+1234" with the commas as the game puts them; what isn't digits is kept.</summary>
+    static string Regrouped(string text) =>
+        Regex.Replace(text, @"\d+", m => long.TryParse(m.Value, out long n) ? n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) : m.Value);
+
     // Between words ("Lv.60", the HP, "X n"): wider than the space in "X 494" and any gap inside the HP text, at HUD 110 1080p.
     const double WordGap = 11;
 
@@ -98,7 +107,7 @@ public static class BossDigits
     /// so neither depends on where the bar starts or ends (21:9, the HUD).</summary>
     /// <param name="hp">false: the count alone (read every poll for the 줄 수 창): the HP words aren't read, and the right-most
     /// words are tried first, where "X n" is.</param>
-    public static (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) ReadBar(Image row, double scale, bool hp = true)
+    public static (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) ReadBar(Image row, double scale, bool hp = true, bool soft = false)
     {
         int? count = null;
         (long, long, long)? read = null;
@@ -108,7 +117,7 @@ public static class BossDigits
         foreach (var (word, at) in words)
         {
             if (count is null && word.Width <= MaxCountWidth * scale && ReadCount(word, scale) is { } c) (count, countArea) = (c, at);   // 화면 그대로 shows this part
-            if (hp) read ??= ReadHpWithShield(word, scale);
+            if (hp) read ??= ReadHpWithShield(word, scale, soft);
             else if (count is not null) break;
         }
         return (count, read, countArea);
@@ -254,6 +263,12 @@ public static class BossDigits
         }
         return grid;
     }
+
+    /// <summary>강화: each word of the row as the best digit of each full-height glyph (marks and commas dropped, a '/' read as
+    /// its nearest digit). BossHpSoftReader finds the boss's known max in them when the '/' itself fades.</summary>
+    internal static IEnumerable<string> DigitWords(Image row, double scale) =>
+        Words(row, scale).Select(w => Glyphs(w.Word, scale) is { } g
+            ? new string([.. g.Where(x => x.Grid is not null).Select(x => Best(x.Grid!, char.IsAsciiDigit).Ch)]) : "");
 
     static float[] Template(char ch) => Templates.FirstOrDefault(t => t.Ch == ch).Grid ?? new float[GridW * GridH];
 
