@@ -174,14 +174,6 @@ public sealed partial class OverlayCanvas : Border
         ShowView();
     }
 
-    /// <summary>The overlay went to <paramref name="profile"/>: its spots and screenshot (the host shows the picture).</summary>
-    public void ShowProfile(int profile)
-    {
-        ReleaseMouseCapture();
-        _s.SwitchProfile(profile);
-        Relayout();
-    }
-
     // ── where each overlay stands ──────────────────────────────────────────────────
 
     /// <summary>The window's spot (its top-left, the label strip included) on screen, the default one while unset.

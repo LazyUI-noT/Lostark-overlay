@@ -64,16 +64,6 @@ public static class Themes
         root?.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
     }
 
-    /// <summary>An opaque panel colour for panels over a picture (the 레이아웃 편집기's): Fluent's card colour is
-    /// translucent and would let the screenshot through. 딥 틸's card, else Windows 11's flyout greys.</summary>
-    public static Color PanelColor(UiTheme theme)
-    {
-        if (SystemParameters.HighContrast) return SystemColors.WindowColor;
-        if (UiPalette.Of(theme).Colors.TryGetValue(UiPalette.Card, out var hex) && UiColor.TryParse(hex) is { } card) return card;
-        bool dark = theme == UiTheme.Dark || theme == UiTheme.System && AppsDark();
-        return dark ? Color.FromRgb(0x2B, 0x2B, 0x2B) : Color.FromRgb(0xF9, 0xF9, 0xF9);
-    }
-
     /// <summary>Windows' "앱 모드: 어둡게" (Settings → 개인 설정 → 색), which "Windows 설정 따름" follows. Unreadable: light.</summary>
     public static bool AppsDark()
     {

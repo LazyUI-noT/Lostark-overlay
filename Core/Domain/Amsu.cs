@@ -190,18 +190,3 @@ public static class Amsu
         return (kind, (t.EndsAt - now).TotalSeconds, (now - t.LastSeen).TotalSeconds <= SeenFor);
     }
 }
-
-/// <summary>When the 암수 loop searches the boss row for its line (the read cadence itself is RowCadence's). Pure.</summary>
-public static class AmsuSchedule
-{
-    /// <summary>A settled line with no bomb up is searched past this often: nothing but the game's settings moves the row (user,
-    /// 2026-11-04), but the app's 보스 디버프 크기 may not match the game's (the 80_90 clip read at one size: 10 s started bombs up
-    /// to 7 s late, 2 s within 1.5 s).</summary>
-    public static readonly TimeSpan LineSearchEvery = TimeSpan.FromSeconds(2);
-
-    /// <summary>Whether an icon read that misses on the settled line also tries the candidate lines: always without a settled line,
-    /// every <see cref="LineSearchEvery"/> with one, and at once while a bomb is up: a bomb unseen 1.5 s on a visible row
-    /// ends, so a miss on a stale line made it blink (user, 2026-11-01). Locate tries the candidates only after that miss.</summary>
-    public static bool SearchLines(bool settled, TimeSpan sinceSearch, bool bombUp) =>
-        !settled || bombUp || sinceSearch >= LineSearchEvery;
-}

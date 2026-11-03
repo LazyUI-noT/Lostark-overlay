@@ -21,8 +21,8 @@ public sealed record BombRead(Bomb Kind, double? Seconds, int? Slot = null);
 /// hidden by a menu or a cutscene.</summary>
 public sealed record AmsuRow(IReadOnlyList<BombRead> Bombs, bool Full = false, bool Seen = true);
 
-/// <summary>암흑수류탄 / 빛나는 암흑수류탄 in the boss debuff row (Geometry.BossRowSearch, the line from DebuffReader.FindRowY settled
-/// by RowLock). Icons first and cheap (<see cref="FindBombs"/>, every read); the "N초" under a found bomb only (<see cref="ReadSeconds"/>).
+/// <summary>암흑수류탄 / 빛나는 암흑수류탄 in the boss debuff row (Geometry.BossDebuffStrip, on the line the HUD and resolution place).
+/// Icons first (<see cref="Locate"/>); the "N초" under a found bomb only (<see cref="ReadSeconds"/>).
 /// Icons are matched as the boss's sigils are (BuffReader.Match: structure and hue, frame left out) along the line. Pure.</summary>
 public static class AmsuReader
 {
@@ -49,50 +49,23 @@ public static class AmsuReader
     // gap after a right line is not (scene behind it).
     const double BorderShare = 0.15;
 
-    /// <summary>The bombs' icons on the line <paramref name="rowY"/> (strip px) of <paramref name="strip"/>, captured at
-    /// <paramref name="scale"/> screen px per reference px; each the best window within an icon's width.</summary>
-    public static IReadOnlyList<BombAt> FindBombs(Image strip, double scale, int rowY, BossSlots slots) =>
-        FindOn(DebuffReader.ToReference(strip, scale), scale, rowY, slots).Bombs;
-
-    /// <summary>The bombs found on a line, whether every slot the size shows was taken, and whether the row was there at all.</summary>
-    public sealed record RowFind(int? Y, IReadOnlyList<BombAt> Bombs, bool Full, bool Seen, int Filled = 0)
-    {
-        /// <summary>No bomb found: the first line tried that holds the boss's red-framed debuffs from the zone's first slot (the
-        /// row's line, which only the game's settings move), else null. With a bomb: <see cref="Y"/>.</summary>
-        public int? FramedY { get; init; }
-    }
-
-    /// <summary>The bombs and the line they were found on (strip px): <paramref name="lockedY"/> first (RowLock's), then, when
-    /// <paramref name="search"/>, DebuffReader.FindRowYs' candidates; the first line with a bomb wins. None found: the best
-    /// candidate (or the locked line) and no bombs.</summary>
+    /// <summary>The bombs found on a line, whether every slot the size shows was taken, whether the row was there at all, and how
+    /// many slots hold a debuff.</summary>
     /// <remarks><c>Full</c>: every slot the size shows holds a debuff, so a bomb missing from the row may be behind "+N" (else
-    /// it is gone). <c>Seen</c>: a red or green frame on the line, so the row is on screen. Without a bomb, both are the locked
-    /// line's (no locked line: not seen).</remarks>
-    public static RowFind Locate(Image strip, double scale, BossSlots slots, int? lockedY, bool search = true) =>
-        LocateIn(DebuffReader.ToReference(strip, scale), scale, slots, lockedY, search);
+    /// it is gone). <c>Seen</c>: a red or green frame on the line, so the row is on screen.</remarks>
+    public sealed record RowFind(IReadOnlyList<BombAt> Bombs, bool Full, bool Seen, int Filled);
+
+    /// <summary>The bombs on line <paramref name="rowY"/> (strip px) of <paramref name="strip"/>, captured at <paramref name="scale"/>
+    /// screen px per reference px: the walk, then one match per filled slot.</summary>
+    public static RowFind Locate(Image strip, double scale, BossSlots slots, int rowY) =>
+        LocateIn(DebuffReader.ToReference(strip, scale), scale, slots, rowY);
 
     /// <summary><see cref="Locate"/> on the strip already at reference size (<see cref="DebuffReader.ToReference"/>): a pass that
     /// walks and then identifies resizes the strip once.</summary>
-    internal static RowFind LocateIn(Image r, double scale, BossSlots slots, int? lockedY, bool search = true)
+    internal static RowFind LocateIn(Image r, double scale, BossSlots slots, int rowY)
     {
-        (bool Full, bool Seen, int Filled) locked = (false, false, 0);
-        int? framed = null;
-        if (lockedY is { } l)
-        {
-            var there = FindOn(r, scale, l, slots);
-            if (there.Bombs.Count > 0) return new(l, there.Bombs, there.Full, true, there.Filled) { FramedY = l };   // the usual case: one line matched
-            locked = (there.Full, there.Seen, there.Filled);
-            if (there.Filled > 0) framed = l;
-        }
-        if (!search) return new(lockedY, [], locked.Full, locked.Seen, locked.Filled) { FramedY = framed };
-        var lines = DebuffReader.RowYs(r, scale);
-        foreach (int y in lines.Where(c => lockedY is not { } l2 || Math.Abs(c - l2) > 2))
-        {
-            var found = FindOn(r, scale, y, slots);
-            if (found.Bombs.Count > 0) return new(y, found.Bombs, found.Full, true, found.Filled) { FramedY = y };
-            if (found.Filled > 0) framed ??= y;
-        }
-        return new(lines.Count > 0 ? lines[0] : null, [], locked.Full, locked.Seen, locked.Filled) { FramedY = framed };
+        var (bombs, full, seen, filled) = FindOn(r, scale, rowY, slots);
+        return new(bombs, full, seen, filled);
     }
 
     /// <summary>A debuff's slot in the boss debuff zone: its number from the layout's first slot and its icon box (strip px).</summary>
@@ -141,7 +114,7 @@ public static class AmsuReader
         int y = (int)Math.Round(rowY / scale), last = r.Width - Icon;
         var filled = new List<SlotAt>();
         if (y < 0 || y + Icon > r.Height || last < 0) return new(filled, false, false);
-        // Each column's checks are asked for many times over (the line search goes back and forth): each is worked out once.
+        // Each column's checks are asked for many times over (the frame-line checks go back and forth): each is worked out once.
         var reds = new double?[r.Width];
         var lines = new bool?[r.Width + 1];
         var borders = new bool?[r.Width + 1];
@@ -332,5 +305,5 @@ public static class AmsuReader
 
     /// <summary>Icons and their seconds in one go (tests; the engine reads the seconds only when it needs them).</summary>
     public static AmsuRow Read(Image strip, double scale, int rowY, BossSlots slots, double textScale) =>
-        new([.. FindBombs(strip, scale, rowY, slots).Select(b => new BombRead(b.Kind, ReadSeconds(strip, b, textScale), b.Slot))]);
+        new([.. Locate(strip, scale, slots, rowY).Bombs.Select(b => new BombRead(b.Kind, ReadSeconds(strip, b, textScale), b.Slot))]);
 }

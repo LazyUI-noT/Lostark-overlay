@@ -46,84 +46,9 @@ public static class DebuffReader
     /// reads a box only when every box left of it is filled (debuffs fill the row from the left).</summary>
     public static bool Filled(Image area, PixelRect icon) => RedFrame(area, icon) >= MinFrame;
 
-    /// <summary>The top (strip px) of the boss's icon row in <paramref name="strip"/> (Geometry.BossRowSearch, captured at
-    /// <paramref name="scale"/> screen px per reference px): the line where the most icon-sized windows have a strongly coloured frame
-    /// (<see cref="WarmFrame"/>); null when fewer than <see cref="MinRowIcons"/> do. Blue-led colour is left out: the scene's swirls
-    /// behind the row are blue and won over the row at 90% and 100% once the strip reached below it (bitam_90, bitam_100).</summary>
-    public static int? FindRowY(Image strip, double scale) =>
-        RowLines(ToReference(strip, scale)).FirstOrDefault(l => l.Count >= MinRowIcons) is { Count: > 0 } l ? (int)Math.Round(l.Y * scale) : null;
-
-    /// <summary>Up to <paramref name="max"/> row lines (strip px) best first, one coloured frame enough, each
-    /// <see cref="LineApart"/> reference px from the others: where to look when the best line alone misleads (a single debuff
-    /// beside dim buff frames at 90%: bitam_90).</summary>
-    public static IReadOnlyList<int> FindRowYs(Image strip, double scale, int max = 3) => RowYs(ToReference(strip, scale), scale, max);
-
-    /// <summary><see cref="FindRowYs"/> on the strip already at reference size.</summary>
-    internal static IReadOnlyList<int> RowYs(Image r, double scale, int max = 3)
-    {
-        var picked = new List<int>();
-        foreach (var l in RowLines(r))
-        {
-            if (picked.Count == max) break;
-            if (picked.All(y => Math.Abs(y - l.Y) >= LineApart)) picked.Add(l.Y);
-        }
-        return [.. picked.Select(y => (int)Math.Round(y * scale))];
-    }
-
-    const int LineApart = 6;
-
-    /// <summary>Each line (reference px) with its count of coloured frames and their total share, most first.</summary>
-    static IEnumerable<(int Y, int Count, double Sum)> RowLines(Image r)
-    {
-        // WarmFrame for every window at once: the warm pixels' summed-area table, each band = its box less the inner box (it ran
-        // 350 ms per strip window by window, every icon read; replay 2026-11-01).
-        int w = r.Width, h = r.Height, band = Math.Max(1, (int)Math.Round(BossIcon * 2 / 31.0)), inner = BossIcon - 2 * band;
-        var sat = new int[(w + 1) * (h + 1)];
-        for (int y = 0; y < h; y++)
-            for (int x = 0, row = 0; x < w; x++)
-            {
-                int i = y * r.Stride + x * 4, b = r.Bgra[i], g = r.Bgra[i + 1], rr = r.Bgra[i + 2];
-                int hi = Math.Max(rr, Math.Max(g, b)), lo = Math.Min(rr, Math.Min(g, b));
-                row += hi >= 90 && hi - lo >= 50 && b < hi ? 1 : 0;
-                sat[(y + 1) * (w + 1) + x + 1] = sat[y * (w + 1) + x + 1] + row;
-            }
-        int Sum(int x, int y, int side) => sat[(y + side) * (w + 1) + x + side] - sat[y * (w + 1) + x + side] - sat[(y + side) * (w + 1) + x] + sat[y * (w + 1) + x];
-        double area = BossIcon * BossIcon - inner * inner;
-        var lines = new List<(int Y, int Count, double Sum)>();
-        for (int y = 0; y + BossIcon <= h; y++)
-        {
-            int n = 0;
-            double sum = 0;
-            for (int x = 0; x + BossIcon <= w; x += BossStep)
-                if ((Sum(x, y, BossIcon) - Sum(x + band, y + band, inner)) / area is var f && f >= MinColourFrame) (n, sum) = (n + 1, sum + f);
-            if (n > 0) lines.Add((y, n, sum));
-        }
-        return lines.OrderByDescending(l => l.Count).ThenByDescending(l => l.Sum);
-    }
-
-    const double MinColourFrame = 0.5;
-    const int MinRowIcons = 2;
-
     /// <summary>The strip resampled to reference pixels (the boss icon <see cref="BossIcon"/> px).</summary>
     internal static Image ToReference(Image strip, double scale) =>
         Math.Abs(scale - 1) < 0.01 ? strip : ImageOps.Resample(strip, new PixelRect(0, 0, strip.Width, strip.Height), 1 / scale);
-
-    /// <summary>The share of an icon's frame band that is strongly coloured and not blue-led: the boss row's frames and the icons'
-    /// edges are; the scene's blue swirls behind the row are not.</summary>
-    internal static double WarmFrame(Image area, PixelRect icon)
-    {
-        int band = Math.Max(1, (int)Math.Round(icon.Width * 2 / 31.0)), hit = 0, all = 0;
-        for (int y = icon.Y; y < icon.Bottom; y++)
-            for (int x = icon.X; x < icon.Right; x++)
-            {
-                if (x - icon.X >= band && icon.Right - 1 - x >= band && y - icon.Y >= band && icon.Bottom - 1 - y >= band) continue;
-                var (b, g, rr) = area.Pixel(x, y);
-                int hi = Math.Max(rr, Math.Max(g, b)), lo = Math.Min(rr, Math.Min(g, b));
-                all++;
-                if (hi >= 90 && hi - lo >= 50 && b < hi) hit++;
-            }
-        return all == 0 ? 0 : hit / (double)all;
-    }
 
     /// <summary>The shares of an icon's frame band that are red (a debuff on the boss) and green (the boss's own buff).</summary>
     internal static (double Red, double Green) FrameColours(Image area, PixelRect icon)
@@ -179,7 +104,7 @@ public static class DebuffReader
     // Reference pixels inside Geometry.RefBossRow: the icons' frames (32 px) start 29 px down; where along the row
     // depends on the boss's other effects, so the row is searched in steps the match's own ±2 px search covers. The
     // "X n" count's digit sits 17–18 px right of its icon's left edge and 14 px above it.
-    const int BossIconY = 29, BossIcon = 32, BossStep = 4;
+    const int BossIconY = 29, BossIcon = 32;
     /// <summary>Where the sigils' frames start inside <see cref="Geometry.RefBossRow"/>, reference pixels from its top.</summary>
     public const int BossIconTop = BossIconY;
     /// <summary>The boss's effect icon's side in reference pixels (<see cref="Geometry.BossScale"/> × this on screen).</summary>

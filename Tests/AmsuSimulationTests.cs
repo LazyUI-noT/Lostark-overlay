@@ -74,7 +74,7 @@ public sealed class AmsuSimulationTests
 
     static (Image Row, AmsuLayout Layout, int Line) RowAt(int size, int?[] cells)
     {
-        var rect = Geometry.BossRowSearch(Hd, Hud, size);
+        var rect = Geometry.BossDebuffStrip(Hd, Hud, size);
         int spacing = MeasuredSpacing(size);
         double f = spacing / (double)Spacing;
         var row = new Image(rect.Width, rect.Height);

@@ -55,7 +55,6 @@ public static class JeonbunReader
 
     static readonly Regex Clock = new(@"^(\d{2}):(\d{2})$", RegexOptions.CultureInvariant);
     static readonly Regex AmountText = new(@"^(\d{1,3}(?:,\d{3})*)(?:\.(\d{2})(억|만))?$", RegexOptions.CultureInvariant);
-    static readonly Regex Share = new(@"^\d{1,3}\.\d{2}%$", RegexOptions.CultureInvariant);
 
     /// <summary>My figures and the timer, or null: no panel there, covered, or not my row (the 보관 기록 view).
     /// The columns are found by their titles (<see cref="Columns"/>); a DPS column missing is the damage over the timer, a

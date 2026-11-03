@@ -17,7 +17,6 @@ public sealed record Release(Version Version, string Tag, string ZipUrl, string 
 /// running version, and whether a downloaded zip matches its .sha256.</summary>
 public static class UpdateCheck
 {
-    public const string LatestUrl = "https://api.github.com/repos/LazyUI-noT/Lostark-overlay/releases/latest";
     /// <summary>The newest releases, betas included (pre-releases aren't "latest").</summary>
     public const string ListUrl = "https://api.github.com/repos/LazyUI-noT/Lostark-overlay/releases?per_page=30";
     /// <summary>Downloads are taken only from this repo's releases, whatever the answer says.</summary>
@@ -115,9 +114,6 @@ public static class UpdateCheck
     public static string TagOf(string informationalVersion) => "v" + informationalVersion.Split('+')[0];
 
     static bool Flag(JsonElement root, string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
-
-    /// <summary>Compares major.minor.build only: the exe's version carries a revision (1.0.5.0), a tag doesn't (v1.0.5).</summary>
-    public static bool IsNewer(Version latest, Version current) => Plain(latest) > Plain(current);
 
     /// <summary>True when <paramref name="latest"/> changes A or B of A.B.x: parties need the same A.B, so after it this version
     /// can't party with those who don't update.</summary>

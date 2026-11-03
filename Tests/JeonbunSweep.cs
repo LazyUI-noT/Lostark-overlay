@@ -94,7 +94,7 @@ public sealed class JeonbunSweep
         int identified = 0;
         var spent = TimeSpan.Zero;   // the reads' own time (boss text, row, timers), not the decode
         var reads = new Dictionary<RowPass, int> { [RowPass.Frames] = 0, [RowPass.Timers] = 0 };
-        // Where the time goes: identifications (template match, maybe a line search), walks (kept bombs), timer passes.
+        // Where the time goes: identifications (template match), walks (kept bombs), timer passes.
         var cost = new Dictionary<string, (int N, TimeSpan T)> { ["walk"] = (0, TimeSpan.Zero), ["timers"] = (0, TimeSpan.Zero), ["boss text"] = (0, TimeSpan.Zero), ["resample"] = (0, TimeSpan.Zero) };
         void Add(string k, TimeSpan d) => cost[k] = (cost[k].N + 1, cost[k].T + d);
         var lines = new List<string>();
@@ -137,17 +137,17 @@ public sealed class JeonbunSweep
     }
 
     /// <summary>GAUGE_AMSU_BENCH: each step of a 암수 read timed alone over a video's frames (2 a second), each run 5 times over
-    /// them so the times are steady: the strip resized, the walk on the line, an identification on the line, a line search, the
-    /// boss's HP text. GAUGE_AMSU_SIZE, GAUGE_AMSU_VP and GAUGE_AMSU_LINE (strip px, default 53) as GAUGE_AMSU.</summary>
+    /// them so the times are steady: the strip resized, the walk on the line, an identification on the line, the boss's HP
+    /// text. GAUGE_AMSU_SIZE, GAUGE_AMSU_VP, GAUGE_AMSU_HUD (default 100) as GAUGE_AMSU; the line is the placed one.</summary>
     [Fact]
     public void Amsu_steps_timed_when_requested()
     {
         if (Environment.GetEnvironmentVariable("GAUGE_AMSU_BENCH") is not { } video) return;
         int size = int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_SIZE") ?? "100");
         int[] a = (Environment.GetEnvironmentVariable("GAUGE_AMSU_VP") ?? "0,0,1920,1080").Split(',').Select(int.Parse).ToArray();
-        int line = int.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_LINE") ?? "53");
+        int line = Geometry.BossDebuffLine;
         var vp = new Viewport(a[0], a[1], a[2], a[3]);
-        var fit = new Fit(100);
+        var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_HUD") ?? "100"));
         var layout = AmsuLayout.Of(vp, fit, size);
         PixelRect text = Geometry.BossTextRow(vp, fit), strip = Geometry.BossDebuffStrip(vp, fit, size);
         int top = Math.Min(text.Y, strip.Y), bottom = Math.Max(text.Bottom, strip.Bottom);
@@ -166,9 +166,7 @@ public sealed class JeonbunSweep
         }
         Time("resize strip", i => DebuffReader.ToReference(frames[i].Strip, layout.Scale));
         Time("walk on the line (sized)", i => AmsuReader.WalkIn(sized[i], layout.Scale, layout.Slots, line));
-        Time("identify on the line (sized)", i => AmsuReader.LocateIn(sized[i], layout.Scale, layout.Slots, line, search: false));
-        Time("line search (sized, no lock)", i => AmsuReader.LocateIn(sized[i], layout.Scale, layout.Slots, null, search: true));
-        Time("row lines only (sized)", i => DebuffReader.RowYs(sized[i], layout.Scale));
+        Time("identify on the line (sized)", i => AmsuReader.LocateIn(sized[i], layout.Scale, layout.Slots, line));
         Time("boss HP text", i => BossDigits.ReadBar(frames[i].Text, scale));
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }

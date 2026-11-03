@@ -72,14 +72,6 @@ public class UpdateCheckTests
     [InlineData("{\"message\":\"Not Found\"}")]
     public void A_broken_or_error_answer_is_none(string json) => Assert.Null(UpdateCheck.Parse(json));
 
-    [Theory]
-    [InlineData("1.0.6", "1.0.5.0", true)]
-    [InlineData("1.1.0", "1.0.9.0", true)]
-    [InlineData("1.0.5", "1.0.5.0", false)]
-    [InlineData("1.0.4", "1.0.5.0", false)]
-    public void Only_a_higher_version_is_an_update(string latest, string current, bool newer) =>
-        Assert.Equal(newer, UpdateCheck.IsNewer(Version.Parse(latest), Version.Parse(current)));
-
     // A.B changes: the party can't mix it with this version, so the update button warns (user, 2026-10-13).
     [Theory]
     [InlineData("0.11.2", "0.11.1.0", false)]

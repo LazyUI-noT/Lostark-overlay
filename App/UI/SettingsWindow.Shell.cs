@@ -267,14 +267,6 @@ public partial class SettingsWindow
         return line;
     }
 
-    static Border Card(UIElement content)
-    {
-        var card = new Border { Child = content, Padding = new(20, 16, 20, 16), CornerRadius = new(8), BorderThickness = new(1) };
-        card.SetResourceReference(Border.BackgroundProperty, CardBrushKey);
-        card.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
-        return card;
-    }
-
     /// <summary>Takes a persistent element out of wherever it was shown last.</summary>
     static void Detach(UIElement? e)
     {

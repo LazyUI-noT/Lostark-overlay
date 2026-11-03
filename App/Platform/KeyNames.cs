@@ -16,8 +16,6 @@ public static class KeyNames
         _ => k.ToString(),
     };
 
-    public static string OfVirtualKey(int vk) => Of(KeyInterop.KeyFromVirtualKey(vk));
-
     public static bool IsModifier(string name) => name is "Shift" or "Ctrl" or "Alt";
 
     public static string Combo(bool ctrl, bool alt, bool shift, string key) =>

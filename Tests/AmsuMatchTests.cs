@@ -10,12 +10,12 @@ public class AmsuMatchTests
 {
     static readonly Viewport Wide = new(0, 0, 2560, 1080);
     static readonly Fit Hud100 = new(100);
-    const int ClipRowY = 34;
+    static int ClipRowY => AmsuReader.SnapIn(Reference("amsu_15"), Scale, Geometry.BossSlotsIn(Wide, Hud100, 100), Geometry.BossDebuffLine, Geometry.BossLineSnap)!.Value;
     static double Scale => Geometry.BossScale(Wide, Hud100, 100);
 
     static Image Reference(string name)
     {
-        var s = Geometry.BossRowSearch(Wide, Hud100, 100);
+        var s = Geometry.BossDebuffStrip(Wide, Hud100, 100);
         var strip = Fixture.Load(name).Frames[0].Crop(new PixelRect(s.X - 1000, s.Y - 100, s.Width, s.Height));
         return DebuffReader.ToReference(strip, Scale);
     }

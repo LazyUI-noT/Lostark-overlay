@@ -245,51 +245,35 @@ public static class Geometry
     public static int MaxBossDebuffs(int bossSize) => bossSize > 110 ? 10 : bossSize > 100 ? 12 : 14;
 
     /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 보스 디버프 크기
-    /// (x 927–929 at 1080p, HUD 100, reference/빛암) while the boss's buffs grow to its left.</summary>
-    const int RefFirstBossDebuffX = 924;
+    /// (x 927–929 at 1080p on the 빛암 clips, which are HUD 110; x 1250 on the 21:9 clip at HUD 100) while the boss's buffs grow
+    /// to its left.</summary>
+    const int RefFirstBossDebuffX = 928;
 
-    /// <summary>The boss debuff zone inside <see cref="BossRowSearch"/>'s strip: where its first slot starts, and how many it shows.</summary>
+    /// <summary>The boss debuff zone inside <see cref="BossDebuffStrip"/>: where its first slot starts, and how many it shows.</summary>
     public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize) =>
-        new(FirstBossDebuffX(vp, fit) - BossRowSearch(vp, fit, bossSize).X, MaxBossDebuffs(bossSize));
+        new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, MaxBossDebuffs(bossSize));
 
     /// <summary>The boss debuff zone's first icon's left edge on screen (<see cref="RefFirstBossDebuffX"/>): the 암수 walk starts there.</summary>
     public static int FirstBossDebuffX(Viewport vp, Fit fit) =>
         (int)Math.Round(vp.X + vp.Width / 2.0 + (RefFirstBossDebuffX - RefCenterX) * Scale(vp, fit) + fit.BossShift.X);
 
-    /// <summary>Reference px searched above and below the expected icon line (<see cref="BossRowSearch"/>).</summary>
-    public const int BossRowPad = 12;
-
-    /// <summary>Reference px (at the HUD's scale) more below, for the "N초" under the icons. Once read as the stagger bar or the lock
-    /// line pushing the row down 15–16 px: the 빛암 clips were HUD 110, not the 100 assumed (2026-11-04); nothing under the bar moves
-    /// the row (the icons' top at 169 with a purple bar, a lock line or neither). The 암수 reads <see cref="BossDebuffStrip"/>.</summary>
-    public const int BossRowDrop = 24;
-
-    /// <summary><see cref="BossRow"/> with <see cref="BossRowPad"/> more above and below, and <see cref="BossRowDrop"/> more below:
-    /// the debuff row is found inside it (DebuffReader.FindRowY) rather than assumed, since it moves with the boss bar (HUD, 21:9,
-    /// resolution) and with what shows under the bar.</summary>
-    public static PixelRect BossRowSearch(Viewport vp, Fit fit, int bossSize = RefBossSize)
-    {
-        var r = BossRow(vp, fit, bossSize);
-        double s = BossScale(vp, fit, bossSize);
-        int pad = (int)Math.Round(BossRowPad * s), drop = (int)Math.Round(BossRowDrop * GameBossScale(vp, fit));
-        // Out to the last debuff slot the size shows at the row's measured spacing, and a pad past it.
-        double pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
-        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxBossDebuffs(bossSize) * pitch + BossRowPad * s));
-        return new(r.X, r.Y - pad, right - r.X, r.Height + 2 * pad + drop);
-    }
-
     /// <summary>The 암수 strip: the boss debuff row and the "N초" under it, no taller. The row's top is set by the HUD and the
     /// resolution only (its icons grow downward with 보스 디버프 크기; 21:9 the same: the clips, 2026-11-04), so it is placed, not
     /// searched for: <see cref="BossDebuffLine"/> px from the top, with <see cref="BossLineSnap"/> px either side for a snap.
-    /// Same left and width as <see cref="BossRowSearch"/>, so the slots (<see cref="BossSlotsIn"/>) count alike.</summary>
+    /// Across: from <see cref="BossRow"/>'s left out to the last debuff slot the size shows at the row's measured spacing.</summary>
     public static PixelRect BossDebuffStrip(Viewport vp, Fit fit, int bossSize = RefBossSize)
     {
-        var search = BossRowSearch(vp, fit, bossSize);
+        var r = BossRow(vp, fit, bossSize);
+        double s = BossScale(vp, fit, bossSize), pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
+        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxBossDebuffs(bossSize) * pitch + SlotPad * s));
         int top = BossIconTopY(vp, fit) - BossDebuffLine;
-        double icon = DebuffReader.BossIconSize * BossScale(vp, fit, bossSize), text = (BossTimerBelow) * BuffScale(vp, bossSize);
+        double icon = DebuffReader.BossIconSize * s, text = BossTimerBelow * BuffScale(vp, bossSize);
         int bottom = (int)Math.Ceiling(BossIconTopY(vp, fit) + icon + text) + BossLineSnap + 1;
-        return new(search.X, top, search.Width, bottom - top);
+        return new(r.X, top, right - r.X, bottom - top);
     }
+
+    /// <summary>Reference px past the last debuff slot.</summary>
+    const int SlotPad = 12;
 
     /// <summary>The row's line (the icons' top) in <see cref="BossDebuffStrip"/>, strip px: room for the walk's row above it
     /// and the snap.</summary>
@@ -362,7 +346,4 @@ public static class Geometry
 
     /// <summary>The HUD % that makes the bar <paramref name="width"/> screen pixels wide.</summary>
     public static double HudForWidth(Viewport vp, double width) => width / RefBar.Width / (vp.Height / ReferenceHeight) * ReferenceHud;
-
-    /// <summary>The top third of the game area: the boss's bar and effect row, for the debug window's picture.</summary>
-    public static PixelRect BossBand(Viewport vp) => new(vp.X, vp.Y, vp.Width, vp.Height / 3);
 }
