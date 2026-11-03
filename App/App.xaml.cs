@@ -27,6 +27,7 @@ public partial class App : Application
         if (e.Args.Contains("--build-gauge")) { BuildGauge(e.Args); Shutdown(); return; }
         if (e.Args.Contains("--check-submission")) { CheckSubmission(e.Args); Shutdown(); return; }
         if (e.Args.Contains("--trace-gauge")) { TraceGauge(e.Args); Shutdown(); return; }
+        if (e.Args.Contains("--read-menu")) { ReadMenu(e.Args); Shutdown(); return; }
 
         // --updated: started by the old version after an update, which may still be exiting: wait for its lock.
         if (!AcquireSingleInstance(e.Args.Contains("--updated") ? UpdateHandover : TimeSpan.Zero)) { Shutdown(); return; }
@@ -97,6 +98,7 @@ public partial class App : Application
     OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
     OverlayWindow _meter = null!;   // DPS 미터기
     ShadowHpWindow _shadow = null!;   // 그림자 레이드 기믹 체력, at the boss bar's place
+    HomeworkWindow _homeworkTags = null!;   // 숙제 tags under the 다른 캐릭터 접속 grid's cards
     PartyService? _partyService;   // set by StartApp (null in the demo)
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
     string? _raidSeen;   // the gate 자동 인식 recognises now
@@ -137,6 +139,7 @@ public partial class App : Application
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
         _shadow = new ShadowHpWindow();
+        _homeworkTags = new HomeworkWindow();
         _settingsWindow = new SettingsWindow(settings, characters);
         _layer = new AdjustLayer();
         _tray = new Tray();

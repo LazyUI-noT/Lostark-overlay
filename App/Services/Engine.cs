@@ -324,7 +324,9 @@ public sealed partial class Engine : IDisposable
         var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, due);
         raiding |= meterHp is not null;
         var (bossProbe, meterProbe, loadingBar) = (BossProbeRect(config, due), MeterProbeRect(config, due), LoadingRect(config, due));
-        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null;   // ride on this step's capture: no frame wait of their own
+        var (menuTitle, menuPanel, menuWaiting) = MenuRects(due);
+        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null
+            || menuTitle is not null || menuPanel is not null;   // ride on this step's capture: no frame wait of their own
         if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
@@ -361,6 +363,9 @@ public sealed partial class Engine : IDisposable
         if (meterProbe is { } meterSpot) rects.Add(meterSpot);
         int loadingAt = rects.Count;
         if (loadingBar is { } loadingStrip) rects.Add(loadingStrip);
+        int menuAt = rects.Count;   // the game menu: its title strip, or its panel and waiting corner (Engine.Menu.cs)
+        if (menuTitle is { } titleStrip) rects.Add(titleStrip);
+        if (menuPanel is { } panelArea && menuWaiting is { } waitingCorner) { rects.Add(panelArea); rects.Add(waitingCorner); }
         // The boss bar's text row (Geometry.BossTextRow) once, for all who read it this step: the 줄 수 count and the max HP, the
         // meter's HP, 암수's HP and the boss probe. One copy and one read (BossBar) instead of up to four.
         int bossRowAt = rects.Count;
@@ -412,6 +417,8 @@ public sealed partial class Engine : IDisposable
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
         if (loadingBar is not null) ReadLoading(images[loadingAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
+        if (menuTitle is not null) StartMenu(images[menuAt], null, null, t);
+        else if (menuPanel is not null) StartMenu(null, images[menuAt], images[menuAt + 1], t);
         if (searchRect is not null) Perf.Run("전분 위치 찾기", () => SearchPanel(images[searchAt], t));
         if (wantLabel)
         {

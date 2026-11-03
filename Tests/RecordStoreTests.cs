@@ -170,29 +170,29 @@ public sealed class RecordStoreTests : IDisposable
         Assert.True(r.Kept);
     }
 
-    static FightRecord As(FightRecord r, string? cls) => r with { MyClassName = cls };
+    static FightRecord As(FightRecord r, string? character) => r with { Character = character };
 
     [Fact]
     public void Saving_prunes_only_the_same_characters_automatic_records()
     {
         var store = Store;
-        store.Hold(As(R(0), "워로드"));
-        store.Save(As(R(1, kept: true), "워로드"), keep: 2);
-        store.Save(As(R(2), "바드"), keep: 2);
-        store.Save(As(R(3), "워로드"), keep: 2);
-        store.Save(As(R(4), "워로드"), keep: 2);
-        store.Save(As(R(5), "워로드"), keep: 2);   // the third 워로드 auto: the oldest (minute 3) goes
+        store.Hold(As(R(0), "살살"));
+        store.Save(As(R(1, kept: true), "살살"), keep: 2);
+        store.Save(As(R(2), "바드짱"), keep: 2);
+        store.Save(As(R(3), "살살"), keep: 2);
+        store.Save(As(R(4), "살살"), keep: 2);
+        store.Save(As(R(5), "살살"), keep: 2);   // the third 살살 auto: the oldest (minute 3) goes
 
         var left = store.List().Select(x => x.Record.StartedAt.Minute).Order().ToList();
 
-        Assert.Equal([0, 1, 2, 4, 5], left);   // held, 보관, 바드's and the two newest 워로드 autos
+        Assert.Equal([0, 1, 2, 4, 5], left);   // held, 보관, 바드짱's and the two newest 살살 autos
     }
 
     [Fact]
-    public void A_record_without_a_class_is_pruned_only_among_unknown_ones()
+    public void A_record_of_an_unknown_character_is_pruned_only_among_unknown_ones()
     {
         var store = Store;
-        store.Save(As(R(0), "워로드"), keep: 1);
+        store.Save(As(R(0), "살살"), keep: 1);
         store.Save(As(R(1), null), keep: 1);
         store.Save(As(R(2), null), keep: 1);
 
@@ -226,12 +226,12 @@ public sealed class RecordStoreTests : IDisposable
     public void A_record_moved_to_a_full_character_drops_that_characters_oldest_automatic_one_never_itself()
     {
         var store = Store;
-        string moved = store.Save(R(0) with { MyClassName = "바드", MySubclass = "절실한구원" }, keep: 2);
-        string oldest = store.Save(R(1) with { MyClassName = "워로드" }, keep: 2);
-        string kept = store.Save(R(2, kept: true) with { MyClassName = "워로드" }, keep: 2);
-        string newer = store.Save(R(3) with { MyClassName = "워로드" }, keep: 2);
+        string moved = store.Save(R(0) with { Character = "바드짱", MyClassName = "바드", MySubclass = "절실한구원" }, keep: 2);
+        string oldest = store.Save(R(1) with { Character = "살살", MyClassName = "워로드" }, keep: 2);
+        string kept = store.Save(R(2, kept: true) with { Character = "살살", MyClassName = "워로드" }, keep: 2);
+        string newer = store.Save(R(3) with { Character = "살살", MyClassName = "워로드" }, keep: 2);
 
-        var now = store.Edit(moved, R(0) with { MyClassName = "워로드" }, keep: 2);
+        var now = store.Edit(moved, R(0) with { Character = "살살", MyClassName = "워로드" }, keep: 2);
 
         var files = store.List().Select(x => x.File).ToList();
         Assert.Contains(now, files);   // the moved one is the group's oldest, but it is the one the user just put there
@@ -239,6 +239,21 @@ public sealed class RecordStoreTests : IDisposable
         Assert.Contains(newer, files);
         Assert.DoesNotContain(oldest, files);
         Assert.DoesNotContain(moved, files);
+    }
+
+    [Fact]
+    public void Naming_a_fight_keeps_a_result_settled_since_it_was_listed()
+    {
+        var store = Store;
+        var file = store.Save(R(0));
+        var listed = Assert.Single(store.List()).Record;
+        store.SetCleared(file, true);   // settled after the listing (the verdict's task)
+
+        var named = store.SetCharacter(file, "살살");
+
+        Assert.Equal(("살살", (bool?)true), (named!.Character, named.Cleared));
+        Assert.Null(listed.Cleared);
+        Assert.Equal(("살살", (bool?)true), (Assert.Single(store.List()).Record.Character, Assert.Single(store.List()).Record.Cleared));
     }
 
     [Fact]

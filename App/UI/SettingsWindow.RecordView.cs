@@ -36,13 +36,22 @@ public partial class SettingsWindow
         Dispatcher.BeginInvoke(FitTimeline, DispatcherPriority.Loaded);
     }
 
+    bool _otherChars;   // 다른 캐릭터: the side list also offers the other characters' and the imported fights of this raid
+
     /// <summary>The timeline with this character's fights beside it (user, 2026-11-03): a row opens its fight; 비교 on a fight of
-    /// the same raid · gate · difficulty puts its curves on the opened one's chart.</summary>
+    /// the same raid · gate · difficulty puts its curves on the opened one's chart. 다른 캐릭터 (user, 2026-11-04) adds the other
+    /// characters' and the imported fights of that raid and difficulty.</summary>
     UIElement TimelineWithList(IReadOnlyList<(string File, FightRecord Record)> all, (string File, FightRecord Record) opened)
     {
         string mine = ChipOf(opened);
         var list = new StackPanel();
+        var others = new CheckBox { Content = "다른 캐릭터", IsChecked = _otherChars, Margin = new(6, 0, 0, 6), ToolTip = "다른 캐릭터와 가져온 기록 중 같은 레이드 · 같은 난이도도 비교합니다." };
+        others.Click += (_, _) => { _otherChars = others.IsChecked == true; FillRecords(); };
+        list.Children.Add(others);
         foreach (var x in all.Where(x => ChipOf(x) == mine)) list.Children.Add(SideRow(x, opened));
+        if (_otherChars)
+            foreach (var x in all.Where(x => ChipOf(x) is var chip && chip != mine && chip != TestChip && Timeline.SameRaid(opened.Record, x.Record)))
+                list.Children.Add(SideRow(x, opened));
         var side = new ScrollViewer { Content = list, Width = 250, Margin = new(0, 8, 8, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         side.SetBinding(HeightProperty, new System.Windows.Data.Binding(nameof(ActualHeight)) { Source = _timeline });
         if (_timeline.Parent is Panel old) old.Children.Remove(_timeline);
@@ -60,7 +69,8 @@ public partial class SettingsWindow
         bool isOpened = x.File == opened.File, same = !isOpened && Timeline.SameRaid(opened.Record, r);
         string result = r.Cleared switch { true => "클리어 ", false => "실패 ", _ => "" };
         var text = new StackPanel { Cursor = System.Windows.Input.Cursors.Hand, Background = Brushes.Transparent };
-        text.Children.Add(new TextBlock { Text = $"{result}{r.StartedAt:MM-dd HH:mm}", FontWeight = isOpened ? FontWeights.SemiBold : FontWeights.Normal });
+        string whose = ChipOf(x) == ChipOf(opened) ? "" : IsImported(x.File) ? $"{ImportChip} " : $"{RecordCharacter.Of(r)} · ";
+        text.Children.Add(new TextBlock { Text = $"{whose}{result}{r.StartedAt:MM-dd HH:mm}", FontWeight = isOpened ? FontWeights.SemiBold : FontWeights.Normal });
         text.Children.Add(new TextBlock
         {
             Text = $"{r.Gate ?? "알 수 없음"}{(string.IsNullOrEmpty(r.Difficulty) ? "" : $" [{r.Difficulty}]")}", FontSize = 11, Opacity = 0.75,
@@ -95,7 +105,8 @@ public partial class SettingsWindow
             var icons = RecordIcons(opened.Record);
             _hasIcons = icons.Count > 0;
             int phase = compared.Count > 0 ? _comparePhase : 0;
-            _timeline.Show((opened.Record, Timeline.Offset(opened.Record, phase), icons), [.. compared.Select(x => (x.Record, Timeline.Offset(x.Record, phase)))]);
+            _timeline.Show((opened.Record, Timeline.Offset(opened.Record, phase), icons), [.. compared.Select(x =>
+                new TimelineView.ComparedFight(x.Record, Timeline.Offset(x.Record, phase), LookOf(x, opened), LabelOf(x, opened)))]);
         }
         // A 4-man gate (by the fight's boss HP, else its name): the party's buff share too. Set before Keys, which redraws.
         var r = opened.Record;
@@ -104,6 +115,19 @@ public partial class SettingsWindow
         _timeline.UseIcons = _useIcons ?? _hasIcons;
         _timeline.FontScale = Math.Clamp(_s.RecordFontPercent, Settings.MinRecordFont, Settings.MaxRecordFont) / 100.0;
     }
+
+    /// <summary>A compared fight's look: the opened character's, my other character's, or imported.</summary>
+    static TimelineView.CompareLook LookOf((string File, FightRecord Record) x, (string File, FightRecord Record) opened) =>
+        IsImported(x.File) ? TimelineView.CompareLook.Imported
+            : ChipOf(x) == ChipOf(opened) ? TimelineView.CompareLook.Same : TimelineView.CompareLook.OtherCharacter;
+
+    /// <summary>A compared fight in the legend: its date, with its character or [가져옴] and class when not the opened one's.</summary>
+    static string LabelOf((string File, FightRecord Record) x, (string File, FightRecord Record) opened) => LookOf(x, opened) switch
+    {
+        TimelineView.CompareLook.Imported => $"{ImportChip} {RecordCharacter.ClassOf(x.Record)} {x.Record.StartedAt:MM-dd HH:mm}",
+        TimelineView.CompareLook.OtherCharacter => $"{RecordCharacter.Of(x.Record)} {x.Record.StartedAt:MM-dd HH:mm}",
+        _ => $"{x.Record.StartedAt:MM-dd HH:mm}",
+    };
 
     /// <summary>The top bar: ← 목록, the character and the fight(s), 보관 for one fight or 비교 맞추기 for two, 아이콘 / 키 when
     /// the fight has icons, and 스킬 등록.</summary>
@@ -127,6 +151,9 @@ public partial class SettingsWindow
         var register = new Button { Content = "스킬 등록", Margin = new(12, 0, 0, 0) };
         register.Click += (_, _) => RegisterSkills(first.Record);
         bar.Children.Add(register);
+        var export = new Button { Content = picked.Count > 1 ? $"내보내기 ({picked.Count})" : "내보내기", Margin = new(12, 0, 0, 0), ToolTip = "보이는 전투를 다른 사람에게 보낼 파일로 저장합니다." };
+        export.Click += (_, _) => ExportFights([.. picked.Select(x => x.Record)]);
+        bar.Children.Add(export);
         return bar;
     }
 
@@ -183,7 +210,7 @@ public partial class SettingsWindow
     /// instead (SkillRegisterAdvice): the button can't capture another character's bar.</summary>
     void RegisterSkills(FightRecord r)
     {
-        string character = RecordCharacter.Of(r);
+        string character = RecordCharacter.ClassOf(r);
         _registerNote = SkillRegisterAdvice.For(character, ActiveLabel(), _gameRunning) switch
         {
             SkillRegister.Go => null,

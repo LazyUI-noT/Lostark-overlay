@@ -33,7 +33,21 @@ sealed class TimelineView : FrameworkElement
     double Block => HeadH + LegendH + _curveH + 8 + SkillH + 4 + Lanes * BuffH;
     double Natural => _shown.Count * (BlockHeight + Gap) + AxisH;
     static readonly Color[] Compared = [Color.FromRgb(0xFF, 0x7A, 0x59), Color.FromRgb(0x4F, 0xD1, 0xC5), Color.FromRgb(0xB7, 0x94, 0xF4)];
-    IReadOnlyList<(FightRecord Record, double Offset)> _compared = [];
+    static readonly Color[] ImportedColours = [Color.FromRgb(0xE8, 0xC5, 0x47), Color.FromRgb(0xD4, 0xA3, 0x73), Color.FromRgb(0xF2, 0xE3, 0x94)];   // their own family
+    IReadOnlyList<ComparedFight> _compared = [];
+
+    /// <summary>A compared fight's colour: the imported ones in a family of their own.</summary>
+    Color ColourOf(int i) => _compared[i].Look == CompareLook.Imported ? ImportedColours[i % ImportedColours.Length] : Compared[i % Compared.Length];
+
+    /// <summary>A compared fight's DPS line (user, 2026-11-04): solid for the opened character's, dashed for my other characters',
+    /// dotted for an imported one.</summary>
+    static DashStyle? DpsDash(CompareLook look) => look switch
+    {
+        CompareLook.OtherCharacter => OtherDash,
+        CompareLook.Imported => ImportedDash,
+        _ => null,
+    };
+    static readonly DashStyle OtherDash = Frozen(new DashStyle([6, 3], 0)), ImportedDash = Frozen(new DashStyle([0.5, 2.5], 0));
     /// <summary>The buffs' lines, and the 암수 line when a fight shown had 암수 on (every record the same, so 비교 lines up).</summary>
     int Lanes => Buffs.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
     static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, Color.FromRgb(0x9B, 0x6B, 0xFF)), BombPens(Bomb.빛암, Color.FromRgb(0xD8, 0xA8, 0xFF))];
@@ -67,10 +81,16 @@ sealed class TimelineView : FrameworkElement
 
     public TimelineView() => (Focusable, ClipToBounds, Cursor) = (true, true, Cursors.SizeWE);
 
+    /// <summary>Whose a compared fight is: the opened character's, another of mine, or imported from another user.</summary>
+    public enum CompareLook { Same, OtherCharacter, Imported }
+
+    /// <summary>A fight on the opened one's chart: lined up at <paramref name="Offset"/>, drawn per <paramref name="Look"/>, named
+    /// <paramref name="Label"/> in the legend and the hover.</summary>
+    public sealed record ComparedFight(FightRecord Record, double Offset, CompareLook Look, string Label);
+
     /// <summary>The fight to draw, with the second that lines up at 0 and my skill icons, and the fights compared with it (their
     /// curves on its chart, each lined up at its own second); the whole length shows.</summary>
-    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened,
-        IReadOnlyList<(FightRecord Record, double Offset)> compared)
+    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened, IReadOnlyList<ComparedFight> compared)
     {
         (_shown, _compared) = ([opened], compared);
         _length = Math.Max(opened.Record.Duration - opened.Offset, compared.Count == 0 ? 0 : compared.Max(c => c.Record.Duration - c.Offset));
@@ -145,14 +165,14 @@ sealed class TimelineView : FrameworkElement
             dc.DrawRectangle(Frozen(new SolidColorBrush(colours[name])), null, new(lx, y + 5, 8, 8));
             lx += 11 + Text(dc, $"{name} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg, bold: name == r.Me) + 12;
         }
-        for (int i = 0; i < _compared.Count; i++)   // the fights compared: their date, my average DPS and share
+        for (int i = 0; i < _compared.Count; i++)   // the fights compared: who and when, my average DPS and share
         {
-            var (c, cOffset) = _compared[i];
+            var (c, cOffset, _, label) = _compared[i];
             var cSeen = new TimeWindow(_window.From + cOffset, _window.To + cOffset);
             double dps = Timeline.DpsAverages(c, cSeen).FirstOrDefault(p => p.Name == c.Me).Dps;
             string share = c.MyShare is { } s ? $" · 기여 {s * 100:0.0}%" : "";
-            dc.DrawRectangle(Frozen(new SolidColorBrush(Compared[i % Compared.Length])), null, new(lx, y + 5, 8, 8));
-            lx += 11 + Text(dc, $"{c.StartedAt:MM-dd HH:mm} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
+            dc.DrawRectangle(Frozen(new SolidColorBrush(ColourOf(i))), null, new(lx, y + 5, 8, 8));
+            lx += 11 + Text(dc, $"{label} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
         }
         y += LegendH;
         DrawCurves(dc, r, offset, seen, colours, y, fg);
@@ -175,7 +195,7 @@ sealed class TimelineView : FrameworkElement
             return;
         }
         var (dpsPeak, dmgPeak) = Timeline.Peaks(r, seen);   // the scales fit the seconds shown, both of them, and the fights compared
-        foreach (var (c, cOffset) in _compared)
+        foreach (var (c, cOffset, _, _) in _compared)
         {
             var (cDps, cDmg) = Timeline.Peaks(c with { Samples = [.. c.Samples.Where(s => s.Name == c.Me)] }, new TimeWindow(_window.From + cOffset, _window.To + cOffset));
             (dpsPeak, dmgPeak) = (Math.Max(dpsPeak, cDps), Math.Max(dmgPeak, cDmg));
@@ -188,20 +208,22 @@ sealed class TimelineView : FrameworkElement
         Text(dc, "— 초당 피해량   ┄ 피해량 (오른쪽)", new(LabelW + 4, y + 2), 10, fg, opacity: 0.6);
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, _curveH)));
         bool comparing = _compared.Count > 0;   // the opened fight's other players step back, its own curve thickens
-        void Curves(IEnumerable<RecordSample> samples, double at, TimeWindow w, Color colour, double dpsWidth, double dmgWidth, double opacity)
+        void Curves(IEnumerable<RecordSample> samples, double at, TimeWindow w, Color colour, double dpsWidth, double dmgWidth, double opacity, DashStyle? dpsDash = null)
         {
             var near = samples.Where(s => s.T >= w.From - 1 && s.T <= w.To + 1).ToList();
             if (near.Count < 2) return;
             var brush = Frozen(new SolidColorBrush(colour) { Opacity = opacity });
-            Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Dps / dpsTop)), new Pen(brush, dpsWidth));
+            var dpsPen = new Pen(brush, dpsWidth) { DashStyle = dpsDash ?? DashStyles.Solid, DashCap = PenLineCap.Round };
+            Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Dps / dpsTop)), dpsPen);
             Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Damage / dmgTop)), new Pen(brush, dmgWidth) { DashStyle = Dashed });
         }
         foreach (var g in r.Samples.GroupBy(s => s.Name).Where(g => g.Key != r.Me))
             Curves(g, offset, seen, colours.GetValueOrDefault(g.Key, Others[0]), 1.2, 1, comparing ? 0.35 : 1);
         for (int i = 0; i < _compared.Count; i++)
         {
-            var (c, cOffset) = _compared[i];
-            Curves(c.Samples.Where(s => s.Name == c.Me), cOffset, new TimeWindow(_window.From + cOffset, _window.To + cOffset), Compared[i % Compared.Length], 1.4, 1.1, 0.9);
+            var (c, cOffset, look, _) = _compared[i];
+            Curves(c.Samples.Where(s => s.Name == c.Me), cOffset, new TimeWindow(_window.From + cOffset, _window.To + cOffset), ColourOf(i),
+                look == CompareLook.Same ? 1.4 : 1.8, 1.1, 0.9, DpsDash(look));   // a dashed or dotted line a little thicker, to stay readable
         }
         Curves(r.Samples.Where(s => s.Name == r.Me), offset, seen, colours.GetValueOrDefault(r.Me, Mine), comparing ? 2.8 : 2, comparing ? 2 : 1.6, 1);   // on top
         dc.Pop();
@@ -301,11 +323,12 @@ sealed class TimelineView : FrameworkElement
                 lines.Add(($"{g.Key}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])))));
         for (int i = 0; i < _compared.Count; i++)   // the fights compared, at the same second on their own clocks
         {
-            var (c, cOffset) = _compared[i];
+            var (c, cOffset, _, label) = _compared[i];
             if (c.Samples.LastOrDefault(s => s.Name == c.Me && s.T <= t - offset + cOffset) is { } s)
-                lines.Add(($"{c.StartedAt:MM-dd HH:mm}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(Compared[i % Compared.Length]))));
+                lines.Add(($"{label}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(ColourOf(i)))));
         }
-        var on = Timeline.BuffSpans(r).Where(b => b.From <= t && t < b.To).Select(b => Buffs.First(x => x.Kind == b.Kind).Name).Distinct().ToList();
+        var on = Timeline.BuffSpans(r).Where(b => b.From <= t && t < b.To)
+            .SelectMany(b => Buffs.Where(x => x.Kind == b.Kind).Select(x => x.Name)).Distinct().ToList();   // a kind without a line (뎀증) has no name here
         lines.Add(($"버프: {(on.Count == 0 ? "없음" : string.Join(", ", on))}", TipText));
         if (r.AmsuOn)
             lines.Add(($"암수: {(Timeline.AmsuSpans(r).FirstOrDefault(s => s.From <= t && t < s.To) is { To: > 0 } b ? b.Kind.ToString() : "없음")}", TipText));

@@ -48,6 +48,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public const int MinRecordFont = 100, MaxRecordFont = 200;
     /// <summary>전투 기록's names by boss max HP (<see cref="Domain.BossBook"/>): learned from the dungeon panel, editable by hand.</summary>
     public Dictionary<long, BossBookEntry> BossBook { get; set; } = [];
+    /// <summary>설정 → 숙제: the characters known, their picks and renamed tags (the clears are in homework.json).</summary>
+    public HomeworkSettings Homework { get; set; } = new();
     /// <summary>설정's colour theme (the window only; the overlay's colours are its own). New installs start on 로스트아크;
     /// a file without one was saved while 딥 틸 was the default (<see cref="OnDeserializing"/>).</summary>
     [JsonIgnore] public UiTheme Theme { get; set; } = UiTheme.LostArk;

@@ -85,6 +85,9 @@ public partial class App
         var records = new RecordStore(RecordStore.DefaultDir);
         var testRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "test"));   // 테스트 모드's fights: apart, own count
         RecordStore StoreNow() => GameWindow.TestMode ? testRecords : records;
+        // 숙제 and who is being played (homework.plan.md): the game menu names the character; the game's fights count, 테스트 모드's don't.
+        var homework = new HomeworkService(settings, raidGates, HomeworkData.Load(CharacterService.DefaultProfilesDir), [.. characters.Classes.Select(c => c.Name)],
+            new HomeworkStore(HomeworkStore.DefaultPath), records, Dispatcher, () => Save(now: false), () => _settingsWindow.RefreshRecords());
         Task lastSave = Task.CompletedTask;
         // A fight ended by a new 전분 record: its 클리어 / 실패 is settled by that record's boss once its bar is read (FightVerdict).
         // Only while that same record runs: a later record (left and came back) says nothing about this fight.
@@ -132,6 +135,9 @@ public partial class App
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
         _settingsWindow.Records = records;
         _settingsWindow.TestRecords = testRecords;
+        _settingsWindow.ImportedRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "imported"));   // other users' fights: apart, never pruned
+        _settingsWindow.Homework = homework;
+        homework.Updated += _settingsWindow.HomeworkUpdated;
         _settingsWindow.RefreshRecords();
         _settingsWindow.GameArea = () => engine.GameAreaKey;
         _settingsWindow.PartyMove = (id, p) =>
@@ -291,6 +297,7 @@ public partial class App
         {
             // The engine doesn't know the class: yours is added here, for the party and for your own gauge's glow rule.
             var mine = latest is { } s ? s with { ClassId = characters.ClassId } : null;
+            homework.Playing(characters.Active?.Class, characters.Active?.Subclass);   // returns at once unless they changed
             _meterReadAt = WindowLinger.LastRead(mine?.Meter);
             _presence = mine?.Presence ?? RaidPresence.None;
             _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
@@ -411,7 +418,7 @@ public partial class App
 
         // Written once, off the UI thread, when a fight ends (spec § D Cost budget).
         // The class played, for the file name and the list.
-        FightRecord Named(FightRecord fight) => fight with { MyClassName = characters.Active?.Class };
+        FightRecord Named(FightRecord fight) => homework.Name(fight with { MyClassName = characters.Active?.Class });
 
         // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
         // content and aren't kept.
@@ -452,8 +459,10 @@ public partial class App
                 try
                 {
                     string file;
-                    if (settings.RecordAutoSave) file = store.Save(Named(fight), settings.RecordKeep);
-                    else { store.Hold(Named(fight)); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
+                    var named = Named(fight);
+                    if (settings.RecordAutoSave) file = store.Save(named, settings.RecordKeep);
+                    else { store.Hold(named); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
+                    if (store == records) homework.Saved(named);   // a clear counts even when the fight isn't kept
                     _settingsWindow.RefreshRecords();
                     return file;
                 }
@@ -476,7 +485,15 @@ public partial class App
             Trace.WriteLine($"[records] {file}: {(cleared ? "클리어" : "실패")} by the next record's boss");
             _ = Task.Run(() =>
             {
-                try { s.Store.SetCleared(file, cleared); _settingsWindow.RefreshRecords(); }
+                try
+                {
+                    if (s.Store.SetCleared(file, cleared) is { } settled && s.Store == records)
+                    {
+                        if (cleared) homework.Saved(settled);
+                        else homework.Failed(settled);   // saved as 클리어 (the bar gone), then the same boss again
+                    }
+                    _settingsWindow.RefreshRecords();
+                }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] result not written: {ex.Message}"); }
             });
         }
@@ -686,7 +703,19 @@ public partial class App
             _tray.Notify("초각스가 준비되면 그 아이콘을 지금 직업각인으로 등록합니다.");
         };
         // 로딩 뒤 직업각인 자동 감지: told only when it changes the 직업각인 (CharacterService.AutoRedetect).
-        engine.LoadingEnded += () => Dispatcher.BeginInvoke(() => { if (characters.AutoRedetect()) engine.RequestSubclass(); });
+        engine.LoadingEnded += () => Dispatcher.BeginInvoke(() =>
+        {
+            homework.Loaded(Clock.Now());   // a switch picked in the grid happens now
+            if (characters.AutoRedetect()) engine.RequestSubclass();
+        });
+        // The ESC menu (Engine.Menu.cs): who is played, the grid's cards, and their 숙제 tags under them.
+        engine.MenuSeen += (read, vp, t) => Dispatcher.BeginInvoke(() =>
+        {
+            homework.Menu(read, t);
+            if (!read.Open && !_homeworkTags.IsVisible) return;
+            _homeworkTags.Update(vp, [.. homework.GridTags(read).Select(x =>
+                (Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))), x.Tags))], allowed: true);
+        });
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectSubclass)) Dispatcher.BeginInvoke(RedetectSubclass); };
         _tray.RereadIcons += RereadIcons;
         _settingsWindow.IconRereadRequested += RereadIcons;

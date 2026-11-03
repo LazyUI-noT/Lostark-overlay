@@ -22,5 +22,5 @@ public class SkillRegisterAdviceTests
 
     [Fact]
     public void An_unknown_fight_character_is_never_registered_as_the_one_being_played()
-        => Assert.Equal(SkillRegister.PlayThatCharacter, SkillRegisterAdvice.For(RecordCharacter.Unknown, Warlord, gameRunning: true));
+        => Assert.Equal(SkillRegister.PlayThatCharacter, SkillRegisterAdvice.For(RecordCharacter.NoClass, Warlord, gameRunning: true));
 }

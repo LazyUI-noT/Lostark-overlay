@@ -35,7 +35,8 @@ public sealed record FightRecord(
     string? MyClassName = null,
     string? Difficulty = null,
     bool? Cleared = null,
-    bool AmsuOn = false)
+    bool AmsuOn = false,
+    string? Character = null)
 {
     /// <summary>My share at the end (my last figure over the last boss figure; on a clear over all the boss's HP, the part its
     /// bar showed last counted as taken); null under the meter's dash rule.</summary>

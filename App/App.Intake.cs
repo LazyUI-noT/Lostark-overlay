@@ -86,6 +86,27 @@ public partial class App
         return new(Path.GetFileName(path), head.AsSpan().SequenceEqual(PngMagic), img);
     }
 
+    /// <summary>--read-menu &lt;pictures&gt; (dev, homework.plan.md): each whole-screen picture's game menu read as the loop reads
+    /// it (Engine.ReadPicture): the OCR words at their 1080p positions, then who is played, the pick, the cards, the waiting text.</summary>
+    static void ReadMenu(string[] args)
+    {
+        var report = new System.Text.StringBuilder();
+        foreach (var path in Operands(args, "--read-menu"))
+        {
+            report.AppendLine($"## {Path.GetFileName(path)}");
+            try
+            {
+                var screen = Png.Load(path);
+                var (read, lines) = Task.Run(() => Services.Engine.ReadPicture(screen)).GetAwaiter().GetResult();   // off the UI thread: the OCR's awaits would wait for it
+                foreach (var line in lines) report.AppendLine($"  {line}");
+                report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"}, picked {read.Picked ?? "-"}, waiting {read.Waiting}");
+                foreach (var c in read.Cards) report.AppendLine($"  card {c.Name} [{c.ClassName}] at {c.X:0},{c.Y:0}–{c.Bottom:0}");
+            }
+            catch (Exception ex) { report.AppendLine($"  {ex.GetType().Name}: {ex.Message}"); }
+        }
+        Report(args, "GaugeOverlay --read-menu", report.ToString());
+    }
+
     /// <summary>--trace-gauge &lt;frames&gt; &lt;gauge folder&gt; [--fps=10]: PNG frames of a clip (ffmpeg -vf fps=10, as the engine
     /// reads every 100 ms), the skill bar fitted on the first frame that shows it, the gauge read on each through
     /// <see cref="GaugeTrace"/>; trace.csv and _TRACE.md in the frames folder.</summary>

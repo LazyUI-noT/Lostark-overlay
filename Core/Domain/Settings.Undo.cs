@@ -11,6 +11,7 @@ public sealed partial class Settings
         nameof(Theme),
         nameof(FirstRunDone), nameof(Updates), nameof(Characters), nameof(ActiveCharacter), nameof(Cores), nameof(StackSkills),
         nameof(SubclassHistory), nameof(SeenSupport), nameof(Fits), nameof(DetectedScreen), nameof(Adjusts),
+        nameof(Homework),   // characters read from the game and picks raised by clears
     ];
 
     /// <summary>설정's undo: the live object, which the windows hold, takes <paramref name="other"/>'s values — every public

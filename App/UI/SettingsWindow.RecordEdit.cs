@@ -35,7 +35,9 @@ public partial class SettingsWindow
             .Concat(all.Select(x => x.Record.Difficulty)).OfType<string>().Where(n => n.Trim().Length > 0).Distinct(), r.Difficulty, editable: true);
         var result = Pick([Cleared, Failed, RecordCharacter.Unknown], r.Cleared switch { true => Cleared, false => Failed, _ => RecordCharacter.Unknown }, editable: false);
         var characters = _chars.Classes.SelectMany(c => c.Subclasses.Keys.Select(s => (Class: c, Sub: s))).ToList();
-        var character = Pick(characters.Select(x => RecordCharacter.Label(x.Class.Name, x.Sub)), RecordCharacter.Of(r), editable: false);
+        var character = Pick(characters.Select(x => RecordCharacter.Label(x.Class.Name, x.Sub)), RecordCharacter.ClassOf(r), editable: false);
+        var who = Pick(_s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
+            .Where(n => n.Trim().Length > 0).Distinct(), r.Character, editable: true);
 
         var apply = new Button { Content = "적용", Margin = new(0, 6, 8, 0) };
         var cancel = new Button { Content = "취소", Margin = new(0, 6, 0, 0) };
@@ -47,6 +49,7 @@ public partial class SettingsWindow
             {
                 Gate = Text(dungeon), Difficulty = Text(difficulty),
                 Cleared = result.SelectedItem switch { Cleared => true, Failed => false, _ => null },
+                Character = Text(who) is { } n && n != RecordCharacter.Unknown ? n : null,
             };
             if (character.SelectedIndex >= 0 && characters[character.SelectedIndex] is var (cls, sub))
                 edited = edited with
@@ -59,17 +62,22 @@ public partial class SettingsWindow
                 _s.BossBook[hp] = entry;
                 Changed();
             }
+            // 숙제 follows an edit only when the user says so (user, 2026-11-04): a fight fixed by hand may not be this week's clear.
+            bool homework = store == Records && Homework is { } hw && hw.Affects(r, edited)
+                && MessageBox.Show(this, "이 수정으로 이번 주 숙제(클리어한 레이드)가 바뀝니다. 숙제도 바꿀까요?", AreaRecords, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
             _editing = null;
             RecordAction(() => store?.Edit(name, edited, _s.RecordKeep));
+            if (homework) Homework!.Edited(r, edited);
         };
 
         var panel = new StackPanel { Margin = new(16, 2, 0, 10) };
         panel.Children.Add(Row("던전", dungeon));
         panel.Children.Add(Row("난이도", difficulty));
         panel.Children.Add(Row("결과", result));
+        panel.Children.Add(Row("캐릭터", who));
         panel.Children.Add(Row("클래스 · 직업각인", character));
         panel.Children.Add(Note("던전과 난이도는 목록에서 고르거나 직접 씁니다. 바꾸면 이 보스 HP를 기억해 다음 전투부터 같은 이름으로 저장합니다. " +
-            "클래스를 바꾸면 그 클래스의 기록으로 옮기고, 가득 찼으면 그 클래스의 가장 오래된 자동 기록을 지웁니다."));
+            "캐릭터를 바꾸면 그 캐릭터의 기록으로 옮기고, 가득 찼으면 그 캐릭터의 가장 오래된 자동 기록을 지웁니다. 비우면 캐릭터 불명입니다. 클래스는 스킬 아이콘에 씁니다."));
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         buttons.Children.Add(apply);
         buttons.Children.Add(cancel);

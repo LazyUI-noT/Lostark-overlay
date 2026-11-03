@@ -47,7 +47,8 @@ public sealed class RecordStore(string dir)
     static string Stem(FightRecord r)
     {
         string cls = string.Join(' ', new[] { r.MyClassName, r.MySubclass }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        var parts = new[] { r.StartedAt.ToString("yyyyMMdd-HHmmss"), r.Gate, r.Difficulty, cls }.Where(x => !string.IsNullOrWhiteSpace(x));
+        var parts = new[] { r.StartedAt.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture), r.Gate, r.Difficulty, cls }
+            .Where(x => !string.IsNullOrWhiteSpace(x));
         var bad = Path.GetInvalidFileNameChars();
         return new string(string.Join('_', parts).Select(c => bad.Contains(c) ? '-' : c).ToArray()).Replace("..", "-");
     }
@@ -108,17 +109,56 @@ public sealed class RecordStore(string dir)
         }
     }
 
-    /// <summary>A saved fight's 클리어 / 실패, settled after it was written (FightVerdict: the next 전분 record's boss).</summary>
-    public void SetCleared(string file, bool cleared)
+    /// <summary>A saved fight's 클리어 / 실패, settled after it was written (FightVerdict: the next 전분 record's boss). Returns the
+    /// record as written (null: gone or unreadable).</summary>
+    public FightRecord? SetCleared(string file, bool cleared)
     {
         lock (_gate)
-            if (File.Exists(Path.Combine(dir, Checked(file))) && Read(file) is { } r) Write(file, r with { Cleared = cleared });
+        {
+            if (!File.Exists(Path.Combine(dir, Checked(file))) || Read(file) is not { } r) return null;
+            var settled = r with { Cleared = cleared };
+            Write(file, settled);
+            return settled;
+        }
     }
 
     public void Delete(string file)
     {
         lock (_gate) File.Delete(Path.Combine(dir, Checked(file)));
     }
+
+    /// <summary>A record read from a file (ours, or an imported one) has all its parts, finite times and events of things the
+    /// timeline knows (an unknown buff or bomb id would throw where it is looked up): the pages can draw it.</summary>
+    public static bool IsValid([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] FightRecord? r) =>
+        r is { Me: not null, Phases: not null, Members: not null, Samples: not null, Boss: not null, Events: not null }
+        && double.IsFinite(r.Duration) && r.Duration is >= 0 and <= MaxSeconds
+        && r.Phases.All(p => double.IsFinite(p) && p >= 0 && p <= r.Duration)
+        && r.Members.All(m => m?.Name is not null) && r.Samples.All(s => s?.Name is not null && double.IsFinite(s.T))
+        && r.Events.All(e => e?.Name is not null && double.IsFinite(e.T) && Known(e)) && r.Boss.All(b => b is not null && double.IsFinite(b.T));
+
+    static bool Known(RecordEvent e) => e.Kind switch
+    {
+        RecordEventKind.사용 => Enum.IsDefined((SlotId)e.What),
+        RecordEventKind.버프시작 or RecordEventKind.버프끝 => Enum.IsDefined((BuffKind)e.What),
+        RecordEventKind.암수시작 or RecordEventKind.암수끝 => Enum.IsDefined((Vision.Bomb)e.What),
+        _ => false,
+    };
+
+    /// <summary>Gives a saved fight its character (불명 fights once the character is known), read and written under the lock so a
+    /// result settled meanwhile (<see cref="SetCleared"/>) stays. Returns the record as written (null: gone or unreadable).</summary>
+    public FightRecord? SetCharacter(string file, string name)
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(Path.Combine(dir, Checked(file))) || Read(file) is not { } r) return null;
+            var named = r with { Character = name };
+            Write(file, named);
+            return named;
+        }
+    }
+
+    /// <summary>The most a record or an export may unpack to (a 10-minute 8-player fight is ~300 KB).</summary>
+    public const long MaxUnpacked = MaxBytes;
 
     /// <summary>Only plain names from <see cref="List"/>: never a path out of the folder.</summary>
     static string Checked(string file) =>
@@ -158,12 +198,7 @@ public sealed class RecordStore(string dir)
             }
             json.Position = 0;
             var r = JsonSerializer.Deserialize<FightRecord>(json, SettingsStore.Json);
-            return r is { Me: not null, Phases: not null, Members: not null, Samples: not null, Boss: not null, Events: not null }
-                && double.IsFinite(r.Duration) && r.Duration is >= 0 and <= MaxSeconds
-                && r.Phases.All(p => double.IsFinite(p) && p >= 0 && p <= r.Duration)
-                && r.Members.All(m => m?.Name is not null) && r.Samples.All(s => s?.Name is not null)
-                && r.Events.All(e => e?.Name is not null) && !r.Boss.Contains(null!)
-                ? r : null;
+            return IsValid(r) ? r : null;
         }
         catch (Exception e) when (e is IOException or InvalidDataException or JsonException or NotSupportedException or UnauthorizedAccessException)
         {

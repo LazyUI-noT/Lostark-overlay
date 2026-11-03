@@ -364,6 +364,32 @@ public static class Geometry
             (int)Math.Round(RefLoadingBar.Width * s), (int)Math.Round(RefLoadingBar.Height * s));
     }
 
+    // ── Game menu (ESC) ─────────────────────────────────────────────────────────────────────────────────────────────
+    /// <summary>"게임 메뉴" at the top of the ESC menu, at 1080p in the 16:9 frame (reference/homework_project/goal.png: the words
+    /// at x 1040–1125, y 262–280).</summary>
+    public static readonly PixelRect RefMenuTitle = new(960, 250, 240, 40);
+
+    /// <summary>The ESC menu from its title down past the portrait's "Lv.70 name" (y 676) and across the 다른 캐릭터 접속 grid and
+    /// the right panel's header (x 1790), at 1080p in the 16:9 frame.</summary>
+    public static readonly PixelRect RefMenuPanel = new(250, 250, 1540, 540);
+
+    /// <summary>A menu area on screen. The menu is drawn centred at the game area's height (like the loading screen), so it
+    /// follows the game area's height and centre only: not the HUD 크기 or the other in-game sizes.</summary>
+    public static PixelRect MenuArea(Viewport vp, PixelRect reference)
+    {
+        double s = vp.Height / ReferenceHeight, left = vp.X + vp.Width / 2.0 - ReferenceHeight * 16 / 9 / 2 * s;
+        return new((int)Math.Round(left + reference.X * s), (int)Math.Round(vp.Y + reference.Y * s),
+            (int)Math.Round(reference.Width * s), (int)Math.Round(reference.Height * s));
+    }
+
+    /// <summary>"잠시만 기다려주세요." with its spinner at the game area's bottom right (x 1640–1800, y 1000–1025 at 1080p):
+    /// placed from that corner and the game area's height.</summary>
+    public static PixelRect MenuWaiting(Viewport vp)
+    {
+        double s = vp.Height / ReferenceHeight;
+        return new((int)Math.Round(vp.X + vp.Width - 300 * s), (int)Math.Round(vp.Y + vp.Height - 95 * s), (int)Math.Round(240 * s), (int)Math.Round(55 * s));
+    }
+
     /// <summary>The HUD % that makes the bar <paramref name="width"/> screen pixels wide.</summary>
     public static double HudForWidth(Viewport vp, double width) => width / RefBar.Width / (vp.Height / ReferenceHeight) * ReferenceHud;
 }

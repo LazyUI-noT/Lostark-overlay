@@ -21,7 +21,7 @@ public partial class SettingsWindow
     const string TestChip = "테스트";   // the 테스트 모드 fights' chip: no class is named that
     const string TestKey = "test/";   // a test record's key in the list (_opened, _compare): its own file names may repeat the game's
     const string RecordsLead = "DPS 미터기가 따라간 전투를 저장합니다. 자동 기록은 정한 개수만 남기고(가장 오래된 것부터 지움), 보관한 기록은 개수에 들지 않고 지울 때까지 남깁니다. " +
-        "캐릭터(직업각인)마다 따로 저장합니다. 기록을 열면 파티원 모두의 DPS · 누적 피해, 내 스킬 사용, 내 공증 · 아덴 피증 · 초각스 피증 구간, 페이즈 경계를 시간 순으로 봅니다. 휠이나 +/−로 확대하고, 끌거나 ←/→로 옮깁니다.";
+        "캐릭터마다 따로 저장합니다(ESC 게임 메뉴에서 캐릭터 이름을 읽습니다. 읽기 전에는 '캐릭터 불명'). 기록을 열면 파티원 모두의 DPS · 누적 피해, 내 스킬 사용, 내 공증 · 아덴 피증 · 초각스 피증 구간, 페이즈 경계를 시간 순으로 봅니다. 휠이나 +/−로 확대하고, 끌거나 ←/→로 옮깁니다.";
     readonly CardStack _secRecords = new();
     readonly TimelineView _timeline = new() { Margin = new(0, 8, 0, 4) };
     readonly List<string> _compare = [];
@@ -38,7 +38,10 @@ public partial class SettingsWindow
     /// <summary>테스트 모드's records, kept apart (own folder, own count): listed after the game's, under the 테스트 chip.</summary>
     public RecordStore? TestRecords { get; set; }
 
-    (RecordStore? Store, string File) StoreOf(string key) => key.StartsWith(TestKey) ? (TestRecords, key[TestKey.Length..]) : (Records, key);
+    (RecordStore? Store, string File) StoreOf(string key) =>
+        key.StartsWith(TestKey) ? (TestRecords, key[TestKey.Length..]) : key.StartsWith(ImportKey) ? (ImportedRecords, key[ImportKey.Length..]) : (Records, key);
+
+    static bool IsImported(string key) => key.StartsWith(ImportKey);
 
     /// <summary>My skill icons for a record (its class and 직업각인, as saved by 스킬 등록), drawn on my lane.</summary>
     IReadOnlyDictionary<SlotId, ImageSource> RecordIcons(FightRecord r)
@@ -71,7 +74,11 @@ public partial class SettingsWindow
     /// <summary>Every saved fight: the game's (newest first), then 테스트 모드's, each under its key.</summary>
     IReadOnlyList<(string File, FightRecord Record)> AllRecords()
     {
-        try { return [.. Records?.List() ?? [], .. (TestRecords?.List() ?? []).Select(x => (TestKey + x.File, x.Record))]; }
+        try
+        {
+            return [.. Records?.List() ?? [], .. (TestRecords?.List() ?? []).Select(x => (TestKey + x.File, x.Record)),
+                .. (ImportedRecords?.List() ?? []).Select(x => (ImportKey + x.File, x.Record))];
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] list failed: {ex.Message}"); return []; }
     }
 
@@ -100,13 +107,15 @@ public partial class SettingsWindow
         if (_s.RecordAutoSave)
             p.Children.Add(SliderRow("자동 기록 남기기", 1, 50, Math.Clamp(_s.RecordKeep, 1, 50), 1, v => $"{v:0}개", v => _s.RecordKeep = (int)v, Changed));
         var chips = ChipsOf(all);
-        if (chips.Count == 0) { p.Children.Add(Note("저장된 기록이 없습니다.")); return; }
+        if (chips.Count == 0) { p.Children.Add(ShareRow([])); p.Children.Add(Note("저장된 기록이 없습니다.")); return; }
         string picked = (chips.FirstOrDefault(c => c.Character == _recordChar) ?? chips[0]).Character;
         _recordChar = picked;
         p.Children.Add(ChipRow(chips, picked));
         var fights = all.Where(x => ChipOf(x) == picked).ToList();
-        p.Children.Add(TabRow(fights));
-        var shown = fights.Where(x => x.Record.Kept == _keptTab).ToList();   // the held 'last' fight sorts first on the 자동 tab
+        bool imported = picked == ImportChip;   // all kept until deleted: no 자동 / 보관 tabs
+        if (!imported) p.Children.Add(TabRow(fights));
+        var shown = imported ? fights : fights.Where(x => x.Record.Kept == _keptTab).ToList();   // the held 'last' fight sorts first on the 자동 tab
+        p.Children.Add(ShareRow(shown));
         if (shown.Count == 0) p.Children.Add(Note(_keptTab ? "보관한 기록이 없습니다." : "자동 저장된 기록이 없습니다."));
         _firstPick = _compare.Count > 0 ? all.FirstOrDefault(x => x.File == _compare[0]).Record : null;   // read once, for every row's 비교
         foreach (var (file, r) in shown)
@@ -116,16 +125,19 @@ public partial class SettingsWindow
         }
     }
 
-    /// <summary>The chip a fight is listed under: its character, or 테스트 for a 테스트 모드 fight.</summary>
-    static string ChipOf((string File, FightRecord Record) x) => x.File.StartsWith(TestKey) ? TestChip : RecordCharacter.Of(x.Record);
+    /// <summary>The chip a fight is listed under: its character, 테스트 for a 테스트 모드 fight, [가져옴] for an imported one.</summary>
+    static string ChipOf((string File, FightRecord Record) x) =>
+        x.File.StartsWith(TestKey) ? TestChip : IsImported(x.File) ? ImportChip : RecordCharacter.Of(x.Record);
 
-    /// <summary>One chip per character with fights (the one being played first, the newest after it, 알 수 없음 last), then 테스트.</summary>
+    /// <summary>One chip per character with fights (the one being played first, the newest after it, 캐릭터 불명 last), then 테스트
+    /// and [가져옴].</summary>
     IReadOnlyList<RecordChip> ChipsOf(IReadOnlyList<(string File, FightRecord Record)> all)
     {
-        var chips = RecordCharacter.Chips(all.Where(x => !x.File.StartsWith(TestKey)).Select(x => x.Record), ActiveLabel());
-        var test = all.Where(x => x.File.StartsWith(TestKey)).Select(x => x.Record).ToList();
-        if (test.Count == 0) return chips;
-        return [.. chips, new RecordChip(TestChip, test.Count(r => !r.Kept), test.Count(r => r.Kept), test.Max(r => r.StartedAt))];
+        var chips = RecordCharacter.Chips(all.Where(x => !x.File.StartsWith(TestKey) && !IsImported(x.File)).Select(x => x.Record), Homework?.Current).ToList();
+        foreach (var (chip, key) in new[] { (TestChip, TestKey), (ImportChip, ImportKey) })
+            if (all.Where(x => x.File.StartsWith(key)).Select(x => x.Record).ToList() is { Count: > 0 } some)
+                chips.Add(new RecordChip(chip, some.Count(r => !r.Kept), some.Count(r => r.Kept), some.Max(r => r.StartedAt)));
+        return chips;
     }
 
     UIElement ChipRow(IReadOnlyList<RecordChip> chips, string picked)
@@ -169,7 +181,9 @@ public partial class SettingsWindow
             Background = Brushes.Transparent, Focusable = true,
         };
         var (store, name) = StoreOf(file);
-        string held = (store == TestRecords ? "[테스트]   " : "") + (RecordStore.IsHeld(name) ? "[저장 안 됨]   " : "") + (r.Cleared switch { true => "클리어   ", false => "실패   ", _ => "" });
+        bool imported = IsImported(file);
+        string held = (store == TestRecords ? "[테스트]   " : "") + (imported ? $"{ImportChip} [{RecordCharacter.ClassOf(r)}]   " : "")
+            + (RecordStore.IsHeld(name) ? "[저장 안 됨]   " : "") + (r.Cleared switch { true => "클리어   ", false => "실패   ", _ => "" });
         text.Children.Add(new TextBlock { Text = $"{held}{r.StartedAt:MM-dd HH:mm}   {r.Gate ?? "알 수 없음"}   {r.Difficulty}   {(int)r.Duration / 60}:{(int)r.Duration % 60:00}   내 몫 {share}" });
         text.Children.Add(new TextBlock { Text = string.Join(", ", r.Members.Select(m => m.Name)), FontSize = 11, Opacity = 0.7, TextTrimming = TextTrimming.CharacterEllipsis });
         text.MouseLeftButtonUp += (_, _) => OpenRecord(file);
@@ -199,7 +213,8 @@ public partial class SettingsWindow
                 RecordAction(() => store?.Delete(name));
         };
         var row = new WrapPanel { Margin = new(0, 4, 0, 4) };
-        foreach (var c in new UIElement[] { text, keep, compare, edit, delete }) row.Children.Add(c);
+        // An imported fight is kept until deleted and isn't mine to edit: 비교 and 삭제 only.
+        foreach (var c in imported ? new UIElement[] { text, compare, delete } : [text, keep, compare, edit, delete]) row.Children.Add(c);
         return row;
     }
 

@@ -7,10 +7,12 @@ public enum SkillRegister { Go, PlayThatCharacter, StartGame }
 /// (records-timeline.design.md: no silent capture of another character's bar). Pure.</summary>
 public static class SkillRegisterAdvice
 {
-    public static SkillRegister For(string recordCharacter, string? playing, bool gameRunning)
+    /// <summary><paramref name="recordClass"/> and <paramref name="playing"/> are class labels (<see cref="RecordCharacter.Label"/>):
+    /// icons are kept per class and 직업각인, not per in-game character.</summary>
+    public static SkillRegister For(string recordClass, string? playing, bool gameRunning)
     {
         if (!gameRunning) return SkillRegister.StartGame;
-        if (recordCharacter == RecordCharacter.Unknown || playing != recordCharacter) return SkillRegister.PlayThatCharacter;
+        if (recordClass == RecordCharacter.NoClass || playing != recordClass) return SkillRegister.PlayThatCharacter;
         return SkillRegister.Go;
     }
 }
