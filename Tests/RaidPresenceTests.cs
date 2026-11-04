@@ -92,5 +92,18 @@ public sealed class RaidPresenceTests
         for (int t = 11; t <= (int)end.TotalSeconds + 120; t++) p = p.Hidden(S(t));
         Assert.False(p.InDungeon(end + RaidPresence.Hold + S(1)));
     }
+
+    [Fact]
+    public void Another_app_in_front_holds_a_dungeon_however_long_and_the_stay_goes_on()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10));
+        for (int t = 11; t <= 1210; t++) p = p.Away(S(t));   // 20 minutes on a video alt-tabbed to
+        Assert.True(p.InDungeon(S(1210) + RaidPresence.Hold));
+        Assert.Equal(S(10), p.Since);
+    }
+
+    [Fact]
+    public void Away_from_the_game_outside_a_dungeon_is_nowhere() =>
+        Assert.False(RaidPresence.None.Away(S(10)).InDungeon(S(10)));
 }
 

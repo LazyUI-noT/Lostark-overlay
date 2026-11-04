@@ -10,6 +10,19 @@ public class BossDamageTests
         BossDamage.Taken(reads.Aggregate(BossDamageState.None, BossDamage.Update));
 
     [Fact]
+    public void The_shield_kept_is_the_one_of_the_read_the_filter_kept()
+    {
+        var s = BossDamage.Update(BossDamageState.None, (100, 200), 50);
+        Assert.Equal(50, s.LastShield);
+        s = BossDamage.Update(s, (100, 200), 40);
+        Assert.Equal((150L, 50L), (s.Last!.Value, s.LastShield));   // two reads: the higher
+        s = BossDamage.Update(s, (100, 200), 30);
+        Assert.Equal((140L, 40L), (s.Last!.Value, s.LastShield));   // the median of 150, 140, 130
+        s = BossDamage.Update(s, (100, 200), 0);
+        Assert.Equal((130L, 30L), (s.Last!.Value, s.LastShield));   // of 140, 130, 100
+    }
+
+    [Fact]
     public void One_phase_counts_the_drop_since_the_first_read()
     {
         Assert.Equal(0, Taken());

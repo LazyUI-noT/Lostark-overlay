@@ -33,6 +33,8 @@ public sealed record Snapshot(
     public AmsuState? Amsu { get; init; }
     /// <summary>The 그림자 레이드 gimmick's boss HP (ShadowHp) while it is up; null otherwise.</summary>
     public ShadowView? Shadow { get; init; }
+    /// <summary>보스 체력 쉽게 보기: the boss's HP beside its name while its bar is read (BossHpLabel); null otherwise.</summary>
+    public BossHpView? BossHp { get; init; }
 
     /// <summary>The 줄 수 창 (설정 → 레이드, yours only); null while it isn't shown.</summary>
     public RaidStatus? Raid { get; init; }

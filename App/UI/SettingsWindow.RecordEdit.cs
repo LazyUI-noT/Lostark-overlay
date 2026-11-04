@@ -38,6 +38,13 @@ public partial class SettingsWindow
         var character = Pick(characters.Select(x => RecordCharacter.Label(x.Class.Name, x.Sub)), RecordCharacter.ClassOf(r), editable: false);
         var who = Pick(_s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
             .Where(n => n.Trim().Length > 0).Distinct(), r.Character, editable: true);
+        // Picking a character sets its saved class · 직업각인; it can still be changed below.
+        who.SelectionChanged += (_, _) =>
+        {
+            if (RecordCharacter.SavedClass(who.SelectedItem as string, _s.Homework.Characters, all.Select(x => x.Record)) is { } saved
+                && characters.FindIndex(x => RecordCharacter.Label(x.Class.Name, x.Sub) == saved) is >= 0 and var at)
+                character.SelectedIndex = at;
+        };
 
         var apply = new Button { Content = "적용", Margin = new(0, 6, 8, 0) };
         var cancel = new Button { Content = "취소", Margin = new(0, 6, 0, 0) };
@@ -77,7 +84,7 @@ public partial class SettingsWindow
         panel.Children.Add(Row("캐릭터", who));
         panel.Children.Add(Row("클래스 · 직업각인", character));
         panel.Children.Add(Note("던전과 난이도는 목록에서 고르거나 직접 씁니다. 바꾸면 이 보스 HP를 기억해 다음 전투부터 같은 이름으로 저장합니다. " +
-            "캐릭터를 바꾸면 그 캐릭터의 기록으로 옮기고, 가득 찼으면 그 캐릭터의 가장 오래된 자동 기록을 지웁니다. 비우면 캐릭터 불명입니다. 클래스는 스킬 아이콘에 씁니다."));
+            "캐릭터를 바꾸면 그 캐릭터의 기록으로 옮기고, 가득 찼으면 그 캐릭터의 가장 오래된 자동 기록을 지웁니다. 비우면 캐릭터 불명입니다. 캐릭터를 고르면 저장된 클래스 · 직업각인으로 맞추고, 그 뒤에 바꿀 수 있습니다. 클래스는 스킬 아이콘에 씁니다."));
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         buttons.Children.Add(apply);
         buttons.Children.Add(cancel);

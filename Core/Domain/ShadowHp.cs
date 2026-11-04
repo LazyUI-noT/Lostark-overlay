@@ -34,6 +34,18 @@ public sealed record ShadowHp(long Start, long Max, long Dealt, double? PerLine,
     }
 }
 
-/// <summary>What the 그림자 gimmick's text shows: the boss's HP left and lines (null: no "X n" read), at the boss bar's place on
-/// screen (Geometry.BossBar). Local only, not sent to the party.</summary>
-public sealed record ShadowView(long Remaining, int? Lines, PixelRect Bar);
+/// <summary>What the 그림자 gimmick's text shows: the boss's HP left and lines (null: no "X n" read) inside the gimmick's fill bar
+/// (Geometry.ShadowBar), and the damage dealt in it, easy to read, beside its number (<paramref name="DealtLabel"/>,
+/// Geometry.ShadowDealt); screen pixels. Local only, not sent to the party.</summary>
+public sealed record ShadowView(long Remaining, int? Lines, PixelRect Bar, long Dealt, PixelRect DealtLabel)
+{
+    /// <summary>"X 87  4,350억"; the HP alone while no "X n" was read.</summary>
+    public string Text
+    {
+        get
+        {
+            string hp = $"{Remaining / 100_000_000.0:N0}억";
+            return Lines is { } lines ? $"X {lines.ToString(System.Globalization.CultureInfo.InvariantCulture)}  {hp}" : hp;
+        }
+    }
+}

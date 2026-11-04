@@ -36,7 +36,9 @@ sealed class HomeworkWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        WindowStyles.Set(new WindowInteropHelper(this).Handle, ExStyle.ToolWindow | ExStyle.NoActivate | ExStyle.ClickThrough, true);
+        var hwnd = new WindowInteropHelper(this).Handle;
+        WindowStyles.Set(hwnd, ExStyle.ToolWindow | ExStyle.NoActivate | ExStyle.ClickThrough, true);
+        WindowStyles.SetExcludeFromCapture(hwnd, true);   // the menu is read from the screen: its own tags would look like a change (Desktop Duplication sees them)
     }
 
     /// <summary>Shows the tags under <paramref name="cards"/> (screen pixels, the card from its level line down to its bottom)

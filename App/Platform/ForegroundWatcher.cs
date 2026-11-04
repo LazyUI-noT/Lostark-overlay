@@ -23,7 +23,19 @@ public sealed partial class ForegroundWatcher : IDisposable
             Marshal.GetFunctionPointerForDelegate(_proc), 0, 0, WINEVENT_OUTOFCONTEXT);
         GameWindow.NoteForeground(GetForegroundWindow());
         IsGameForeground = IsGame(GetForegroundWindow());
+        IsOtherForeground = IsOther(GetForegroundWindow(), IsGameForeground);
     }
+
+    /// <summary>True while another app's window is in front: not the game, nor this app's, nor the shell's (a video alt-tabbed
+    /// to, which Desktop Duplication would capture as if it were the game).</summary>
+    public bool IsOtherForeground { get; private set; }
+
+    /// <summary>New value of <see cref="IsOtherForeground"/>; raised only when it changes.</summary>
+    public event Action<bool>? OtherChanged;
+
+    /// <summary>No window (mid-switch) or one already closed is not another app: the reads wait for the next foreground event to say so.</summary>
+    static bool IsOther(IntPtr hwnd, bool game) =>
+        hwnd != 0 && !game && GetWindowThreadProcessId(hwnd, out _) != 0 && !GameWindow.IsOursOrShell(hwnd);
 
     /// <summary>Test mode was switched: whether "the game" is in front changes with it.</summary>
     public void Recheck() => Update(GetForegroundWindow());
@@ -48,6 +60,11 @@ public sealed partial class ForegroundWatcher : IDisposable
             OwnChanged?.Invoke(own);
         }
         bool game = IsGame(hwnd);
+        if (IsOther(hwnd, game) is var other && other != IsOtherForeground)
+        {
+            IsOtherForeground = other;
+            OtherChanged?.Invoke(other);
+        }
         if (game == IsGameForeground) return;
         IsGameForeground = game;
         Changed?.Invoke(game);

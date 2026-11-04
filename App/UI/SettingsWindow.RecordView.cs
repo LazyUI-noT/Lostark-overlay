@@ -30,6 +30,7 @@ public partial class SettingsWindow
         ShowRecords(opened, compared, all);
         _secRecords.Children.Clear();
         _secRecords.Children.Add(TimelineBar(picked));
+        _secRecords.Children.Add(ChartChecks(opened.Record));
         if (_registerNote is { } note) _secRecords.Children.Add(Note(note));
         _secRecords.Children.Add(TimelineWithList(all, opened));
         if (!_recordsHooked) { _recordsHooked = true; Body.SizeChanged += (_, _) => FitTimeline(); }
@@ -108,8 +109,11 @@ public partial class SettingsWindow
             _hasIcons = icons.Count > 0;
             int phase = compared.Count > 0 ? _comparePhase : 0;
             var whole = FightRegions.Join(run);
+            double? HpPerLine(long max) => RaidData.HpPerLine(RaidGates, whole.Gate, max);
+            var marks = Timeline.GimmickMarks(whole, (RaidData.ByHp(RaidGates, BossBook.FightHp(whole.Boss))?.Gate ?? RaidGates.FirstOrDefault(g => RaidData.Label(g) == whole.Gate))?.IsShadow == true);
             _timeline.Show((whole, Timeline.Offset(opened.Record, phase), icons), [.. compared.Select(x =>
-                new TimelineView.ComparedFight(x.Record, Timeline.Offset(x.Record, phase), LookOf(x, opened), LabelOf(x, opened)))], FightRegions.Of(whole, RaidGates));
+                new TimelineView.ComparedFight(x.Record, Timeline.Offset(x.Record, phase), LookOf(x, opened), LabelOf(x, opened)))], FightRegions.Of(whole, RaidGates),
+                Timeline.Outside(Timeline.BossUnhittable(whole, HpPerLine), Timeline.GimmickSpans(whole, marks)), HpPerLine, marks);
         }
         // A 4-man gate (by the fight's boss HP, else its name): the party's buff share too. Set before Keys, which redraws.
         var r = opened.Record;
@@ -158,6 +162,28 @@ public partial class SettingsWindow
         export.Click += (_, _) => ExportFights([.. picked.Select(x => x.Record)]);
         bar.Children.Add(export);
         return bar;
+    }
+
+    /// <summary>What the chart shows: its kinds of line, 보스 HP, 보스 타격 불가, and each player.</summary>
+    WrapPanel ChartChecks(FightRecord r)
+    {
+        var row = new WrapPanel { Margin = new(0, 0, 0, 4) };
+        CheckBox Box(string text, bool on, Action<bool> set)
+        {
+            var box = new CheckBox { Content = text, IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0) };
+            box.Click += (_, _) => set(box.IsChecked == true);
+            row.Children.Add(box);
+            return box;
+        }
+        void Part(string text, TimelineView.ChartParts part) => Box(text, _timeline.Parts.HasFlag(part), on =>
+            _timeline.Parts = on ? _timeline.Parts | part : _timeline.Parts & ~part);
+        Part("초당 피해량", TimelineView.ChartParts.Dps);
+        Part("피해량", TimelineView.ChartParts.Damage);
+        Part("보스 HP", TimelineView.ChartParts.BossHp);
+        Part("보스 타격 불가", TimelineView.ChartParts.Unhittable);
+        foreach (string name in r.Samples.Select(s => s.Name).Distinct().OrderBy(n => n != r.Me))
+            Box(name, _timeline.Shows(name), on => _timeline.SetShown(name, on));
+        return row;
     }
 
     static TextBlock BarText(string text, bool bold = false) => new()

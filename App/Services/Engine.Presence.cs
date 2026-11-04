@@ -16,7 +16,7 @@ public sealed partial class Engine
     TimeSpan _lastBossProbe = TimeSpan.MinValue, _lastMeterProbe = TimeSpan.MinValue;
 
     static readonly TimeSpan KeptPublishEvery = TimeSpan.FromSeconds(10);
-    TimeSpan _keptPublished = TimeSpan.MinValue;
+    TimeSpan _keptPublished = TimeSpan.MinValue, _seenPublished = TimeSpan.MinValue;
 
     /// <summary>After the HUD vote: a hidden HUD keeps a dungeon (a cutscene hides the HUD and the meter alike). True when the
     /// app should hear of it: nothing else publishes on a still cutscene, and the app's windows read the published presence.</summary>
@@ -73,12 +73,13 @@ public sealed partial class Engine
         _loading = _loading.HudBack(t);
     }
 
-    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수, the raid's 디버프 창. They need the probes when nothing
-    /// else tells where the player is (the overlay's meter off).</summary>
+    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수, the raid's 디버프 창, and a buff bar on 자동. They need
+    /// the probes when nothing else tells where the player is (the overlay's meter off).</summary>
     bool RaidReadsOn(Config config)
     {
         var plan = config.Raids is { } s ? RaidReadPlan.Of(s, config.RaidGates ?? [], _raidRec.Gate) : default;
-        return plan.ReadName || plan.ReadCount || config.AmsuOn || config.DebuffPick != Raid.없음 || config.Raids?.DebuffsAuto == true;   // the 디버프 창 waits for a dungeon too
+        return plan.ReadName || plan.ReadCount || config.AmsuOn || config.DebuffPick != Raid.없음 || config.Raids?.DebuffsAuto == true   // the 디버프 창 waits for a dungeon too
+            || config.BuffsInRaidOnly;
     }
 
     /// <summary>At each step: on leaving a dungeon, 줄 수 and 암수 stop reading, so their state is cleared here (a read that just
@@ -94,7 +95,7 @@ public sealed partial class Engine
         bool inside = _presence.InDungeon(now);
         if (_wasInDungeon && !inside)
         {
-            (_amsuWatch, _bar, _raid) = (new AmsuWatch(), BarCountState.None, null);
+            (_amsuWatch, _bar, _raid, _bossHp) = (new AmsuWatch(), BarCountState.None, null, BossHpLabel.None);
             ShadowReset();
             Ocr = NewOcr();   // the OCR engine is let go until the next dungeon, which starts with a fresh one (user, 2026-11-03)
             Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared, OCR closed");
@@ -156,7 +157,20 @@ public sealed partial class Engine
         if (!hp) return _barCount ??= BossDigits.ReadBar(row, scale, hp: false);
         if (_barFull is { } read) return read;
         var bar = BossDigits.ReadBar(row, scale, hp: !GameWindow.ReadsReinforced);   // 강화: the count as captured, the HP below
-        return (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) } : bar).Value;
+        var full = (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) } : bar).Value;
+        StepBossHp(full.Hp);
+        return full;
+    }
+
+    BossHpLabel _bossHp = BossHpLabel.None;
+    bool _bossHpChanged;
+
+    /// <summary>The boss HP label (보스 체력 쉽게 보기) after a full read of the bar's text, once per captured row.</summary>
+    void StepBossHp((long Current, long Max, long Shield)? hp)
+    {
+        var next = _bossHp.Step(hp is var (current, _, shield) ? new BossHpView(current, shield, Geometry.BossHpLabel(_vp, _fit!)) : null, _barAt);
+        _bossHpChanged |= next != _bossHp;
+        _bossHp = next;
     }
 
     /// <summary>The meter's saved spot, with the overlay's meter off while a raid read is on and a probe is due.</summary>
@@ -177,6 +191,10 @@ public sealed partial class Engine
         bool was = _presence.InDungeon(t);
         _presence = _presence.Saw(meter, boss, t);
         if (meter || boss) _loading = _loading.Saw();
-        if (!was && _presence.InDungeon(t)) Trace.WriteLine($"[presence] in a dungeon (by {(meter ? "the meter" : "a boss bar")})");
+        if (!meter && !boss || was && !Elapsed(t, _seenPublished, KeptPublishEvery)) return;
+        if (!was) Trace.WriteLine($"[presence] in a dungeon (by {(meter ? "the meter" : "a boss bar")})");
+        // A bar on 자동 reads the published presence: on entering, and well inside its hold while nothing else publishes (standing idle in a raid).
+        _seenPublished = t;
+        Publish(t);
     }
 }

@@ -69,6 +69,8 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <summary>그림자 레이드 기믹 체력 (ShadowHp): the raids (RaidGate.Raid) it is turned off for; on for every other (user, 2026-11-04).</summary>
     public List<string> ShadowHpOff { get; set; } = [];
     public bool ShadowHpOn(string raid) => !ShadowHpOff.Contains(raid);
+    /// <summary>보스 체력 쉽게 보기: the boss's HP (and shield) in 조 · 억 beside its name, in every raid (user, 2026-11-05).</summary>
+    public bool BossHpEasy { get; set; } = true;
     public bool Glow { get; set; } = true;
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;

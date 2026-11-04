@@ -118,7 +118,8 @@ public static partial class GameWindow
         return n > 0 ? new string(name, 0, n) : "?";
     }
 
-    static bool IsOursOrShell(IntPtr hwnd)
+    /// <summary>A window of this app, or the taskbar, desktop or Start menu: neither the game nor another app.</summary>
+    internal static bool IsOursOrShell(IntPtr hwnd)
     {
         if (GetWindowThreadProcessId(hwnd, out uint pid) == 0) return false;
         if (pid == Environment.ProcessId) return true;

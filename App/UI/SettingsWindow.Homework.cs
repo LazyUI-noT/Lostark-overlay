@@ -14,8 +14,9 @@ public partial class SettingsWindow
 {
     const string AreaHomework = "숙제";
     const int MaxCustomLevels = 3;
+    static readonly SolidColorBrush ClearedBrush = new(Color.FromRgb(0x2E, 0xA0, 0x43));
     const string HomeworkLead = "캐릭터마다 이번 주(수요일 오전 6시부터) 클리어한 레이드를 봅니다. 캐릭터는 ESC 게임 메뉴와 '다른 캐릭터 바로 접속' 창에서 읽고, " +
-        "레이드는 전투 기록이 마지막 관문을 클리어로 저장하면 지웁니다. 같은 레이드는 난이도와 상관없이 한 주에 한 번이라, 고른 것보다 낮은 난이도로 깨면 ↓, 높으면 ↑를 붙이고 고른 난이도를 올립니다.";
+        "레이드는 전투 기록이 마지막 관문을 클리어로 저장하면 지웁니다. 같은 레이드는 난이도와 상관없이 한 주에 한 번이라, 고른 것보다 낮은 난이도로 깨면 ↓, 높으면 ↑를 붙이고 고른 난이도를 올립니다. 앱 없이 깼다면 레이드 줄의 [클리어]를 누릅니다.";
     readonly CardStack _secHomework = new();
 
     /// <summary>Who is played, the character list and the clears (null: none yet, the page says so).</summary>
@@ -71,7 +72,7 @@ public partial class SettingsWindow
         hide.Click += (_, _) => { c.Hidden = true; Changed(); FillHomework(); };
         head.Children.Add(hide);
         card.Children.Add(head);
-        for (int i = 0; i < c.Picks.Count; i++) card.Children.Add(PickRow(hw, c, i));
+        for (int i = 0; i < c.Picks.Count; i++) card.Children.Add(PickRow(hw, c, i, clears));
         if (c.Picks.Count < HomeworkCharacter.MaxPicks && hw.Raids.Count > 0)
         {
             var add = new Button { Content = "+ 레이드", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(16, 4, 0, 0) };
@@ -87,8 +88,8 @@ public partial class SettingsWindow
         return card;
     }
 
-    /// <summary>A pick: its raid and difficulty, and 빼기.</summary>
-    UIElement PickRow(HomeworkService hw, HomeworkCharacter c, int index)
+    /// <summary>A pick: its raid and difficulty, 빼기 and 클리어.</summary>
+    UIElement PickRow(HomeworkService hw, HomeworkCharacter c, int index, IReadOnlyList<HomeworkClear> clears)
     {
         var pick = c.Picks[index];
         var raid = hw.Raids.FirstOrDefault(r => r.Id == pick.Raid);
@@ -110,8 +111,23 @@ public partial class SettingsWindow
         remove.Click += (_, _) => { c.Picks = [.. c.Picks.Where((_, i) => i != index)]; Changed(); FillHomework(); };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(16, 2, 0, 2) };
         foreach (var e in new UIElement[] { raids, levels, remove }) row.Children.Add(e);
+        if (hw.TagOf(c, pick, clears) is { } tag) row.Children.Add(ClearButton(hw, c, pick, tag.Done));
         levels.Margin = new(8, 0, 0, 0);
         return row;
+    }
+
+    /// <summary>클리어 by hand, for a raid played without the app: lit while cleared this week (by a click or a saved fight); the
+    /// week's reset turns it off. A click takes back either kind.</summary>
+    static Button ClearButton(HomeworkService hw, HomeworkCharacter c, HomeworkPick pick, bool done)
+    {
+        var button = new Button
+        {
+            Content = "클리어", Margin = new(8, 0, 0, 0),
+            ToolTip = done ? "이번 주 클리어했습니다. 누르면 취소합니다." : "앱 없이 클리어했다면 누르세요. 수요일 오전 6시에 풀립니다.",
+        };
+        if (done) (button.Background, button.Foreground, button.FontWeight) = (ClearedBrush, Brushes.White, FontWeights.Bold);
+        button.Click += (_, _) => hw.ToggleClear(c, pick);
+        return button;
     }
 
     /// <summary>A tag as the grid shows it: its colour, crossed out when cleared, ↓ / ↑ when cleared below / above the pick.</summary>

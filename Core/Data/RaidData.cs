@@ -8,10 +8,13 @@ namespace GaugeOverlay.Core.Data;
 public sealed record RaidGate(string Id, string Raid, string Gate, IReadOnlyList<string> Bosses, IReadOnlyList<int> Alerts, Raid DebuffRaid,
     IReadOnlyDictionary<string, long>? HpByDifficulty = null, string? After = null, IReadOnlyDictionary<string, long>? HiddenHpByDifficulty = null,
     string? Tab = null, string? CalibrateFrom = null, IReadOnlyList<EstherSkill>? EstherSkills = null, IReadOnlyList<GateShield>? ShieldList = null,
-    int Players = 8)
+    int Players = 8, int? Lines = null)
 {
     /// <summary>4-man (세르카, 구원의 종탑; user 2026-11-04): the boss HP lost is the party's damage (MeterView BuffParty).</summary>
     public bool SmallParty => Players <= 4;
+
+    /// <summary>A 그림자 레이드: the gate where 대난투 (the gimmick without a boss bar) happens.</summary>
+    public bool IsShadow => Tab == "그림자 레이드";
 
     /// <summary>The gate's shield gimmicks: at a bar count, a shield worth some bars (종막 2-2: at 305, +10; a share of the HP, so
     /// the same bars at every difficulty).</summary>
@@ -60,7 +63,7 @@ public static class RaidData
                 g.Id!, g.Raid ?? "", g.Gate ?? "", g.Bosses ?? [], [.. (g.Alerts ?? []).Distinct().OrderDescending()],
                 Enum.TryParse<Raid>(g.DebuffRaid, out var r) ? r : Domain.Raid.없음, g.Hp, g.After, g.HiddenHp, g.Tab, g.CalibrateFrom,
                 g.Esther?.Where(e => !string.IsNullOrWhiteSpace(e.Name)).Select(e => new EstherSkill(e.Name!, e.Damage ?? [], e.At)).ToList(),
-                g.Shields?.Where(x => x.At > 0 && x.Lines > 0).Select(x => new GateShield(x.At, x.Lines)).ToList(), g.Players is > 0 ? g.Players.Value : 8))];
+                g.Shields?.Where(x => x.At > 0 && x.Lines > 0).Select(x => new GateShield(x.At, x.Lines)).ToList(), g.Players is > 0 ? g.Players.Value : 8, g.Lines is > 0 ? g.Lines : null))];
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return []; }
     }
@@ -70,6 +73,11 @@ public static class RaidData
     /// <summary>The gate and difficulty whose boss max HP is <paramref name="max"/>, or null.</summary>
     public static (RaidGate Gate, string Difficulty)? ByHp(IReadOnlyList<RaidGate> gates, long? max) =>
         max is { } m && gates.SelectMany(g => g.Hp.Where(h => h.Value == m).Select(h => (g, h.Key))).FirstOrDefault() is ({ } g, { } d) ? (g, d) : null;
+
+    /// <summary>The HP in one line of a bar of <paramref name="max"/>: the gate by that exact HP, else by the fight's <paramref name="label"/>
+    /// (a patch changes the HP, not the lines); null when the gate's lines aren't known.</summary>
+    public static double? HpPerLine(IReadOnlyList<RaidGate> gates, string? label, long max) =>
+        (ByHp(gates, max)?.Gate ?? gates.FirstOrDefault(g => Label(g) == label))?.Lines is { } lines ? (double)max / lines : null;
 
     /// <summary>"3막 · 3관문"; the raid alone while its gate has no name.</summary>
     public static string Label(RaidGate g) => string.IsNullOrWhiteSpace(g.Gate) ? g.Raid : $"{g.Raid} · {g.Gate}";
@@ -85,7 +93,7 @@ public static class RaidData
 
     sealed record FileDto(List<GateDto>? Gates);
     sealed record GateDto(string? Id, string? Raid, string? Gate, List<string>? Bosses, List<int>? Alerts, string? DebuffRaid, Dictionary<string, long>? Hp,
-        string? After, Dictionary<string, long>? HiddenHp, string? Tab, string? CalibrateFrom, List<EstherDto>? Esther, List<ShieldDto>? Shields, int? Players);
+        string? After, Dictionary<string, long>? HiddenHp, string? Tab, string? CalibrateFrom, List<EstherDto>? Esther, List<ShieldDto>? Shields, int? Players, int? Lines);
     sealed record ShieldDto(int At, int Lines);
     sealed record EstherDto(string? Name, Dictionary<string, double>? Damage, int? At);
 }

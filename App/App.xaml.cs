@@ -97,7 +97,9 @@ public partial class App : Application
     OverlayWindow _amsu = null!;   // 암수 창: the bomb on the boss
     OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
     OverlayWindow _meter = null!;   // DPS 미터기
-    ShadowHpWindow _shadow = null!;   // 그림자 레이드 기믹 체력, at the boss bar's place
+    OverlayTextWindow _shadow = null!;   // 그림자 레이드 기믹 체력, in the gimmick's fill bar
+    OverlayTextWindow _shadowDealt = null!;   // 대난투's damage, easy to read, beside its number
+    OverlayTextWindow _bossHp = null!;   // 보스 체력 쉽게 보기, beside the boss's name
     HomeworkWindow _homeworkTags = null!;   // 숙제 tags under the 다른 캐릭터 접속 grid's cards
     PartyService? _partyService;   // set by StartApp (null in the demo)
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
@@ -138,7 +140,9 @@ public partial class App : Application
         _amsu = new OverlayWindow(settings, amsu: true);
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
-        _shadow = new ShadowHpWindow();
+        _shadow = OverlayTextWindow.InBar();
+        _shadowDealt = OverlayTextWindow.Label(textShare: 0.6);   // about the size of the gimmick's number
+        _bossHp = OverlayTextWindow.Label(textShare: 0.5);   // about the size of the boss's name
         _homeworkTags = new HomeworkWindow();
         _settingsWindow = new SettingsWindow(settings, characters);
         _layer = new AdjustLayer();

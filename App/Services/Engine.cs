@@ -39,7 +39,7 @@ public sealed partial class Engine : IDisposable
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
-        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음)
+        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool BuffsInRaidOnly = false)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -161,6 +161,11 @@ public sealed partial class Engine : IDisposable
     /// Desktop Duplication captures whatever is on top, so ready icons are learned only while this is true.</summary>
     public bool GameForeground { get => _foreground; set => _foreground = value; }
 
+    volatile bool _otherApp;
+    /// <summary>Another app's window is in front (ForegroundWatcher.IsOtherForeground): outside 테스트 모드 nothing is read, as the
+    /// screen isn't the game's (user, 2026-11-05: OCR and the meter read a gameplay video alt-tabbed to).</summary>
+    public bool OtherAppForeground { set => _otherApp = value; }
+
     volatile bool _seesBehind;   // the capture source reads the window even while covered (테스트 모드's WGC)
 
     /// <summary>The capture reads the game window even behind others (테스트 모드 on a window WGC can capture): App needn't bring
@@ -170,7 +175,7 @@ public sealed partial class Engine : IDisposable
     /// <summary>A capture now shows the game: it is in front, or the source sees behind other windows.</summary>
     bool CanRead => _foreground || _seesBehind;
 
-    /// <summary>Runs 스킬창 맞추기 on the next frame. The user should be in the 수련장 with every cooldown reset.</summary>
+    /// <summary>Runs 스킬창 맞추기 on the next frame. Every skill should be ready, anywhere skills can be used.</summary>
     public void RequestFit() => _fitRequested = true;
 
     /// <summary>테스트 모드's 되돌리기: the fit in use before the last fit request comes back on the next frame.</summary>
@@ -272,6 +277,15 @@ public sealed partial class Engine : IDisposable
         if (!EnsureFit()) { Thread.Sleep(200); return; }
         PreviewStep();
         if (_fit is null) return;   // a preview just ended: the saved fit is resolved next step
+        // Another app in front, outside 테스트 모드: no reads. The fight waits as on a still screen (no frame) and goes on when
+        // the game is back; the 전분 timer gives the time that passed.
+        if (_otherApp && !_testMode)
+        {
+            _presence = _presence.Away(now);   // the dungeon, 줄 수 and 암수 are still there on return
+            if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
+            Thread.Sleep(50);
+            return;
+        }
         if (_testMode) StepTestBuffSize(now);
         // Detection runs only when asked (스킬창 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
         // cutscene it used to pick the wrong class.
@@ -328,9 +342,9 @@ public sealed partial class Engine : IDisposable
         var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, due);
         raiding |= meterHp is not null;
         var (bossProbe, meterProbe, loadingBar) = (BossProbeRect(config, due), MeterProbeRect(config, due), LoadingRect(config, due));
-        var (menuTitle, menuPanel, menuWaiting) = MenuRects(due);
+        var (menuTitle, menuPanel, menuWaiting, menuWatch) = MenuRects(due);
         bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null
-            || menuTitle is not null || menuPanel is not null;   // ride on this step's capture: no frame wait of their own
+            || menuTitle is not null || menuPanel is not null || menuWatch is not null;   // ride on this step's capture: no frame wait of their own
         if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
@@ -367,9 +381,12 @@ public sealed partial class Engine : IDisposable
         if (meterProbe is { } meterSpot) rects.Add(meterSpot);
         int loadingAt = rects.Count;
         if (loadingBar is { } loadingStrip) rects.Add(loadingStrip);
-        int menuAt = rects.Count;   // the game menu: its title strip, or its panel and waiting corner (Engine.Menu.cs)
+        int menuAt = rects.Count;   // the game menu: its title strip, its panel and waiting corner, the watched area (Engine.Menu.cs)
         if (menuTitle is { } titleStrip) rects.Add(titleStrip);
+        int menuPanelAt = rects.Count;
         if (menuPanel is { } panelArea && menuWaiting is { } waitingCorner) { rects.Add(panelArea); rects.Add(waitingCorner); }
+        int menuWatchAt = rects.Count;
+        if (menuWatch is { } watchArea) rects.Add(watchArea);
         // The boss bar's text row (Geometry.BossTextRow) once, for all who read it this step: the 줄 수 count and the max HP, the
         // meter's HP, 암수's HP and the boss probe. One copy and one read (BossBar) instead of up to four.
         int bossRowAt = rects.Count;
@@ -421,8 +438,9 @@ public sealed partial class Engine : IDisposable
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
         if (loadingBar is not null) ReadLoading(images[loadingAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
-        if (menuTitle is not null) StartMenu(images[menuAt], null, null, t);
-        else if (menuPanel is not null) StartMenu(null, images[menuAt], images[menuAt + 1], t);
+        if (menuTitle is not null) Perf.Run("게임 메뉴 (제목 비교)", () => StepMenuTitle(images[menuAt], t));
+        if (menuWatch is not null) Perf.Run("게임 메뉴 (칸 비교)", () => StepMenuWatch(images[menuWatchAt], t));
+        if (menuPanel is not null) StartMenu(null, images[menuPanelAt], images[menuPanelAt + 1], t);
         if (searchRect is not null) Perf.Run("전분 위치 찾기", () => SearchPanel(images[searchAt], t));
         if (wantLabel)
         {
@@ -432,7 +450,8 @@ public sealed partial class Engine : IDisposable
             changed |= shown != _awakeningChanged;
             _awakeningChanged = shown;
         }
-        changed |= Advance(t);
+        changed |= Advance(t) | _bossHpChanged;
+        _bossHpChanged = false;
         if (changed) Publish(t);
         if (preview)
         {
@@ -515,6 +534,7 @@ public sealed partial class Engine : IDisposable
     bool Advance(TimeSpan now)
     {
         bool changed = false;
+        if (_bossHp.Step(null, now) is var label && label != _bossHp) (_bossHp, changed) = (label, true);   // expires by time: reads may stop
         for (int i = 0; i < _states.Length; i++)
         {
             var next = CooldownTracker.Advance(_states[i], now);
@@ -636,7 +656,9 @@ public sealed partial class Engine : IDisposable
             Dungeon = _meterOn ? _dungeon : null,
             Amsu = _amsuOn ? _amsu : null,
             AmsuTimed = _amsuTimed,
-            Shadow = _meterOn && _shadow is { Dead: false } s && _shadowBar is { } bar ? new ShadowView(s.Remaining, s.Lines, bar) : null,
+            Shadow = _meterOn && _shadow is { Dead: false } s && _shadowBar is { } bar && _shadowDealt is { } dealt
+                ? new ShadowView(s.Remaining, s.Lines, bar, s.Dealt, dealt) : null,
+            BossHp = _config.Raids?.BossHpEasy == true && _shadow is null ? _bossHp.View : null,   // not over 대난투's number
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,

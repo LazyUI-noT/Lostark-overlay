@@ -363,7 +363,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             {
                 var kind = (BuffKind)(key - (int)FreeLayout.FirstBuff);
                 var st = s.Buffs.IsDefaultOrEmpty ? null : s.Buffs[(int)kind];
-                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true },
+                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true } || Settings.Buffs.OutOfRaid(kind, s.Presence.InDungeon(now)),
                     () => DrawBuff(dc, r, c, st, Settings.Buffs.Of(kind).ShowLabel, Settings.Buffs.EndFlash(kind), now, reduced));
                 continue;
             }

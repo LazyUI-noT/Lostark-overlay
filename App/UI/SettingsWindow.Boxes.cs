@@ -184,8 +184,26 @@ public partial class SettingsWindow
             Check("끊기기 1초 전 깜빡임", b.EndFlash(k), v => b.Edit(k).EndFlash = v, Changed),
             ColorRow(Label("색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k)]);
         more.Visibility = Shown(i.Visible);
-        p.Children.Add(Check("표시", i.Visible, v => { b.Edit(k).Visible = v; more.Visibility = Shown(v); }, Changed));
+        p.Children.Add(Row("표시", BuffShowCombo(k, on => more.Visibility = Shown(on))));
         p.Children.Add(more);
+    }
+
+    /// <summary>A buff bar's 표시: 끄기, 켜기, 자동. <paramref name="shown"/> hears whether the bar's other rows apply.</summary>
+    ComboBox BuffShowCombo(BuffKind k, Action<bool> shown)
+    {
+        var combo = Combo();
+        combo.MinWidth = 150;
+        combo.ItemsSource = new[] { "끄기", "켜기", "자동 (레이드 안에서만)" };
+        combo.SelectedIndex = (int)_s.Buffs.Of(k).Show;
+        combo.ToolTip = "자동: 전분이나 보스 체력바가 보이는 동안(컷신 중에도)만 막대를 보여 줍니다. 다른 막대는 자리를 그대로 지키고, 편집 모드와 미리보기에서는 흐리게 보입니다.";
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < 0) return;
+            _s.Buffs.Edit(k).Show = (BuffShow)combo.SelectedIndex;
+            shown(combo.SelectedIndex != (int)BuffShow.끄기);
+            Changed();
+        };
+        return combo;
     }
 
     void PlateRows(Panel p)

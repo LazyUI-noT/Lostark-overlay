@@ -15,13 +15,29 @@ public static class RecordCharacter
     /// <summary>The fight's character; <see cref="Unknown"/> when none was known.</summary>
     public static string Of(FightRecord r) => string.IsNullOrWhiteSpace(r.Character) ? Unknown : r.Character;
 
+    /// <summary>A fight saved in 테스트 모드 (footage, not the user's play; user, 2026-11-05): its class until 편집 sets one. The class
+    /// id and 직업각인 stay the active character's, so its timeline still has skill icons.</summary>
+    public const string TestClass = "[Test]";
+
     /// <summary>"워로드 · 고독한기사": the class · 직업각인 the fight was played on.</summary>
     public static string ClassOf(FightRecord r) => Label(r.MyClassName, r.MySubclass);
 
-    /// <summary>The label of a class and 직업각인; the class alone without a 직업각인; <see cref="NoClass"/> without a class.</summary>
+    /// <summary>The label of a class and 직업각인; the class alone without a 직업각인 (and <see cref="TestClass"/> always alone);
+    /// <see cref="NoClass"/> without a class.</summary>
     public static string Label(string? className, string? subclass) =>
         string.IsNullOrWhiteSpace(className) ? NoClass
-            : string.IsNullOrWhiteSpace(subclass) ? className : $"{className} · {subclass}";
+            : string.IsNullOrWhiteSpace(subclass) || className == TestClass ? className : $"{className} · {subclass}";
+
+    /// <summary>The class · 직업각인 saved for a character by name: 숙제's record of it, else its latest fight that has one; null when
+    /// neither knows. For 편집, which offers it and leaves it changeable (user, 2026-11-04).</summary>
+    public static string? SavedClass(string? name, IEnumerable<HomeworkCharacter> characters, IEnumerable<FightRecord> records)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        if (characters.FirstOrDefault(c => c.Name == name && !string.IsNullOrWhiteSpace(c.ClassName) && !string.IsNullOrWhiteSpace(c.Subclass)) is { } known)
+            return Label(known.ClassName, known.Subclass);
+        return records.Where(r => r.Character == name && !string.IsNullOrWhiteSpace(r.MyClassName) && r.MyClassName != TestClass && !string.IsNullOrWhiteSpace(r.MySubclass))
+            .OrderByDescending(r => r.StartedAt).Select(ClassOf).FirstOrDefault();
+    }
 
     /// <summary>A chip per character with fights: <paramref name="current"/> first, then by latest fight, <see cref="Unknown"/> last.</summary>
     public static IReadOnlyList<RecordChip> Chips(IEnumerable<FightRecord> records, string? current) =>

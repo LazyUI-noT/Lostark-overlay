@@ -86,7 +86,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     public HomeworkTag? TagOf(HomeworkCharacter c, HomeworkPick pick, IReadOnlyList<HomeworkClear> all) =>
         Homework.Tag(pick, all.Where(x => x.Character == c.Name), Raids, settings.Homework.Tags, Homework.WeekStart(DateTime.Now));
 
-    /// <summary>An added raid's tag clicked (UI thread): cleared this week, or back.</summary>
+    /// <summary>클리어 clicked, or an added raid's tag (UI thread): cleared this week, or back.</summary>
     public void ToggleClear(HomeworkCharacter c, HomeworkPick pick)
     {
         try { clears.Toggle(new HomeworkClear(c.Name, pick.Raid, pick.Difficulty, DateTime.Now)); }

@@ -32,7 +32,7 @@ public static class BossDigits
     /// nothing else (the bar's "current/max" fails on its '/'). It pops up to half as big again as it jumps.</summary>
     public static long? ReadNumber(Image area, double scale)
     {
-        if (Glyphs(area, scale * NumberPop) is not { Count: >= 5 } g || g.Any(x => x.Mark)) return null;
+        if (Glyphs(area, scale * NumberPop, anyColour: true) is not { Count: >= 5 } g || g.Any(x => x.Mark)) return null;
         var text = new StringBuilder();
         foreach (var x in g)
             if (x.Comma) text.Append(',');
@@ -150,7 +150,9 @@ public static class BossDigits
 
     /// <summary>Each pixel's min(R,G,B), and the level text clears. A white bar (a shield added to the lines): the ink clears
     /// halfway from the fill to white, and the text's dark edges are lifted to the fill so the glyphs look as on a dark fill.</summary>
-    static (byte[] Grey, int MinInk) Ink(Image area)
+    /// <param name="anyColour">대난투's number turns yellow or red as it grows (user, 2026-11-04): white text, or text whose red stands above its blue,
+    /// is ink (yellow, orange, red: 185+; the frame's bronze glow mostly under 100, at most 180 on a few pixels of shadow_number).</param>
+    static (byte[] Grey, int MinInk) Ink(Image area, bool anyColour = false)
     {
         int w = area.Width, h = area.Height;
         var grey = new byte[w * h];
@@ -158,7 +160,7 @@ public static class BossDigits
             for (int x = 0; x < w; x++)
             {
                 var (b, g, r) = area.Pixel(x, y);
-                grey[y * w + x] = Math.Min(b, Math.Min(g, r));
+                grey[y * w + x] = (byte)(anyColour ? Math.Max(Math.Min(b, Math.Min(g, r)), r - b) : Math.Min(b, Math.Min(g, r)));
             }
         int fill = MedianByte(grey), minInk = MinInk;
         if (fill > MinInk - 30)
@@ -170,10 +172,10 @@ public static class BossDigits
     }
 
     /// <summary>The glyphs left to right, or null: no text, a line of the wrong height, or a short mark that is no comma.</summary>
-    internal static List<Glyph>? Glyphs(Image area, double scale)
+    internal static List<Glyph>? Glyphs(Image area, double scale, bool anyColour = false)
     {
         int w = area.Width, h = area.Height;
-        var (grey, minInk) = Ink(area);
+        var (grey, minInk) = Ink(area, anyColour);
         // The ink runs between blank columns, a column's ink looked for in rows y0..y1 only.
         List<(int X0, int X1, int Top, int Bottom)> Runs(int y0, int y1)
         {

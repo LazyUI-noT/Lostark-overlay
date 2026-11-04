@@ -315,6 +315,21 @@ public static class Geometry
     /// and the resolution from the top centre like the boss bar; 21:9 and other HUD sizes untested on footage.</summary>
     public static readonly PixelRect RefShadowNumber = new(760, 56, 400, 30);
     public static PixelRect ShadowNumber(Viewport vp, Fit fit) => FromTop(RefShadowNumber, vp, fit);
+    /// <summary>The gimmick's fill bar under its number, inside its frame (x 638–1282, y 101–121 at 1080p HUD 110, the same video at
+    /// 9:05 empty and 9:30 filling): OverlayTextWindow draws the boss's HP and lines in it (user, 2026-11-05). Follows the HUD and the
+    /// resolution from the top centre like the number; 21:9 and other HUD sizes untested on footage.</summary>
+    public static readonly PixelRect RefShadowBar = new(638, 101, 645, 21);
+    public static PixelRect ShadowBar(Viewport vp, Fit fit) => FromTop(RefShadowBar, vp, fit);
+    /// <summary>대난투's damage, easy to read ("[2,942억]"), at a fixed spot right of its number (user, 2026-11-05: fixed, never over it):
+    /// past "10,000,000,000,000" popped 1.5× (18 characters ×10.7 px ×1.5 from x 960: x 1104 at 1080p HUD 110), on the number's
+    /// line (y 56–86). Follows the HUD and the resolution from the top centre like the number.</summary>
+    public static readonly PixelRect RefShadowDealt = new(1115, 56, 320, 30);
+    public static PixelRect ShadowDealt(Viewport vp, Fit fit) => FromTop(RefShadowDealt, vp, fit);
+    /// <summary>The boss's HP, easy to read ("[1조 5,392억] +(1,200억)"), at a fixed spot right of its name (user, 2026-11-05): past the
+    /// longest name raids.json has ("광신의 인도자, 아르세노스", 14 characters ×13.8 px centred on x 916: x 1013 at 1080p HUD 110), on
+    /// the name's line (RefBossName's rows). Follows the HUD and the resolution from the top centre like the name.</summary>
+    public static readonly PixelRect RefBossHpLabel = new(1025, 32, 320, 30);
+    public static PixelRect BossHpLabel(Viewport vp, Fit fit) => FromTop(RefBossHpLabel, vp, fit);
     public static PixelRect BossBar(Viewport vp, Fit fit) => FromTop(RefBossBar, vp, fit);
     public static PixelRect BossCount(Viewport vp, Fit fit) => FromTop(RefBossCount, vp, fit);
     public static PixelRect BossHpText(Viewport vp, Fit fit) => FromTop(RefBossHpText, vp, fit);

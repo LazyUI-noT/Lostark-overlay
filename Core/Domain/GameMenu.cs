@@ -32,7 +32,7 @@ public static partial class GameMenu
     const int MinItemLevel = 1000, MaxItemLevel = 2000;
     const double CellSnap = 20;   // cards in one column or row, within this
 
-    /// <summary>The title strip's OCR shows "게임 메뉴" (read "계임 매뉴" as often as not): the menu is open.</summary>
+    /// <summary>The title strip's OCR shows "게임 메뉴" (read "계임 매뉴" or "계임 에뉴" as often as not): the menu is open.</summary>
     public static bool IsTitle(IEnumerable<string> lines) => lines.Any(l => Title().IsMatch(Squash(l)));
 
     public static MenuRead Parse(IReadOnlyList<IReadOnlyList<MenuWord>> lines, IEnumerable<string> waitingLines)
@@ -144,7 +144,9 @@ public static partial class GameMenu
     [GeneratedRegex(@"(?<!\d)(\d{3})[.,]\d{2}")]
     private static partial Regex NoLeadingOne();
 
-    [GeneratedRegex("[게계겜]임[메매몌며]뉴")]
+    // Any first and third letter: the OCR's guesses at the title's font keep changing (게 / 계, 메 / 매 / 에; 에 alone hid the
+    // menu for a whole session). A wrong match costs one panel read, which finds no title and says closed.
+    [GeneratedRegex("[가-힣]임[가-힣]뉴")]
     private static partial Regex Title();
 
     [GeneratedRegex("[잠장삼]시만기다")]   // "잠시만 기다려주세요." read "장시만", "삼시만", "기다러" (--read-menu, 2026-11-04)

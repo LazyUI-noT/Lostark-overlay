@@ -13,10 +13,10 @@ public sealed record TimeWindow(double From, double To)
     public double X(double t, double width) => (t - From) / Span * width;
 
     /// <summary>Span times <paramref name="factor"/>, keeping second <paramref name="at"/> where it is on screen; between
-    /// <see cref="MinSpan"/> and the whole record.</summary>
-    public TimeWindow Zoom(double factor, double at, double length)
+    /// <paramref name="minSpan"/> (the timeline's: Timeline.NarrowestSpan) and the whole record.</summary>
+    public TimeWindow Zoom(double factor, double at, double length, double minSpan = MinSpan)
     {
-        double max = Math.Max(length, MinSpan), span = Math.Clamp(Span * factor, MinSpan, max);
+        double max = Math.Max(length, MinSpan), span = Math.Clamp(Span * factor, Math.Min(minSpan, max), max);   // a short fight: its whole
         double from = at - (at - From) / Span * span;
         return Placed(from, span, max);
     }
@@ -38,9 +38,134 @@ public static class Timeline
     public static bool SameRaid(FightRecord a, FightRecord b) =>
         !string.IsNullOrEmpty(a.Gate) && a.Gate == b.Gate && a.Difficulty == b.Difficulty;
 
-    /// <summary>How much bigger the skill icons draw at a zoom: the whole fight over the seconds shown, at most twice (user,
-    /// 2026-11-03), so zooming in spreads the casts and enlarges them.</summary>
-    public static double IconScale(double whole, double shown) => shown <= 0 ? 1 : Math.Clamp(whole / shown, 1, 2);
+    /// <summary>The window the boss must lose under a line in to count as unhittable (user, 2026-11-04).</summary>
+    public const double UnhittableSeconds = 5;
+
+    /// <summary>Where nobody could hit the boss (user, 2026-11-04), unlike a stretch where only my damage stops: under one line of the bar
+    /// lost in <see cref="UnhittableSeconds"/>. <paramref name="hpPerLine"/> is the size of a line for a bar's max HP, null when not
+    /// known (RaidData.HpPerLine). Not judged under a ??? bar, whose HP can't be read, nor the stall the fight ends on (a dead boss, a wiped party).</summary>
+    public static IReadOnlyList<(double From, double To)> BossUnhittable(FightRecord r, Func<long, double?> hpPerLine)
+    {
+        var boss = r.Boss.OrderBy(b => b.T).ToList();
+        var line = new double?[boss.Count];
+        double? current = null;
+        for (int i = 0; i < boss.Count; i++)
+        {
+            if (boss[i].Max is { } max) current = FightRegions.IsHidden(max) ? null : hpPerLine(max);   // a read without a max keeps the bar's
+            line[i] = current;
+        }
+        var spans = new List<(double From, double To)>();
+        for (int i = 0; i < boss.Count; i++)
+        {
+            if (line[i] is not { } size) continue;
+            int j = i + 1;
+            while (j < boss.Count && line[j] is not null && boss[j].T - boss[i].T < UnhittableSeconds) j++;
+            if (j == boss.Count) break;
+            long lost = boss[j].Taken - boss[i].Taken;
+            if (line[j] is null || lost < 0 || lost >= size) continue;   // less than nothing: another file of a joined run, whose count starts over
+            if (spans.Count > 0 && boss[i].T <= spans[^1].To) spans[^1] = (spans[^1].From, boss[j].T);
+            else spans.Add((boss[i].T, boss[j].T));
+        }
+        if (spans.Count > 0 && spans[^1].To >= boss[^1].T) spans.RemoveAt(spans.Count - 1);
+        return spans;
+    }
+
+    /// <summary>Where the figures beside the chart's line go, in the input's order: at their own height, pushed apart by
+    /// <paramref name="gap"/> so none covers another, and kept between <paramref name="top"/> and <paramref name="bottom"/> as long as they fit.</summary>
+    public static IReadOnlyList<double> SpreadTags(IReadOnlyList<double> ys, double gap, double top, double bottom)
+    {
+        var order = Enumerable.Range(0, ys.Count).OrderBy(i => ys[i]).ToList();
+        var placed = new double[ys.Count];
+        double next = top;
+        foreach (int i in order) next = (placed[i] = Math.Max(ys[i], next)) + gap;
+        double limit = bottom;
+        foreach (int i in Enumerable.Reverse(order))
+        {
+            if (placed[i] <= limit) break;
+            placed[i] = limit;
+            limit -= gap;
+        }
+        return placed;
+    }
+
+    /// <summary><paramref name="spans"/> with <paramref name="zones"/> cut out: no 보스 타격 불가 inside 대난투, where the number shows
+    /// the damage dealt and the boss is hit (user, 2026-11-04). A piece left under <see cref="UnhittableSeconds"/> goes too.</summary>
+    public static IReadOnlyList<(double From, double To)> Outside(IReadOnlyList<(double From, double To)> spans, IReadOnlyList<(double From, double To)> zones)
+    {
+        var left = spans.ToList();
+        foreach (var (zFrom, zTo) in zones)
+            left = [.. left.SelectMany(s => s.To <= zFrom || s.From >= zTo ? [s]
+                : new[] { (s.From, Math.Min(s.To, zFrom)), (Math.Max(s.From, zTo), s.To) }.Where(p => p.Item2 - p.Item1 >= UnhittableSeconds))];
+        return left;
+    }
+
+    /// <summary>The stretches 대난투 may have held, for cutting 보스 타격 불가 out: its zones, each up to the boss bar's next HP read
+    /// (between 종료 and the bar back nothing is read, which is no stall; user, 2026-11-05), and from each 입장 of an older fight,
+    /// whose end wasn't recorded, to the fight's end.</summary>
+    public static IReadOnlyList<(double From, double To)> GimmickSpans(FightRecord r, IReadOnlyList<(double T, bool Enter)> marks) =>
+        GimmickZones(r) is { Count: > 0 } zones
+            ? [.. zones.Select(z => (z.From, r.Boss.Where(b => b.T > z.To).Select(b => b.T).DefaultIfEmpty(z.To).Min()))]
+            : [.. marks.Where(m => m.Enter).Select(m => (m.T, Math.Max(m.T, r.Duration)))];
+
+    /// <summary>대난투's lines on the chart: its recorded start and end; a 그림자 gate's fight saved before they were recorded has only
+    /// its timer stops (<see cref="FightRecord.Phases"/>), which came with the gimmick in every saved fight, as starts.</summary>
+    public static IReadOnlyList<(double T, bool Enter)> GimmickMarks(FightRecord r, bool shadowGate)
+    {
+        var marks = r.Events.Where(e => e.Kind is RecordEventKind.대난투입장 or RecordEventKind.대난투종료).OrderBy(e => e.T)
+            .Select(e => (e.T, e.Kind == RecordEventKind.대난투입장)).ToList();
+        return marks.Count > 0 || !shadowGate ? marks : [.. r.Phases.Select(p => (p, true))];
+    }
+
+    /// <summary>대난투's zones, from its recorded start to its end, or the fight's end when it ended inside one. Only what was recorded: an
+    /// older fight's end is not known.</summary>
+    public static IReadOnlyList<(double From, double To)> GimmickZones(FightRecord r)
+    {
+        var zones = new List<(double, double)>();
+        double? from = null;
+        foreach (var e in r.Events.Where(e => e.Kind is RecordEventKind.대난투입장 or RecordEventKind.대난투종료).OrderBy(e => e.T))
+        {
+            if (e.Kind == RecordEventKind.대난투입장) from ??= e.T;
+            else if (from is { } start) { zones.Add((start, e.T)); from = null; }
+        }
+        if (from is { } open) zones.Add((open, Math.Max(open, r.Duration)));
+        return zones;
+    }
+
+    /// <summary>The time a cast's icon covers (user, 2026-11-05): it grows with the zoom, its left edge at the cast; fully zoomed the
+    /// largest icon is this long (1 s at most, the user's last word).</summary>
+    public const double IconSeconds = 1;
+
+    /// <summary>An icon's size at this zoom: <see cref="IconSeconds"/> wide, between <paramref name="min"/> (zoomed out: the normal
+    /// size, in 3 lanes) and <paramref name="max"/> (the skill row's height, one lane).</summary>
+    public static double IconSize(double pxPerSecond, double min, double max) => Math.Clamp(IconSeconds * pxPerSecond, min, max);
+
+    /// <summary>The narrowest zoom: where the largest icon is <see cref="IconSeconds"/> wide; never under TimeWindow.MinSpan.</summary>
+    public static double NarrowestSpan(double plotWidth, double maxIcon) =>
+        Math.Max(TimeWindow.MinSpan, plotWidth * IconSeconds / Math.Max(1, maxIcon));
+
+    /// <summary>Each icon's lane (user, 2026-11-05: the 3 lanes, icons not crowded): as many lanes of <paramref name="size"/> as fit
+    /// in <paramref name="full"/>, centred; a cast takes the first lane its icon (left edge <paramref name="lefts"/>, in time order)
+    /// fits in, else goes over the oldest.</summary>
+    public static IReadOnlyList<(double Top, double Size)> IconLanes(IReadOnlyList<double> lefts, double size, double gap, double full)
+    {
+        int lanes = Math.Max(1, (int)Math.Floor((full + gap) / (size + gap) + 1e-9));
+        double top = (full - (lanes * size + (lanes - 1) * gap)) / 2;
+        var last = Enumerable.Repeat(double.NegativeInfinity, lanes).ToArray();
+        var places = new (double, double)[lefts.Count];
+        for (int i = 0; i < lefts.Count; i++)
+        {
+            int lane = Array.FindIndex(last, l => lefts[i] - l >= size);
+            if (lane < 0) lane = Array.IndexOf(last, last.Min());
+            last[lane] = lefts[i];
+            places[i] = (top + lane * (size + gap), size);
+        }
+        return places;
+    }
+
+    /// <summary>The icons under the hover line at <paramref name="x"/> (one per lane at most, more where a cast went over another),
+    /// in time order: drawn over the others and named on the line. <paramref name="lefts"/>: left edges in time order, <paramref name="size"/> wide.</summary>
+    public static IReadOnlyList<int> IconsUnder(IReadOnlyList<double> lefts, double size, double x) =>
+        [.. Enumerable.Range(0, lefts.Count).Where(i => lefts[i] <= x && x < lefts[i] + size)];
 
     /// <summary>The skills I used in the fight, in bar order: one row each.</summary>
     public static IReadOnlyList<SlotId> MySkills(FightRecord r) =>
@@ -51,6 +176,10 @@ public static class Timeline
     /// 미터기's 버프 적용률 counts it (MeterMath.Cover); 0 when I dealt none in it.</summary>
     public static double BuffShare(FightRecord r, BuffKind kind, TimeWindow w) =>
         DamageShare(r, BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)), w);
+
+    /// <summary>The share of <paramref name="w"/>'s time a bomb was on the boss (the 암수 line's %, user 2026-11-05).</summary>
+    public static double AmsuUptime(FightRecord r, TimeWindow w) =>
+        w.Span <= 0 ? 0 : AmsuSpans(r).Sum(s => Math.Max(0, Math.Min(s.To, w.To) - Math.Max(s.From, w.From))) / w.Span;
 
     /// <summary>The share of my damage in <paramref name="w"/> dealt while a bomb was on the boss, as <see cref="BuffShare"/>.</summary>
     public static double BombShare(FightRecord r, TimeWindow w) => DamageShare(r, AmsuSpans(r).Select(s => (s.From, s.To)), w);

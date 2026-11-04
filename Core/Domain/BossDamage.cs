@@ -2,8 +2,9 @@ namespace GaugeOverlay.Core.Domain;
 
 /// <summary>Boss damage taken so far: <see cref="Done"/> from finished segments, the current segment from
 /// <see cref="SegmentStart"/> down to <see cref="Last"/> (the filtered HP) on a bar of <see cref="Max"/>, and the last two raw
-/// reads for the filter.</summary>
-public sealed record BossDamageState(long Done, long? SegmentStart, long? Last, long? Max, long? Read1, long? Read2)
+/// reads for the filter. <see cref="LastShield"/> is the shield inside <see cref="Last"/>: the bracket of the same read, so the two
+/// always subtract to a real bar value.</summary>
+public sealed record BossDamageState(long Done, long? SegmentStart, long? Last, long? Max, long? Read1, long? Read2, long LastShield = 0, long Shield1 = 0, long Shield2 = 0)
 {
     public static readonly BossDamageState None = new(0, null, null, null, null, null);
 }
@@ -23,10 +24,11 @@ public static class BossDamage
     {
         if (hp is not var (bar, max) || max <= 0 || bar < 0 || bar > max || shield < 0) return s;
         long cur = bar + shield;
-        if (s.Max is not { } was || s.SegmentStart is not { } start || s.Last is not { } last) return new(s.Done, cur, cur, max, cur, null);
-        if (max != was) return new(s.Done + start - Math.Min(last, s.Read1 ?? last), cur, cur, max, cur, null);
+        if (s.Max is not { } was || s.SegmentStart is not { } start || s.Last is not { } last) return new(s.Done, cur, cur, max, cur, null, shield, shield);
+        if (max != was) return new(s.Done + start - Math.Min(last, s.Read1 ?? last), cur, cur, max, cur, null, shield, shield);
         long f = s.Read2 is { } r2 ? Median(r2, s.Read1!.Value, cur) : Math.Max(s.Read1 ?? cur, cur);
-        var next = s with { Read2 = s.Read1, Read1 = cur };
+        long picked = f == cur ? shield : f == s.Read1 ? s.Shield1 : s.Shield2;
+        var next = s with { Read2 = s.Read1, Read1 = cur, Shield2 = s.Shield1, Shield1 = shield, LastShield = picked };
         // A confirmed rise closes the segment at the last read before it (the filter lags a read behind a fall), as a phase does.
         return f > last ? next with { Done = s.Done + start - Math.Min(last, s.Read2 ?? last), SegmentStart = f, Last = f } : next with { Last = f };
     }

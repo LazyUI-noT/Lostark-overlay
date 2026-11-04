@@ -51,4 +51,34 @@ public class RecordCharacterTests
         var chips = RecordCharacter.Chips([Rec("살살", day: 1), Rec("바드짱", day: 3)], current: null);
         Assert.Equal(["바드짱", "살살"], chips.Select(c => c.Character));
     }
+
+    [Fact]
+    public void A_character_s_saved_class_is_what_homework_learned()
+    {
+        HomeworkCharacter[] known = [new() { Name = "살살", ClassName = "바드", Subclass = "절실한 구원" }];
+        Assert.Equal("바드 · 절실한 구원", RecordCharacter.SavedClass("살살", known, [Rec("살살")]));
+    }
+
+    [Fact]
+    public void Without_it_a_character_s_saved_class_is_its_latest_fight()
+    {
+        HomeworkCharacter[] classOnly = [new() { Name = "살살", ClassName = "바드" }];
+        FightRecord[] fights = [Rec("살살", day: 1, sub: "전투 태세"), Rec("살살", day: 3), Rec("살살", day: 5, sub: null), Rec("남", day: 9, cls: "바드", sub: "절실한 구원")];
+        Assert.Equal("워로드 · 고독한기사", RecordCharacter.SavedClass("살살", classOnly, fights));
+    }
+
+    [Theory]
+    [InlineData("모름")]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void A_character_nothing_is_saved_for_has_no_class(string? name) =>
+        Assert.Null(RecordCharacter.SavedClass(name, [], [Rec("살살"), Rec(null)]));
+
+    [Fact]
+    public void A_test_mode_fight_is_labelled_test_whatever_its_subclass() =>
+        Assert.Equal("[Test]", RecordCharacter.ClassOf(Rec("살살", cls: RecordCharacter.TestClass)));
+
+    [Fact]
+    public void A_test_mode_fight_never_teaches_a_character_s_saved_class() =>
+        Assert.Equal("워로드 · 고독한기사", RecordCharacter.SavedClass("살살", [], [Rec("살살", day: 1), Rec("살살", day: 5, cls: RecordCharacter.TestClass)]));
 }

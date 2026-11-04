@@ -1,3 +1,4 @@
+using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
@@ -15,12 +16,50 @@ public class ShadowGimmickTests
     ];
 
     [Fact]
+    public void The_hp_text_sits_in_the_gimmicks_fill_bar_under_its_number()
+    {
+        var (vp, fit) = (new Viewport(0, 0, 1920, 1080), new Fit(110));
+        var bar = Geometry.ShadowBar(vp, fit);
+        Assert.Equal(new PixelRect(638, 101, 645, 21), bar);   // the fill measured at 9:05 and 9:30 of the video
+        Assert.True(bar.Y >= Geometry.ShadowNumber(vp, fit).Bottom);
+        var big = Geometry.ShadowBar(new Viewport(0, 0, 2560, 1440), fit);   // follows the resolution from the top centre
+        Assert.InRange(big.X + big.Width / 2, 1278, 1282);
+        Assert.InRange(big.Height, 27, 29);
+    }
+
+    [Fact]
     public void The_gimmicks_number_reads_in_every_frame_also_while_it_pops()
     {
         var frames = Fixture.Load("shadow_number").Frames;
         Assert.Equal(Shown.Length, frames.Count);
         for (int i = 0; i < frames.Count; i++)
             Assert.True(BossDigits.ReadNumber(frames[i], 1) == Shown[i], $"frame {i}: {BossDigits.ReadNumber(frames[i], 1)}");
+    }
+
+    /// <summary>The number's white turned to a colour, as the game tints it at the gimmick's end (yellow at 9:54 of the same video):
+    /// the text only, each pixel by how white it was; the frame around it stays.</summary>
+    static Image Tinted(Image img, byte r, byte g, byte b)
+    {
+        var px = (byte[])img.Bgra.Clone();
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            int white = Math.Min(px[i], Math.Min(px[i + 1], px[i + 2]));
+            double w = Math.Clamp((white - 60) / 140.0, 0, 1);
+            byte Mix(byte was, byte to) => (byte)(was * (1 - w) + to * white / 255.0 * w);
+            (px[i], px[i + 1], px[i + 2]) = (Mix(px[i], b), Mix(px[i + 1], g), Mix(px[i + 2], r));
+        }
+        return new Image(img.Width, img.Height, px);
+    }
+
+    [Theory]
+    [InlineData(255, 200, 30)]   // yellow, as at 9:54
+    [InlineData(255, 150, 40)]   // orange
+    [InlineData(255, 70, 70)]    // red
+    public void The_gimmicks_number_reads_in_colour_too(byte r, byte g, byte b)
+    {
+        var frames = Fixture.Load("shadow_number").Frames;
+        for (int i = 0; i < frames.Count; i++)
+            Assert.True(BossDigits.ReadNumber(Tinted(frames[i], r, g, b), 1) == Shown[i], $"frame {i}: {BossDigits.ReadNumber(Tinted(frames[i], r, g, b), 1)}");
     }
 
     [Fact]

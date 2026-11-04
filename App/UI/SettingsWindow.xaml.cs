@@ -458,7 +458,7 @@ public partial class SettingsWindow : Window
             void Show(bool on) => label.Visibility = flash.Visibility = more.Visibility = Shown(on);
             Show(i.Visible);
             p.Children.Add(SubHeading(name));
-            p.Children.Add(Row("", Check("표시", i.Visible, v => { b.Edit(k).Visible = v; Show(v); }, Changed), label, flash));
+            p.Children.Add(Row("표시", BuffShowCombo(k, Show), label, flash));
             p.Children.Add(more);
         }
 

@@ -9,6 +9,16 @@ public class RaidDataTests
     static readonly string Profiles = Path.Combine(Helpers.RepoRoot(), "Profiles");
 
     [Fact]
+    public void A_line_s_size_comes_from_the_gate_by_hp_else_by_name()
+    {
+        RaidGate[] gates = [new("a", "R", "1관문", [], [], Raid.없음, new Dictionary<string, long> { ["노말"] = 2000 }, Lines: 200), new("b", "R", "2관문", [], [], Raid.없음)];
+        Assert.Equal(10, RaidData.HpPerLine(gates, null, 2000));
+        Assert.Equal(11, RaidData.HpPerLine(gates, "R · 1관문", 2200));   // HP changed by a patch: same lines
+        Assert.Null(RaidData.HpPerLine(gates, "R · 2관문", 2200));   // lines not known
+        Assert.Null(RaidData.HpPerLine(gates, "다른 레이드", 2200));
+    }
+
+    [Fact]
     public void Loads_the_shipped_gates()
     {
         var gates = RaidData.Load(Profiles);

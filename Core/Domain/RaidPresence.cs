@@ -29,5 +29,9 @@ public sealed record RaidPresence(TimeSpan? MeterSeen, TimeSpan? BossSeen, TimeS
     public RaidPresence Hidden(TimeSpan t) =>
         InDungeon(t) && (Within(MeterSeen, MaxHidden, t) || Within(BossSeen, MaxHidden, t)) ? this with { Kept = t } : this;
 
+    /// <summary>A step with another app in front (nothing read, Engine's pause): a dungeon holds however long, and the stay goes on
+    /// once the game is back (user, 2026-11-05: an alt-tab ends no fight).</summary>
+    public RaidPresence Away(TimeSpan t) => InDungeon(t) ? this with { Kept = t } : this;
+
     static bool Within(TimeSpan? seen, TimeSpan span, TimeSpan now) => seen is { } s && now - s <= span;
 }

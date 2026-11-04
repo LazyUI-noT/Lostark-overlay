@@ -141,6 +141,7 @@ public sealed class RecordStore(string dir)
         RecordEventKind.사용 => Enum.IsDefined((SlotId)e.What),
         RecordEventKind.버프시작 or RecordEventKind.버프끝 => Enum.IsDefined((BuffKind)e.What),
         RecordEventKind.암수시작 or RecordEventKind.암수끝 => Enum.IsDefined((Vision.Bomb)e.What),
+        RecordEventKind.대난투입장 or RecordEventKind.대난투종료 => true,
         _ => false,
     };
 

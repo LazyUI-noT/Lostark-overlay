@@ -94,9 +94,8 @@ public partial class FirstRunWindow : Window
         fit.Click += (_, _) => FitRequested?.Invoke();
         return Stack(
             Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
-            Step("1", "게임에서 수련장에 들어갑니다."),
-            Step("2", "수련장에서 쿨초해 모든 스킬이 쿨 돈 상태로 둡니다."),
-            Step("3", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),
+            Step("1", "스킬을 쓸 수 있는 곳에서 모든 스킬이 쿨 돈 상태로 둡니다 (수련장에서는 쿨초)."),
+            Step("2", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),
             fit,
             _fitResult,
             Heading("트레이 아이콘"),

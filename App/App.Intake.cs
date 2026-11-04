@@ -91,13 +91,19 @@ public partial class App
     static void ReadMenu(string[] args)
     {
         var report = new System.Text.StringBuilder();
+        var memory = new MenuMemory();   // the pictures in turn, as a session sees them: each one known from those before
         foreach (var path in Operands(args, "--read-menu"))
         {
             report.AppendLine($"## {Path.GetFileName(path)}");
             try
             {
                 var screen = Png.Load(path);
+                var (whole, area) = (new Viewport(0, 0, screen.Width, screen.Height), new PixelRect(0, 0, screen.Width, screen.Height));
+                var strips = MenuSlots.Strips(screen, area, whole);
+                var (known, knownPlaying) = MenuSlots.Recalled(memory, strips);
+                report.AppendLine($"  known without OCR: {string.Join(" / ", known.Select(c => $"{c.Name}@{c.X:0},{c.Y:0}"))}{(knownPlaying is { } kp ? $" + 접속 중@{kp.X:0},{kp.Y:0}" : "")}");
                 var (read, lines) = Task.Run(() => Services.Engine.ReadPicture(screen)).GetAwaiter().GetResult();   // off the UI thread: the OCR's awaits would wait for it
+                MenuSlots.Learn(memory, read, strips);
                 foreach (var line in lines) report.AppendLine($"  {line}");
                 report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"} ({read.CurrentLevel}), picked {read.Picked ?? "-"}, waiting {read.Waiting}");
                 if (read.PlayingCard is { } playing) report.AppendLine($"  playing card at {playing.X:0},{playing.Y:0}–{playing.Bottom:0}");

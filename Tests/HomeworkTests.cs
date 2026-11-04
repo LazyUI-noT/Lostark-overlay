@@ -26,6 +26,27 @@ public class HomeworkTests
 
     static HomeworkClear Clear(string difficulty, int day = 4, int hour = 20) => new("살살", "serka", difficulty, new DateTime(2026, 11, day, hour, 0, 0));
 
+    [Fact]
+    public void A_clear_marked_by_hand_crosses_a_shipped_raid_out_until_the_next_reset()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"homework-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new HomeworkStore(path);
+            var pick = new HomeworkPick("serka", "하드");
+            var marked = Clear("하드", day: 10, hour: 22);   // Tuesday night, the last hours of the week
+            Assert.True(store.Toggle(marked));
+
+            HomeworkTag? TagAt(DateTime now) => Homework.Tag(pick, store.Load(), Raids, new Dictionary<string, string>(), Homework.WeekStart(now));
+            Assert.True(TagAt(marked.At)!.Done);
+            Assert.False(TagAt(new DateTime(2026, 11, 11, 6, 0, 0))!.Done);   // Wednesday 06:00
+
+            Assert.False(store.Toggle(marked with { At = marked.At.AddMinutes(1) }));   // a second click takes it back
+            Assert.False(TagAt(marked.At)!.Done);
+        }
+        finally { File.Delete(path); }
+    }
+
     [Theory]
     [InlineData(2026, 11, 4, 6, 0, 2026, 11, 4)]     // Wednesday 06:00 itself starts the week
     [InlineData(2026, 11, 4, 5, 59, 2026, 10, 28)]   // a minute before: last week

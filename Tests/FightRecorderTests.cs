@@ -255,6 +255,56 @@ public class FightRecorderTests
     }
 
     [Fact]
+    public void Daenantu_s_start_and_end_are_on_the_fight_s_clock()
+    {
+        for (int t = 0; t <= 3; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 4; t <= 6; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = false;
+        for (int t = 7; t <= 14; t++) TickHp(t, t, 500_000_000_000);
+        var marks = _r.Finish()!.Events.Where(e => e.Kind is RecordEventKind.대난투입장 or RecordEventKind.대난투종료).ToList();
+        Assert.Equal([(3d, RecordEventKind.대난투입장), (5d, RecordEventKind.대난투종료)], marks.Select(e => (e.T, e.Kind)));   // ended at the last second seen
+    }
+
+    [Fact]
+    public void Daenantu_ending_just_before_the_fight_keeps_its_end()
+    {
+        for (int t = 0; t <= 2; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 3; t <= 5; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = false;
+        for (int t = 6; t <= 7; t++) TickHp(t, t, 500_000_000_000);   // the kill 2 s after it
+        var marks = _r.Finish()!.Events.Where(e => e.Kind is RecordEventKind.대난투입장 or RecordEventKind.대난투종료).ToList();
+        Assert.Equal([(2d, RecordEventKind.대난투입장), (4d, RecordEventKind.대난투종료)], marks.Select(e => (e.T, e.Kind)));
+    }
+
+    [Fact]
+    public void A_few_unread_seconds_inside_daenantu_do_not_end_it()
+    {
+        for (int t = 0; t <= 2; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 3; t <= 5; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = false;
+        for (int t = 6; t <= 8; t++) TickHp(t, t, 500_000_000_000);   // 3 s unread
+        _r.ShadowOn = true;
+        for (int t = 9; t <= 11; t++) TickHp(t, t, 500_000_000_000);
+        var marks = _r.Finish()!.Events.Where(e => e.Kind is RecordEventKind.대난투입장 or RecordEventKind.대난투종료).ToList();
+        Assert.Equal([(2d, RecordEventKind.대난투입장)], marks.Select(e => (e.T, e.Kind)));   // still in it when the fight ended
+    }
+
+    [Fact]
+    public void The_next_fight_starts_outside_daenantu()
+    {
+        for (int t = 0; t <= 2; t++) TickHp(t, t, 500_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 3; t <= 5; t++) TickHp(t, t, 500_000_000_000);
+        _r.Finish();
+        _r.ShadowOn = false;
+        for (int t = 6; t <= 9; t++) TickHp(t, t, 500_000_000_000);
+        Assert.DoesNotContain(_r.Finish()!.Events, e => e.Kind == RecordEventKind.대난투종료);
+    }
+
+    [Fact]
     public void A_boss_bar_gone_while_the_timer_runs_is_a_clear()
     {
         // 구원의 종탑 1관문 (2026-11-03): the bar's last read showed 1124억 left, then the boss died and the timer ran on 9 s.

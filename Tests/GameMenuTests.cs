@@ -172,6 +172,9 @@ public class GameMenuTests
     [Theory]
     [InlineData("계임 매뉴", true)]
     [InlineData("계임 메뉴", true)]
+    [InlineData("계임 에뉴", true)]   // the strip of a live 1080p menu, 2026-11-04: the panel's read of the same frame said 매뉴
+    [InlineData("게임 설정", false)]
+    [InlineData("메뉴", false)]
     public void The_title_is_found_as_the_ocr_reads_it(string line, bool open)
     {
         Assert.Equal(open, GameMenu.IsTitle([line]));

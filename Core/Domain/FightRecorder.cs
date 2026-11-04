@@ -43,6 +43,12 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
 
     /// <summary>암흑수류탄 is read (its switch): only then are the bombs recorded, as one window "a bomb is up" with the bomb shown.</summary>
     public bool AmsuOn { get; set; }
+    /// <summary>The 그림자 gimmick (대난투) is up (Snapshot.Shadow): its start and end are recorded on the fight's clock.</summary>
+    public bool ShadowOn { get; set; }
+    bool _shadowLogged;
+    double _shadowLastOn;
+    /// <summary>대난투 unseen this long has ended, at the last second it was seen: a few unread numbers are no end.</summary>
+    public const double ShadowEndAfter = 5;
 
     public string Me { get; set; } = "";
     public int MyClass { get; set; }
@@ -130,6 +136,16 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             if (_stopped && _started) _phases.Add(before);   // a stop before the fight (the preparation) is no phase
             if (!_started) (_started, _startedAt, _gate) = (true, wall, gate);
             _stopped = false;
+            if (ShadowOn)
+            {
+                if (!_shadowLogged) _events.Add(new RecordEvent(before, Me, RecordEventKind.대난투입장, 0));
+                (_shadowLogged, _shadowLastOn) = (true, before);
+            }
+            else if (_shadowLogged && before - _shadowLastOn >= ShadowEndAfter)
+            {
+                _events.Add(new RecordEvent(_shadowLastOn, Me, RecordEventKind.대난투종료, 0));
+                _shadowLogged = false;
+            }
             foreach (var (_, e) in _pending.Where(p => p.At < c.MovedAt)) Commit(e);
             _pending.RemoveAll(p => p.At < c.MovedAt);
             // A buff window is a state: a change no event carries (made while nothing was held: stopped, not started, or the
@@ -153,7 +169,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
                 _members[s.Name] = new RecordMember(s.Name, s.ClassId, s.Role, s.Party);
                 _samples.Add(new RecordSample(t, s.Name, s.Damage, s.Dps));
             }
-            _boss.Add(new RecordBoss(t, bossTaken, status.Boss.Last, status.Boss.Max));
+            _boss.Add(new RecordBoss(t, bossTaken, status.Boss.Last, status.Boss.Max, status.Boss.LastShield > 0 ? status.Boss.LastShield : null));
             if (now - status.HpAt <= HpFresh) _hpSeen = t;
             return _events.Count + _samples.Count >= maxEntries ? Finish() : null;
         }
@@ -179,6 +195,9 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         if (!_started) return null;
         _started = false;
         Array.Clear(_committed);
+        // Gone before the debounce ran out (the kill right after it): it ended when last seen, not at the fight's end.
+        if (_shadowLogged && !ShadowOn) _events.Add(new RecordEvent(_shadowLastOn, Me, RecordEventKind.대난투종료, 0));
+        _shadowLogged = false;
         _bombCommitted = null;
         double end = _boss.Count > 0 ? _boss[^1].T : 0;
         // The bar goes when the boss dies, so its last read is rarely 0 (구원의 종탑 1관문: 1124억 left, a gimmick kill); a bar

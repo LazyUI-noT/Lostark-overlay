@@ -51,6 +51,8 @@ public partial class App
         _owned.AddRange([party, device, foreground, engine]);
         _gameForeground = foreground.IsGameForeground;
         engine.GameForeground = _gameForeground;   // calibration pictures and 스킬창 맞추기 only while the game is in front
+        engine.OtherAppForeground = foreground.IsOtherForeground;   // another app in front: nothing is read (outside 테스트 모드)
+        foreground.OtherChanged += other => engine.OtherAppForeground = other;
 
         // 게임 화면 찍기 (설정's canvas): 설정 and the overlays (unless kept out of capture) step aside for the picture.
         engine.ScreenshotCaptured += (token, img, area) => ((TaskCompletionSource<(Image?, PixelRect)>)token).TrySetResult((img, area));
@@ -168,7 +170,7 @@ public partial class App
             Save(now: true);
             try { lastSave.Wait(SaveOnExit); }   // a fight saved just before closing finishes writing
             catch (AggregateException ex) { Trace.WriteLine($"[records] save before exit failed: {ex.InnerException?.Message}"); }
-            if (recorder.Finish() is { } fight) StoreNow().Save(Named(fight), settings.RecordKeep);   // the fight under way when the app closes
+            if (recorder.Finish() is { } fight && StoreNow() is var store) store.Save(Named(fight, store == testRecords), settings.RecordKeep);   // the fight under way when the app closes
         };
         string PartyName() => string.IsNullOrWhiteSpace(settings.Party.DisplayName) ? "플레이어" : settings.Party.DisplayName.Trim();
 
@@ -287,7 +289,7 @@ public partial class App
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid));
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly));
             if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
@@ -320,7 +322,10 @@ public partial class App
             _amsu.Update(mine is not null ? new Player("", mine) : null);
             _raid.Update(mine is not null ? new Player("", hiddenStatus is not null && mine.Meter is not null ? mine with { Raid = hiddenStatus } : mine) : null);
             _meter.Update(mine is not null ? new Player("", mine) : null);
-            _shadow.Update(mine?.Shadow, _overlay.Visibility == Visibility.Visible || _meter.Visibility == Visibility.Visible);
+            bool overGame = _overlay.Visibility == Visibility.Visible || _meter.Visibility == Visibility.Visible;
+            _shadow.Update(mine?.Shadow is { } shadow ? (shadow.Text, shadow.Bar) : null, overGame);
+            _shadowDealt.Update(mine?.Shadow is { } gimmick ? (EasyRead.Of(gimmick.Dealt), gimmick.DealtLabel) : null, overGame);
+            _bossHp.Update(mine?.BossHp is { } boss ? (boss.Text, boss.Label) : null, overGame);
             ShowPeers(peers);
         }
 
@@ -397,6 +402,7 @@ public partial class App
             // Any dungeon but a guardian raid (user, 2026-11-03): its panel read, or unread with a boss bar (saved as 알 수 없음,
             // named in 편집). The 전분 timer alone (a dummy, the field) starts nothing.
             recorder.InRaid = latest?.Dungeon is { } dungeon ? dungeon.Kind != DungeonKind.Guardian : status.Boss.Max is not null;
+            recorder.ShadowOn = latest?.Shadow is not null;
             recorder.AmsuOn = settings.Amsu.On;   // the bombs are recorded (and their gain shown) only while read
             recorder.PauseLimit = TimeSpan.FromSeconds(Math.Clamp(settings.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause));
             // My name as the party knows it (a taken name gets a number there), so no member's lane is mine.
@@ -418,8 +424,9 @@ public partial class App
         }
 
         // Written once, off the UI thread, when a fight ends (spec § D Cost budget).
-        // The class played, for the file name and the list.
-        FightRecord Named(FightRecord fight) => homework.Name(fight with { MyClassName = characters.Active?.Class });
+        // The class played, for the file name and the list; a 테스트 모드 fight is [Test] until 편집 gives it one (user, 2026-11-05).
+        FightRecord Named(FightRecord fight, bool test) =>
+            homework.Name(fight with { MyClassName = test ? RecordCharacter.TestClass : characters.Active?.Class });
 
         // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
         // content and aren't kept.
@@ -460,7 +467,7 @@ public partial class App
                 try
                 {
                     string file;
-                    var named = Named(fight);
+                    var named = Named(fight, store == testRecords);
                     if (settings.RecordAutoSave) file = store.Save(named, settings.RecordKeep);
                     else { store.Hold(named); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
                     if (store == records) homework.Saved(named);   // a clear counts even when the fight isn't kept
@@ -530,7 +537,7 @@ public partial class App
         engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() => { _hudVisible = visible; UpdateVisibility(); });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
-            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 수련장에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
+            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 쿨 돈 상태에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
         });
         engine.FitFinished += (vp, fit, message, detected, test, canRevert) => Dispatcher.BeginInvoke(() =>
         {
@@ -719,9 +726,13 @@ public partial class App
             string seen = $"{read.Open} {read.Current} {read.Cards.Count} {tagged.Count}";
             if (seen != menuLogged) Trace.WriteLine($"[menu] open {read.Open}, playing {read.Current ?? "-"}, picked {read.Picked ?? "-"}, cards: {string.Join(" / ", read.Cards.Select(c => c.Name))}{(read.PlayingCard is null ? "" : " + 접속 중")}; tags on {tagged.Count}");
             menuLogged = seen;
+            if (!read.Open) ShowTags([], vp);   // while open the tags follow the pixels (MenuRecalled): a read is old by the time it lands
+        });
+        // Cards known by their pixels: the tags at once, while the OCR takes its time (Engine.Menu.cs).
+        engine.MenuRecalled += (read, vp, _) => Dispatcher.BeginInvoke(() => ShowTags(homework.GridTags(read), vp));
+        void ShowTags(IReadOnlyList<(MenuCard Card, IReadOnlyList<HomeworkTag> Tags)> tagged, Viewport vp) =>
             _homeworkTags.Update(vp, [.. tagged.Select(x =>
                 (Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))), x.Tags))], allowed: true);
-        });
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectSubclass)) Dispatcher.BeginInvoke(RedetectSubclass); };
         _tray.RereadIcons += RereadIcons;
         _settingsWindow.IconRereadRequested += RereadIcons;
