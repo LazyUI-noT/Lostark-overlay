@@ -15,7 +15,7 @@ public sealed record MenuCard(string Name, string? ClassName, double X, double Y
 
 /// <summary>One read of the game menu: open or not, the character being played (under the portrait), the one picked in the
 /// grid (the right panel's header), the cards seen, and "잠시만 기다려주세요." (접속하기 pressed).</summary>
-public sealed record MenuRead(bool Open, string? Current, string? Picked, IReadOnlyList<MenuCard> Cards, bool Waiting, int? CurrentLevel = null)
+public sealed record MenuRead(bool Open, string? Current, string? Picked, IReadOnlyList<MenuCard> Cards, bool Waiting, int? CurrentLevel = null, MenuCard? PlayingCard = null)
 {
     public static readonly MenuRead Closed = new(false, null, null, [], false);
 }
@@ -30,6 +30,7 @@ public static partial class GameMenu
     const double HeaderGap = 40;   // the picked name above "전체 현황 보기"
     const double PortraitLevelBelow = 40, SameLine = 8;   // the portrait's item level under its "Lv" word; a card's beside its own
     const int MinItemLevel = 1000, MaxItemLevel = 2000;
+    const double CellSnap = 20;   // cards in one column or row, within this
 
     /// <summary>The title strip's OCR shows "게임 메뉴" (read "계임 매뉴" as often as not): the menu is open.</summary>
     public static bool IsTitle(IEnumerable<string> lines) => lines.Any(l => Title().IsMatch(Squash(l)));
@@ -37,7 +38,7 @@ public static partial class GameMenu
     public static MenuRead Parse(IReadOnlyList<IReadOnlyList<MenuWord>> lines, IEnumerable<string> waitingLines)
     {
         if (!lines.Any(l => Squash(Text(l)) is var text && (Title().IsMatch(text) || text.Contains("전체현황")))) return MenuRead.Closed;   // either: a misread title would blink the tags
-        return new MenuRead(true, Current(lines), Picked(lines), Cards(lines), waitingLines.Any(l => Waiting().IsMatch(Squash(l))), CurrentLevel(lines));
+        return new MenuRead(true, Current(lines), Picked(lines), Cards(lines), waitingLines.Any(l => Waiting().IsMatch(Squash(l))), CurrentLevel(lines), PlayingCardOf(lines) ?? TheGap(Cards(lines)));
     }
 
     /// <summary>The item level in what the OCR read, whole part ("1771.66"; "1640.OO", "會|79|.66": the icon before it, 1 read as |,
@@ -84,6 +85,29 @@ public static partial class GameMenu
             .Select(l => l.Where(w => Math.Abs(w.CenterX - cx) < 150).ToList()).Where(l => l.Count > 0)
             .MaxBy(l => l.Max(w => w.Y));
         return header is null ? null : CharacterName.Clean(string.Concat(header.Select(w => w.Text)));
+    }
+
+    /// <summary>The card of the character being played: "접속 중" where its name would be (it has no name to read).</summary>
+    static MenuCard? PlayingCardOf(IReadOnlyList<IReadOnlyList<MenuWord>> lines)
+    {
+        var words = lines.SelectMany(l => l).ToList();
+        foreach (var lv in words.Where(w => LevelWord().Match(w.Text) is { Success: true } m && m.Length == w.Text.Length))
+            if (words.Any(w => lv.CenterY - w.CenterY > NameMin && lv.CenterY - w.CenterY <= NameMax && w.X >= lv.X + NameFrom && w.X < lv.X + NameTo && w.Text.Contains("접속")))
+                return new MenuCard("", null, lv.X - CardLeft, lv.Y, CardWidth, lv.Y + lv.H + CardBelow);
+        return null;
+    }
+
+    /// <summary>"접속 중" and the card's level word are often unreadable (goal.png): then it is the one gap in the grid of the cards read.
+    /// The last row may be short, so its gaps don't count while another row has one; two gaps say nothing.</summary>
+    static MenuCard? TheGap(IReadOnlyList<MenuCard> cards)
+    {
+        var cols = cards.GroupBy(c => Math.Round(c.X / CellSnap)).Select(g => g.First().X).ToList();
+        var rows = cards.GroupBy(c => Math.Round(c.Y / CellSnap)).Select(g => g.First()).OrderBy(c => c.Y).ToList();
+        if (cols.Count < 2 || rows.Count < 2) return null;
+        bool Seen(double x, double y) => cards.Any(c => Math.Abs(c.X - x) < CellSnap && Math.Abs(c.Y - y) < CellSnap);
+        var gaps = rows.SelectMany(r => cols.Where(x => !Seen(x, r.Y)).Select(x => r with { Name = "", ClassName = null, ItemLevel = null, X = x })).ToList();
+        var early = gaps.Where(g => g.Y != rows[^1].Y).ToList();
+        return early.Count == 1 ? early[0] : early.Count == 0 && gaps.Count == 1 ? gaps[0] : null;
     }
 
     /// <summary>Each card: a level word ("Lv.70", read "LⅥ70") with its name and class above it (the OCR puts the level and the

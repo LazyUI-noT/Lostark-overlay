@@ -53,6 +53,36 @@ public class GameMenuTests
     }
 
     [Fact]
+    public void The_card_being_played_is_found_for_its_tags()
+    {
+        var card = GameMenu.Parse(Grid, []).PlayingCard;
+
+        Assert.NotNull(card);
+        Assert.Equal(585, card.X, 1);
+        Assert.True(card.Bottom > 424 + 14 && card.Bottom < 470);
+    }
+
+    [Fact]
+    public void A_misread_played_card_is_the_one_gap_in_the_grid()
+    {
+        // goal.png as the OCR reads it (--read-menu, 2026-11-04): "접속 중" comes out as 入A소, and the card has no level word.
+        MenuWord[] Card(double x, double y, string name) => [W(name, x + 55, y - 21, 100), W("LⅥ70", x + 8, y, 35)];
+        var cards = new[] { (846, 426), (1106, 426), (586, 543), (846, 543), (1106, 543), (586, 660), (846, 660) }.Select((c, i) => (IReadOnlyList<MenuWord>)Card(c.Item1, c.Item2, $"캐릭터이름{i}"));
+        IReadOnlyList<IReadOnlyList<MenuWord>> lines = [L(W("계임", 1043, 262), W("매뉴", 1085, 262)), L(W("入A소", 683, 401)), .. cards];
+
+        var playing = GameMenu.Parse(lines, []).PlayingCard;
+
+        Assert.NotNull(playing);
+        Assert.Equal((586d, 426d), (playing.X, playing.Y));
+    }
+
+    [Fact]
+    public void Without_a_grid_no_card_is_the_played_one()
+    {
+        Assert.Null(GameMenu.Parse([L(W("계임", 1043, 262), W("매뉴", 1085, 262))], []).PlayingCard);
+    }
+
+    [Fact]
     public void The_waiting_text_after_a_pick_is_seen()
     {
         Assert.True(GameMenu.Parse(Grid, ["잠시만 기다려주세요."]).Waiting);

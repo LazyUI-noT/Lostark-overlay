@@ -169,6 +169,8 @@ public partial class App
         foreach (var w in Others) w.Show();
         (_meterInUse, _countInUse) = (true, true);   // the demo's figures are always "read": --meter and --raid show their windows
         UpdateVisibility();
+        if (args.Contains("--grid-tags"))   // 숙제 tags as under the grid's cards, at goal.png's spots
+            _homeworkTags.Update(new Viewport(0, 0, 1920, 1080), [(new PixelRect(846, 426, 245, 19), [new HomeworkTag("세나메", HomeworkColor.Purple, false, 0), new HomeworkTag("종하↓", HomeworkColor.Orange, true, 0)])], allowed: true);
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
         if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare", view == "run");   // with --records: open | compare | run (a fight joined from its files)

@@ -121,10 +121,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     {
         if (!read.Open || !settings.Homework.ShowOnGrid) return [];
         var all = Clears();
-        var names = CardNames(_watch.Current);
-        return [.. read.Cards.Select(card => (card, c: settings.Homework.Find(CharacterName.Nearest(card.Name, names))))
-            .Where(x => x.c is { Hidden: false, Picks.Count: > 0 })
-            .Select(x => (x.card, TagsOf(x.c!, all)))];
+        return [.. Homework.OnGrid(read, _watch.Current, settings.Homework.Characters).Select(x => (x.Card, TagsOf(x.Character, all)))];
     }
 
     /// <summary>The fight as saved: named after the character being played (any thread).</summary>

@@ -709,11 +709,16 @@ public partial class App
             if (characters.AutoRedetect()) engine.RequestSubclass();
         });
         // The ESC menu (Engine.Menu.cs): who is played, the grid's cards, and their 숙제 tags under them.
+        string? menuLogged = null;
         engine.MenuSeen += (read, vp, t) => Dispatcher.BeginInvoke(() =>
         {
             homework.Menu(read, t);
             if (!read.Open && !_homeworkTags.IsVisible) return;
-            _homeworkTags.Update(vp, [.. homework.GridTags(read).Select(x =>
+            var tagged = homework.GridTags(read);
+            string seen = $"{read.Open} {read.Current} {read.Cards.Count} {tagged.Count}";
+            if (seen != menuLogged) Trace.WriteLine($"[menu] open {read.Open}, playing {read.Current ?? "-"}, picked {read.Picked ?? "-"}, cards: {string.Join(" / ", read.Cards.Select(c => c.Name))}{(read.PlayingCard is null ? "" : " + 접속 중")}; tags on {tagged.Count}");
+            menuLogged = seen;
+            _homeworkTags.Update(vp, [.. tagged.Select(x =>
                 (Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))), x.Tags))], allowed: true);
         });
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectSubclass)) Dispatcher.BeginInvoke(RedetectSubclass); };

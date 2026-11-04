@@ -271,6 +271,22 @@ public class HomeworkTests
     }
 
     [Fact]
+    public void Grid_cards_go_to_the_nearest_listed_character_and_the_played_card_to_who_is_played()
+    {
+        HomeworkCharacter C(string name, bool hidden = false, int picks = 1) =>
+            new() { Name = name, Hidden = hidden, Picks = [.. Enumerable.Repeat(new HomeworkPick("serka", "노말"), picks)] };
+        MenuCard Card(string name, double x) => new(name, null, x, 426, 245, 452);
+        var (mine, other, gone, none) = (C("너무아파요살살"), C("매우아파요살살"), C("밝키리", hidden: true), C("도화G", picks: 0));
+        var read = new MenuRead(true, "너무아파요살살", null, [Card("매우Ot파요살살", 846), Card("밞기리", 1106), Card("도하G", 586), Card("곰과역우와", 846)], false,
+            PlayingCard: Card("", 586));
+
+        var grid = Homework.OnGrid(read, "너무아파요살살", [mine, other, gone, none]);
+
+        Assert.Equal([("매우Ot파요살살", other), ("", mine)], grid.Select(x => (x.Card.Name, x.Character)));
+        Assert.DoesNotContain(Homework.OnGrid(read, null, [mine, other]), x => x.Card.Name == "");   // 캐릭터 불명: the played card is nobody's yet
+    }
+
+    [Fact]
     public void At_most_five_picks_per_character()
     {
         Assert.Equal(5, HomeworkCharacter.MaxPicks);

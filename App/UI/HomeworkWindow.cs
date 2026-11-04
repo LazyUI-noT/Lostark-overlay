@@ -53,7 +53,7 @@ sealed class HomeworkWindow : Window
     static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
     /// <summary>Draws in the game area's pixels, scaled to the window's units.</summary>
-    sealed class Tags : FrameworkElement
+    internal sealed class Tags : FrameworkElement
     {
         IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> _cards = [];
         double _scale = 1;

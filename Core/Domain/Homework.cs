@@ -140,6 +140,17 @@ public static class Homework
     public static int LevelFrom(int? stored, int read) =>
         stored is not { } level ? read : read > level && read - level <= MaxLevelStep ? read : level;
 
+    /// <summary>The grid's cards with whose they are: a card's small name to the nearest listed character (never the one played, whose
+    /// card shows 접속 중), the played card to <paramref name="current"/>; only shown characters with picks.</summary>
+    public static IReadOnlyList<(MenuCard Card, HomeworkCharacter Character)> OnGrid(MenuRead read, string? current, IReadOnlyList<HomeworkCharacter> characters)
+    {
+        var names = characters.Select(c => c.Name).Where(n => n != current).ToList();
+        HomeworkCharacter? Of(string? name) => characters.FirstOrDefault(c => c.Name == name);
+        var cards = read.Cards.Select(card => (card, c: Of(CharacterName.Nearest(card.Name, names))));
+        if (read.PlayingCard is { } playing && current is not null) cards = cards.Append((playing, Of(current)));
+        return [.. cards.Where(x => x.c is { Hidden: false, Picks.Count: > 0 }).Select(x => (x.card, x.c!))];
+    }
+
     public const int AutoPicks = 3, MaxLevelStep = 60;
 
     static int Rank(HomeworkRaid raid, string difficulty) => raid.Levels.ToList().FindIndex(l => l.Difficulty == difficulty);

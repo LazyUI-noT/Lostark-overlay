@@ -100,11 +100,43 @@ public partial class App
                 var (read, lines) = Task.Run(() => Services.Engine.ReadPicture(screen)).GetAwaiter().GetResult();   // off the UI thread: the OCR's awaits would wait for it
                 foreach (var line in lines) report.AppendLine($"  {line}");
                 report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"} ({read.CurrentLevel}), picked {read.Picked ?? "-"}, waiting {read.Waiting}");
+                if (read.PlayingCard is { } playing) report.AppendLine($"  playing card at {playing.X:0},{playing.Y:0}–{playing.Bottom:0}");
                 foreach (var c in read.Cards) report.AppendLine($"  card {c.Name} [{c.ClassName}] {c.ItemLevel} at {c.X:0},{c.Y:0}–{c.Bottom:0}");
+                if (Option(args, "tags-out") is { } outDir) report.Append(DrawTags(screen, read, Path.Combine(outDir, Path.GetFileNameWithoutExtension(path) + "-tags.png")));
             }
             catch (Exception ex) { report.AppendLine($"  {ex.GetType().Name}: {ex.Message}"); }
         }
         Report(args, "GaugeOverlay --read-menu", report.ToString());
+    }
+
+    /// <summary>--read-menu … --tags-out=&lt;folder&gt;: the picture with the 숙제 tags the grid would get, from this PC's settings, clears
+    /// and raids, matched and drawn as the app does (Homework.OnGrid, HomeworkWindow.Tags). Who is played: the portrait's name.</summary>
+    static string DrawTags(Image screen, MenuRead read, string outPath)
+    {
+        var settings = new SettingsStore(SettingsStore.DefaultPath).Load(out _);
+        var hw = settings.Homework;
+        var raids = Homework.AllRaids(HomeworkData.Load(CharacterService.DefaultProfilesDir), hw.CustomRaids);
+        var clears = new HomeworkStore(HomeworkStore.DefaultPath).Load();
+        string? current = read.Current is { } c ? CharacterName.Snap(c, [.. hw.Characters.Select(x => x.Name)]) : null;
+        var week = Homework.WeekStart(DateTime.Now);
+        var vp = new Viewport(0, 0, screen.Width, screen.Height);
+        var cards = Homework.OnGrid(read, current, hw.Characters).Select(x => (
+            Card: Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))),
+            Who: x.Character.Name,
+            Tags: (IReadOnlyList<HomeworkTag>)[.. x.Character.Picks.Select(p => Homework.Tag(p, clears.Where(k => k.Character == x.Character.Name), raids, hw.Tags, week)).OfType<HomeworkTag>()])).ToList();
+        var tags = new UI.HomeworkWindow.Tags();
+        tags.Set([.. cards.Select(x => (x.Card, x.Tags))], vp.Height / 1080.0);
+        var picture = new System.Windows.Controls.Image { Source = System.Windows.Media.Imaging.BitmapSource.Create(screen.Width, screen.Height, 96, 96,
+            System.Windows.Media.PixelFormats.Bgra32, null, screen.Bgra, screen.Width * 4) };
+        var both = new System.Windows.Controls.Grid { Width = screen.Width, Height = screen.Height, Children = { picture, tags } };
+        both.Measure(new Size(screen.Width, screen.Height));
+        both.Arrange(new Rect(0, 0, screen.Width, screen.Height));
+        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(screen.Width, screen.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        bmp.Render(both);
+        var png = new System.Windows.Media.Imaging.PngBitmapEncoder { Frames = { System.Windows.Media.Imaging.BitmapFrame.Create(bmp) } };
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        using (var f = File.Create(outPath)) png.Save(f);
+        return $"  tags (playing {current ?? "불명"}): " + string.Join(" | ", cards.Select(x => $"{x.Who} at {x.Card.X},{x.Card.Y}: {string.Join(" ", x.Tags.Select(t => t.Text + (t.Done ? "(done)" : "")))}")) + $"\n  → {outPath}\n";
     }
 
     /// <summary>--trace-gauge &lt;frames&gt; &lt;gauge folder&gt; [--fps=10]: PNG frames of a clip (ffmpeg -vf fps=10, as the engine
