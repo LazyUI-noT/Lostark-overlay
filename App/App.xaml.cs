@@ -331,6 +331,30 @@ public partial class App : Application
         return path;
     }
 
+    /// <summary>Deletes earlier builds' native-library folders under %TEMP%\.net\GaugeOverlay (ExtractFolders), off the UI thread.
+    /// A folder goes only if it can be renamed first: a copy still running from it keeps it whole.</summary>
+    static void CleanExtractFolders() => Task.Run(() =>
+    {
+        try
+        {
+            var root = Path.Combine(Path.GetTempPath(), ".net", "GaugeOverlay");
+            if (!Directory.Exists(root)) return;
+            // Another copy running (an older build, a demo) may not have loaded every library it unpacked, so its folder could
+            // be renamed away under it: then nothing is touched until this copy is the only one.
+            if (Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName).Length > 1) return;
+            var folders = new DirectoryInfo(root).GetDirectories().Select(d => (d.FullName, d.LastWriteTime));
+            int gone = 0;
+            foreach (var dir in ExtractFolders.Stale(folders, AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string, DateTime.Now))
+            {
+                string moved = dir + ".old";
+                try { Directory.Move(dir, moved); Directory.Delete(moved, recursive: true); gone++; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }   // in use, or half gone: next start
+            }
+            if (gone > 0) Trace.WriteLine($"[app] {gone} old build folder(s) removed from {root}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Trace.WriteLine($"[app] old build folders not checked: {ex.Message}"); }
+    });
+
     // ── --demo: the real UI driven by DemoSnapshots; no capture, no party, nothing saved ──────
     // Flags: --settings, --first-run, --debug, --edit, --pick=<Part> (a part's box options in 설정), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
     // --theme=<UiTheme>, --peer-colors=<ColorSource>, --support=<number 1–4>, --my-number=<1–4>, --name-length=<2–14>, --receive (파티원 크기·배치 받기),

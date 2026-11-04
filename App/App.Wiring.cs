@@ -19,6 +19,7 @@ public partial class App
     {
         Trace.Listeners.Add(new TextWriterTraceListener(LogPath()));
         Trace.AutoFlush = true;
+        CleanExtractFolders();
 
         var store = new SettingsStore(SettingsStore.DefaultPath);
         var settings = store.Load(out bool wasReset);

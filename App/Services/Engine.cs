@@ -215,16 +215,20 @@ public sealed partial class Engine : IDisposable
     }
     int _iconRun;   // CopyIcons runs started; read once per ReadSlots, before _iconsStale
 
+    ErrorLog _errors = ErrorLog.None;   // the engine thread's only
+
     void Loop()
     {
         while (!_stop)
         {
-            try { Step(); }
+            try { Step(); _errors = ErrorLog.None; }
             catch (Exception ex)
             {
-                Trace.WriteLine($"[engine] {ex}");
+                (_errors, var line) = _errors.Seen($"{ex.GetType().FullName}: {ex.Message}", Clock.Now());
+                if (line.Write == ErrorLog.Write.Full) Trace.WriteLine($"[engine] {ex}");
+                else if (line.Write == ErrorLog.Write.Summary) Trace.WriteLine($"[engine] the same error {line.Repeats} more times: {ex.GetType().Name}: {ex.Message}");
                 ResetSource();
-                Thread.Sleep(500);
+                Thread.Sleep(_errors.Pause);
             }
         }
         ResetSource();
