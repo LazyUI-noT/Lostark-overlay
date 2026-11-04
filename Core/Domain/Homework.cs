@@ -7,10 +7,14 @@ public enum HomeworkColor { White, Orange, Purple }
 
 /// <summary>One difficulty of a 숙제 raid (raids.json "homework"), in rank order: its default tag ("세하"), colour, and the
 /// gate(s) whose 클리어 finishes the raid on it.</summary>
-public sealed record HomeworkLevel(string Difficulty, string Tag, HomeworkColor Color, IReadOnlyList<string> Last);
+public sealed record HomeworkLevel(string Difficulty, string Tag, HomeworkColor Color, IReadOnlyList<string> Last, int? Entry = null);
 
 /// <summary>A raid tracked weekly: its gates (raids.json ids) and difficulties, lowest first.</summary>
 public sealed record HomeworkRaid(string Id, string Name, IReadOnlyList<string> Gates, IReadOnlyList<HomeworkLevel> Levels);
+
+/// <summary>A raid the user added on 설정 → 숙제 (a missing or time-limited one, like 종막 EX): no gates or entry levels, so no fight
+/// clears it and no level allocates it; its tag is clicked. <see cref="Auto"/>: put on every character, new ones too.</summary>
+public sealed record HomeworkCustomRaid(string Id, string Name, IReadOnlyList<HomeworkLevel> Levels, bool Auto);
 
 /// <summary>A raid a character picked to track, at the difficulty picked.</summary>
 public sealed record HomeworkPick(string Raid, string Difficulty);
@@ -76,6 +80,59 @@ public static class Homework
         if (!picks.Any(p => p.Raid == raid.Id && Rank(raid, p.Difficulty) < done)) return picks;
         return [.. picks.Select(p => p.Raid == raid.Id && Rank(raid, p.Difficulty) < done ? p with { Difficulty = clear.Difficulty } : p)];
     }
+
+    /// <summary>The raids a character gets by item level (user, 2026-11-04): each raid at the highest difficulty it can enter (of
+    /// two at one entry level, the higher), the <see cref="AutoPicks"/> with the highest entry level, a tie going to the raid whose
+    /// top difficulty is highest. A raid without entry levels is picked by hand only.</summary>
+    public static IReadOnlyList<HomeworkPick> Allocate(int itemLevel, IReadOnlyList<HomeworkRaid> raids) =>
+        [.. raids.Select(r => (Raid: r, Open: r.Levels.LastOrDefault(l => l.Entry <= itemLevel)))
+            .Where(x => x.Open is not null)
+            .OrderByDescending(x => x.Open!.Entry).ThenByDescending(x => x.Raid.Levels.Max(l => l.Entry))
+            .Take(AutoPicks).Select(x => new HomeworkPick(x.Raid.Id, x.Open!.Difficulty))];
+
+    /// <summary>The picks once a character's level goes from <paramref name="was"/> to <paramref name="now"/>. A first level gives
+    /// a character without picks its raids. A new level redoes them while <paramref name="follow"/> (the one 자동 switch, for all
+    /// characters) is on; with no raid open at that level the picks stay.</summary>
+    public static IReadOnlyList<HomeworkPick> PicksAfter(IReadOnlyList<HomeworkPick> picks, int? was, int now, bool follow, IReadOnlyList<HomeworkRaid> raids)
+    {
+        var added = picks.Where(IsAdded).ToList();
+        bool allocate = was is null ? picks.Count == added.Count : was != now && follow;
+        return allocate && Allocate(now, raids) is { Count: > 0 } picked ? [.. picked.Concat(added).Take(HomeworkCharacter.MaxPicks)] : picks;
+    }
+
+    /// <summary>A pick of a raid the user added: it stays through a new level, on top of the automatic ones.</summary>
+    public static bool IsAdded(HomeworkPick pick) => pick.Raid.StartsWith(CustomPrefix, StringComparison.Ordinal);
+
+    /// <summary>An added raid from its form: rows without a difficulty or tag are left out, either one names the other when alone;
+    /// null without a name or a difficulty.</summary>
+    public static HomeworkCustomRaid? NewCustom(string id, string name, IEnumerable<(string Difficulty, string Tag, HomeworkColor Color)> rows, bool auto)
+    {
+        var levels = rows.Select(r => (Difficulty: r.Difficulty.Trim(), Tag: r.Tag.Trim(), r.Color))
+            .Where(r => r.Difficulty.Length > 0 || r.Tag.Length > 0)
+            .Select(r => new HomeworkLevel(r.Difficulty.Length > 0 ? r.Difficulty : r.Tag, r.Tag.Length > 0 ? r.Tag : r.Difficulty, r.Color, []))
+            .DistinctBy(l => l.Difficulty).ToList();
+        return string.IsNullOrWhiteSpace(name) || levels.Count == 0 ? null : new HomeworkCustomRaid(id, name.Trim(), levels, auto);
+    }
+
+    public static HomeworkRaid AsRaid(HomeworkCustomRaid custom) => new(custom.Id, custom.Name, [], custom.Levels);
+
+    /// <summary>The shipped raids and the added ones that are whole (settings.json can be edited by hand).</summary>
+    public static IReadOnlyList<HomeworkRaid> AllRaids(IReadOnlyList<HomeworkRaid> shipped, IEnumerable<HomeworkCustomRaid> added) =>
+        [.. shipped, .. added.Where(c => c is { Id: not null, Name: not null, Levels.Count: > 0 } && c.Id.StartsWith(CustomPrefix, StringComparison.Ordinal)
+            && c.Levels.All(l => l is { Difficulty: not null, Tag: not null, Last: not null })).Select(AsRaid)];
+
+    /// <summary>The picks with <paramref name="raid"/> on, at its top difficulty; the same list when it is on already or they are full.</summary>
+    public static IReadOnlyList<HomeworkPick> WithRaid(IReadOnlyList<HomeworkPick> picks, HomeworkRaid raid) =>
+        picks.Count >= HomeworkCharacter.MaxPicks || picks.Any(p => p.Raid == raid.Id) ? picks : [.. picks, new HomeworkPick(raid.Id, raid.Levels[^1].Difficulty)];
+
+    public const string CustomPrefix = "custom-";
+
+    /// <summary>The level kept after a read: a level doesn't fall, nor rise more than <see cref="MaxLevelStep"/> at once (a misread
+    /// that would stick; a real jump is typed on 설정 → 숙제).</summary>
+    public static int LevelFrom(int? stored, int read) =>
+        stored is not { } level ? read : read > level && read - level <= MaxLevelStep ? read : level;
+
+    public const int AutoPicks = 3, MaxLevelStep = 60;
 
     static int Rank(HomeworkRaid raid, string difficulty) => raid.Levels.ToList().FindIndex(l => l.Difficulty == difficulty);
 }

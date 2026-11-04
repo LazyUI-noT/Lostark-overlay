@@ -62,7 +62,7 @@ public class GameMenuTests
     [Fact]
     public void Without_the_title_the_menu_is_closed_and_nothing_is_read()
     {
-        var read = GameMenu.Parse([.. Grid.Skip(1)], []);
+        var read = GameMenu.Parse([.. Grid.Where(l => l[0].Text is not ("게임" or "전체"))], []);
 
         Assert.False(read.Open);
         Assert.Null(read.Current);
@@ -166,6 +166,50 @@ public class GameMenuTests
         Assert.Equal("너무아파요살살", read.Current);
         Assert.Equal(["매우Ot파요살살"], read.Cards.Select(c => c.Name));
         Assert.True(read.Waiting);
+    }
+
+    [Theory]
+    [InlineData("1771.66", 1771)]
+    [InlineData("1640.OO", 1640)]     // as the OCR reads them (--read-menu, 2026-11-04)
+    [InlineData("1755.예", 1755)]
+    [InlineData("會|79|.66", 1791)]   // the icon, and 1 read as |
+    [InlineData("습|791.66", 1791)]
+    [InlineData("수1640.00", 1640)]
+    [InlineData("쉬791.66", 1791)]    // the icon swallowed the 1
+    [InlineData("00", null)]
+    [InlineData("-", null)]
+    [InlineData("9999.00", null)]     // no such level
+    public void An_item_level_is_found_in_what_the_ocr_reads(string text, int? level)
+    {
+        Assert.Equal(level, GameMenu.ItemLevel(text));
+    }
+
+    [Fact]
+    public void The_menu_is_open_on_a_misread_title_or_on_the_right_panels_button()
+    {
+        Assert.True(GameMenu.Parse([L(W("계임", 1043, 262), W("몌뉴", 1085, 262))], []).Open);
+        Assert.True(GameMenu.Parse([L(W("전체", 1545, 333), W("현황", 1576, 333), W("보기", 1607, 333))], []).Open);
+        Assert.False(GameMenu.Parse([L(W("골드", 451, 305), W("획득", 478, 305))], []).Open);
+    }
+
+    [Fact]
+    public void Cards_and_the_portrait_give_their_item_levels()
+    {
+        IReadOnlyList<IReadOnlyList<MenuWord>> lines =
+        [
+            L(W("계임", 1043, 262, 40, 18), W("매뉴", 1085, 262, 40, 18)),
+            L(W("워르드", 900, 388, 50)),
+            L(W("매우Ot파요살살", 901, 405)),
+            L(W("LⅥ70", 854, 426, 35)),
+            L(W("1771.66", 921, 427, 50)),
+            L(W("LⅥ70", 320, 676, 40, 16), W("너무아파요살살", 372, 676, 120, 16)),
+            L(W("會|79|.66", 357, 702, 60, 16)),
+        ];
+
+        var read = GameMenu.Parse(lines, []);
+
+        Assert.Equal(1771, read.Cards[0].ItemLevel);
+        Assert.Equal(1791, read.CurrentLevel);
     }
 
     [Fact]

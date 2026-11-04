@@ -45,6 +45,21 @@ public sealed class HomeworkStore(string path)
         }
     }
 
+    /// <summary>A click on an added raid's tag: <paramref name="clear"/> kept, or, when its character cleared that raid this week,
+    /// that taken back. True when the raid is cleared now.</summary>
+    public bool Toggle(HomeworkClear clear)
+    {
+        lock (_gate)
+        {
+            var week = Homework.WeekStart(clear.At);
+            var all = Read().Where(c => c.At >= week).ToList();
+            bool cleared = all.RemoveAll(c => c.Character == clear.Character && c.Raid == clear.Raid) == 0;
+            if (cleared) all.Add(clear);
+            Write(all);
+            return cleared;
+        }
+    }
+
     List<HomeworkClear> Read()
     {
         try

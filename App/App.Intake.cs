@@ -99,8 +99,8 @@ public partial class App
                 var screen = Png.Load(path);
                 var (read, lines) = Task.Run(() => Services.Engine.ReadPicture(screen)).GetAwaiter().GetResult();   // off the UI thread: the OCR's awaits would wait for it
                 foreach (var line in lines) report.AppendLine($"  {line}");
-                report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"}, picked {read.Picked ?? "-"}, waiting {read.Waiting}");
-                foreach (var c in read.Cards) report.AppendLine($"  card {c.Name} [{c.ClassName}] at {c.X:0},{c.Y:0}–{c.Bottom:0}");
+                report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"} ({read.CurrentLevel}), picked {read.Picked ?? "-"}, waiting {read.Waiting}");
+                foreach (var c in read.Cards) report.AppendLine($"  card {c.Name} [{c.ClassName}] {c.ItemLevel} at {c.X:0},{c.Y:0}–{c.Bottom:0}");
             }
             catch (Exception ex) { report.AppendLine($"  {ex.GetType().Name}: {ex.Message}"); }
         }

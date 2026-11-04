@@ -9,6 +9,10 @@ public sealed class HomeworkSettings
     public Dictionary<string, string> Tags { get; set; } = [];
     /// <summary>숙제 표시: the tags under the 다른 캐릭터 접속 grid's cards.</summary>
     public bool ShowOnGrid { get; set; } = true;
+    /// <summary>레벨 따라 자동 (one switch for all characters): a character's picks are redone when its item level changes.</summary>
+    public bool FollowLevel { get; set; } = true;
+    /// <summary>Raids the user added (a new list on every change: the save thread reads it).</summary>
+    public List<HomeworkCustomRaid> CustomRaids { get; set; } = [];
 
     /// <summary>The character called <paramref name="name"/>, or null.</summary>
     public HomeworkCharacter? Find(string? name) => Characters.FirstOrDefault(c => c.Name == name);
@@ -22,6 +26,8 @@ public sealed class HomeworkCharacter
     public string Name { get; set; } = "";
     public string? ClassName { get; set; }
     public string? Subclass { get; set; }
+    /// <summary>Its item level, whole part (read from its card or the portrait, or typed); null: not known yet.</summary>
+    public int? ItemLevel { get; set; }
     /// <summary>Left off the 숙제 page and the grid (it stays known, so its name still snaps reads).</summary>
     public bool Hidden { get; set; }
     public List<HomeworkPick> Picks { get; set; } = [];

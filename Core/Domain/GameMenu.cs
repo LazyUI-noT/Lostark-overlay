@@ -11,11 +11,11 @@ public sealed record MenuWord(string Text, double X, double Y, double W, double 
 
 /// <summary>A character card in the 다른 캐릭터 접속 grid: its name, class and where it is (1080p reference pixels; the 숙제
 /// tags go under <see cref="Bottom"/>).</summary>
-public sealed record MenuCard(string Name, string? ClassName, double X, double Y, double W, double Bottom);
+public sealed record MenuCard(string Name, string? ClassName, double X, double Y, double W, double Bottom, int? ItemLevel = null);
 
 /// <summary>One read of the game menu: open or not, the character being played (under the portrait), the one picked in the
 /// grid (the right panel's header), the cards seen, and "잠시만 기다려주세요." (접속하기 pressed).</summary>
-public sealed record MenuRead(bool Open, string? Current, string? Picked, IReadOnlyList<MenuCard> Cards, bool Waiting)
+public sealed record MenuRead(bool Open, string? Current, string? Picked, IReadOnlyList<MenuCard> Cards, bool Waiting, int? CurrentLevel = null)
 {
     public static readonly MenuRead Closed = new(false, null, null, [], false);
 }
@@ -28,14 +28,37 @@ public static partial class GameMenu
     const double NameMin = 10, NameMax = 30, ClassMax = 50;   // a card's name and class centres above its "Lv" word's centre
     const double NameFrom = 15, NameTo = 245;   // their x from the "Lv" word's left (past the class icon)
     const double HeaderGap = 40;   // the picked name above "전체 현황 보기"
+    const double PortraitLevelBelow = 40, SameLine = 8;   // the portrait's item level under its "Lv" word; a card's beside its own
+    const int MinItemLevel = 1000, MaxItemLevel = 2000;
 
     /// <summary>The title strip's OCR shows "게임 메뉴" (read "계임 매뉴" as often as not): the menu is open.</summary>
     public static bool IsTitle(IEnumerable<string> lines) => lines.Any(l => Title().IsMatch(Squash(l)));
 
     public static MenuRead Parse(IReadOnlyList<IReadOnlyList<MenuWord>> lines, IEnumerable<string> waitingLines)
     {
-        if (!lines.Any(l => Title().IsMatch(Squash(Text(l))))) return MenuRead.Closed;
-        return new MenuRead(true, Current(lines), Picked(lines), Cards(lines), waitingLines.Any(l => Waiting().IsMatch(Squash(l))));
+        if (!lines.Any(l => Squash(Text(l)) is var text && (Title().IsMatch(text) || text.Contains("전체현황")))) return MenuRead.Closed;   // either: a misread title would blink the tags
+        return new MenuRead(true, Current(lines), Picked(lines), Cards(lines), waitingLines.Any(l => Waiting().IsMatch(Squash(l))), CurrentLevel(lines));
+    }
+
+    /// <summary>The item level in what the OCR read, whole part ("1771.66"; "1640.OO", "會|79|.66": the icon before it, 1 read as |,
+    /// 0 as O); null without a believable one.</summary>
+    public static int? ItemLevel(string text)
+    {
+        var digits = text.Replace('|', '1').Replace('l', '1').Replace('O', '0').Replace('o', '0');
+        if (FourDigits().Match(digits) is { Success: true } m) return int.Parse(m.Value) is >= MinItemLevel and <= MaxItemLevel and var level ? level : null;
+        return NoLeadingOne().Match(digits) is { Success: true } rest ? 1000 + int.Parse(rest.Groups[1].Value) : null;   // "쉬791.66": the icon swallowed the 1
+    }
+
+    /// <summary>The item level on the line under the portrait's "Lv.70 name".</summary>
+    static int? CurrentLevel(IReadOnlyList<IReadOnlyList<MenuWord>> lines)
+    {
+        var words = lines.SelectMany(l => l).ToList();
+        foreach (var line in lines)
+            for (int i = 0; i + 1 < line.Count; i++)
+                if (LevelWord().Match(line[i].Text) is { Success: true } m && m.Length == line[i].Text.Length && line[i] is var lv
+                    && ItemLevel(string.Concat(words.Where(w => w.CenterY - lv.CenterY is > 15 and < PortraitLevelBelow && w.X >= lv.X - 10 && w.X < lv.X + NameTo).Select(w => w.Text))) is { } level)
+                    return level;
+        return null;
     }
 
     /// <summary>"Lv.70 너무아파요살살" under the portrait: a level word, then a name on its line (a card's name is above its level).</summary>
@@ -77,7 +100,8 @@ public static partial class GameMenu
                         .OrderBy(w => w.X).Select(w => w.Text)) is { Length: > 0 } t ? t : null;
                 if (Above(NameMin, NameMax) is not { } raw || raw.Contains("접속") || CharacterName.Clean(raw) is not { } name) continue;
                 string? cls = Above(NameMax, ClassMax) is { } c ? CharacterName.Clean(c) : null;
-                cards.Add(new MenuCard(name, cls, lv.X - CardLeft, lv.Y, CardWidth, lv.Y + lv.H + CardBelow));
+                int? level = ItemLevel(string.Concat(words.Where(w => w != lv && Math.Abs(w.CenterY - lv.CenterY) <= SameLine && w.X > lv.X && w.X < lv.X + NameTo).OrderBy(w => w.X).Select(w => w.Text)));
+                cards.Add(new MenuCard(name, cls, lv.X - CardLeft, lv.Y, CardWidth, lv.Y + lv.H + CardBelow, level));
             }
         return [.. cards.OrderBy(c => Math.Round(c.Y / 20)).ThenBy(c => c.X)];
     }
@@ -90,7 +114,13 @@ public static partial class GameMenu
     [GeneratedRegex(@"^L[vVⅤⅥ][.,]?\d{1,3}")]
     private static partial Regex LevelWord();
 
-    [GeneratedRegex("[게계겜]임[메매]뉴")]
+    [GeneratedRegex(@"\d{4}")]
+    private static partial Regex FourDigits();
+
+    [GeneratedRegex(@"(?<!\d)(\d{3})[.,]\d{2}")]
+    private static partial Regex NoLeadingOne();
+
+    [GeneratedRegex("[게계겜]임[메매몌며]뉴")]
     private static partial Regex Title();
 
     [GeneratedRegex("[잠장삼]시만기다")]   // "잠시만 기다려주세요." read "장시만", "삼시만", "기다러" (--read-menu, 2026-11-04)

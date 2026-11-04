@@ -38,35 +38,32 @@
     { "id": "belltower-g2", "players": 4, "tab": "어비스 던전", "raid": "구원의 종탑", "gate": "2관문", "bosses": ["광신의 인도자, 아르세노스"], "alerts": [], "debuffRaid": "없음",
       "hp": { "1단계": 312476622965, "2단계": 765275689586, "3단계": 1197954508761 } }
   ],
-  "_homework": "숙제 (설정 → 숙제, homework.plan.md): one entry per weekly raid. gates = its gate ids above; levels = its difficulties, lowest first (a clear above the pick raises it), each with its default tag, colour (white / orange / purple, the game's) and the gate(s) whose 클리어 finishes the raid on it.",
+  "_homework": "숙제 (설정 → 숙제, homework.plan.md): one entry per weekly raid. gates = its gate ids above; levels = its difficulties, lowest first (a clear above the pick raises it), each with its default tag, colour (white / orange / purple, the game's), the gate(s) whose 클리어 finishes the raid on it, and its entry item level (the raids a character gets by level; a raid without one is picked by hand only).",
   "homework": [
     { "id": "act3", "name": "3막", "gates": ["act3-g3"], "levels": [
       { "difficulty": "노말", "tag": "3노", "color": "white", "last": ["act3-g3"] },
       { "difficulty": "하드", "tag": "3하", "color": "orange", "last": ["act3-g3"] } ] },
     { "id": "act4", "name": "4막", "gates": ["act4-g1", "act4-g2"], "levels": [
-      { "difficulty": "싱글", "tag": "4싱", "color": "white", "last": ["act4-g2"] },
-      { "difficulty": "노말", "tag": "4노", "color": "white", "last": ["act4-g2"] },
-      { "difficulty": "하드", "tag": "4하", "color": "orange", "last": ["act4-g2"] } ] },
+      { "difficulty": "싱글", "tag": "4싱", "color": "white", "last": ["act4-g2"], "entry": 1700 },
+      { "difficulty": "노말", "tag": "4노", "color": "white", "last": ["act4-g2"], "entry": 1700 },
+      { "difficulty": "하드", "tag": "4하", "color": "orange", "last": ["act4-g2"], "entry": 1720 } ] },
     { "id": "final", "name": "종막", "gates": ["final-g1", "final-g2-1", "final-g2-2"], "levels": [
-      { "difficulty": "싱글", "tag": "종싱", "color": "white", "last": ["final-g2-1"] },
-      { "difficulty": "노말", "tag": "종노", "color": "white", "last": ["final-g2-1"] },
-      { "difficulty": "하드", "tag": "종하", "color": "orange", "last": ["final-g2-2"] } ] },
-    { "id": "final-ex", "name": "종막 EX", "gates": ["final-ex-g2-1", "final-ex-g2-2", "final-ex-g2-3"], "levels": [
-      { "difficulty": "EX 하드", "tag": "EX하", "color": "orange", "last": ["final-ex-g2-2", "final-ex-g2-3"] },
-      { "difficulty": "EX 나이트메어", "tag": "EX나메", "color": "purple", "last": ["final-ex-g2-2", "final-ex-g2-3"] } ] },
+      { "difficulty": "싱글", "tag": "종싱", "color": "white", "last": ["final-g2-1"], "entry": 1710 },
+      { "difficulty": "노말", "tag": "종노", "color": "white", "last": ["final-g2-1"], "entry": 1710 },
+      { "difficulty": "하드", "tag": "종하", "color": "orange", "last": ["final-g2-2"], "entry": 1730 } ] },
     { "id": "serka", "name": "세르카", "gates": ["serka-g1", "serka-g2"], "levels": [
-      { "difficulty": "매칭", "tag": "세매", "color": "white", "last": ["serka-g2"] },
-      { "difficulty": "노말", "tag": "세노", "color": "white", "last": ["serka-g2"] },
-      { "difficulty": "하드", "tag": "세하", "color": "orange", "last": ["serka-g2"] },
-      { "difficulty": "나이트메어", "tag": "세나메", "color": "purple", "last": ["serka-g2"] } ] },
+      { "difficulty": "매칭", "tag": "세매", "color": "white", "last": ["serka-g2"], "entry": 1710 },
+      { "difficulty": "노말", "tag": "세노", "color": "white", "last": ["serka-g2"], "entry": 1710 },
+      { "difficulty": "하드", "tag": "세하", "color": "orange", "last": ["serka-g2"], "entry": 1730 },
+      { "difficulty": "나이트메어", "tag": "세나메", "color": "purple", "last": ["serka-g2"], "entry": 1740 } ] },
     { "id": "belgardin", "name": "벨가르딘", "gates": ["belgardin-g1", "belgardin-g2"], "levels": [
-      { "difficulty": "매칭", "tag": "벨매", "color": "white", "last": ["belgardin-g2"] },
-      { "difficulty": "노말", "tag": "벨노", "color": "white", "last": ["belgardin-g2"] },
-      { "difficulty": "하드", "tag": "벨하", "color": "orange", "last": ["belgardin-g2"] },
-      { "difficulty": "나이트메어", "tag": "벨나메", "color": "purple", "last": ["belgardin-g2"] } ] },
+      { "difficulty": "매칭", "tag": "벨매", "color": "white", "last": ["belgardin-g2"], "entry": 1750 },
+      { "difficulty": "노말", "tag": "벨노", "color": "white", "last": ["belgardin-g2"], "entry": 1750 },
+      { "difficulty": "하드", "tag": "벨하", "color": "orange", "last": ["belgardin-g2"], "entry": 1770 },
+      { "difficulty": "나이트메어", "tag": "벨나메", "color": "purple", "last": ["belgardin-g2"], "entry": 1780 } ] },
     { "id": "belltower", "name": "구원의 종탑", "gates": ["belltower-g1", "belltower-g2"], "levels": [
-      { "difficulty": "1단계", "tag": "종탑1", "color": "white", "last": ["belltower-g2"] },
-      { "difficulty": "2단계", "tag": "종탑2", "color": "orange", "last": ["belltower-g2"] },
-      { "difficulty": "3단계", "tag": "종탑3", "color": "purple", "last": ["belltower-g2"] } ] }
+      { "difficulty": "1단계", "tag": "종탑1", "color": "white", "last": ["belltower-g2"], "entry": 1700 },
+      { "difficulty": "2단계", "tag": "종탑2", "color": "orange", "last": ["belltower-g2"], "entry": 1720 },
+      { "difficulty": "3단계", "tag": "종탑3", "color": "purple", "last": ["belltower-g2"], "entry": 1750 } ] }
   ]
 }
