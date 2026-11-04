@@ -219,10 +219,11 @@ public partial class SettingsWindow
     }
 
     /// <summary>Demo (--record-view): opens a fight (one with 암수 when there is), or compares the two newest.</summary>
-    public void DemoOpenRecord(bool compare)
+    public void DemoOpenRecord(bool compare, bool run = false)
     {
         var all = AllRecords();
         if (all.Count == 0) return;
+        if (run && all.FirstOrDefault(x => FightRegions.Chain(x.Record, all.Select(a => a.Record)).Count > 1) is { File: { } joined }) { OpenRecord(joined); return; }
         if (!compare || all.Count < 2) { OpenRecord((all.FirstOrDefault(x => x.Record.AmsuOn) is { File: { } f } ? f : all[0].File)); return; }   // one with 암수 when there is
         _compare.Clear();
         _compare.AddRange(all.Take(2).Select(x => x.File));

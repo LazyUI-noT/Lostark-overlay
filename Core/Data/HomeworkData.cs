@@ -18,7 +18,7 @@ public static class HomeworkData
                 .Where(r => !string.IsNullOrWhiteSpace(r.Id) && r.Gates is { Count: > 0 } && r.Levels is { Count: > 0 })
                 .Select(r => new HomeworkRaid(r.Id!, r.Name ?? r.Id!, r.Gates!,
                     [.. r.Levels!.Where(l => !string.IsNullOrWhiteSpace(l.Difficulty)).Select(l => new HomeworkLevel(
-                        l.Difficulty!, l.Tag ?? l.Difficulty!, Enum.TryParse<HomeworkColor>(l.Color, true, out var c) ? c : HomeworkColor.White, l.Last ?? [], l.Entry))]))];
+                        l.Difficulty!, l.Tag ?? l.Difficulty!, Enum.TryParse<HomeworkColor>(l.Color, true, out var c) ? c : HomeworkColor.White, l.Last ?? [], l.Entry, l.EndsHidden))]))];
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return []; }
     }
@@ -27,5 +27,5 @@ public static class HomeworkData
 
     sealed record FileDto(List<RaidDto>? Homework);
     sealed record RaidDto(string? Id, string? Name, List<string>? Gates, List<LevelDto>? Levels);
-    sealed record LevelDto(string? Difficulty, string? Tag, string? Color, List<string>? Last, int? Entry);
+    sealed record LevelDto(string? Difficulty, string? Tag, string? Color, List<string>? Last, int? Entry, bool EndsHidden = false);
 }

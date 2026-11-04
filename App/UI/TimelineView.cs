@@ -28,13 +28,15 @@ sealed class TimelineView : FrameworkElement
     double AxisH => 18 * _font;
     double Icon => BaseIcon * Timeline.IconScale(_length, _window.Span);
     double SkillH => 3 * (Icon + 2) + 4;
-    double BlockHeight => HeadH + LegendH + CurveH + 8 + SkillH + 4 + Lanes * BuffH;   // one record's natural height
+    double StripH => _regions.Count > 0 ? 50 * _font : 0;   // the regions' names and figures, over the curves
+    double BlockHeight => HeadH + LegendH + StripH + CurveH + 8 + SkillH + 4 + Lanes * BuffH;   // one record's natural height
     double _curveH = CurveH;   // its curves: taller when the view is taller than its records (the full page)
-    double Block => HeadH + LegendH + _curveH + 8 + SkillH + 4 + Lanes * BuffH;
+    double Block => HeadH + LegendH + StripH + _curveH + 8 + SkillH + 4 + Lanes * BuffH;
     double Natural => _shown.Count * (BlockHeight + Gap) + AxisH;
     static readonly Color[] Compared = [Color.FromRgb(0xFF, 0x7A, 0x59), Color.FromRgb(0x4F, 0xD1, 0xC5), Color.FromRgb(0xB7, 0x94, 0xF4)];
     static readonly Color[] ImportedColours = [Color.FromRgb(0xE8, 0xC5, 0x47), Color.FromRgb(0xD4, 0xA3, 0x73), Color.FromRgb(0xF2, 0xE3, 0x94)];   // their own family
     IReadOnlyList<ComparedFight> _compared = [];
+    IReadOnlyList<FightRegion> _regions = [];   // the opened fight's (user, 2026-11-04): a compared fight's curves stay as they are
 
     /// <summary>A compared fight's colour: the imported ones in a family of their own.</summary>
     Color ColourOf(int i) => _compared[i].Look == CompareLook.Imported ? ImportedColours[i % ImportedColours.Length] : Compared[i % Compared.Length];
@@ -90,9 +92,9 @@ sealed class TimelineView : FrameworkElement
 
     /// <summary>The fight to draw, with the second that lines up at 0 and my skill icons, and the fights compared with it (their
     /// curves on its chart, each lined up at its own second); the whole length shows.</summary>
-    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened, IReadOnlyList<ComparedFight> compared)
+    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened, IReadOnlyList<ComparedFight> compared, IReadOnlyList<FightRegion> regions)
     {
-        (_shown, _compared) = ([opened], compared);
+        (_shown, _compared, _regions) = ([opened], compared, regions);
         _length = Math.Max(opened.Record.Duration - opened.Offset, compared.Count == 0 ? 0 : compared.Max(c => c.Record.Duration - c.Offset));
         _window = TimeWindow.Whole(_length);
         InvalidateMeasure();
@@ -175,6 +177,8 @@ sealed class TimelineView : FrameworkElement
             lx += 11 + Text(dc, $"{label} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
         }
         y += LegendH;
+        DrawRegions(dc, r, offset, y, bottom, fg);
+        y += StripH;
         DrawCurves(dc, r, offset, seen, colours, y, fg);
         y += _curveH + 8;
         DrawSkills(dc, r, offset, seen, icons, y, fg);
@@ -182,6 +186,37 @@ sealed class TimelineView : FrameworkElement
         DrawBuffs(dc, r, offset, seen, zoomed, y, fg);
         if (_hover is { } hx && hx >= LabelW && hx <= LabelW + PlotW) DrawHover(dc, r, offset, colours, hx, bottom - Block + HeadH, bottom);
         return bottom;
+    }
+
+    // A dashed line down the whole block at each region's start; above the curves its name, my damage and DPS in it, its length and the boss HP lost.
+    void DrawRegions(DrawingContext dc, FightRecord r, double offset, double y, double bottom, Brush fg)
+    {
+        if (_regions.Count == 0) return;
+        dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, bottom - y)));
+        var (band, gold, faint) = (Faint(fg, 0.07).Brush, Frozen(new SolidColorBrush(Mine)), Faint(fg, 0.65).Brush);
+        for (int i = 0; i < _regions.Count; i++)
+        {
+            var region = _regions[i];
+            double x0 = Math.Max(LabelW, X(region.From, offset)), x1 = Math.Min(LabelW + PlotW, X(region.To, offset));
+            if (i > 0) dc.DrawLine(PhasePen, new(X(region.From, offset), y), new(X(region.From, offset), bottom));
+            if (x1 - x0 < 1) continue;
+            if (i % 2 == 1) dc.DrawRectangle(band, null, new Rect(x0, y, x1 - x0, StripH - 4));
+            void Centred(string text, double top, double size, Brush brush, bool bold = false)
+            {
+                var line = Format(text, size * _font, brush, bold, Math.Max(1, x1 - x0 - 6));
+                (line.TextAlignment, line.MaxLineCount, line.Trimming) = (TextAlignment.Center, 1, TextTrimming.CharacterEllipsis);
+                dc.DrawText(line, new(x0 + 3, y + top * _font));
+            }
+            Centred(region.Name, 1, 12, fg, bold: true);
+            if (region.Players.FirstOrDefault(p => p.Name == r.Me) is { } mine)
+            {
+                string full = $"{Amount(mine.Damage)} · DPS {Amount(mine.Dps)}";   // a narrow region drops the word, not the number
+                bool fits = Format(full, 11 * _font, gold, false, 2000).WidthIncludingTrailingWhitespace <= x1 - x0 - 6;
+                Centred(fits ? full : $"{Amount(mine.Damage)} · {Amount(mine.Dps)}", 16, 11, gold);
+            }
+            Centred($"{Clock(region.To - region.From)} · {(region.BossTaken is { } boss ? $"보스 {Amount(boss)}" : "보스 HP ???")}", 31, 10, faint);
+        }
+        dc.Pop();
     }
 
     // DPS solid on the left scale, 누적 피해 dashed on the right; mine drawn last, on top.
@@ -321,6 +356,12 @@ sealed class TimelineView : FrameworkElement
         foreach (var g in r.Samples.GroupBy(s => s.Name).OrderBy(g => g.Key != r.Me))
             if (g.LastOrDefault(s => s.T <= t) is { } s)
                 lines.Add(($"{g.Key}  피해량 {s.Damage:N0} · 초당 {s.Dps:N0}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0])))));
+        if (_regions.LastOrDefault(x => x.From <= t) is { } region)   // everyone's figures in the region under the cursor
+        {
+            lines.Add(($"{region.Name} 구간 ({Clock(region.To - region.From)})", TipText));
+            foreach (var p in region.Players)
+                lines.Add(($"{p.Name}  구간 피해량 {Amount(p.Damage)} · DPS {Amount(p.Dps)}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(p.Name, Others[0])))));
+        }
         for (int i = 0; i < _compared.Count; i++)   // the fights compared, at the same second on their own clocks
         {
             var (c, cOffset, _, label) = _compared[i];

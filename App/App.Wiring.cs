@@ -480,7 +480,7 @@ public partial class App
             // Not until the new boss has taken damage: the last boss's bar may still be read while the gate changes.
             if (status.Boss.Max is not { } max || BossDamage.Taken(status.Boss) <= 0 || !s.Saving.IsCompleted) return;
             toSettle = null;
-            if (s.Saving.Result is not { } file || FightVerdict.ByNext(s.Fight, max, null) is not { } cleared) return;
+            if (s.Saving.Result is not { } file || FightVerdict.ByNext(s.Fight, max, null, HpGates()) is not { } cleared) return;
             if (cleared == s.Fight.Cleared) return;
             Trace.WriteLine($"[records] {file}: {(cleared ? "클리어" : "실패")} by the next record's boss");
             _ = Task.Run(() =>

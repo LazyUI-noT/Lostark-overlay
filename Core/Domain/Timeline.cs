@@ -132,7 +132,7 @@ public static class Timeline
         [.. r.Samples.Where(s => s.Name == r.Me).OrderBy(s => s.T).Select(s => (s.T, (double)s.Damage))];
 
     /// <summary>A running total at second <paramref name="t"/>: linear between samples, held past the ends.</summary>
-    static double At(List<(double T, double V)> line, double t)
+    internal static double At(List<(double T, double V)> line, double t)
     {
         if (line.Count == 0) return 0;
         if (t <= line[0].T) return line[0].V;

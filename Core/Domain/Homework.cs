@@ -7,7 +7,8 @@ public enum HomeworkColor { White, Orange, Purple }
 
 /// <summary>One difficulty of a 숙제 raid (raids.json "homework"), in rank order: its default tag ("세하"), colour, and the
 /// gate(s) whose 클리어 finishes the raid on it.</summary>
-public sealed record HomeworkLevel(string Difficulty, string Tag, HomeworkColor Color, IReadOnlyList<string> Last, int? Entry = null);
+/// <remarks><paramref name="EndsHidden"/>: its real end is a ??? phase saved in the file of <paramref name="Last"/> (종막 하드 2-3 in 2-2's), reached or the raid isn't done; that file may carry the panel's name, its HP being in no data.</remarks>
+public sealed record HomeworkLevel(string Difficulty, string Tag, HomeworkColor Color, IReadOnlyList<string> Last, int? Entry = null, bool EndsHidden = false);
 
 /// <summary>A raid tracked weekly: its gates (raids.json ids) and difficulties, lowest first.</summary>
 public sealed record HomeworkRaid(string Id, string Name, IReadOnlyList<string> Gates, IReadOnlyList<HomeworkLevel> Levels);
@@ -44,11 +45,18 @@ public static class Homework
     public static HomeworkClear? ClearOf(FightRecord r, IReadOnlyList<RaidGate> gates, IReadOnlyList<HomeworkRaid> raids)
     {
         if (r.Cleared != true || string.IsNullOrWhiteSpace(r.Character) || r.Difficulty is not { } difficulty) return null;
-        if (gates.FirstOrDefault(g => RaidData.Label(g) == r.Gate) is not { } gate) return null;
+        var gate = gates.FirstOrDefault(g => RaidData.Label(g) == r.Gate);
         foreach (var raid in raids)
-            if (raid.Levels.FirstOrDefault(l => l.Difficulty == difficulty) is { } level && level.Last.Contains(gate.Id))
+            if (raid.Levels.FirstOrDefault(l => l.Difficulty == difficulty) is { } level && Finishes(r, level, gate, gates))
                 return new HomeworkClear(r.Character, raid.Id, difficulty, r.StartedAt);
         return null;
+    }
+
+    static bool Finishes(FightRecord r, HomeworkLevel level, RaidGate? gate, IReadOnlyList<RaidGate> gates)
+    {
+        if (level.EndsHidden && !FightRegions.EndedHidden(r.Boss)) return false;
+        if (gate is not null) return level.Last.Contains(gate.Id);
+        return level.EndsHidden && r.Gate is { } name && gates.Any(g => level.Last.Contains(g.Id) && RaidData.IsRaidNamed(g, name));
     }
 
     /// <summary>The key of a renamed tag in <see cref="HomeworkSettings.Tags"/>.</summary>

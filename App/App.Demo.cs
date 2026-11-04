@@ -126,6 +126,8 @@ public partial class App
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
             var store = new RecordStore(dir);
             foreach (var r in DemoSnapshots.DemoRecords()) store.Save(r);
+            if (Flag("records-from") is { } extra)   // copies of saved fights beside them, to look at a real one
+                foreach (var file in Directory.GetFiles(extra, "*.json.gz")) File.Copy(file, Path.Combine(dir, Path.GetFileName(file)));
             _settingsWindow.Records = store;
             _settingsWindow.RefreshRecords();
         }
@@ -169,7 +171,7 @@ public partial class App
         UpdateVisibility();
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
-        if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare");   // with --records: open | compare
+        if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare", view == "run");   // with --records: open | compare | run (a fight joined from its files)
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
         if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);

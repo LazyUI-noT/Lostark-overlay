@@ -50,7 +50,7 @@
     { "id": "final", "name": "종막", "gates": ["final-g1", "final-g2-1", "final-g2-2"], "levels": [
       { "difficulty": "싱글", "tag": "종싱", "color": "white", "last": ["final-g2-1"], "entry": 1710 },
       { "difficulty": "노말", "tag": "종노", "color": "white", "last": ["final-g2-1"], "entry": 1710 },
-      { "difficulty": "하드", "tag": "종하", "color": "orange", "last": ["final-g2-2"], "entry": 1730 } ] },
+      { "difficulty": "하드", "tag": "종하", "color": "orange", "last": ["final-g2-2"], "endsHidden": true, "entry": 1730 } ] },
     { "id": "serka", "name": "세르카", "gates": ["serka-g1", "serka-g2"], "levels": [
       { "difficulty": "매칭", "tag": "세매", "color": "white", "last": ["serka-g2"], "entry": 1710 },
       { "difficulty": "노말", "tag": "세노", "color": "white", "last": ["serka-g2"], "entry": 1710 },

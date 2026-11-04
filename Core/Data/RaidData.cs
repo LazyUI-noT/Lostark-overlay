@@ -74,6 +74,13 @@ public static class RaidData
     /// <summary>"3막 · 3관문"; the raid alone while its gate has no name.</summary>
     public static string Label(RaidGate g) => string.IsNullOrWhiteSpace(g.Gate) ? g.Raid : $"{g.Raid} · {g.Gate}";
 
+    /// <summary>A fight's name (a gate's label, or the dungeon panel's title, OCR and all) is of <paramref name="gate"/>'s raid: most of
+    /// the raid name's letters are in it ("4막: 파멸의 성채" → 파멸의 성채).</summary>
+    public static bool IsRaidNamed(RaidGate gate, string name) =>
+        Domain.DungeonPanel.Shared(gate.Raid[(gate.Raid.IndexOf(':') + 1)..], name) >= RaidNameShare;
+
+    const double RaidNameShare = 0.6;
+
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     sealed record FileDto(List<GateDto>? Gates);

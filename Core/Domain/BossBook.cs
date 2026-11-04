@@ -25,7 +25,7 @@ public static class BossBook
         FightHp(after.Boss) is { } hp && !string.IsNullOrWhiteSpace(after.Gate) && (after.Gate != before.Gate || after.Difficulty != before.Difficulty)
             ? (hp, new(after.Gate.Trim(), after.Difficulty)) : null;
 
-    /// <summary>The fight's boss HP: the max read most often (a phase on another bar is shorter), or null when none was read.</summary>
+    /// <summary>The fight's boss HP: the max read most often (a phase on another bar is shorter; ??? is no HP), or null when none was read.</summary>
     public static long? FightHp(IReadOnlyList<RecordBoss> boss) =>
-        boss.Where(b => b.Max is not null).GroupBy(b => b.Max!.Value).MaxBy(g => g.Count())?.Key;
+        boss.Where(b => b.Max is { } m && !FightRegions.IsHidden(m)).GroupBy(b => b.Max!.Value).MaxBy(g => g.Count())?.Key;
 }

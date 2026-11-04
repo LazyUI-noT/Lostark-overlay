@@ -27,7 +27,7 @@ public partial class SettingsWindow
         var picked = new List<(string File, FightRecord Record)> { opened };
         picked.AddRange(compared);
         if (compared.Count > 0) _comparePhase = Math.Min(_comparePhase, picked.Max(x => x.Record.Phases.Count));
-        ShowRecords(opened, compared);
+        ShowRecords(opened, compared, all);
         _secRecords.Children.Clear();
         _secRecords.Children.Add(TimelineBar(picked));
         if (_registerNote is { } note) _secRecords.Children.Add(Note(note));
@@ -96,17 +96,20 @@ public partial class SettingsWindow
     }
 
     /// <summary>Gives the timeline its fights. They are handed over again only when they changed, so the same ones keep their zoom.</summary>
-    void ShowRecords((string File, FightRecord Record) opened, IReadOnlyList<(string File, FightRecord Record)> compared)
+    void ShowRecords((string File, FightRecord Record) opened, IReadOnlyList<(string File, FightRecord Record)> compared, IReadOnlyList<(string File, FightRecord Record)> all)
     {
-        string shows = string.Join("|", compared.Prepend(opened).Select(x => x.File + "#" + x.Record.StartedAt.Ticks)) + "@" + _comparePhase;
+        // The whole run on one chart, whichever of its files was opened: from this character's list only, so imported ones join only each other.
+        var run = FightRegions.Chain(opened.Record, all.Where(x => x.File is not null && ChipOf(x) == ChipOf(opened)).Select(x => x.Record));
+        string shows = string.Join("|", compared.Prepend(opened).Select(x => x.File + "#" + x.Record.StartedAt.Ticks)) + "@" + _comparePhase + "+" + string.Join(",", run.Select(f => f.StartedAt.Ticks));
         if (shows != _timelineShows)
         {
             _timelineShows = shows;
             var icons = RecordIcons(opened.Record);
             _hasIcons = icons.Count > 0;
             int phase = compared.Count > 0 ? _comparePhase : 0;
-            _timeline.Show((opened.Record, Timeline.Offset(opened.Record, phase), icons), [.. compared.Select(x =>
-                new TimelineView.ComparedFight(x.Record, Timeline.Offset(x.Record, phase), LookOf(x, opened), LabelOf(x, opened)))]);
+            var whole = FightRegions.Join(run);
+            _timeline.Show((whole, Timeline.Offset(opened.Record, phase), icons), [.. compared.Select(x =>
+                new TimelineView.ComparedFight(x.Record, Timeline.Offset(x.Record, phase), LookOf(x, opened), LabelOf(x, opened)))], FightRegions.Of(whole, RaidGates));
         }
         // A 4-man gate (by the fight's boss HP, else its name): the party's buff share too. Set before Keys, which redraws.
         var r = opened.Record;

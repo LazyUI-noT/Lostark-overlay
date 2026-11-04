@@ -183,7 +183,8 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         double end = _boss.Count > 0 ? _boss[^1].T : 0;
         // The bar goes when the boss dies, so its last read is rarely 0 (구원의 종탑 1관문: 1124억 left, a gimmick kill); a bar
         // gone for BarGoneFor while the timer still ran is a clear too.
-        bool? cleared = _boss.LastOrDefault(b => b.Current is not null) is { Current: { } hp } last
+        // Ended on ??? (종막 2-3): nothing to judge by, so 클리어 until the same raid starts again (FightVerdict, user 2026-11-04).
+        bool? cleared = FightRegions.EndedHidden(_boss) ? true : _boss.LastOrDefault(b => b.Current is not null) is { Current: { } hp } last
             ? Killed(hp, last.Max) || _hpSeen is { } seen && end - seen >= BarGoneFor : null;
         var r = new FightRecord(_startedAt, _gate, end, _phases, Me, MyClass, MySubclass,
             [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn);
