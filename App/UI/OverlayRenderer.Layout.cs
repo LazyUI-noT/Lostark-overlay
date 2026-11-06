@@ -57,6 +57,8 @@ public sealed partial class OverlayRenderer
         if (Peer < 0)
         {
             var mine = Target is { } t ? ClassProfiles.Mine(Settings, t.Key) : ClassProfiles.Mine(Settings);
+            if (!Settings.Overlay.SkillRead && !ShowHidden)   // 스킬창 읽기 off: unread boxes would stay as last read; the gauge is its own part
+                mine = mine with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false) };
             var own = LayoutPlayer(p, "", BoxSize(mine.Width), BoxSize(mine.Height), 0, Bleed, mine, leadH: 0);
             if (own is not null) own.Look = mine;
             var (barClass, barSub) = Target is { } picked ? (picked.Class, picked.Subclass)

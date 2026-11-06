@@ -51,6 +51,19 @@ public class FightRecorderTests
     }
 
     [Fact]
+    public void Recording_runs_from_the_timers_first_move_to_the_fights_end()
+    {
+        Tick(0, 0);
+        Assert.False(_r.Recording);
+
+        Tick(1, 1);
+        Assert.True(_r.Recording);
+
+        _r.Finish();
+        Assert.False(_r.Recording);
+    }
+
+    [Fact]
     public void A_cast_between_moving_reads_is_kept_at_the_timer_plus_tenths()
     {
         Tick(0, 0); Tick(1, 1);

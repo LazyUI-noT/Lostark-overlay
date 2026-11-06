@@ -32,6 +32,9 @@ public sealed partial class Engine
 
     bool _wasInDungeon;
 
+    /// <summary>In a dungeon or not (<see cref="RaidPresence.InDungeon"/>), on each change: 오버레이 표시's 던전 안에서.</summary>
+    public event Action<bool>? InDungeonChanged;
+
     // The loading screen (meter-gating.plan.md phase 2): its bar read 4/s while the HUD is hidden or not yet known (the app
     // started on a loading screen) and presence matters.
     static readonly TimeSpan LoadingEvery = TimeSpan.FromMilliseconds(250);
@@ -86,7 +89,7 @@ public sealed partial class Engine
     /// stops would freeze the count and the countdown on screen).</summary>
     void StepPresence(TimeSpan now)
     {
-        _loading = _loading.Tick(_hud.Visible == true && _foreground, now);
+        _loading = _loading.Tick(_hud.Visible == true && Seen, now);
         if (_loading.Left)
         {
             (_presence, _loading) = (RaidPresence.None, LoadingWatch.None);
@@ -101,19 +104,26 @@ public sealed partial class Engine
             Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared, OCR closed");
             Publish(now);
         }
+        if (inside != _wasInDungeon) InDungeonChanged?.Invoke(inside);
         _wasInDungeon = inside;
     }
 
     /// <summary>The boss text row, when a raid read is on and a probe is due (twice a second; it is how a boss bar is seen
     /// when the overlay's meter is off).</summary>
     PixelRect? BossProbeRect(Config config, TimeSpan now) =>
-        RaidReadsOn(config) && Elapsed(now, _lastBossProbe, BossProbeEvery) ? Geometry.BossTextRow(_vp, _fit!) : null;
+        (RaidReadsOn(config) || !_meterOn && BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) && Elapsed(now, _lastBossProbe, BossProbeEvery)
+            ? Geometry.BossTextRow(_vp, _fit!) : null;
 
-    void ReadBossProbe(Image row, TimeSpan t)
+    /// <summary>With the meter off this is the boss HP's read, the 그림자 number's too; with it on, the meter's step does both.</summary>
+    /// <returns>Publish: the gimmick changed, which nothing else would tell with the meter off.</returns>
+    bool ReadBossProbe(Image row, Image? shadow, TimeSpan t)
     {
         _lastBossProbe = t;
+        var was = _shadow;
         var bar = BossBar(row);
-        Saw(meter: false, boss: bar.Hp is not null || bar.Count is not null, t);
+        var gimmick = _meterOn ? null : ShadowStep(bar, shadow, t);
+        Saw(meter: false, boss: bar.Hp is not null || bar.Count is not null || gimmick is not null, t);
+        return !Equals(was, _shadow);
     }
 
     // The boss text row's read, shared by the step's readers (they get the same captured image): the full read and the count
@@ -159,8 +169,12 @@ public sealed partial class Engine
         var bar = BossDigits.ReadBar(row, scale, hp: !GameWindow.ReadsReinforced);   // 강화: the count as captured, the HP below
         var full = (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) } : bar).Value;
         StepBossHp(full.Hp);
+        if (full.Hp is var (current, max, _)) BossRead?.Invoke(current, max);
         return full;
     }
+
+    /// <summary>The boss bar's HP and max HP, once per captured row (engine thread; 숙제's fallback, HomeworkFallback).</summary>
+    public event Action<long, long>? BossRead;
 
     BossHpLabel _bossHp = BossHpLabel.None;
     bool _bossHpChanged;

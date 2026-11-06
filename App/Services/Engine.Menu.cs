@@ -26,6 +26,7 @@ public sealed partial class Engine
     Viewport _menuVp;
     TimeSpan _lastMenuTitle = TimeSpan.MinValue, _lastMenuProbe = TimeSpan.MinValue;
     volatile bool _menuOpen;   // the pool's read may close it while the title isn't known yet
+    long _menuNamedTicks;   // engine-clock ticks of the last menu read that named the character played (감지 중), 0 = never
     byte[]? _menuCells;
     string? _menuKey;
     int _menuBusy, _titleOcrSeen, _titleMisses, _menuLearned;
@@ -152,6 +153,7 @@ public sealed partial class Engine
             MenuSlots.Learn(_menuMemory, read, strips);
             Interlocked.Exchange(ref _menuLearned, 1);
             var merged = MenuSlots.WithRecalled(read, _menuMemory, strips);
+            if (merged.Current is not null) Interlocked.Exchange(ref _menuNamedTicks, Math.Max(1, t.Ticks));
             if (_menuOpen) MenuSeen?.Invoke(merged, vp, t);   // not one that closed while it was read
         }
         catch (Exception ex)

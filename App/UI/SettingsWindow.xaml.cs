@@ -172,7 +172,7 @@ public partial class SettingsWindow : Window
         RefreshPick();   // before the sections: they show what the pick means
         FillCharacter();
         FillFit();
-        FillDiag();
+        FillDetect();
         FillDisplay();
         Collect(GaugeBox);
         FillGauge();
@@ -184,6 +184,7 @@ public partial class SettingsWindow : Window
         FillRaid();
         FillMeter();
         FillShow();
+        FillScreens();
         Collect(null);
         FillRecords();   // a list of files, not settings: nothing for search   // 편집 중's line is not a setting row
         FillClassSections();
@@ -204,23 +205,26 @@ public partial class SettingsWindow : Window
 
     void FillCharacter()
     {
-        var p = Refill(_secCharacter, "캐릭터", "트레이 메뉴에서 고른 캐릭터와 같습니다. 클래스마다 마지막으로 고르거나 읽은 직업각인을 기록해 두고, 스킬창을 다시 맞출 때 그 클래스면 직업각인을 읽지 않고 기록대로 고릅니다. 기록이 없을 때만 게임 화면에서 직업각인을 읽습니다.");
+        var p = Refill(_secCharacter, "캐릭터", "트레이 메뉴에서 고른 캐릭터와 같습니다. 클래스마다 마지막으로 고르거나 읽은 직업각인을 기억합니다. 스킬창을 다시 맞출 때 기억한 직업각인이 있으면 그대로 쓰고, 없을 때만 게임 화면에서 읽습니다.");
         p.Children.Add(BuildCharacterPanel(_s, _chars, () => { Changed(); Dispatcher.BeginInvoke(BuildAll); }));
         if (_chars.ActiveClass is { } cls)
             p.Children.Add(Label(_s.SubclassHistory.TryGetValue(cls.Name, out var sub) ? $"기록된 직업각인: {cls.Name} → {sub}" : $"기록된 직업각인: {cls.Name} → 없음", 0.8));
         var redetect = new Button { Content = "직업각인 다시 감지", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
         redetect.Click += (_, _) => SubclassRedetectRequested?.Invoke();
         redetect.IsEnabled = _chars.ActiveClass is not null && _chars.SameSkillsNote is null;
-        p.Children.Add(Wrap(redetect, HelpMark("기록을 무시하고 초각스가 준비됐을 때 직업각인을 다시 읽어 기록을 고칩니다. 알아보지 못하면 기록은 그대로 둡니다.")));
+        p.Children.Add(Wrap(redetect, HelpMark("기억한 값을 무시하고, 초각스가 준비됐을 때 직업각인을 다시 읽어 고칩니다. 알아보지 못하면 그대로 둡니다.")));
         var register = new Button { Content = "직업각인 등록", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
         register.Click += (_, _) => SubclassRegisterRequested?.Invoke();
         register.IsEnabled = _chars.Active is { Subclass.Length: > 0 } && _chars.ActiveClass is not null;
-        p.Children.Add(Wrap(register, HelpMark("지금 고른 직업각인으로 플레이하면서 누르세요. 초각스가 준비됐을 때 그 아이콘을 이 직업각인의 것으로 저장합니다. 클래스의 직업각인을 모두 등록하면 직업각인 다시 감지와 자동 감지가 됩니다.")));
-        p.Children.Add(Check("로딩 뒤 직업각인 자동 감지", _s.AutoSubclass, v => _s.AutoSubclass = v, Changed,
-            "모든 클래스: 로딩 화면이 끝나고 초각스가 준비되면 직업각인을 읽어 다르면 바꿉니다. 클래스는 바꾸지 않습니다. 직업각인 아이콘이 모두 있는 클래스만 됩니다 (기본 제공이나 직업각인 등록)."));
+        p.Children.Add(Wrap(register, HelpMark("지금 고른 직업각인으로 플레이하면서 누르세요. 초각스가 준비됐을 때 그 아이콘을 이 직업각인의 것으로 저장합니다. 클래스의 직업각인을 모두 등록하면 직업각인 다시 감지와 자동 감지를 쓸 수 있습니다.")));
+        var detectMode = Combo();
+        foreach (var m in Enum.GetValues<ClassDetectMode>()) detectMode.Items.Add(m.ToString());
+        detectMode.SelectedIndex = (int)_s.ClassDetect;
+        detectMode.SelectionChanged += (_, _) => { _s.ClassDetect = (ClassDetectMode)detectMode.SelectedIndex; Changed(); };
+        p.Children.Add(HelpRow("클래스 인식", "끄기: 클래스와 직업각인은 직접 고른 대로 둡니다. 수동: 스킬창 다시 맞추기를 할 때 준비된 초각스 아이콘으로 클래스를 알아봅니다. 자동: 수동에 더해, 던전 밖에서 스킬창이 다시 보일 때마다 확인해 다른 캐릭터로 바꾼 것을 따라갑니다(로딩 뒤 직업각인 자동 감지도 여기에 합쳐졌습니다). 확실하지 않으면 지금 클래스를 그대로 둡니다. 마을처럼 스킬창이 회색이면 더 엄격하게 봐서, 스킬을 쓸 수 있는 곳에 가야 바뀔 수 있습니다.", detectMode));
         if (_chars.SameSkillsNote is { } same) p.Children.Add(Note(same));
         CoreRows(p);
-        p.Children.Add(SubHeading("지원하는 직업각인", "직업각인 감지 '자동': 스킬창 다시 맞추기 때 초각스 아이콘으로 직업각인을 알아봅니다. 아덴 게이지와 아덴 스킬이 있는 직업각인은 그것도 읽습니다. " + "표에 없는 클래스도 쿨타임, 버프 막대, 파티 공유는 모두 됩니다. NEW는 지난번에 이 화면을 본 뒤 추가된 것입니다."));
+        p.Children.Add(SubHeading("지원하는 직업각인", "직업각인 감지 '자동': 스킬창을 다시 맞출 때 초각스 아이콘으로 직업각인을 알아봅니다. 아덴 게이지와 아덴 스킬이 있는 직업각인은 그것도 읽습니다. " + "표에 없는 클래스도 쿨타임, 버프 막대, 파티 공유는 모두 됩니다. NEW는 지난번에 이 화면을 본 뒤 추가된 것입니다."));
         p.Children.Add(SupportTable());
         p.Children.Add(Note(CoresExplained));
     }
@@ -296,7 +300,7 @@ public partial class SettingsWindow : Window
     void FillFit()
     {
         FillScreenBox();   // the canvas box shows the same values
-        var p = Refill(_secFit, "스킬창 맞추기", "스킬을 쓸 수 있는 곳에서 모든 스킬이 쿨 돈 상태로 가만히 서서 누르세요 (수련장에서는 쿨초). 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞춥니다. 맞추면서 클래스도 다시 확인합니다. 직업각인은 기록이 있으면 기록대로 고릅니다.");
+        var p = Refill(_secFit, "스킬창 맞추기", "스킬을 쓸 수 있는 곳에서 모든 스킬의 쿨타임이 끝난 상태로 가만히 서서 누르세요 (수련장에서는 쿨초). 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞추세요. 맞추면서 클래스도 다시 확인하고, 직업각인은 기억한 값이 있으면 그대로 씁니다.");
         if (_s.Fits.Count == 0) p.Children.Add(Label("아직 맞춘 적이 없습니다.", 0.7));
         foreach (var (size, fit) in _s.Fits)
             p.Children.Add(Row(size, Label($"HUD {fit.Hud:0.#}%" + (_s.Adjusts.TryGetValue(size, out var adj) ? $" · 수동 조정 HUD {adj.Hud:0.#}%" : ""))));
@@ -305,36 +309,14 @@ public partial class SettingsWindow : Window
 
         // 스킬창 위치: 자동 / 직접 입력 / 수동 조정 (the last only once one was applied in the debug window).
         var mode = _s.FitMode;
-        var modes = new WrapPanel();
-        foreach (var (m, text) in new[] { (FitMode.자동, "자동"), (FitMode.직접입력, "직접 입력"), (FitMode.수동조정, "수동 조정") })
-        {
-            var r = Toggle(text, "fitMode", m == mode);
-            r.IsEnabled = m != FitMode.수동조정 || _s.Adjusts.Count > 0 || mode == FitMode.수동조정;
-            r.Checked += (_, _) =>
-            {
-                if (_s.FitMode == m) return;
-                _s.SetFitMode(m);
-                Changed();
-                Dispatcher.BeginInvoke(FillFit);
-            };
-            modes.Children.Add(r);
-        }
-        p.Children.Add(Row(HelpLabel("스킬창 위치", mode switch
-        {
-            FitMode.직접입력 => "찾지 않고 게임 설정에 적힌 값을 그대로 써서, 스킬창 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다.",
-            FitMode.수동조정 => "위치 조정에서 옮기고 적용한 위치를 씁니다. 게임 화면 크기마다 따로 저장하며, 적용하지 않은 크기에서는 자동으로 맞춘 값을 씁니다.",
-            _ => "맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다." + (_s.Adjusts.Count == 0 ? " 수동 조정은 위치 조정에서 위치를 적용한 뒤 고를 수 있습니다." : ""),
-        }), modes));
+        var modes = FitModeToggles("fitMode", FillFit);
+        p.Children.Add(Row(HelpLabel("스킬창 위치", FitModeNote(mode) + (mode == FitMode.자동 && _s.Adjusts.Count == 0 ? " 수동 조정은 위치 조정에서 위치를 적용한 뒤 고를 수 있습니다." : "")), modes));
         p.Children.Add(SubHeading("게임 설정 값", "게임 설정 → 화면과 같은 값으로 맞춰 주세요. 다르면 스킬창, 버프, 단심을 엉뚱한 곳에서 읽습니다."));
-        p.Children.Add(HelpRow("버프 크기 (%)", "게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기는 버프 크기를 찾지 않습니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽습니다.", BuffSizeCombo()));
+        p.Children.Add(HelpRow("버프 크기 (%)", "게임 설정의 버프 크기와 같게 맞춰 주세요. 스킬창 다시 맞추기로는 버프 크기를 찾지 못합니다. 다르면 버프·디버프를 엉뚱한 곳에서 읽습니다. 120%에서 가장 잘 읽힙니다.", BuffSizeCombo()));
         p.Children.Add(HelpRow("데미지 폰트 크기 (%)", "게임 설정의 데미지 폰트 크기와 같게 맞춰 주세요. 단심이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다.", FontSizeCombo()));
-        if (mode == FitMode.직접입력 && _s.ManualHud is { } hud)
+        if (mode == FitMode.직접입력 && _s.ManualHud is not null)
         {
-            var hudSize = Combo();
-            hudSize.ItemsSource = Settings.HudSizes;
-            hudSize.SelectedItem = Settings.NearestHud(hud);
-            hudSize.SelectionChanged += (_, _) => { if (hudSize.SelectedItem is int v && v != _s.ManualHud) { _s.ManualHud = v; Changed(); } };
-            p.Children.Add(Row("HUD 크기 (%)", hudSize));
+            p.Children.Add(Row("HUD 크기 (%)", HudControl()));
             ScreenRows(p);
             var auto = new Button { Content = "자동으로 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
             auto.Click += (_, _) => { (_s.ManualHud, _s.ManualScreen) = (null, null); FillFit(); Changed(); RefitRequested?.Invoke(); };
@@ -359,23 +341,23 @@ public partial class SettingsWindow : Window
         }
         p.Children.Add(SubHeading("성능"));
         p.Children.Add(SliderRow("초당 읽기 횟수", ReadSteps.Min, ReadSteps.Max, _s.ReadsPerSecond, 1, v => $"{v:0}회", v => _s.ReadsPerSecond = (int)v, Changed,
-            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 자원(CPU)을 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
+            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 CPU를 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
         // The main action first; fixing a fit that went wrong comes after it, under its own heading.
         p.Children.Add(SubHeading("인식이 어긋날 때"));
         var adjustButton = new Button { Content = "위치 조정", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 4), IsEnabled = _gameRunning };
         if (!_gameRunning) { adjustButton.ToolTip = "게임(테스트 모드: 고른 창)이 실행 중일 때 쓸 수 있습니다."; ToolTipService.SetShowOnDisabled(adjustButton, true); }
         adjustButton.Click += (_, _) => AdjustRequested?.Invoke();
-        p.Children.Add(Wrap(adjustButton, HelpMark("인식이 어긋나면 게임 화면 위에 읽는 상자를 모두 띄워, 스킬창과 버프·디버프·보스 줄을 끌거나 화살표 키로 맞추고 적용합니다. 잘 읽히는 상자는 초록색이 됩니다. 적용하기 전에는 위치 조정 화면이 열려 있는 동안만 쓰입니다.")));
-        p.Children.Add(SubHeading("스킬 등록", "마을처럼 스킬을 못 쓰는 곳에서는 스킬창이 회색이 되어 직업각인을 읽기 어렵습니다. 스킬을 쓸 수 있는 곳에서 일반 스킬이 모두 준비됐을 때 등록해 두면, 회색 스킬창에서도 일반 스킬 8개 중 5개 이상이 맞는 직업각인을 고릅니다. 스킬 위치는 상관없습니다. 지금 고른 직업각인으로 저장되며, 다른 스킬 구성은 추가로 등록할 수 있습니다. 초각스 아이콘으로 읽지 못할 때 쓰입니다. 등록하지 않은 직업각인은 스킬로 고르지 않고, 두 직업각인이 같이 쓰는 스킬은 빼고 나머지로 비교합니다."));
+        p.Children.Add(Wrap(adjustButton, HelpMark("인식이 어긋날 때 씁니다. 게임 화면 위에 읽는 상자를 모두 띄우면, 스킬창과 버프·디버프·보스 줄을 끌거나 화살표 키로 맞춘 뒤 적용합니다. 잘 읽히면 상자가 초록색이 됩니다. 적용하기 전에는 위치 조정 화면이 열려 있는 동안만 쓰입니다.")));
+        p.Children.Add(SubHeading("스킬 등록", "마을처럼 스킬을 못 쓰는 곳에서는 스킬창이 회색이라 직업각인을 읽기 어렵습니다. 스킬을 쓸 수 있는 곳에서 일반 스킬이 모두 준비됐을 때 등록해 두면, 초각스 아이콘으로 못 읽을 때 회색 스킬창에서도 일반 스킬 8개 중 5개 이상이 맞는 직업각인을 고릅니다. 스킬 위치는 상관없습니다. 지금 고른 직업각인으로 저장되고, 다른 스킬 구성도 추가로 등록할 수 있습니다. 등록하지 않은 직업각인은 스킬로 고르지 않고, 두 직업각인이 같이 쓰는 스킬은 빼고 비교합니다."));
         var submit = new Button { Content = "스킬 등록", Margin = new(0, 0, 8, 0) };
         submit.Click += (_, _) => SkillsSubmitRequested?.Invoke();
         submit.IsEnabled = _chars.SameSkillsNote is null;
         var clear = new Button { Content = "등록된 스킬 지우기" };
         clear.Click += (_, _) => SkillsClearRequested?.Invoke();
         p.Children.Add(new WrapPanel { Children = { submit, clear } });
-        if (_chars.SameSkillsNote is not null) p.Children.Add(Note($"{_chars.ActiveClass!.Name}: 두 직업각인의 스킬이 같아 스킬로 고를 수 없으므로 등록하지 않습니다."));
+        if (_chars.SameSkillsNote is not null) p.Children.Add(Note($"{_chars.ActiveClass!.Name}: 두 직업각인의 스킬이 같아 스킬로 구분할 수 없어서 등록하지 않습니다."));
         if (_skillsResult is { } skills) p.Children.Add(new TextBlock { Text = skills, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
-        p.Children.Add(ResetButton("맞춤 초기화", "저장된 스킬창 맞춤을 모두 지웁니다. 다음 실행 때 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
+        p.Children.Add(ResetButton("맞춤 초기화", "저장된 스킬창 맞춤을 모두 지웁니다. 다음에 앱을 켜면 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
     }
 
     /// <summary>A hotkey as shown, or that there is none.</summary>
@@ -396,16 +378,18 @@ public partial class SettingsWindow : Window
         var p = Refill(_secDisplay, "전체");
         UIElement? opacityRow = null;   // 오버레이 표시 and 스킬창이 안 보이면 숨기기: 설정 → 표시 (FillShow)
         p.Children.Add(Check("배경 판", o.ShowPlate,
-            v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤의 판입니다. 분리된 버프 창에는 판이 없습니다."));
+            v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤에 깔리는 판입니다. 분리된 버프 창에는 판이 없습니다."));
         p.Children.Add(opacityRow = SliderRow("판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
         opacityRow.Visibility = Shown(o.ShowPlate);
         p.Children.Add(Check("방송·캡처에서 숨김", o.ExcludeFromCapture, v => o.ExcludeFromCapture = v, Changed, "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다."));
 
         // 칸 모양: how every box shows its cooldown, 초각스, 금테 (the skill inspector)
         p = Refill(_secSkillLook, "칸 모양");
+        p.Children.Add(Check("스킬창 읽기", o.SkillRead, v => o.SkillRead = v, Changed,
+            "끄면 스킬 쿨을 읽지 않습니다. 쿨타임, 타임라인의 스킬 아이콘, 파티로 보내기가 모두 멈춥니다. 켜 둔 채 스킬 칸만 숨기면 창은 안 보여도 타임라인에 쓰려고 계속 읽습니다."));
         CooldownLookRows(p);
         p.Children.Add(ColorRow(Label("초각스 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true));
-        p.Children.Add(Heading("금테 (게임 금색 테두리)", help: "게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 테두리를 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 금색과 비슷한 칸 색은 스킬 칸의 색 항목에서 알려 줍니다."));
+        p.Children.Add(Heading("금테 (게임 금색 테두리)", help: "게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 칸 색이 금색과 비슷하면 스킬 칸의 색 항목에서 알려 줍니다."));
         p.Children.Add(ColorRow(Label("금테 색"), o.GoldColor, v => { o.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false));   // their warnings
         p.Children.Add(SliderRow("금테 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed));
         FillBuffs();
@@ -425,7 +409,7 @@ public partial class SettingsWindow : Window
         p.Children.Add(fontRow = SliderRow("남은 쿨 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
             OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed));
         fontRow.Visibility = Shown(o.ShowTimer);
-        p.Children.Add(Row(HelpLabel("쿨 진행 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 합니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 표시됩니다."), EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
+        p.Children.Add(Row(HelpLabel("쿨 진행 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 해 줍니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 보입니다."), EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
             (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")], o.CooldownStyle,
             v => { o.CooldownStyle = v; fromRow!.Visibility = Shown(v != CooldownStyle.Sweep); })));
         p.Children.Add(fromRow = Row("진행 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
@@ -438,15 +422,17 @@ public partial class SettingsWindow : Window
     {
         var b = _s.Buffs;
         var p = Refill(_secBuffs, "버프", "내 버프 줄에서 공증, 아덴 피증, 초각스 피증, 뎀증을 찾아 남은 시간을 막대로 보여 줍니다. 파티원에게는 보내지 않습니다. 모두 끄면 버프 줄을 읽지 않습니다.");
+        _buffHeads.Clear();
+        _debuffHeads.Clear();
         p.Children.Add(Note("버프 크기는 화면·인식 → 게임 설정 값에서 맞춥니다."));
         p.Children.Add(SliderRow("버프 읽을 칸 수", Core.Vision.Geometry.MinBuffBoxCount, Core.Vision.Geometry.MaxBuffBoxCount, b.Count, 1, v => $"{v:0}칸",
             v => b.Count = (int)Math.Round(v), Changed,
-            "버프 줄 오른쪽 끝에서부터 몇 칸을 읽을지 정합니다. 이보다 왼쪽에 뜬 버프는 읽지 않습니다. 버프가 많이 뜨면 늘리고, 칸이 늘수록 조금 더 일합니다. " +
-            "게임은 한 줄에 그릴 수 있는 만큼만 그리고 나머지는 '+숫자' 아이콘으로 접습니다 (1080p 버프 크기 120%에서 10칸, 100%에서 14칸쯤). 그보다 많이 읽어도 더 찾지 못합니다."));
-        p.Children.Add(HelpRow("위치", "분리된 창: 버프 막대가 오버레이 판에서 빠져 자기 창에 그려지고, 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (판과 함께면 판 왼쪽 바깥). 끄면 눕혀 위아래로 쌓습니다 (판과 함께면 칸 아래에 두 개씩).", Check("분리 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)));
+            "버프 줄 오른쪽 끝에서부터 몇 칸을 읽을지 정합니다. 이보다 왼쪽에 뜬 버프는 못 읽습니다. 버프가 많이 뜨면 늘리세요. 칸이 늘수록 CPU를 조금 더 씁니다. " +
+            "게임은 한 줄에 들어가는 만큼만 그리고 나머지는 '+숫자' 아이콘으로 접습니다 (1080p 버프 크기 120%에서 10칸, 100%에서 14칸쯤). 그보다 많이 읽어도 더 찾지 못합니다."));
+        p.Children.Add(HelpRow("위치", "분리된 창: 버프 막대가 오버레이 판에서 빠져 자기 창에 그려집니다. 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (판과 함께면 판 왼쪽 바깥). 끄면 눕혀서 위아래로 쌓습니다 (판과 함께면 칸 아래에 두 개씩).", Check("분리 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)));
         p.Children.Add(Row("움직임", Check("유지시간 비례 감소", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")));
         p.Children.Add(Row("비었을 때", Check("끊긴 버프 막대 숨김", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
-            "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
+            "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 움직이지 않습니다. 편집 모드와 미리보기에서는 옮길 수 있게 흐리게 보입니다.")));
         foreach (var k in Enum.GetValues<BuffKind>())
         {
             var i = b.Of(k);
@@ -457,13 +443,13 @@ public partial class SettingsWindow : Window
             var more = Stack([ColorRow(Label("색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k)]);
             void Show(bool on) => label.Visibility = flash.Visibility = more.Visibility = Shown(on);
             Show(i.Visible);
-            p.Children.Add(SubHeading(name));
-            p.Children.Add(Row("표시", BuffShowCombo(k, Show), label, flash));
+            p.Children.Add(_buffHeads[k] = SubHeading(name));
+            p.Children.Add(Row("표시", BuffShowCombo(k, Show), BuffHideHere(k), label, flash));
             p.Children.Add(more);
         }
 
         p.Children.Add(Divider());
-        p.Children.Add(Heading("디버프", first: true, help: "레이드의 디버프 창 자동을 켜 두거나 트레이에서 디버프 창을 켜면 MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " + "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 번개 칸에는 결투자도 보입니다(4에서 0까지 카운트다운 뒤 아이콘, 처음 보인 뒤 30초 동안 유지). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " + "보스 숫자는 아직 0, 1, 4, 6, 8만 읽고, 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
+        p.Children.Add(Heading("디버프", first: true, help: "레이드의 디버프 창 자동을 켜거나 트레이에서 디버프 창을 켜면, MP 바 위의 디버프 줄(버프 줄의 반대편)과 보스 체력바 아래의 빨강·파랑 숫자를 읽어 디버프 창에 보여 줍니다: " + "내 색, 교체 때 데려갈 인원(빨강과 파랑이 반반이 되도록), 번개(남은 초, 깜빡임). 번개 칸에는 결투자도 보입니다(4에서 0까지 카운트다운 뒤 아이콘, 처음 보인 뒤 30초 유지). 편집 모드에서 창을 옮기고 크기를 바꿉니다. " + "보스 숫자는 아직 0, 1, 4, 6, 8만 읽습니다. 둘 다 확실히 읽히지 않으면 데려갈 인원 칸에 ?를 띄웁니다."));
         // The box sizes only while a gate's 디버프 창 is on (레이드): otherwise there is no debuff window to size.
         var sizes = new CardStack { Visibility = Shown(_s.Raids.DebuffShown(_s.Debuffs)) };
         var toRaid = new Button { Content = "레이드 열기", Margin = new(0, 2, 0, 2) };
@@ -471,12 +457,12 @@ public partial class SettingsWindow : Window
         string debuffState = _s.Debuffs.Raid != Raid.없음 ? "켜짐 (트레이에서 켬: 레이드 안에서 늘)" : _s.Raids.DebuffsAuto ? "자동 (보스를 알아본 레이드에서)" : "꺼짐 (레이드에서 자동을 켭니다)";
         p.Children.Add(Row("디버프 창", Label(debuffState, 0.7), toRaid));
         // Always shown (user, 2026-11-01): 암수 and 모르둠's sigils read the boss rows at this size, 디버프 창 or not.
-        p.Children.Add(HelpRow("게임의 보스 디버프 크기 (%)", "게임 설정의 보스 디버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 아이콘(암수 · 빛암, 모르둠 문양)과 빨강·파랑 숫자를 이 크기로 읽습니다. 내 버프·디버프의 크기(게임의 버프 크기)와는 따로입니다.", BossSizeCombo()));
+        p.Children.Add(HelpRow("게임의 타겟 UI 버프 크기 (보스) (%)", "게임 설정의 타겟 UI 버프 크기(예전 이름: 보스 디버프 크기)와 같게 맞춰 주세요. 보스 체력바 아래 아이콘(암수 · 빛암, 모르둠 문양)과 빨강·파랑 숫자를 이 크기로 읽습니다. 내 버프·디버프 크기(게임의 버프 크기)와는 별개입니다.", BossSizeCombo()));
         sizes.Children.Add(Row("비었을 때", Check("디버프 없을 때 숨김", _s.Debuffs.HideWhenEmpty, v => _s.Debuffs.HideWhenEmpty = v, Changed,
-            "디버프가 없는 칸(색을 아직 모를 때, 교체·번개·결투자가 없을 때)을 숨깁니다. 다른 칸은 자리를 그대로 지킵니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
+            "디버프가 없는 칸(색을 아직 모를 때, 교체·번개·결투자가 없을 때)을 숨깁니다. 다른 칸은 움직이지 않습니다. 편집 모드와 미리보기에서는 옮길 수 있게 흐리게 보입니다.")));
         sizes.Children.Add(SubHeading("칸 크기", "칸마다 너비와 높이를 바꿉니다 (100% = 창 크기에 맞춘 칸). 창은 칸에 맞춰 커집니다. " + "화면에서 칸의 오른쪽 아래 모서리를 끌어도 됩니다."));
         for (int i = 0; i < DebuffSettings.BoxCount; i++)
-            foreach (var row in DebuffSizeSliders(i, DebuffNames[i] + " ")) sizes.Children.Add(row);
+            foreach (var row in DebuffSizeSliders(i, DebuffNames[i] + " ")) { sizes.Children.Add(row); _debuffHeads.TryAdd(i, row); }
         p.Children.Add(sizes);
     }
 
@@ -486,7 +472,7 @@ public partial class SettingsWindow : Window
     {
         var b = _s.Buffs;
         var i = b.Of(k);
-        return [SliderRow(indent + "길이", BarSizes.MinLength, BarSizes.MaxLength, i.Length, 0.05, v => $"{v * 100:0}%", v => b.Edit(k).Length = v, Changed, "길이와 두께는 모든 배치에 적용됩니다. 칸을 옮긴 배치에서는 옮겨 둔 막대 크기를 100%로 봅니다. 레이아웃 편집기의 칸 옵션에서도 바꿀 수 있습니다."),
+        return [SliderRow(indent + "길이", BarSizes.MinLength, BarSizes.MaxLength, i.Length, 0.05, v => $"{v * 100:0}%", v => b.Edit(k).Length = v, Changed, "길이와 두께는 모든 배치에 적용됩니다. 칸을 옮긴 배치에서는 옮겨 둔 막대 크기를 100%로 봅니다. 내 오버레이 화면에서 칸을 눌러도 바꿀 수 있습니다."),
             SliderRow(indent + "두께", BarSizes.MinThickness, BarSizes.MaxThickness, i.Thickness, 0.25, v => $"{v * 100:0}%", v => b.Edit(k).Thickness = v, Changed)];
     }
 
@@ -505,7 +491,7 @@ public partial class SettingsWindow : Window
         var p = Refill(_secHotkeys, "앱 단축키", "칸을 누른 다음 원하는 조합을 누르세요. 게임 밖에서도 동작합니다.");
         var h = _s.Hotkeys;
         var keys = new Dictionary<string, Button>();
-        var clash = Note("빨간 칸은 다른 단축키나 스킬 키와 겹칩니다. 겹치면 하나만 되거나 둘 다 됩니다.");
+        var clash = Note("빨간 칸은 다른 단축키나 스킬 키와 겹칩니다. 겹치면 하나만 되거나 둘 다 될 수 있습니다.");
         clash.SetResourceReference(TextBlock.ForegroundProperty, CriticalBrushKey);
         void Mark()
         {
@@ -528,7 +514,7 @@ public partial class SettingsWindow : Window
         }
         p.Children.Add(Clearable("직업각인 다시 감지", nameof(h.DetectSubclass), () => h.DetectSubclass, v => h.DetectSubclass = v));
         p.Children.Add(Clearable("아이콘 다시 읽기", nameof(h.RereadIcons), () => h.RereadIcons, v => h.RereadIcons = v));
-        p.Children.Add(HelpRow("테스트 모드 (맨 앞 창)", "로스트아크 대신 맨 앞 창(게임 영상 등)을 읽어 오버레이를 시험합니다. 다시 누르면 끕니다. 트레이 → 테스트 모드에서 창을 고를 수도 있습니다. 테스트 모드에서 맞춘 스킬창은 저장하지 않습니다.", Key(nameof(h.TestMode), () => h.TestMode, v => h.TestMode = v)));
+        p.Children.Add(HelpRow("테스트 모드 (맨 앞 창)", "로스트아크 대신 맨 앞 창(게임 영상 등)을 읽어 오버레이를 시험합니다. 다시 누르면 꺼집니다. 트레이 → 테스트 모드에서 창을 고를 수도 있습니다. 테스트 모드에서 맞춘 스킬창은 저장되지 않습니다.", Key(nameof(h.TestMode), () => h.TestMode, v => h.TestMode = v)));
         // 오버레이 프로필 1–5 (위치, 크기, 판 색; set up in the 레이아웃 편집기): unset by default, so each can be cleared again.
         (Func<string>, Action<string>)[] profiles = [(() => h.Profile1, v => h.Profile1 = v), (() => h.Profile2, v => h.Profile2 = v),
             (() => h.Profile3, v => h.Profile3 = v), (() => h.Profile4, v => h.Profile4 = v), (() => h.Profile5, v => h.Profile5 = v)];
@@ -736,17 +722,49 @@ public partial class SettingsWindow : Window
     /// <summary>The user's key for <paramref name="slot"/>, or the slot's own name when none is set (the table's and effect lines' wording).</summary>
     string SlotKeyName(SlotId slot) => KeyLabel(_s, slot) ?? slot.ToString();
 
+    /// <summary>스킬창 위치's choices (자동 / 직접 입력 / 수동 조정) as toggles in radio group <paramref name="group"/>; a pick saves, then <paramref name="refill"/>s the page.</summary>
+    WrapPanel FitModeToggles(string group, Action refill)
+    {
+        var mode = _s.FitMode;
+        var modes = new WrapPanel();
+        foreach (var (m, text) in new[] { (FitMode.자동, "자동"), (FitMode.직접입력, "직접 입력"), (FitMode.수동조정, "수동 조정") })
+        {
+            var r = Toggle(text, group, m == mode);
+            r.IsEnabled = m != FitMode.수동조정 || _s.Adjusts.Count > 0 || mode == FitMode.수동조정;
+            r.Checked += (_, _) =>
+            {
+                if (_s.FitMode == m) return;
+                _s.SetFitMode(m);
+                Changed();
+                Dispatcher.BeginInvoke(refill);
+            };
+            modes.Children.Add(r);
+        }
+        return modes;
+    }
+
+    static string FitModeNote(FitMode mode) => mode switch
+    {
+        FitMode.직접입력 => "찾지 않고 게임 설정에 적힌 값을 그대로 씁니다. 스킬창 자리만 확인한 뒤 클래스와 직업각인을 읽습니다. 처음 값은 마지막으로 찾은 값입니다.",
+        FitMode.수동조정 => "위치 조정에서 옮기고 적용한 위치를 씁니다. 게임 화면 크기마다 따로 저장되고, 적용한 적 없는 크기에서는 자동으로 맞춘 값을 씁니다.",
+        _ => "맞추기는 화면의 검은 띠와 HP 바로 해상도와 HUD 크기를 찾습니다.",
+    };
+
     /// <summary>The game's 해상도 list (게임 설정 → 화면); anything else is 커스텀 화면크기.</summary>
     static readonly (int W, int H)[] Resolutions = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1080), (2560, 1440), (3440, 1440), (3840, 1600), (3840, 2160), (5120, 2160)];
     const string Custom = "커스텀 화면크기";
     bool _customScreen;   // 커스텀 화면크기 picked, even while its size is one of the list's
 
     /// <summary>직접 입력's 해상도 (a list, 커스텀 화면크기 with its own width and height) and 21:9.</summary>
-    void ScreenRows(StackPanel p)
+    /// <param name="compact">The 표시 map's narrow box: fields stack and a change refills with <paramref name="again"/> (default 스킬창 맞추기's page).</param>
+    void ScreenRows(StackPanel p, Action? again = null, bool compact = false)
     {
+        again ??= () => Dispatcher.BeginInvoke(FillFit);
+        UIElement Line(string name, params UIElement[] controls) => compact ? Field(name, controls.Length == 1 ? controls[0] : new StackPanel { Orientation = Orientation.Horizontal, Children = { controls[0], controls[1] } }) : Row(name, controls);
         var screen = _s.ManualScreen ??= new(1920, 1080, false);   // StartManual sets it; an older file may not have
         bool custom = _customScreen || !Resolutions.Contains((screen.Width, screen.Height));
         var c = Combo();
+        if (compact) c.MinWidth = 120;
         c.ItemsSource = Resolutions.Select(r => $"{r.W}×{r.H}").Append(Custom).ToList();
         c.SelectedItem = custom ? Custom : $"{screen.Width}×{screen.Height}";
         c.SelectionChanged += (_, _) =>
@@ -755,13 +773,13 @@ public partial class SettingsWindow : Window
             if (!_customScreen && c.SelectedIndex >= 0)
                 _s.ManualScreen = _s.ManualScreen! with { Width = Resolutions[c.SelectedIndex].W, Height = Resolutions[c.SelectedIndex].H };
             Changed();
-            Dispatcher.BeginInvoke(FillFit);
+            again();
         };
-        p.Children.Add(Row("해상도", c));
+        p.Children.Add(Line("해상도", c));
         if (custom)
         {
             // Checked when the box loses focus: a half-typed number isn't a size.
-            TextBox Field(Func<ManualScreen, int> get, Func<ManualScreen, int, ManualScreen> with)
+            TextBox NumberBox(Func<ManualScreen, int> get, Func<ManualScreen, int, ManualScreen> with)
             {
                 string Shown() => get(_s.ManualScreen!).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 var box = new TextBox { Text = Shown(), Width = 70, Margin = new(0, 0, 8, 0) };
@@ -772,37 +790,20 @@ public partial class SettingsWindow : Window
                 };
                 return box;
             }
-            p.Children.Add(Row("화면 크기 (가로 × 세로)", Field(s => s.Width, (s, v) => s with { Width = v }), Field(s => s.Height, (s, v) => s with { Height = v })));
+            p.Children.Add(Line("화면 크기 (가로 × 세로)", NumberBox(s => s.Width, (s, v) => s with { Width = v }), NumberBox(s => s.Height, (s, v) => s with { Height = v })));
         }
-        p.Children.Add(Check("21:9", screen.Wide, v => _s.ManualScreen = _s.ManualScreen! with { Wide = v }, () => { FillFit(); Changed(); }, "게임 설정의 21:9 화면 비율입니다. 더 좁은 화면에서는 위아래에 검은 띠가 생기고, 21:9보다 넓은 화면에서는 화면을 그대로 씁니다."));
+        p.Children.Add(Check("21:9", screen.Wide, v => _s.ManualScreen = _s.ManualScreen! with { Wide = v }, () => { Changed(); again(); }, "게임 설정의 21:9 화면 비율입니다. 화면이 21:9보다 좁으면 위아래에 검은 띠가 생기고, 더 넓으면 화면을 그대로 씁니다."));
     }
 
-    /// <summary>게임의 버프 크기, shown in 버프/디버프 and in 스킬창 맞추기 (every mode); either one changes the same setting.</summary>
-    ComboBox BuffSizeCombo()
-    {
-        var size = Combo();
-        size.ItemsSource = Settings.BuffSizes.Append(_s.Buffs.Size).Distinct().Order().ToList();   // a size set with 위치 조정's ± shows too
-        size.SelectedItem = _s.Buffs.Size;
-        size.SelectionChanged += (_, _) => { if (size.SelectedItem is int v && v != _s.Buffs.Size) { _s.Buffs.Size = v; Changed(); Dispatcher.BeginInvoke(() => { FillBuffs(); FillFit(); }); } };
-        return size;
-    }
+    /// <summary>게임의 버프 크기, shown in 버프/디버프, 스킬창 맞추기 and the 표시 map; any one changes the same setting.</summary>
+    FrameworkElement BuffSizeCombo() => SizeControl(GameSize.Buff, () => _s.Buffs.Size, v => _s.Buffs.Size = v, () => { FillBuffs(); FillFit(); });
 
-    /// <summary>게임의 보스 디버프 크기, in 버프/디버프 → 디버프: the boss row's own size, apart from 버프 크기.</summary>
-    ComboBox BossSizeCombo()
-    {
-        var size = Combo();
-        size.ItemsSource = Settings.BuffSizes.Append(_s.Debuffs.BossIconSize).Distinct().Order().ToList();
-        size.SelectedItem = _s.Debuffs.BossIconSize;
-        // Its other copies (디버프, 암흑수류탄, the canvas box) refill to show the new size.
-        size.SelectionChanged += (_, _) =>
-        {
-            if (size.SelectedItem is not int v || v == _s.Debuffs.BossIconSize) return;
-            _s.Debuffs.BossIconSize = v;
-            Changed();
-            Dispatcher.BeginInvoke(() => { FillBuffs(); FillAmsu(); FillFit(); });
-        };
-        return size;
-    }
+    /// <summary>게임의 타겟 UI 버프 크기 (보스; named 보스 디버프 크기 before), in 버프/디버프 → 디버프: the boss row's own size, apart from 버프 크기.
+    /// Its other copies (디버프, 암흑수류탄, the canvas box) refill to show the new size.</summary>
+    FrameworkElement BossSizeCombo() => SizeControl(GameSize.Boss, () => _s.Debuffs.BossIconSize, v => _s.Debuffs.BossIconSize = v, () => { FillBuffs(); FillAmsu(); FillFit(); });
+
+    /// <summary>The HUD size 직접 입력 keeps (<see cref="Settings.ManualHud"/>, set).</summary>
+    FrameworkElement HudControl() => SizeControl(GameSize.Hud, () => (int)Math.Round(_s.ManualHud ?? 100), v => _s.ManualHud = v, FillFit);
 
     /// <summary>A combo box over <paramref name="items"/> showing <paramref name="value"/>; a pick calls <paramref name="set"/>, then saves.</summary>
     ComboBox EnumCombo<T>((T Value, string Text)[] items, T value, Action<T> set) where T : struct, Enum

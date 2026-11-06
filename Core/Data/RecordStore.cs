@@ -134,7 +134,12 @@ public sealed class RecordStore(string dir)
         && double.IsFinite(r.Duration) && r.Duration is >= 0 and <= MaxSeconds
         && r.Phases.All(p => double.IsFinite(p) && p >= 0 && p <= r.Duration)
         && r.Members.All(m => m?.Name is not null) && r.Samples.All(s => s?.Name is not null && double.IsFinite(s.T))
-        && r.Events.All(e => e?.Name is not null && double.IsFinite(e.T) && Known(e)) && r.Boss.All(b => b is not null && double.IsFinite(b.T));
+        && r.Events.All(e => e?.Name is not null && double.IsFinite(e.T) && Known(e)) && r.Boss.All(b => b is not null && double.IsFinite(b.T))
+        && (r.Skills ?? new Dictionary<SlotId, RecordSkill>()).All(s => Enum.IsDefined(s.Key) && Skill(s.Value))
+        && (r.Unsure ?? new Dictionary<SlotId, IReadOnlyList<RecordSkill>>()).All(s => Enum.IsDefined(s.Key) && s.Value is not null && s.Value.All(Skill));
+
+    /// <summary>A slot's skill (0.19): a name, a kind it can be and an icon path that stays a Smilegate CDN file.</summary>
+    static bool Skill(RecordSkill? s) => s is { Name: not null } && Enum.IsDefined(s.Kind) && SkillIconSource.IsValid(s.Icon);
 
     static bool Known(RecordEvent e) => e.Kind switch
     {

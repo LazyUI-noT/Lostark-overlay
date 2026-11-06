@@ -74,13 +74,13 @@ sealed class HomeworkWindow : Window
                 double x = card.X / dpi, y = (card.Y + card.Height) / dpi;
                 foreach (var tag in tags)
                 {
-                    string text = tag.Text + tag.Arrow switch { < 0 => "↓", > 0 => "↑", _ => "" };
+                    string text = tag.Text + tag.Arrow switch { < 0 => "↓", > 0 => "↑", _ => "" } + (tag.Unsure ? "!" : "");
                     var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, TextSize * k, Ink[tag.Color], dpi);
                     double w = ft.Width + 2 * Pad * k, h = TagHeight * k;
                     dc.PushOpacity(tag.Done ? DoneOpacity : 1);
                     dc.DrawRoundedRectangle(Back, null, new Rect(x, y, w, h), 3 * k, 3 * k);
                     dc.DrawText(ft, new Point(x + Pad * k, y + (h - ft.Height) / 2));
-                    if (tag.Done) dc.DrawLine(new Pen(Ink[tag.Color], 1.5 * k), new Point(x + 2 * k, y + h / 2), new Point(x + w - 2 * k, y + h / 2));
+                    if (tag.Done) dc.DrawLine(new Pen(Ink[tag.Color], 1.5 * k) { DashStyle = tag.Unsure ? DashStyles.Dot : DashStyles.Solid }, new Point(x + 2 * k, y + h / 2), new Point(x + w - 2 * k, y + h / 2));
                     dc.Pop();
                     x += w + Gap * k;
                 }

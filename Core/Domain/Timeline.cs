@@ -62,7 +62,7 @@ public static class Timeline
             while (j < boss.Count && line[j] is not null && boss[j].T - boss[i].T < UnhittableSeconds) j++;
             if (j == boss.Count) break;
             long lost = boss[j].Taken - boss[i].Taken;
-            if (line[j] is null || lost < 0 || lost >= size) continue;   // less than nothing: another file of a joined run, whose count starts over
+            if (line[j] is null || lost < 0 || lost >= size) continue;   // less than nothing: a heal, not a stall (a joined run's count goes on: FightRegions.Join)
             if (spans.Count > 0 && boss[i].T <= spans[^1].To) spans[^1] = (spans[^1].From, boss[j].T);
             else spans.Add((boss[i].T, boss[j].T));
         }

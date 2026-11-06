@@ -19,6 +19,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public Dictionary<SlotId, string> Keys { get; set; } = SlotInfo.All.ToDictionary(s => s, SlotInfo.DefaultKey);
 
     public OverlaySettings Overlay { get; set; } = new();
+    /// <summary>표시 화면 and 창 밖에서도 읽기: for the install, not per profile.</summary>
+    public ScreenSettings Screens { get; set; } = new();
     public GaugeStyle Gauge { get; set; } = new();
     public HotkeySettings Hotkeys { get; set; } = new();
     public PartySettings Party { get; set; } = new();
@@ -66,7 +68,6 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>Tray → 표시's memory for this session (fields: never saved): what turning a part off hid, which turning it
     /// on brings back (<see cref="TrayToggles"/>).</summary>
     internal (string? Key, SlotGroup[] Groups)? TrayHiddenGroups;
-    internal BuffKind[]? TrayHiddenBars;
 
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
@@ -83,6 +84,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// 프로필 and apart from the active character. Read through <see cref="CoreOf"/>, set through <see cref="SetCore"/>.</summary>
     public Dictionary<string, CoreChoice> Cores { get; set; } = [];
 
+    /// <summary>표시 안 함 per "클래스 · 직업각인" ("" = 기본) for the windows shown per character (user, 2026-11-05): buff bars and
+    /// the DPS 미터기. Read through <see cref="ClassProfiles.WindowsOf"/>.</summary>
+    public Dictionary<string, CharacterWindows> CharacterWindows { get; set; } = [];
+
     /// <summary>Slots learned as stack skills per "클래스 · 직업각인" (<see cref="CharacterKey"/>): a count seen at 스킬창 맞추기 or
     /// beside timers in play. Never forgotten; a stack can come from the skill, a tripod or a core (user, 2026-10-13).
     /// Slot names, not SlotId: a name that isn't one (a hand edit) is skipped, where an enum would fail the whole file.</summary>
@@ -98,9 +103,11 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// and its 직업각인 isn't read again until asked (직업각인 다시 감지).</summary>
     public Dictionary<string, string> SubclassHistory { get; set; } = [];
 
-    /// <summary>로딩 뒤 직업각인 자동 감지 (user, 2026-11-03; off by default, every class): after a loading screen the ready 초각스
-    /// sets the 직업각인 only (CharacterService.AutoRedetect).</summary>
+    /// <summary>The old 로딩 뒤 직업각인 자동 감지: on migrates once to <see cref="ClassDetect"/> 자동 (user, 2026-11-05; SettingsStore.Normalize).</summary>
     public bool AutoSubclass { get; set; }
+
+    /// <summary>클래스 인식 끄기 / 수동 / 자동 (class-detect.plan.md).</summary>
+    public ClassDetectMode ClassDetect { get; set; } = ClassDetectMode.수동;
 
     /// <summary>설정 → 캐릭터's supported 직업각인 and features the user has seen (Core.Data.ClassSupport keys): anything shipped
     /// later shows NEW until the tab is opened. Null: never recorded (set at start-up, so a first run marks nothing).</summary>
@@ -124,6 +131,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// Used only while <see cref="UseAdjusts"/>; kept when another mode is picked.</summary>
     public Dictionary<string, Fit> Adjusts { get; set; } = [];
     public bool UseAdjusts { get; set; }
+
+    /// <summary>값 직접 조정 (user, 2026-11-05): the % sizes (HUD, 버프, 타겟 UI 버프 (보스)) take any whole value by − +, not only the
+    /// game's presets. Off in normal play; 테스트 모드 always has it on (a video may show any size). <see cref="SetFineSizes"/>.</summary>
+    public bool FineSizes { get; set; }
 
     /// <summary>Per class (ClassInfo.Name, or <see cref="ClassProfiles.Template"/> for a class without its own): colours
     /// learned from its icons at a fit, and what to show, where and in what colours, for you and for party members. See

@@ -1,0 +1,122 @@
+using GaugeOverlay.Core.Domain;
+
+namespace GaugeOverlay.Tests;
+
+/// <summary>The 표시 map's boxes and arrows (mockup v59): one list for the map page and the rail.</summary>
+public class FeatureMapBoxesTests
+{
+    [Fact]
+    public void Every_arrow_joins_two_boxes_and_every_inner_box_has_its_frame()
+    {
+        var ids = FeatureMap.Boxes.Select(b => b.Id).ToHashSet();
+        Assert.Equal(FeatureMap.Boxes.Count, ids.Count);
+        Assert.All(FeatureMap.Edges, e => { Assert.Contains(e.From, ids); Assert.Contains(e.To, ids); });
+        Assert.All(FeatureMap.Boxes.Where(b => b.Inside is not null), b => Assert.Contains(b.Inside!, ids));
+    }
+
+    [Fact]
+    public void Every_box_is_in_a_group_of_the_rail_colours()
+    {
+        var colours = FeatureMap.Rail.Select(g => g.Color).Where(c => c.Length > 0).ToHashSet();
+        Assert.All(FeatureMap.Boxes, b => Assert.Contains(b.Color, colours));
+    }
+
+    [Fact]
+    public void The_homework_box_works_without_the_timeline_and_says_so()
+    {
+        Assert.True(FeatureMap.Edges.Single(e => e is { From: "rec", To: "hw" }).Optional);
+        Assert.NotNull(FeatureMap.Boxes.Single(b => b.Id == "hw").Note);
+    }
+
+    [Fact]
+    public void The_party_only_reaches_the_timeline_through_the_meter()
+    {
+        Assert.DoesNotContain(FeatureMap.Edges, e => e.From == "party" && e.To == "rec");
+        Assert.Contains(FeatureMap.Edges, e => e is { From: "party", To: "meter", Party: true });
+    }
+
+    [Fact]
+    public void A_box_shows_the_state_of_its_switch()
+    {
+        var s = new Settings();
+        Assert.Equal(BoxState.On, FeatureMap.State(s, "skill"));
+        s.Overlay.SkillRead = false;
+        Assert.Equal(BoxState.Off, FeatureMap.State(s, "skill"));
+        s.Meter.SetMode(ThreeWay.표시안함);
+        Assert.Equal(BoxState.Hidden, FeatureMap.State(s, "meter"));
+        Assert.Null(FeatureMap.State(s, "game"));   // a frame, no switch of its own yet
+    }
+
+    static MapEdge Line(string from, string to) => FeatureMap.Edges.Single(e => e.Party && e.From == from && e.To == to);
+    static bool Cut(Settings s, string from, string to) => FeatureMap.Cut(s, Line(from, to));
+
+    [Fact]
+    public void The_meters_own_line_to_the_timeline_never_cuts()
+    {
+        var s = new Settings();
+        Assert.False(FeatureMap.Cut(s, FeatureMap.Edges.Single(e => !e.Party && e.From == "meter" && e.To == "rec")));
+        Assert.True(Cut(s, "meter", "rec"));   // 파티원 전분: not sending, so not receiving
+    }
+
+    [Fact]
+    public void Cutting_a_party_line_on_the_map_sets_its_switch_and_reconnecting_brings_it_back()
+    {
+        var s = new Settings();
+        s.Meter.Send = true;
+        foreach (var e in FeatureMap.Edges.Where(e => e.Party))
+        {
+            FeatureMap.SetCut(s, e, true);
+            Assert.True(FeatureMap.Cut(s, e));
+            FeatureMap.SetCut(s, e, false);
+            Assert.False(FeatureMap.Cut(s, e));
+        }
+    }
+
+    [Fact]
+    public void Each_party_arrow_stops_with_its_switch()
+    {
+        var s = new Settings();
+        s.Meter.Send = true;
+        Assert.False(Cut(s, "meter", "party"));
+        Assert.False(Cut(s, "party", "meter"));
+        s.Meter.Receive = false;
+        Assert.True(Cut(s, "party", "meter"));
+        s.Meter.Send = false;
+        Assert.True(Cut(s, "meter", "party"));
+        s.Party.SendGauge = false;
+        Assert.True(Cut(s, "aden", "party"));
+        Assert.False(Cut(s, "skill", "party"));
+        foreach (var g in Enum.GetValues<SlotGroup>()) s.Party.Send[g] = false;
+        Assert.True(Cut(s, "skill", "party"));
+    }
+
+    static Dictionary<string, Detection> Marked(string id, DetectMark mark) => new() { [id] = new Detection(mark, TimeSpan.Zero) };
+
+    [Fact]
+    public void A_failed_reader_sends_lights_back_to_each_game_setting_it_uses()
+    {
+        var back = FeatureMap.Edges.Where(e => FeatureMap.FlowsBack(e, Marked("amsu", DetectMark.Failed))).Select(e => e.From);
+        Assert.Equal(["g-hud", "g-debuff"], back);
+    }
+
+    [Theory]
+    [InlineData(DetectMark.Concrete)]
+    [InlineData(DetectMark.Waiting)]
+    public void A_reader_that_is_not_failing_sends_nothing_back(DetectMark mark) =>
+        Assert.DoesNotContain(FeatureMap.Edges, e => FeatureMap.FlowsBack(e, Marked("amsu", mark)));
+
+    [Fact]
+    public void A_failed_box_sends_nothing_back_along_lines_that_do_not_start_at_a_game_setting() =>
+        Assert.DoesNotContain(FeatureMap.Edges, e => FeatureMap.FlowsBack(e, Marked("rec", DetectMark.Failed)));
+
+    [Fact]
+    public void Ports_stand_apart_between_groups_and_centre_on_the_side() =>
+        Assert.Equal([-16.0, -7.0, 7.0, 16.0], FeatureMap.SpreadPorts([0, 0, 1, 1], 9, 14, 50));
+
+    [Fact]
+    public void Ports_draw_closer_when_they_would_not_fit() =>
+        Assert.Equal([-12.0, 0.0, 12.0], FeatureMap.SpreadPorts([0, 1, 2], 6, 14, 24));
+
+    [Fact]
+    public void A_lone_port_is_in_the_middle() => Assert.Equal([0.0], FeatureMap.SpreadPorts([2], 6, 14, 24));
+}

@@ -8,8 +8,8 @@ namespace GaugeOverlay.Core.Domain;
 /// HUD and resolution place it, user 2026-11-03).</summary>
 public sealed record AmsuLayout(double Scale, double TextScale, BossSlots Slots, bool Timed, int Line)
 {
-    public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize) =>
-        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize), Amsu.Timed(vp, bossSize),
+    public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize, int bossCount = Geometry.MaxBossSlots) =>
+        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize, bossCount), Amsu.Timed(vp, bossSize),
             Geometry.BossDebuffLine);
 }
 

@@ -138,6 +138,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             return null;
         }
         _redetect = false;   // 스킬창 다시 맞추기 goes by the history
+        if (settings.ClassDetect == ClassDetectMode.끄기) return null;   // the class only by picking
         var refs = _classEmblems ??= LoadClassEmblems();
         var shown = _confirmed = ClassEmblemMatcher.Shown(emblem, refs);
         bool Fits(string cls) => refs.Any(r => r.Class == cls) ? ClassEmblemMatcher.Other(emblem, cls, refs) is null : shown is null;
@@ -224,6 +225,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         (_redetect, _quiet) = (false, false);
         if (Active is not { } c || ActiveClass is not { } cls) return null;
         if (_register) return Register(slot, greyedSkills is not null, cls, c.Subclass);
+        if (settings.ClassDetect == ClassDetectMode.끄기 && !asked) return null;
         if (!asked && (cls.SameSkills || cls.Remembered(settings.SubclassHistory) is not null)) return null;
         bool greyed = greyedSkills is not null;
         // Kept only once loaded, so icons added (or a file unlocked) while running are picked up at the next capture.
@@ -258,23 +260,60 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     {
         if (ActiveClass is not { } cls) return NoSubclass;
         if (cls.SameSkills) return SameSkillsNote;
-        (_redetect, _quiet, _register) = (true, false, false);
+        (_redetect, _quiet, _register, _watchTries) = (true, false, false, 0);
         return null;
     }
 
     /// <summary>Drops a 직업각인 read asked for (다시 감지, 자동 감지, 등록) and not captured yet: a pick or a refit came first.</summary>
-    public void ForgetRequests() => (_redetect, _quiet, _register) = (false, false, false);
+    public void ForgetRequests() => (_redetect, _quiet, _register, _watchTries) = (false, false, false, 0);
 
-    /// <summary>로딩 뒤 직업각인 자동 감지 (Settings.AutoSubclass, user 2026-11-03): after a loading screen the next ready 초각스 is read
-    /// as by 직업각인 다시 감지, but only the 직업각인 changes (never the class or 기본) and only a change is told. Only for a class
-    /// with an icon for every 직업각인 (shipped or 직업각인 등록). Returns true when the engine should capture it.</summary>
-    public bool AutoRedetect()
+    /// <summary>클래스 인식 자동: the 초각스 about to be handled is read as by 직업각인 다시 감지, but only the 직업각인 changes and only a
+    /// change is told. Only for a class with an icon for every 직업각인 (shipped or 직업각인 등록).</summary>
+    void ReadSubclassQuietly()
     {
-        if (!settings.AutoSubclass || _register || ActiveClass is not { SameSkills: false } cls || Active is not { Subclass.Length: > 0 }) return false;
+        if (ActiveClass is not { SameSkills: false } cls || Active is not { Subclass.Length: > 0 }) return;
         if (_iconsFor != cls.Name || _icons is null) (_iconsFor, _icons) = (cls.Name, LoadIcons(cls));
-        if (_icons is null) return false;
-        (_redetect, _quiet) = (true, true);
+        if (_icons is not null) (_redetect, _quiet) = (true, true);
+    }
+
+    int _watchTries;
+
+    /// <summary>클래스 인식 자동 is waiting on a ready 초각스.</summary>
+    public bool Watching => _watchTries > 0;
+
+    /// <summary>The bar came back (ClassDetect.OnBarBack): the next ready 초각스 is read for the class. False while a request of the
+    /// user's waits for it. Returns true when the engine should capture it.</summary>
+    public bool WatchClass()
+    {
+        if (_register || _redetect) return false;
+        _watchTries = ClassDetect.MaxTries;
         return true;
+    }
+
+    /// <summary>The 초각스 captured now goes to <see cref="SkillClassFinder"/>: 자동's watch, or 스킬창 다시 맞추기 for a class its centre piece
+    /// didn't tell. Not for 직업각인 다시 감지 or 등록, and not with 끄기. <paramref name="notACharacter"/>: 테스트 모드's video.</summary>
+    public bool ClassSearchDue(bool notACharacter) => settings.ClassDetect != ClassDetectMode.끄기 && !notACharacter && !_register
+        && (Watching || (!_redetect && _confirmed != ActiveClass?.Name));
+
+    /// <summary>Acts on a read: switches to a class told surely and says so (null: no change), and sets up the 직업각인 read that
+    /// follows. Unsure keeps the class; with tries left <see cref="Watching"/> stays on for another read.</summary>
+    public string? OnClassFound(SkillClassFinder.Found found, SkillClassFinder.Verdict slots, bool greyed)
+    {
+        bool watch = Watching;
+        var active = ActiveClass?.Name;
+        var pick = ClassDetect.Switch(found, slots, active, greyed);
+        if (found.Class is not null && (pick is not null || found.Class == active)) _confirmed = found.Class;   // the 초각스 read won't call it another class
+        _watchTries = watch && ClassDetect.Unsure(found, pick, active) ? _watchTries - 1 : 0;
+        string? note = null;
+        if (pick is not null && _classes.FirstOrDefault(c => c.Name == pick.Class) is { } cls)
+        {
+            string? known = pick.Subclass is { } s && cls.Subclasses.ContainsKey(s) ? s : null;
+            string sub = known ?? cls.Remembered(settings.SubclassHistory) ?? cls.Subclasses.Keys.First();
+            settings.PickCharacter(cls.Family, cls.Name, sub, remember: known is not null);
+            note = $"클래스를 {cls.Name} · {sub}(으)로 바꿨습니다.";
+        }
+        if (watch) ReadSubclassQuietly();
+        return note;
     }
 
     /// <summary>직업각인 등록: the next ready 초각스 is saved as the active 직업각인's icon (SubclassIconStore), for a class shipped
@@ -282,7 +321,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     public string? RegisterSubclass()
     {
         if (Active is not { Subclass.Length: > 0 } || ActiveClass is null) return NoSubclass;
-        (_register, _redetect, _quiet) = (true, false, false);
+        (_register, _redetect, _quiet, _watchTries) = (true, false, false, 0);
         return null;
     }
 

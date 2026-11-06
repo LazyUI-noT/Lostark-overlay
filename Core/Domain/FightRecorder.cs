@@ -23,7 +23,11 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     /// phase bar that may be low but not this low).</summary>
     const long DeadUnder = 10_000;
 
-    static bool Killed(long hp, long? max) => hp < Math.Min(ClearUnder, max is > 0 and var m ? (long)(m * KillShare) : ClearUnder);
+    /// <summary>The boss's last HP read is a kill (also 숙제's fallback, <see cref="HomeworkWatch"/>).</summary>
+    public static bool Killed(long hp, long? max) => hp < Math.Min(ClearUnder, max is > 0 and var m ? (long)(m * KillShare) : ClearUnder);
+
+    /// <summary>A fight is under way: it will be saved, so it decides 숙제 even with the panel closed since (<see cref="Homework.SourceOf"/>).</summary>
+    public bool Recording => _started;
 
     /// <summary>The fight <see cref="Step"/> just returned ended because a new 전분 record started (a retry or the next gate):
     /// its result is then settled by the next record's boss (<see cref="FightVerdict"/>).</summary>
@@ -33,7 +37,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     /// <summary>Fight seconds the timer runs on with no boss bar before the end that make it a clear, at any HP it last showed
     /// (a read missed now and then is not). A wipe keeps the bar up and read (종막's 공략에 실패하였습니다, user 2026-11-03);
     /// 구원의 종탑 (2026-11-03): 9 s at 9.8% (1관문's gimmick kill), 4 s at 0.4% (2관문).</summary>
-    const double BarGoneFor = 3;
+    public const double BarGoneFor = 3;
 
     /// <summary>A fight may start: any dungeon but a guardian raid (set by the app each second).</summary>
     public bool InRaid { get; set; } = true;

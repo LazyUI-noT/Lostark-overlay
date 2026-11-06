@@ -307,6 +307,112 @@ public class HomeworkTests
         Assert.DoesNotContain(Homework.OnGrid(read, null, [mine, other]), x => x.Card.Name == "");   // 캐릭터 불명: the played card is nobody's yet
     }
 
+    static string TempFile() => Path.Combine(Path.GetTempPath(), $"homework-{Guid.NewGuid():N}.json");
+
+    [Fact]
+    public void A_clears_file_from_before_the_unsure_state_loads_as_clears()
+    {
+        string path = TempFile();
+        try
+        {
+            File.WriteAllText(path, "[{\"Character\":\"살살\",\"Raid\":\"serka\",\"Difficulty\":\"하드\",\"At\":\"2026-11-04T20:00:00\"}]");
+
+            var loaded = new HomeworkStore(path).Load();
+
+            Assert.False(Assert.Single(loaded).Unsure);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_maybe_never_replaces_a_sure_clear_and_a_sure_one_replaces_a_maybe()
+    {
+        string path = TempFile();
+        try
+        {
+            var store = new HomeworkStore(path);
+            var now = new DateTime(2026, 11, 5, 12, 0, 0);
+            var maybe = Clear("하드", day: 5, hour: 11) with { Unsure = true };
+            var sure = Clear("하드", day: 5, hour: 10);
+
+            Assert.True(store.Add(maybe, now));
+            Assert.True(store.Add(sure, now));
+            Assert.False(store.Add(maybe with { At = maybe.At.AddMinutes(1) }, now));
+
+            Assert.Equal([sure], store.Load());
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void The_three_parts_set_this_weeks_state_of_a_raid()
+    {
+        string path = TempFile();
+        try
+        {
+            var store = new HomeworkStore(path);
+            var now = new DateTime(2026, 11, 5, 12, 0, 0);
+            var pick = new HomeworkPick("serka", "하드");
+            HomeworkTag? Tag() => Homework.Tag(pick, store.Load(), Raids, new Dictionary<string, string>(), Homework.WeekStart(now));
+
+            store.Set("살살", "serka", now, Clear("하드", day: 5, hour: 12) with { Unsure = true });
+            Assert.True(Tag()!.Unsure && Tag()!.Done);
+
+            store.Set("살살", "serka", now, Clear("하드", day: 5, hour: 12));
+            Assert.True(Tag()!.Done && !Tag()!.Unsure);
+
+            store.Set("살살", "serka", now, null);
+            Assert.False(Tag()!.Done);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_retry_takes_back_the_fallbacks_clear_but_not_one_set_by_hand_since()
+    {
+        string path = TempFile();
+        try
+        {
+            var store = new HomeworkStore(path);
+            var now = new DateTime(2026, 11, 5, 12, 0, 0);
+            var fallback = Clear("하드", day: 5, hour: 11) with { Unsure = true };
+            store.Add(fallback, now);
+            var hand = Clear("하드", day: 5, hour: 12);
+            store.Set(hand.Character, hand.Raid, now, hand);   // 클리어 clicked after the fallback's 확인필요
+
+            Assert.False(store.Remove(fallback));   // the retry
+            Assert.Equal([hand], store.Load());
+
+            store.Set(hand.Character, hand.Raid, now, null);
+            store.Add(fallback, now);
+            Assert.True(store.Remove(fallback));
+            Assert.Empty(store.Load());
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData(false, false, HomeworkPart.미완)]
+    [InlineData(true, false, HomeworkPart.클리어)]
+    [InlineData(true, true, HomeworkPart.확인필요)]
+    public void The_lit_part_follows_the_tag(bool done, bool unsure, HomeworkPart expected) =>
+        Assert.Equal(expected, Homework.PartOf(new HomeworkTag("세하", HomeworkColor.Orange, done, 0, unsure)));
+
+    [Theory]
+    [InlineData(true, true, true, HomeworkSource.RecordedFight)]
+    [InlineData(true, true, false, HomeworkSource.RecordedFight)]   // the recording decides, never the fallback beside it
+    [InlineData(true, false, false, HomeworkSource.BossBar)]        // the meter's own bar read
+    [InlineData(false, true, true, HomeworkSource.BossBar)]
+    [InlineData(false, true, false, HomeworkSource.None)]           // no bar read: no automatic clear
+    public void The_source_of_automatic_clears_is_never_two(bool meterOn, bool record, bool bossHpRead, HomeworkSource expected) =>
+        Assert.Equal(expected, Homework.SourceOf(meterOn, record, bossHpRead));
+
+    [Theory]
+    [InlineData(true, HomeworkSource.RecordedFight)]
+    [InlineData(false, HomeworkSource.BossBar)]   // no panel, no record to come: the meter's own bar read decides
+    public void With_the_meter_and_records_on_the_panel_says_who_decides(bool panelRead, HomeworkSource expected) =>
+        Assert.Equal(expected, Homework.SourceOf(meterOn: true, record: true, bossHpRead: false, panelRead));
+
     [Fact]
     public void At_most_five_picks_per_character()
     {

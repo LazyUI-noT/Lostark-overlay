@@ -28,7 +28,8 @@ public sealed partial class Engine : IDisposable
     /// <param name="StackSkills">The slots <paramref name="Character"/> has shown a stack count on (Settings.StackSkills): known before
     /// the first cast, so its re-use lockout's "1s" isn't taken for a 1 s cooldown (null: none, or another class on screen).</param>
     /// <param name="BuffCount">버프 읽을 칸 수: how many buff boxes are read, from the row's right end.</param>
-    /// <param name="BossSize">The game's 보스 디버프 크기 (%), apart from <paramref name="DebuffSize"/> (버프 크기, your own rows).</param>
+    /// <param name="BossSize">The game's 타겟 UI 버프 크기 (보스; 보스 디버프 크기 before) (%), apart from <paramref name="DebuffSize"/> (버프 크기, your own rows).</param>
+    /// <param name="BossCount">감지 개수 of the boss debuff row (타겟 UI 버프 크기 (보스)): the 암수 walk reads at most this many slots.</param>
     /// <param name="Raids">설정 → 레이드, a copy (RaidSettings.Clone); null reads nothing for it.</param>
     /// <param name="DebuffPick">The raid whose 디버프 창 the tray turned on by hand (DebuffSettings.Raid).</param>
     /// <param name="RaidGates">The gates (Profiles/raids.json) and <paramref name="BossNames"/> their name templates (Profiles/bossnames).</param>
@@ -39,7 +40,8 @@ public sealed partial class Engine : IDisposable
         IReadOnlyCollection<SlotId>? StackSkills = null, JudgmentPlan? Judgment = null, int BuffCount = Geometry.BuffBoxCount, int BossSize = Geometry.RefBossSize,
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
-        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool BuffsInRaidOnly = false)
+        AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool BuffsInRaidOnly = false,
+        int BossCount = Geometry.MaxBossSlots, bool HomeworkRead = false)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -68,13 +70,20 @@ public sealed partial class Engine : IDisposable
     /// <see cref="RequestSubclass"/> (스킬창 다시 맞추기, 직업각인 다시 감지, 테스트 모드). Never on its own. Its icon tells the
     /// 직업각인 (SubclassMatcher). With it, when the whole bar is greyed out (SubclassMatcher.Greyed), the 일반 slots' last
     /// crops (SkillPool); else null.</summary>
-    public event Action<Image, IReadOnlyList<Image>?>? SubclassSlotCaptured;
+    public event Action<Image, IReadOnlyList<Image>?, IReadOnlyList<Image>>? SubclassSlotCaptured;
     /// <summary>Result of <see cref="RequestSkills"/>: the 일반 slots ready now, or null when the bar is greyed out.</summary>
     public event Action<IReadOnlyList<Image>?>? SkillsCaptured;
     /// <summary>A skill's icon as the skill bar shows it when ready (아이콘으로 표시): while a copy run is on
     /// (<see cref="CopyIcons"/>), once per slot at its first ready read. Never while the HUD is hidden or the bar is greyed.
     /// The int is the run it was read in (<see cref="CopyIcons"/>'s result), so a read posted before a new run can be dropped.</summary>
     public event Action<SlotId, Image, int>? IconSeen;
+
+    /// <summary>Asked on the engine thread for each ready slot (engine time): whether its crop is wanted for the fight's skill map
+    /// (App.Skills, FightSkills.Wanted). Only a wanted slot's crop is copied and sent to <see cref="SkillCropSeen"/>, under the same
+    /// conditions as <see cref="IconSeen"/>: the bar on screen, the game in front, not greyed.</summary>
+    public Func<SlotId, TimeSpan, bool>? SkillWanted { get; set; }
+
+    public event Action<SlotId, Image, TimeSpan>? SkillCropSeen;
     /// <summary>A slot of the character ("클래스 · 직업각인") showed a stack count: at 스킬창 맞추기 while ready, or in play
     /// (<see cref="StackLearner"/>). Raised for a slot not yet in <see cref="Config.StackSkills"/>.</summary>
     public event Action<string, SlotId>? StackSkillLearned;
@@ -159,12 +168,12 @@ public sealed partial class Engine : IDisposable
 
     /// <summary>Whether the game window is in the foreground (set from ForegroundWatcher; true until told otherwise).
     /// Desktop Duplication captures whatever is on top, so ready icons are learned only while this is true.</summary>
-    public bool GameForeground { get => _foreground; set => _foreground = value; }
+    public bool GameForeground { get => _foreground; set { _foreground = value; _viewStale = true; } }
 
     volatile bool _otherApp;
     /// <summary>Another app's window is in front (ForegroundWatcher.IsOtherForeground): outside 테스트 모드 nothing is read, as the
     /// screen isn't the game's (user, 2026-11-05: OCR and the meter read a gameplay video alt-tabbed to).</summary>
-    public bool OtherAppForeground { set => _otherApp = value; }
+    public bool OtherAppForeground { set { _otherApp = value; _viewStale = true; } }
 
     volatile bool _seesBehind;   // the capture source reads the window even while covered (테스트 모드's WGC)
 
@@ -173,7 +182,48 @@ public sealed partial class Engine : IDisposable
     public bool CanCaptureBehind => _seesBehind;
 
     /// <summary>A capture now shows the game: it is in front, or the source sees behind other windows.</summary>
-    bool CanRead => _foreground || _seesBehind;
+    bool CanRead => Seen || _seesBehind;
+
+    /// <summary>The game is proved on screen: in front, or with 창 밖에서도 읽기 on and nothing over it the capture can't see through.</summary>
+    bool Seen => _foreground || _shownBehind;
+
+    volatile bool _readBehind, _viewStale = true, _shownBehind, _sourceSeesBehind;
+    GameView _view = GameView.Clear;
+    TimeSpan _viewAt = TimeSpan.MinValue;
+    BehindStatus? _behind;
+    static readonly TimeSpan ViewEvery = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>창 밖에서도 읽기.</summary>
+    public bool ReadBehind { set { _readBehind = value; _viewStale = true; } }
+
+    /// <summary>창 밖에서도 읽기's state, on each change: whether it reads, and what stops it.</summary>
+    public event Action<BehindStatus>? BehindChanged;
+
+    /// <summary>The overlays count the game as in front (<see cref="BackgroundRead.ShowsBehind"/>).</summary>
+    public event Action<bool>? ShownBehindChanged;
+
+    /// <summary>No game: nothing is seen behind, so the overlays go by the foreground again.</summary>
+    void GameGoneBehind()
+    {
+        _view = GameView.Clear;
+        if (_shownBehind) { _shownBehind = false; ShownBehindChanged?.Invoke(false); }
+    }
+
+    /// <summary>What the capture would show with the game not in front, looked at 2/s and on each foreground change.</summary>
+    void StepBehind(TimeSpan now)
+    {
+        string? by = _behind?.CoveredBy;
+        if (!_readBehind || _foreground) (_view, _viewStale, by) = (GameView.Clear, true, null);
+        else if (_viewStale || now - _viewAt >= ViewEvery)
+        {
+            (_viewStale, _viewAt) = (false, now);
+            (_view, by) = GameWindow.ViewOf(_hwnd);
+        }
+        bool shown = !_foreground && BackgroundRead.ShowsBehind(_readBehind, _sourceSeesBehind, _view);
+        if (shown != _shownBehind) { _shownBehind = shown; ShownBehindChanged?.Invoke(shown); }
+        var status = new BehindStatus(BackgroundRead.MayRead(_readBehind, _otherApp, _testMode, _sourceSeesBehind, _view), _view, by);
+        if (status != _behind) { _behind = status; BehindChanged?.Invoke(status); }
+    }
 
     /// <summary>Runs 스킬창 맞추기 on the next frame. Every skill should be ready, anywhere skills can be used.</summary>
     public void RequestFit() => _fitRequested = true;
@@ -245,6 +295,7 @@ public sealed partial class Engine : IDisposable
         if (_gainsReset) { _gainsReset = false; ForgetGains(); }   // also with no game running
         if (!EnsureGame())
         {
+            GameGoneBehind();
             if (_fitRequested)
             {
                 _fitRequested = false;
@@ -274,12 +325,13 @@ public sealed partial class Engine : IDisposable
             return;
         }
         if (_revertRequested) { _revertRequested = false; RevertFit(); return; }
-        if (!EnsureFit()) { Thread.Sleep(200); return; }
+        if (!EnsureFit()) { GameGoneBehind(); Thread.Sleep(200); return; }
         PreviewStep();
         if (_fit is null) return;   // a preview just ended: the saved fit is resolved next step
-        // Another app in front, outside 테스트 모드: no reads. The fight waits as on a still screen (no frame) and goes on when
-        // the game is back; the 전분 timer gives the time that passed.
-        if (_otherApp && !_testMode)
+        StepBehind(now);
+        // Another app in front, outside 테스트 모드 and 창 밖에서도 읽기: no reads. The fight waits as on a still screen (no frame)
+        // and goes on when the game is back; the 전분 timer gives the time that passed.
+        if (!BackgroundRead.MayRead(_readBehind, _otherApp, _testMode, _sourceSeesBehind, _view))
         {
             _presence = _presence.Away(now);   // the dungeon, 줄 수 and 암수 are still there on return
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
@@ -308,6 +360,8 @@ public sealed partial class Engine : IDisposable
         var due = now + ReadSteps.Slack(config.ReadsPerSecond);
         // A slot or label that is neither shown nor sent isn't read (ClassProfiles.Reads).
         var slots = _scheduler.Due(due, _states).Where(s => !config.Reads.Skip.Contains(s)).ToList();
+        bool voteOnly = config.Reads.VoteOnly && Elapsed(due, _lastVote, LabelEvery);   // 스킬창 읽기 off: the bar's HUD vote only
+        if (voteOnly) { slots = [.. SlotInfo.All.Where(s => _cal[(int)s] is not null)]; _lastVote = due; }
         bool wantLabel = config.Reads.Label && Elapsed(due, _lastLabel, LabelEvery);
         // The buff row is polled every 100 ms and the gauge by GaugePace, whether or not a slot is due.
         bool poll = Elapsed(due, _lastPoll, PollEvery);
@@ -343,7 +397,8 @@ public sealed partial class Engine : IDisposable
         raiding |= meterHp is not null;
         var (bossProbe, meterProbe, loadingBar) = (BossProbeRect(config, due), MeterProbeRect(config, due), LoadingRect(config, due));
         var (menuTitle, menuPanel, menuWaiting, menuWatch) = MenuRects(due);
-        bool sideReads = dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null
+        var pictures = PictureRects();   // 감지: a mark's moment or the Live box
+        bool sideReads = pictures.Count > 0 || dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null
             || menuTitle is not null || menuPanel is not null || menuWatch is not null;   // ride on this step's capture: no frame wait of their own
         if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
@@ -392,25 +447,31 @@ public sealed partial class Engine : IDisposable
         int bossRowAt = rects.Count;
         if ((raidCount ?? raidHp ?? meterHp ?? amsuText ?? bossProbe) is { } bossTextRow) rects.Add(bossTextRow);
         int shadowAt = rects.Count;   // the 그림자 gimmick's number, in its gates (Engine.Shadow.cs)
-        var shadowRect = ShadowRect(config, meterHp);
+        if (_shadow is not null && ShadowGate(config) is null) _shadow = null;   // switched off mid-gimmick: its text doesn't stay behind
+        var shadowRect = ShadowRect(config, meterHp ?? (_meterOn ? null : bossProbe));
         if (shadowRect is { } shadowNumber) rects.Add(shadowNumber);
 
-        var images = rects.Select(Buffer).ToList();
+        int pictureAt = rects.Count;
+        rects.AddRange(pictures.Select(p => p.Area));
+        var images = rects.Take(pictureAt).Select(Buffer).Concat(pictures.Select(p => new Image(p.Area.Width, p.Area.Height))).ToList();   // pictures are kept: no reused buffer
         long ts = 0;
         long capWall = Stopwatch.GetTimestamp(), capCpu = Perf.ThreadCpu();
         bool captured = _source!.TryCapture(rects, images, TimeSpan.FromMilliseconds(50), out ts);
         Perf.AddCpu("화면 캡처 (새 프레임 대기 포함)", Stopwatch.GetTimestamp() - capWall, Perf.ThreadCpu() - capCpu);
         if (!captured)
         {
+            PicturesMissed(pictures);
             now = Clock.Now();
             if (Advance(now) | _gaugeSpent | KeepWhileHidden(now)) { _gaugeSpent = false; Publish(now); }   // a still screen (paused cutscene) keeps the dungeon too
             Thread.Sleep(50);   // capture unavailable (lock screen, UAC) or a static screen: don't spin
             return;
         }
         var t = Clock.FromTimestamp(ts);
+        _gaps?.Add(t, Perf.TakeSinceFrame());
+        TakePictures(pictures, images, pictureAt, t);
         (_barRow, _barAt) = (null, t);   // the buffers are reused: a new step's row is read afresh
         StepReinforced();
-        bool changed = Perf.Run("스킬 쿨다운", () => ReadSlots(slots, images, t, config)) | _gaugeSpent | KeepWhileHidden(t);
+        bool changed = Perf.Run(voteOnly ? "스킬바 확인" : "스킬 쿨다운", () => ReadSlots(slots, images, t, config, voteOnly)) | _gaugeSpent | KeepWhileHidden(t);
         _gaugeSpent = false;
         if (buffSize is not null || debuffs || judging || raiding) _lastPoll = t;
         if (boss) _lastBoss = t;
@@ -434,7 +495,7 @@ public sealed partial class Engine : IDisposable
             changed |= Perf.RunCpu("암수", () => ReadAmsu(config, amsuText is null ? null : images[bossRowAt], amsuStrip is null ? null : images[amsuAt], t));
         if (raidName is not null || raidCount is not null)
             changed |= Perf.Run("레이드 (보스 이름 · 줄 수)", () => ReadRaid(config, raidName is null ? null : images[raidAt], raidCount is null ? null : images[bossRowAt], raidHp is null ? null : images[bossRowAt], t));
-        if (bossProbe is not null) Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossRowAt], t));
+        if (bossProbe is not null) changed |= Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossRowAt], shadowRect is null ? null : images[shadowAt], t));
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
         if (loadingBar is not null) ReadLoading(images[loadingAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
@@ -450,7 +511,7 @@ public sealed partial class Engine : IDisposable
             changed |= shown != _awakeningChanged;
             _awakeningChanged = shown;
         }
-        changed |= Advance(t) | _bossHpChanged;
+        changed |= Advance(t) | _bossHpChanged | StepDetect(config, t);
         _bossHpChanged = false;
         if (changed) Publish(t);
         if (preview)
@@ -462,12 +523,16 @@ public sealed partial class Engine : IDisposable
     }
 
     /// <summary>Reads each captured slot and updates its state. Returns true if anything changed.</summary>
-    bool ReadSlots(IReadOnlyList<SlotId> slots, IReadOnlyList<Image> images, TimeSpan t, Config config)
+    TimeSpan _lastVote;
+
+    /// <param name="voteOnly">Count the slots for the HUD vote only: no state, cast, icon or debug row.</param>
+    bool ReadSlots(IReadOnlyList<SlotId> slots, IReadOnlyList<Image> images, TimeSpan t, Config config, bool voteOnly = false)
     {
         bool changed = false;
         int unreadable = 0, calibrated = 0;
         var uncalibratedReady = new List<int>();
         var icons = new List<int>();
+        var skillCrops = new List<int>();
         int iconRun = Volatile.Read(ref _iconRun);   // a run started after this read sends this step's icons as the old run
         if (_iconsStale) { _iconsStale = false; Array.Clear(_iconFresh); }
         Image? subclassCrop = null;
@@ -484,6 +549,7 @@ public sealed partial class Engine : IDisposable
 
             if (cal is not null) { calibrated++; if (reading.Kind == ReadKind.Unreadable) unreadable++; }
             else if (reading.Kind == ReadKind.Ready) uncalibratedReady.Add(i);   // slots on cooldown during the fit
+            if (voteOnly) continue;
 
             var prev = _states[(int)slot];
             bool known = config.StackSkills?.Contains(slot) == true;
@@ -495,6 +561,7 @@ public sealed partial class Engine : IDisposable
             // a dark icon follows a spend.
             if (prev.Phase == SlotPhase.Ready && next.Phase is SlotPhase.Cooldown or SlotPhase.LongCooldown) Cast(slot, config, t);
             if (_copyIcons && SkillIcon.Due(slot, reading, _iconFresh[(int)slot], config.AdenSlots)) icons.Add(i);
+            if (reading.Kind == ReadKind.Ready && SkillWanted?.Invoke(slot, t) == true) skillCrops.Add(i);
             if (slot == SlotId.초각스 && next.Phase == SlotPhase.Ready && _subclassPending) subclassCrop = crop.Copy();
             if (config.Debug) Debug?.Invoke(new DebugRow(slot, crop.Copy(), reading, next));
         }
@@ -506,18 +573,17 @@ public sealed partial class Engine : IDisposable
         // Only while the bar is certainly on screen in this very frame: Desktop Duplication also captures loading
         // screens, the login screen and windows covering the game. References are also added while too few exist to
         // vote at all (HudVote.MaySave), or the vote could never start.
-        if (_foreground && HudVote.MaySave(shown, _cal.Count(c => c is not null), calibrated, unreadable))
+        if (Seen && HudVote.MaySave(shown, _cal.Count(c => c is not null), calibrated, unreadable))
             foreach (int i in uncalibratedReady) SaveCalibration(slots[i], images[i], trusted: false, config);
-        if (shown == true && _foreground)
+        if (shown == true && Seen)
         {
             if (_emblemPending) { _emblemPending = false; CaptureEmblem(); }
             bool greyed = SubclassMatcher.Greyed(_skillColour);
-            if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>()] : null); }
+            if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>()] : null, ReadyOrdinary()); }
             if (_skillsRequested)
             {
                 _skillsRequested = false;
-                SkillsCaptured?.Invoke(greyed ? null : [.. Enumerable.Range(0, 8)
-                    .Where(k => _skillCrops[k] is not null && _states[(int)(SlotId.일반1 + k)].Phase == SlotPhase.Ready).Select(k => _skillCrops[k]!)]);
+                SkillsCaptured?.Invoke(greyed ? null : ReadyOrdinary());
             }
             // A greyed bar (a town) is a poor picture of every skill; one icon in one hue is not (전투 태세 Q and W, sBug.mp4:
             // spread 7.5 and 15).
@@ -527,9 +593,14 @@ public sealed partial class Engine : IDisposable
                 _iconFresh[(int)slots[i]] = true;
                 IconSeen?.Invoke(slots[i], icon, iconRun);
             }
+            foreach (int i in greyed ? [] : skillCrops) SkillCropSeen?.Invoke(slots[i], images[i].Copy(), t);
         }
         return changed;
     }
+
+    /// <summary>The 일반 slots' last crops, those ready now.</summary>
+    List<Image> ReadyOrdinary() => [.. Enumerable.Range(0, 8)
+        .Where(k => _skillCrops[k] is not null && _states[(int)(SlotId.일반1 + k)].Phase == SlotPhase.Ready).Select(k => _skillCrops[k]!)];
 
     bool Advance(TimeSpan now)
     {
@@ -656,9 +727,14 @@ public sealed partial class Engine : IDisposable
             Dungeon = _meterOn ? _dungeon : null,
             Amsu = _amsuOn ? _amsu : null,
             AmsuTimed = _amsuTimed,
-            Shadow = _meterOn && _shadow is { Dead: false } s && _shadowBar is { } bar && _shadowDealt is { } dealt
+            Shadow = _shadow is { Dead: false } s && _shadowBar is { } bar && _shadowDealt is { } dealt
                 ? new ShadowView(s.Remaining, s.Lines, bar, s.Dealt, dealt) : null,
             BossHp = _config.Raids?.BossHpEasy == true && _shadow is null ? _bossHp.View : null,   // not over 대난투's number
+            Detect = _detect,
+            DetectAreas = _detectAreas,
+            DetectView = _vp,
+            DetectPictures = _detectPictures,
+            DetectLive = _detectLivePicture,
         });
 
     /// <summary>The client area as it is on its monitor. Desktop Duplication gives a frame only when the screen changes,

@@ -15,9 +15,9 @@ public partial class SettingsWindow
     const string NoSlotChosen = "선택 안 함";
 
     /// <summary>What 코어 빌드 is, said under the 지원하는 직업각인 table whose 코어 column lists what each 직업각인's cores do.</summary>
-    const string CoresExplained = "코어 빌드: 직업각인마다 고를 수 있는 선택 설정입니다. 기본은 꺼짐이고, 켜지 않으면 아무것도 달라지지 않습니다. " +
-        "딜러는 해와 달, 서포터는 별의 레벨(1~3)을 고릅니다. 켜면 쿨타임을 초기화하는 스킬을 쓴 직후에 초기화되는 스킬의 쿨타임을 더 빨리 읽을 뿐이고, " +
-        "코어 빌드를 화면에서 알아보지는 않으며 파티원에게 보내지도 않습니다. 선택은 직업각인마다 따로 저장됩니다.";
+    const string CoresExplained = "코어 빌드: 직업각인마다 고를 수 있고, 기본은 꺼짐입니다. 켜지 않으면 아무것도 달라지지 않습니다. " +
+        "딜러는 해와 달, 서포터는 별의 레벨(1~3)을 고릅니다. 켜면 쿨타임을 초기화하는 스킬을 쓴 직후, 초기화되는 스킬의 쿨타임을 더 빨리 읽습니다. 달라지는 건 그것뿐이고, " +
+        "코어 빌드를 화면에서 알아보지도, 파티원에게 보내지도 않습니다. 선택은 직업각인마다 따로 저장됩니다.";
 
     /// <summary>The 코어 빌드 rows of the active 직업각인: 적용, the levels its role chooses, and for each skill an effect tracks the slot
     /// it sits in. Edits go to <see cref="Settings.SetCore"/> and the engine at once (<see cref="Changed"/>); the rows after the checkbox
@@ -32,9 +32,9 @@ public partial class SettingsWindow
         void Edit(Func<CoreChoice, CoreChoice> change) { _s.SetCore(key, change(_s.CoreOf(key))); Changed(); }
         T Gate<T>(T row) where T : UIElement { row.IsEnabled = choice.Apply; gated.Add(row); return row; }
 
-        p.Children.Add(SubHeading($"코어 빌드 ({c.Class} · {c.Subclass})", "고른 코어 레벨에 맞는 효과가 있으면, 그 스킬을 쓴 뒤 오버레이가 해당 칸의 쿨타임을 더 빨리 읽습니다. " +
-            "효과는 아래 표의 코어 열에 있습니다. 효과가 없는 직업각인은 선택만 저장되고 아무것도 달라지지 않습니다. " +
-            "내 오버레이에서 숨기고 파티에도 보내지 않는 칸은 앱이 읽지 않으니, 그 칸이 스킬 칸이거나 효과를 받는 칸이면 적용되지 않습니다."));
+        p.Children.Add(SubHeading($"코어 빌드 ({c.Class} · {c.Subclass})", "고른 코어 레벨에 효과가 있으면, 그 스킬을 쓴 뒤 해당 칸의 쿨타임을 더 빨리 읽습니다. " +
+            "어떤 효과가 있는지는 아래 표의 코어 열에 있습니다. 효과가 없는 직업각인은 골라도 아무것도 달라지지 않습니다. " +
+            "내 오버레이에서 숨기고 파티에도 보내지 않는 칸은 읽지 않습니다. 스킬을 쓰는 칸이나 효과를 받는 칸이 이 경우면 효과가 없습니다."));
         p.Children.Add(Check("코어 빌드 적용", choice.Apply, v =>
         {
             Edit(x => x with { Apply = v });
@@ -48,7 +48,7 @@ public partial class SettingsWindow
             slots.Children.Clear();
             var now = _s.CoreOf(key);
             foreach (var trigger in CoreEffects.Triggers(now, _chars.Role, effects))
-                slots.Children.Add(HelpRow($"{Josa.Subject(trigger)} 있는 칸", "앱은 스킬 이름을 읽지 않습니다. 이 스킬을 어느 칸에 두었는지 고르세요. 그 칸이 쿨타임에 들어가는 것을 보면 효과를 적용합니다.",
+                slots.Children.Add(HelpRow($"{Josa.Subject(trigger)} 있는 칸", "앱은 스킬 이름을 읽지 않습니다. 이 스킬을 어느 칸에 두었는지 고르세요. 그 칸의 쿨타임이 시작되면 효과를 적용합니다.",
                     SlotCombo(now.Slots.TryGetValue(trigger, out var slot) ? slot : null, v => Edit(x => x.WithSlot(trigger, v)))));
         }
 

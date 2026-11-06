@@ -7,7 +7,7 @@ namespace GaugeOverlay.App.Services;
 
 /// <summary>The 그림자 레이드 gimmick (세르카, 벨가르딘; ShadowHp): while its fill bar replaces the boss bar, the boss HP is the last
 /// bar read less the gimmick's number, fed to the meter as an HP read (the meter, records and the kill check go on as if the
-/// bar showed) and shown inside the gimmick's fill bar. Read in those gates only, with the meter's boss HP (2/s).</summary>
+/// bar showed) and shown inside the gimmick's fill bar. Read in those gates only, with the boss HP (2/s: the meter's step, or the probe).</summary>
 public sealed partial class Engine
 {
     (long Current, long Max, int? Count)? _lastBar;
@@ -16,14 +16,22 @@ public sealed partial class Engine
     PixelRect? _shadowBar, _shadowDealt;   // the gimmick's fill bar and the damage label's spot, placed when the number is read (the fit may be gone by the publish)
     static readonly TimeSpan ShadowHold = TimeSpan.FromSeconds(3);   // the number unread this long: the gimmick is over
 
-    /// <summary>The gimmick's number area when this step reads the boss HP in a 그림자 gate with its switch on (the gate by the
+    /// <summary>The gimmick's number area when this step reads the boss HP (the meter's, or the probe with the meter off) in a 그림자 gate with its switch on (the gate by the
     /// last bar's max HP, else the one recognised).</summary>
     PixelRect? ShadowRect(Config config, PixelRect? meterHp)
     {
-        if (meterHp is null || config.Raids is not { } s) return null;
+        if (meterHp is null || ShadowGate(config) is null) return null;
+        return Geometry.ShadowNumber(_vp, _fit!) is var r && r.Inside(_vp) ? r : null;
+    }
+
+    /// <summary>The 그림자 gate being read, if its 기믹 체력 is wanted now: on for that raid, and with the meter off the boss HP read on too.</summary>
+    RaidGate? ShadowGate(Config config)
+    {
+        if (config.Raids is not { } s) return null;
         var gates = config.RaidGates ?? [];
+        if (!_meterOn && !BossHpPlan.Wanted(s, gates)) return null;
         var gate = RaidData.ByHp(gates, _lastBar?.Max)?.Gate ?? RaidData.Find(gates, _raidRec.Gate);
-        return gate is { IsShadow: true } g && s.ShadowHpOn(g.Raid) && Geometry.ShadowNumber(_vp, _fit!) is var r && r.Inside(_vp) ? r : null;
+        return gate is { IsShadow: true } g && s.ShadowHpOn(g.Raid) ? g : null;
     }
 
     /// <summary>A bar read keeps its HP and "X n" for the gimmick; with none, the gimmick's number gives the HP. Returns the HP

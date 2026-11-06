@@ -5,6 +5,13 @@ namespace GaugeOverlay.Core.Domain;
 /// <summary>A 숙제 tag's colour: the game's difficulty colours (노말 white, 하드 orange, 나이트메어 purple).</summary>
 public enum HomeworkColor { White, Orange, Purple }
 
+/// <summary>Who decides 숙제's automatic clears: a recorded fight (the meter and 전투 기록 on), the boss bar alone (<see cref="HomeworkWatch"/>), or
+/// nobody: no bar read, so only the buttons count and the page says so.</summary>
+public enum HomeworkSource { RecordedFight, BossBar, None }
+
+/// <summary>The three parts of a raid's state button on 설정 → 숙제.</summary>
+public enum HomeworkPart { 미완, 클리어, 확인필요 }
+
 /// <summary>One difficulty of a 숙제 raid (raids.json "homework"), in rank order: its default tag ("세하"), colour, and the
 /// gate(s) whose 클리어 finishes the raid on it.</summary>
 /// <remarks><paramref name="EndsHidden"/>: its real end is a ??? phase saved in the file of <paramref name="Last"/> (종막 하드 2-3 in 2-2's), reached or the raid isn't done; that file may carry the panel's name, its HP being in no data.</remarks>
@@ -20,12 +27,13 @@ public sealed record HomeworkCustomRaid(string Id, string Name, IReadOnlyList<Ho
 /// <summary>A raid a character picked to track, at the difficulty picked.</summary>
 public sealed record HomeworkPick(string Raid, string Difficulty);
 
-/// <summary>A raid cleared: by whom, on which difficulty, and when the fight started (its week).</summary>
-public sealed record HomeworkClear(string Character, string Raid, string Difficulty, DateTime At);
+/// <summary>A raid cleared: by whom, on which difficulty, and when the fight started (its week). <paramref name="Unsure"/> (확인필요):
+/// the fallback (<see cref="HomeworkWatch"/>) thinks so but can't tell; a file saved before it has no such state and means a clear.</summary>
+public sealed record HomeworkClear(string Character, string Raid, string Difficulty, DateTime At, bool Unsure = false);
 
 /// <summary>A pick as drawn: the text, its colour, crossed out when cleared this week, and ↓ (−1) / ↑ (+1) when cleared on a
-/// lower / higher difficulty than picked.</summary>
-public sealed record HomeworkTag(string Text, HomeworkColor Color, bool Done, int Arrow);
+/// lower / higher difficulty than picked. <paramref name="Unsure"/>: cleared perhaps (drawn with ! and a dotted cross).</summary>
+public sealed record HomeworkTag(string Text, HomeworkColor Color, bool Done, int Arrow, bool Unsure = false);
 
 /// <summary>숙제 (homework.plan.md): weekly raid clears per character. A raid's weekly entry is shared by its difficulties, so a
 /// clear on any of them crosses the pick out; one above the pick raises it. Pure.</summary>
@@ -59,6 +67,15 @@ public static class Homework
         return level.EndsHidden && r.Gate is { } name && gates.Any(g => level.Last.Contains(g.Id) && RaidData.IsRaidNamed(g, name));
     }
 
+    /// <summary>The source of automatic clears; a recorded fight and the fallback never both decide. The meter's own read feeds the bar
+    /// when it is on; with it off the bar needs 보스 체력 읽기. <paramref name="panelRead"/>: the 전분 panel is read or a fight is being
+    /// recorded; with neither no record can come, so the bar decides (user, 2026-11-06).</summary>
+    public static HomeworkSource SourceOf(bool meterOn, bool record, bool bossHpRead, bool panelRead = true) =>
+        meterOn && record && panelRead ? HomeworkSource.RecordedFight : meterOn || bossHpRead ? HomeworkSource.BossBar : HomeworkSource.None;
+
+    /// <summary>The part of the button that is lit for a tag.</summary>
+    public static HomeworkPart PartOf(HomeworkTag? tag) => tag is not { Done: true } ? HomeworkPart.미완 : tag.Unsure ? HomeworkPart.확인필요 : HomeworkPart.클리어;
+
     /// <summary>The key of a renamed tag in <see cref="HomeworkSettings.Tags"/>.</summary>
     public static string TagKey(string raid, string difficulty) => $"{raid}|{difficulty}";
 
@@ -76,7 +93,7 @@ public static class Homework
         var clear = clears.Where(c => c.Raid == raid.Id && c.At >= weekStart && Rank(raid, c.Difficulty) >= 0).MaxBy(c => c.At);
         if (clear is null) return new HomeworkTag(TagText(raid, raid.Levels[picked], names), raid.Levels[picked].Color, false, 0);
         int done = Rank(raid, clear.Difficulty);
-        return new HomeworkTag(TagText(raid, raid.Levels[done], names), raid.Levels[done].Color, true, Math.Sign(done - picked));
+        return new HomeworkTag(TagText(raid, raid.Levels[done], names), raid.Levels[done].Color, true, Math.Sign(done - picked), clear.Unsure);
     }
 
     /// <summary>The picks after <paramref name="clear"/>: its raid's pick raised to the difficulty cleared when that is higher;

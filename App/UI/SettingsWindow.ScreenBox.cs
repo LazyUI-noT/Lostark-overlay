@@ -7,7 +7,7 @@ using static GaugeOverlay.App.UI.UiBuild;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>The box at the top left of 내 오버레이's canvas (user, 2026-11-01): the screen and every in-game size the reads
-/// depend on, in one place: 해상도 and 비율 (ScreenSummary), 버프·디버프 크기 and 보스 디버프 크기 (changed here), HUD 크기 (shown;
+/// depend on, in one place: 해상도 and 비율 (ScreenSummary), 버프·디버프 크기 and 타겟 UI 버프 크기 (보스) (changed here), HUD 크기 (shown;
 /// 맞추기 opens 화면·인식 so a refit isn't started by accident).</summary>
 public partial class SettingsWindow
 {
@@ -38,7 +38,7 @@ public partial class SettingsWindow
             ("비율", Label(facts.Ratio)),
             ("버프·디버프 크기", BuffSizeCombo()),
             ("HUD 크기", new StackPanel { Orientation = Orientation.Horizontal, Children = { Label(facts.Hud), refit } }),
-            ("보스 디버프 크기", BossSizeCombo()),
+            ("타겟 UI 버프 크기 (보스)", BossSizeCombo()),
         };
         var grid = new Grid { ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = GridLength.Auto } } };
         for (int i = 0; i < rows.Length; i++)

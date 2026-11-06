@@ -126,11 +126,27 @@ public static partial class FightRegions
             Phases = [.. chain.SelectMany(f => f.Phases)],
             Members = [.. chain.SelectMany(f => f.Members).DistinctBy(m => m.Name)],
             Samples = [.. chain.SelectMany(f => f.Samples)],
-            Boss = [.. chain.SelectMany(f => f.Boss)],
+            Boss = ContinuedBoss(chain),
             Events = [.. chain.SelectMany(f => f.Events)],
             Cleared = last.Cleared,
             AmsuOn = chain.Any(f => f.AmsuOn),
         };
+    }
+
+    /// <summary>The files' boss reads as one line: a file starting under half of where the last one ended restarted its count, so it
+    /// goes on from there; a smaller dip is a heal or a wobble of the same count. Everything that subtracts
+    /// <see cref="RecordBoss.Taken"/> over a joined run needs this.</summary>
+    static List<RecordBoss> ContinuedBoss(IReadOnlyList<FightRecord> chain)
+    {
+        var joined = new List<RecordBoss>();
+        long shift = 0, ended = 0;
+        foreach (var file in chain.Where(f => f.Boss.Count > 0))
+        {
+            if (file.Boss[0].Taken < ended / 2) shift += ended;
+            joined.AddRange(file.Boss.Select(b => b with { Taken = b.Taken + shift }));
+            ended = file.Boss[^1].Taken;
+        }
+        return joined;
     }
 
     /// <summary>"종막 · EX 2-1관문" and "종막 · EX 2-2관문" → "종막 · EX 2-1관문 ~ EX 2-2관문".</summary>

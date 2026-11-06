@@ -1,4 +1,5 @@
 using System.Windows;
+using GaugeOverlay.App.Platform;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -21,10 +22,10 @@ public sealed partial class OverlayCanvas : Border
     const double Strip = OverlayWindow.StripHeight, Bleed = OverlayRenderer.Bleed;
 
     /// <summary>Said when a box of my window is grabbed while 편집 중 shows another 직업각인: it can't move.</summary>
-    public const string PreviewNote = "다른 직업각인을 편집 중입니다. 그 직업각인의 칸 배치는 그 캐릭터로 접속해 바꿉니다. 창은 옮겨집니다.";
+    public const string PreviewNote = "다른 직업각인을 편집하는 중입니다. 칸 배치는 그 캐릭터로 접속해야 바꿀 수 있고, 창은 지금도 옮길 수 있습니다.";
 
     /// <summary>Said when a box of a member drawn from a received layout is grabbed: it can't move.</summary>
-    public const string ReceivedNote = "이 파티원은 받은 칸 배치로 그려집니다. 파티 탭의 파티원 배치 받기를 끄면 칸을 옮길 수 있습니다.";
+    public const string ReceivedNote = "이 파티원은 보내 준 칸 배치 그대로 그려집니다. 직접 옮기려면 파티 탭에서 파티원 배치 받기를 끄세요.";
 
     readonly Settings _s;
     readonly CharacterService _chars;
@@ -180,7 +181,7 @@ public sealed partial class OverlayCanvas : Border
     /// Bound party windows (파티 묶기) stand one under another from the first one's spot, their plates meeting.</summary>
     (double L, double T) Spot(OverlayRenderer r)
     {
-        var area = SystemParameters.WorkArea;
+        var area = Displays.WorkArea;
         static (double L, double T) Or((double L, double T) at, double left, double top) =>
             (double.IsNaN(left) ? at.L : left, double.IsNaN(top) ? at.T : top);
         var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.DebuffsOnly || r.JudgmentOnly || r.AmsuOnly || r.RaidOnly);

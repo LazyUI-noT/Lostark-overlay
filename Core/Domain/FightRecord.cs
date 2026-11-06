@@ -17,8 +17,13 @@ public sealed record RecordBoss(double T, long Taken, long? Current, long? Max, 
 /// <see cref="SlotId"/> for 사용, the <see cref="BuffKind"/> for a buff, the <see cref="Vision.Bomb"/> for a bomb, 0 for 대난투 (the 그림자 gimmick: the boss bar gone, a fill bar showing the damage).</summary>
 public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, int What);
 
+/// <summary>A skill as the fight saw it on a slot (skill-icons.plan.md): its name, its icon on Smilegate's CDN
+/// ("gl_skill/gl_skill_01_30.png", Data.SkillIconSource) and its kind. Self-contained, so an import or a later library still draws it.</summary>
+public sealed record RecordSkill(string Name, string Icon, SlotGroup Kind);
+
 /// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
-/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (FightRecorder, FightVerdict, or set in 편집; null: 알 수 없음), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관.</summary>
+/// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (FightRecorder, FightVerdict, or set in 편집; null: 알 수 없음), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관; since 0.19 the skill on each slot (<paramref name="Skills"/>: identified ones only), the
+/// candidates of a slot left unsure (<paramref name="Unsure"/>, for 편집) and a [Test] fight's proposed class · 직업각인.</summary>
 public sealed record FightRecord(
     DateTime StartedAt,
     string? Gate,
@@ -36,7 +41,10 @@ public sealed record FightRecord(
     string? Difficulty = null,
     bool? Cleared = null,
     bool AmsuOn = false,
-    string? Character = null)
+    string? Character = null,
+    IReadOnlyDictionary<SlotId, RecordSkill>? Skills = null,
+    IReadOnlyDictionary<SlotId, IReadOnlyList<RecordSkill>>? Unsure = null,
+    string? ProposedClass = null)
 {
     /// <summary>My share at the end (my last figure over the last boss figure; on a clear over all the boss's HP, the part its
     /// bar showed last counted as taken); null under the meter's dash rule.</summary>

@@ -71,6 +71,8 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     public bool ShadowHpOn(string raid) => !ShadowHpOff.Contains(raid);
     /// <summary>보스 체력 쉽게 보기: the boss's HP (and shield) in 조 · 억 beside its name, in every raid (user, 2026-11-05).</summary>
     public bool BossHpEasy { get; set; } = true;
+    /// <summary>보스 체력 읽기: the boss bar's text read for 쉽게 보기 and 그림자 기믹 체력 with the DPS 미터기 off (<see cref="BossHpPlan"/>).</summary>
+    public bool BossHpRead { get; set; } = true;
     public bool Glow { get; set; } = true;
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;

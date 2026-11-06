@@ -23,6 +23,8 @@ public partial class App
 
         var store = new SettingsStore(SettingsStore.DefaultPath);
         var settings = store.Load(out bool wasReset);
+        var testStore = new SettingsStore(SettingsStore.TestPath);
+        Settings? normalSettings = null;
         var debounce = new SaveDebounce();
         var characters = new CharacterService(settings, CharacterService.DefaultProfilesDir);
         var raidGates = RaidData.Load(CharacterService.DefaultProfilesDir);   // 설정 → 레이드's gates and their boss names, read once
@@ -51,6 +53,10 @@ public partial class App
         _owned.AddRange([party, device, foreground, engine]);
         _gameForeground = foreground.IsGameForeground;
         engine.GameForeground = _gameForeground;   // calibration pictures and 스킬창 맞추기 only while the game is in front
+        engine.InDungeonChanged += inside => Dispatcher.BeginInvoke(() => { _inDungeon = inside; UpdateVisibility(); });
+        engine.ReadBehind = settings.Screens.ReadBehind;
+        engine.ShownBehindChanged += shown => Dispatcher.BeginInvoke(() => { _gameBehind = shown; UpdateVisibility(); });
+        engine.BehindChanged += status => Dispatcher.BeginInvoke(() => _settingsWindow.SetBehindStatus(status));
         engine.OtherAppForeground = foreground.IsOtherForeground;   // another app in front: nothing is read (outside 테스트 모드)
         foreground.OtherChanged += other => engine.OtherAppForeground = other;
 
@@ -135,12 +141,23 @@ public partial class App
         bool copyingIcons = false, rereadingIcons = false, iconSaveFailed = false;
         int iconRun = 0;   // the engine's copy run now (Engine.CopyIcons); icons of an earlier run are dropped
         BuildUi(settings, characters, OnSettingsChanged);
+        _settingsWindow.DetectLive = engine.DetectLive;
+        _settingsWindow.WatchFrames = engine.WatchFrames;
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
         _settingsWindow.Records = records;
         _settingsWindow.TestRecords = testRecords;
         _settingsWindow.ImportedRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "imported"));   // other users' fights: apart, never pruned
         _settingsWindow.Homework = homework;
         homework.Updated += _settingsWindow.HomeworkUpdated;
+        // 숙제's fallback: with the meter or 전투 기록 off, or the 전분 panel closed and no fight being recorded, the boss bar alone decides
+        // (HomeworkWatch); a recorded fight never and it both: a record starting mid-fight switches the fallback off, which drops its watch.
+        var fallback = new HomeworkFallback(homework, HpGates);
+        engine.BossRead += fallback.Read;
+        bool gameUp = false;   // a game closed on a low boss is not a kill: the desktop in front doesn't count as another app
+        engine.GameRunningChanged += running => gameUp = running;
+        new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) =>
+            fallback.Step(!GameWindow.TestMode && Homework.SourceOf(settings.Meter.On, settings.Meter.Record, settings.Raids.BossHpRead, latest?.Meter?.PanelFound == true || recorder.Recording) == HomeworkSource.BossBar,
+                !gameUp || !_hudVisible || foreground.IsOtherForeground || latest?.Shadow is not null, RaidData.Find(raidGates, _raidSeen), Clock.Now()), Dispatcher).Start();
         _settingsWindow.RefreshRecords();
         _settingsWindow.GameArea = () => engine.GameAreaKey;
         _settingsWindow.PartyMove = (id, p) =>
@@ -150,10 +167,44 @@ public partial class App
             return done;
         };
 
+        // [Test]: while 테스트 모드 is on, the live settings are its own (settings.test.json) and saves go there; these are the
+        // ones to go back to. settings.json is written on the way in, so a crash can't lose them.
+        void EnterTestSettings()
+        {
+            Save(now: true);
+            normalSettings = SettingsStore.Copy(settings);
+            Settings? test = null;
+            try { if (File.Exists(testStore.Path)) { test = testStore.Load(out bool broken); if (broken) test = null; } }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[app] test settings not read: {ex.Message}"); }
+            settings.SwapIn(test ?? SettingsStore.Copy(settings));
+            ClassProfileMigration.EnsureOwn(settings, characters.Classes);
+            _settingsWindow.SettingsSwapped(test: true);
+        }
+        void LeaveTestSettings()
+        {
+            if (normalSettings is not { } normal) return;
+            Save(now: true);
+            settings.SwapIn(normal);
+            normalSettings = null;
+            Save(now: true);   // with what the app learned meanwhile
+            _settingsWindow.SettingsSwapped(test: false);
+        }
+
         // A failed write (file locked, disk full) is logged and left pending, so the timer retries it.
         void Write()
         {
-            try { store.Save(settings); }
+            try
+            {
+                if (normalSettings is null) store.Save(settings);
+                else
+                {
+                    testStore.Save(settings);
+                    // What the app learned meanwhile also reaches settings.json, so a crash in 테스트 모드 can't lose it.
+                    var merged = SettingsStore.Copy(settings);
+                    merged.SwapIn(SettingsStore.Copy(normalSettings));
+                    store.Save(merged);
+                }
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Trace.WriteLine($"[app] settings save failed: {ex.Message}");
@@ -167,10 +218,11 @@ public partial class App
         }
         _flush = () =>
         {
+            if (normalSettings is { } normal) { Save(now: true); settings.SwapIn(normal); normalSettings = null; }   // leaving in 테스트 모드
             Save(now: true);
             try { lastSave.Wait(SaveOnExit); }   // a fight saved just before closing finishes writing
             catch (AggregateException ex) { Trace.WriteLine($"[records] save before exit failed: {ex.InnerException?.Message}"); }
-            if (recorder.Finish() is { } fight && StoreNow() is var store) store.Save(Named(fight, store == testRecords), settings.RecordKeep);   // the fight under way when the app closes
+            if (recorder.Finish() is { } fight && StoreNow() is var store) store.Save(Named(TakeSkills(fight), store == testRecords), settings.RecordKeep);   // the fight under way when the app closes
         };
         string PartyName() => string.IsNullOrWhiteSpace(settings.Party.DisplayName) ? "플레이어" : settings.Party.DisplayName.Trim();
 
@@ -208,6 +260,7 @@ public partial class App
             characters.Active is { Subclass.Length: > 0 } c && characters.ActiveClass is not null ? (c.Class, c.Subclass) : null;
         IReadOnlySet<SlotId> NeededIcons()
         {
+            if (!settings.Overlay.SkillRead) return new HashSet<SlotId>();   // nothing is read to copy them from
             var look = ClassProfiles.Mine(settings);
             return SkillIcon.Needed(look.Effects?.Icons ?? new HashSet<SlotGroup>(), look.Groups, look.Hidden, characters.AdenSlots,
                 settings.Meter.On && settings.Meter.Record ? ClassProfiles.Reads(settings, characters.AdenSlots).Skip : null);   // 전투 기록 draws them
@@ -289,8 +342,10 @@ public partial class App
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly));
-            if (settings.SyncPlace()) _overlay.Replace();   // a 직업각인 has its own spot and size
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly, settings.Debuffs.BossCount,
+                HomeworkRead: !(settings.Meter.On && settings.Meter.Record)));   // 숙제 without a recorded fight reads the bar itself
+            engine.ReadBehind = settings.Screens.ReadBehind;
+            if (settings.SyncPlace()) { _overlay.Replace(); ApplyDisplay(); }   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
         }
@@ -301,11 +356,13 @@ public partial class App
             // The engine doesn't know the class: yours is added here, for the party and for your own gauge's glow rule.
             var mine = latest is { } s ? s with { ClassId = characters.ClassId } : null;
             homework.Playing(characters.Active?.Class, characters.Active?.Subclass);   // returns at once unless they changed
+            PlayingClass(GameWindow.TestMode ? null : characters.Active?.Class);   // for the skill map, read off the UI thread
             _meterReadAt = WindowLinger.LastRead(mine?.Meter);
             _presence = mine?.Presence ?? RaidPresence.None;
+            if (mine is not null) _settingsWindow.SetDetect(mine);   // 감지 중 on the map, only redrawn while it shows
             _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
             CheckInUse();
-            if (mine is not null) party.Publish(mine, PartyName(), settings.Party.SendGroups(), settings.Party.SendGauge);
+            if (mine is not null) party.Publish(mine, PartyName(), ClassProfiles.SentGroups(settings), settings.Party.SendGauge);
             if (mine?.Meter is { } status && !ReferenceEquals(status, meterView.From)) meterView = (status, StepMeter(status));
             else if (mine?.Meter is null && meterView.From is not null) (meterHistory, meterAlign, meterView) = (new(), new(), (null, null));   // off: graphs start over
             if (mine is not null && mine.Meter is not null) mine = mine with { MeterView = meterView.View };
@@ -335,7 +392,7 @@ public partial class App
             var role = characters.Role == Role.서포터 ? MeterRole.서포터 : MeterRole.딜러;
             if (settings.Meter.Send && MeterTracker.Mine(status, role) is { } own) party.SendMeter(own with { ClassId = characters.ClassId, AtkBuffed = meterHistory.MyAtkBuffed });   // my own 공증, for 버프 분배
             var (samples, me, host) = party.Meter();
-            if (!settings.Meter.Send) samples = [];   // not sharing: nobody else's figures, in the meter or the record
+            if (!settings.Meter.TakesParty) samples = [];   // not sharing, or not receiving: nobody else's figures, in the meter or the record
             _meter.Renderer.MeterMe = me;
             int myParty = party.Members.FirstOrDefault(m => m.Id == me)?.Party ?? 1;
             // A 4-man raid (the gate by its HP, else the one recognised; any guardian raid): the buffs' party share too.
@@ -462,6 +519,7 @@ public partial class App
         Task<string?> Store(FightRecord fight)
         {
             var store = StoreNow();   // read now: test mode may end before the save runs
+            fight = TakeSkills(fight);   // the slots' skills, read during the fight
             var saving = Task.Run(() =>
             {
                 try
@@ -515,7 +573,7 @@ public partial class App
             if (Interlocked.Exchange(ref pending, 1) == 0)
                 Dispatcher.BeginInvoke(() => { Interlocked.Exchange(ref pending, 0); Perf.Run("앱 처리 (미터 · 기록 · 파티 보내기)", Draw); });
         };
-        engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() => { _tray.SetGameRunning(running); _settingsWindow.SetGameRunning(running); });
+        engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() => { _tray.SetGameRunning(running); _settingsWindow.SetGameRunning(running); if (running) ApplyDisplay(); });
         engine.RaidRecognised += id => Dispatcher.BeginInvoke(() =>
         {
             _raidSeen = id;
@@ -534,7 +592,15 @@ public partial class App
             }
             _settingsWindow.SetFightHp(list);
         });
-        engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() => { _hudVisible = visible; UpdateVisibility(); });
+        // Dev: 클래스 인식 자동 on a replay's video too (class-detect.plan.md).
+        bool classDev = Environment.GetEnvironmentVariable("GAUGE_CLASS_DETECT") == "1";
+        engine.HudVisibleChanged += visible => Dispatcher.BeginInvoke(() =>
+        {
+            _hudVisible = visible;
+            UpdateVisibility();
+            // 클래스 인식 자동: the bar back outside a dungeon, the next ready 초각스 tells the class.
+            if (visible && ClassDetect.OnBarBack(settings.ClassDetect, _inDungeon, GameWindow.TestMode, classDev) && characters.WatchClass()) engine.RequestSubclass();
+        });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
             if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 쿨 돈 상태에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
@@ -583,8 +649,27 @@ public partial class App
         _settingsWindow.GainsResetRequested += () => { engine.ResetGains(); _tray.Notify($"{settings.ActiveCharacter}의 배운 게이지 값을 지웠습니다."); };
         // 스킬창 다시 맞추기 by hotkey (the tray and 설정 below): the same Refit.
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectCharacter)) Dispatcher.BeginInvoke(() => Refit()); };
-        engine.SubclassSlotCaptured += (slot, greyedSkills) => Dispatcher.BeginInvoke(() =>
+        engine.SubclassSlotCaptured += (slot, greyedSkills, ordinary) => Dispatcher.BeginInvoke(async () =>
         {
+            if (characters.ClassSearchDue(GameWindow.TestMode && !classDev))
+            {
+                string? last = characters.ActiveClass?.Name;
+                bool greyed = greyedSkills is not null;
+                // Off the UI thread: a full search and the 일반 slots' vote take a moment.
+                var (found, slots) = await Task.Run(() => Perf.RunCpu("클래스 인식", () =>
+                {
+                    var f = SkillClassFinder.Find(IconPrint.Framings(slot), SkillLibrary.Shipped, last, greyed);
+                    bool ask = !greyed && f.Class is not null && f.Class != last;   // the usual case, the same class, votes on nothing
+                    return (f, ask ? SkillClassFinder.Confirm(ordinary.Select(o => IconPrint.Framings(o)), SkillLibrary.Shipped, f.Class!) : SkillClassFinder.Verdict.Unsure);
+                }));
+                Trace.WriteLine($"[class] {found.Class ?? "?"}/{found.Subclass ?? "-"} {(found.Fast ? "fast" : "full")} {found.Score:0.000} lead {found.Lead:0.000} slots {slots}{(greyed ? " greyed" : "")} (was {last ?? "기본"})");
+                if (characters.OnClassFound(found, slots, greyed) is { } changed)
+                {
+                    _settingsWindow.Reload();
+                    _tray.Notify(changed);
+                }
+                if (characters.Watching) _ = Task.Delay(ClassDetect.RetryAfter).ContinueWith(_ => Dispatcher.BeginInvoke(() => { if (characters.Watching) engine.RequestSubclass(); }));
+            }
             if (characters.OnSubclassSlot(slot, greyedSkills) is not { } note) { OnSettingsChanged(); return; }   // ClassMismatch or the history may have changed
             _settingsWindow.Reload();
             _tray.Notify(note);
@@ -621,7 +706,7 @@ public partial class App
         };
 
         // Platform → engine / UI.
-        foreground.Changed += fg => { engine.GameForeground = fg; Dispatcher.BeginInvoke(() => { _gameForeground = fg; UpdateVisibility(); }); };
+        foreground.Changed += fg => { engine.GameForeground = fg; Dispatcher.BeginInvoke(() => { _gameForeground = fg; UpdateVisibility(); if (fg && settings.Screens.Display == DisplayMap.GameDisplay) ApplyDisplay(); }); };
         foreground.OwnChanged += own => Dispatcher.BeginInvoke(() => { _ownForeground = own; UpdateVisibility(); });
         // 설정 in front shows the overlays like the game (켜기); its handle exists once it is first shown.
         void Own() { foreground.OwnWindow = new System.Windows.Interop.WindowInteropHelper(_settingsWindow).Handle; foreground.Recheck(); }
@@ -631,17 +716,26 @@ public partial class App
         // list, or (picked zero: the hotkey, 맨 앞 창 따라가기) whichever was last in front.
         void SetTest(bool on, IntPtr picked, string? notice = null)
         {
+            if (on && !GameWindow.TestMode) EnterTestSettings();
+            else if (!on && GameWindow.TestMode) LeaveTestSettings();
             GameWindow.Picked = on ? picked : 0;
             GameWindow.TestMode = on;
-            if (on && picked != 0) GameWindow.Show(picked);   // the overlay and the fit need it in front
+            if (on && picked != 0 && settings.Screens.ReadBehind) GameWindow.Restore(picked);   // read as it is: the user keeps working
+            else if (on && picked != 0) GameWindow.Show(picked);   // the overlay and the fit need it in front
             foreground.Recheck();
+            ApplyDisplay();   // after the mode and pick: "the game's display" is the picked window's now
             if (on) engine.RequestDetect();   // the video's character
             _tray.SetTestMode(on, GameWindow.Picked);
             _tray.Notify(notice ?? (!on ? "테스트 모드를 껐습니다. 로스트아크 창을 찾습니다."
                 : picked != 0 ? "테스트 모드: 고른 창을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다."
                 : "테스트 모드: 맨 앞에 있던 창(영상 플레이어 등)을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다. 다른 창을 보려면 그 창을 클릭하거나 트레이 → 테스트 모드에서 고르세요."));
         }
-        void ToggleTestMode() => SetTest(!(GameWindow.TestMode && GameWindow.Picked == 0), 0);
+        void ToggleTestMode()
+        {
+            // 창 밖에서도 읽기: the window in front now is pinned, so working in another app doesn't change what is read.
+            if (settings.Screens.ReadBehind) SetTest(!GameWindow.TestMode, GameWindow.TestMode ? 0 : GameWindow.Front);
+            else SetTest(!(GameWindow.TestMode && GameWindow.Picked == 0), 0);
+        }
         _tray.ToggleTestMode += ToggleTestMode;
         _tray.TestWindowPicked += hwnd =>
         {
@@ -650,15 +744,32 @@ public partial class App
         };
         _tray.TestOff += () => SetTest(false, 0);
         _tray.ReinforcedToggled += on => { GameWindow.Reinforced = on; _tray.SetReinforced(on); };
+        if (Environment.GetEnvironmentVariable("GAUGE_TEST_PROCESS") is { Length: > 0 } testProcess)   // dev: 테스트 모드 follows that process, no keys (replay.ps1 -Background)
+        {
+            var watch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            watch.Tick += (_, _) =>
+            {
+                var hwnd = GameWindow.MainWindowOf(testProcess);
+                if (hwnd != 0 && (!GameWindow.TestMode || GameWindow.Picked != hwnd)) SetTest(true, hwnd);
+            };
+            watch.Start();
+        }
         if (Environment.GetEnvironmentVariable("GAUGE_REINFORCED") is "1") { GameWindow.Reinforced = true; _tray.SetReinforced(true); }   // dev: replays
         _tray.TestMenuOpening += () => _tray.SetTestWindows(GameWindow.Choices(), GameWindow.TestMode, GameWindow.Picked);
-        _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.TestMode)) SetTest(!GameWindow.TestMode, 0); };
-        // The picked window closed: 테스트 모드 ends (minimised, the engine just pauses). Checked again here: the engine
-        // raises it each step until then, and the user may have picked another window meanwhile.
+        _hotkeys.Pressed += action =>
+        {
+            if (action != nameof(HotkeySettings.TestMode)) return;
+            bool on = !GameWindow.TestMode;
+            SetTest(on, on && settings.Screens.ReadBehind ? GameWindow.Front : 0);   // pinned, as ToggleTestMode
+        };
+        // The picked window closed: 테스트 모드 stays on, nothing read until another is picked (user, 2026-11-05: it never turns
+        // itself off). Told once: the engine raises this each step, and the user may have picked another window meanwhile.
+        IntPtr closedTold = 0;
         engine.PickedWindowClosed += hwnd => Dispatcher.BeginInvoke(() =>
         {
-            if (GameWindow.TestMode && GameWindow.Picked == hwnd && !GameWindow.Exists(hwnd))
-                SetTest(false, 0, "테스트 모드: 고른 창이 닫혀 테스트 모드를 껐습니다.");
+            if (closedTold == hwnd || !GameWindow.TestMode || GameWindow.Picked != hwnd || GameWindow.Exists(hwnd)) return;
+            closedTold = hwnd;
+            _tray.Notify("테스트 모드: 고른 창이 닫혔습니다. 트레이 → 테스트 모드에서 다른 창을 고르거나 끄세요.");
         });
 
         // UI → settings / engine.
@@ -687,6 +798,8 @@ public partial class App
         _settingsWindow.RefitRequested += Refit;
         _settingsWindow.RevertFitRequested += () => { FrontForRead(engine); engine.RevertTestFit(); };   // recalibrated off the video in front
         WireAdjust(engine, settings, Configure, () => Save(now: true));
+        PlayingClass(GameWindow.TestMode ? null : characters.Active?.Class);
+        WireSkills(engine);   // the fight's skill map (App.Skills)
         _overlay.LayoutCommitted += () => { Save(now: true); _settingsWindow.Reload(); };   // 숫자 크기 range follows the box size
         foreach (var w in Others) w.LayoutCommitted += () => Save(now: true);
         _settingsWindow.DiagnosticsShownChanged += Configure;   // the table's rows are sent only while it is on screen
@@ -710,12 +823,7 @@ public partial class App
             engine.RequestSubclass();
             _tray.Notify("초각스가 준비되면 그 아이콘을 지금 직업각인으로 등록합니다.");
         };
-        // 로딩 뒤 직업각인 자동 감지: told only when it changes the 직업각인 (CharacterService.AutoRedetect).
-        engine.LoadingEnded += () => Dispatcher.BeginInvoke(() =>
-        {
-            homework.Loaded(Clock.Now());   // a switch picked in the grid happens now
-            if (characters.AutoRedetect()) engine.RequestSubclass();
-        });
+        engine.LoadingEnded += () => Dispatcher.BeginInvoke(() => homework.Loaded(Clock.Now()));   // a switch picked in the grid happens now
         // The ESC menu (Engine.Menu.cs): who is played, the grid's cards, and their 숙제 tags under them.
         string? menuLogged = null;
         engine.MenuSeen += (read, vp, t) => Dispatcher.BeginInvoke(() =>
@@ -809,6 +917,7 @@ public partial class App
         foreach (var w in Others) w.Show();
         UpdateVisibility();
         engine.Start();
+        ApplyDisplay();
 
         if (wasReset) _tray.Notify("설정 파일을 읽지 못해 기본값으로 시작했습니다.");
         if (!settings.FirstRunDone)

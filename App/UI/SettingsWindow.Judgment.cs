@@ -24,7 +24,7 @@ public partial class SettingsWindow
         if (!j.On(key)) return;
 
         p.Children.Add(HelpRow("감지 방식",
-            "아이콘이 가장 정확합니다. 버프 줄의 심판 아이콘과 그 아래 남은 시간으로 시작 시각을 맞춥니다. 캐릭터 위에 뜨는 '심판' 글자는 버프가 많아 아이콘이 버프 줄에서 밀려날 때를 위한 보조로, 아이콘보다 덜 안정적입니다.",
+            "아이콘이 가장 정확합니다. 버프 줄의 심판 아이콘과 그 아래 남은 시간으로 시작 시각을 맞춥니다. 캐릭터 위에 뜨는 '심판' 글자는 버프가 많아 아이콘이 밀려났을 때 대신 쓰며, 아이콘보다 덜 안정적입니다.",
             EnumCombo([(JudgmentSource.Both, "아이콘 + 글자 (아이콘 우선)"), (JudgmentSource.Icon, "아이콘만"), (JudgmentSource.Text, "글자만")], j.Source, v => j.Source = v)));
         if (j.Source != JudgmentSource.Icon)
             p.Children.Add(Note("데미지 폰트 크기는 화면·인식 → 게임 설정 값에서 맞춥니다."));
@@ -37,8 +37,8 @@ public partial class SettingsWindow
         if (j.Display == JudgmentDisplay.Bar)
         {
             p.Children.Add(Row("막대", Check("세로", j.Side, v => j.Side = v, () => { Changed(); Dispatcher.BeginInvoke(FillJudgment); },
-                "막대를 세워 위에서 아래로 줄어들게 합니다. 끄면 눕혀 오른쪽에서 왼쪽으로 줄어듭니다. 심판이 켜진 6초 동안 막대 전체가 줄어들고, 그 뒤 다시 가득 차서 24초 대기 동안 줄어듭니다."),
-                Check("심판 아닐 때 숨김", j.HideWhenEmpty, v => j.HideWhenEmpty = v, Changed, "심판이 준비된 동안(남은 시간이 없을 때) 막대를 숨깁니다. 편집 모드와 미리보기에서는 흐리게 보여 옮길 수 있습니다.")));
+                "켜면 막대를 세워 위에서 아래로 줄어듭니다. 끄면 눕혀서 오른쪽에서 왼쪽으로 줄어듭니다. 심판이 켜진 6초 동안 한 번 줄어들고, 다시 가득 차서 24초 대기 동안 또 줄어듭니다."),
+                Check("심판 아닐 때 숨김", j.HideWhenEmpty, v => j.HideWhenEmpty = v, Changed, "심판이 준비된 동안(남은 시간이 없을 때) 막대를 숨깁니다. 편집 모드와 미리보기에서는 옮길 수 있게 흐리게 보입니다.")));
             p.Children.Add(ColorRow(Label("심판 색 (6초)"), j.Color, v => j.Color = v, swatch: false));
             p.Children.Add(Check("한 색으로", j.OneColor, v => j.OneColor = v, () => { Changed(); Dispatcher.BeginInvoke(FillJudgment); },
                 "대기 시간(24초)을 심판 색을 어둡게 해서 그립니다."));
@@ -56,19 +56,6 @@ public partial class SettingsWindow
         p.Children.Add(Note("편집 모드에서 단심 창을 끌어 옮기고, 모서리를 끌어 크기를 바꿀 수도 있습니다."));
     }
 
-    /// <summary>게임의 데미지 폰트 크기, shown in 스킬창 beside 버프 크기 and in 기타 → 단심; either one changes the same setting.</summary>
-    ComboBox FontSizeCombo()
-    {
-        var size = Combo();
-        size.ItemsSource = JudgmentSettings.FontSizes;
-        size.SelectedItem = _s.Judgment.FontSize;
-        size.SelectionChanged += (_, _) =>
-        {
-            if (size.SelectedItem is not int v || v == _s.Judgment.FontSize) return;
-            _s.Judgment.FontSize = v;
-            Changed();
-            Dispatcher.BeginInvoke(() => { FillJudgment(); FillFit(); });
-        };
-        return size;
-    }
+    /// <summary>게임의 데미지 폰트 크기, shown in 스킬창 beside 버프 크기, in 기타 → 단심 and the 표시 map; any one changes the same setting.</summary>
+    FrameworkElement FontSizeCombo() => SizeControl(GameSize.Font, () => _s.Judgment.FontSize, v => _s.Judgment.FontSize = v, () => { FillJudgment(); FillFit(); });
 }

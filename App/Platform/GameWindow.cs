@@ -88,6 +88,49 @@ public static partial class GameWindow
     static readonly HashSet<string> Shell = ["Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotifyIconOverflowWindow",
         "TopLevelWindowForOverflowXamlIsland", "Progman", "WorkerW", "Windows.UI.Core.CoreWindow", "XamlExplorerHostIslandWindow", "#32768"];
 
+    /// <summary>What the capture would show of <paramref name="game"/> with another app in front: the first window over it
+    /// counts, leaving out the shell's, the game's own, hidden and minimised ones, click-through ones (other overlays) and our
+    /// overlay windows, which never take focus. 설정 counts: Desktop Duplication would capture it. Called at most 2/s, only while
+    /// the game isn't in front with 창 밖에서도 읽기 on.</summary>
+    public static (GameView View, string? By) ViewOf(IntPtr game)
+    {
+        if (IsIconic(game) || ClientRect(game) is not { } rect) return (GameView.Minimized, null);
+        GetWindowThreadProcessId(game, out uint gamePid);
+        var above = GetWindow(game, GW_HWNDPREV);
+        for (int i = 0; above != 0 && i < MaxWindowsAbove; i++, above = GetWindow(above, GW_HWNDPREV))
+        {
+            if (!IsWindowVisible(above) || IsIconic(above)) continue;
+            GetWindowThreadProcessId(above, out uint pid);
+            long style = GetWindowLongPtrW(above, GWL_EXSTYLE);
+            if (pid == gamePid || (style & WS_EX_TRANSPARENT) != 0) continue;
+            if (pid == Environment.ProcessId ? (style & WS_EX_NOACTIVATE) != 0 : IsOursOrShell(above)) continue;
+            if (DwmGetWindowAttribute(above, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) continue;
+            if (DwmWindowBounds(above, DWMWA_EXTENDED_FRAME_BOUNDS, out var r, Marshal.SizeOf<RECT>()) != 0) continue;
+            if (!BackgroundRead.Covers(rect, new(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top))) continue;
+            var title = new char[128];
+            int n = GetWindowTextW(above, title, title.Length);
+            return (GameView.Covered, n > 0 ? new string(title, 0, n) : ClassOf(above));
+        }
+        return (GameView.Clear, null);
+    }
+
+    /// <summary>Minimised: its rect is off every display, so it says nothing about where it stands.</summary>
+    public static bool IsMinimized(IntPtr hwnd) => IsIconic(hwnd);
+
+    /// <summary>Restores <paramref name="hwnd"/> if minimised, leaving the front as it is.</summary>
+    public static void Restore(IntPtr hwnd)
+    {
+        if (IsIconic(hwnd)) ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+
+    /// <summary>The main window of the first process called <paramref name="process"/>, or zero.</summary>
+    public static IntPtr MainWindowOf(string process)
+    {
+        var procs = Process.GetProcessesByName(process);
+        try { return procs.Select(p => p.MainWindowHandle).FirstOrDefault(h => h != 0); }
+        finally { foreach (var p in procs) p.Dispose(); }
+    }
+
     /// <summary>The main window of the first running game process (in test mode <see cref="Target"/>), or zero.</summary>
     public static IntPtr Find() => Find(TestMode);
 
@@ -95,9 +138,7 @@ public static partial class GameWindow
     public static IntPtr Find(bool test)
     {
         if (test) return Target is var target && Exists(target) ? target : 0;
-        var procs = Process.GetProcessesByName(ProcessName);
-        try { return procs.Select(p => p.MainWindowHandle).FirstOrDefault(h => h != 0); }
-        finally { foreach (var p in procs) p.Dispose(); }
+        return MainWindowOf(ProcessName);
     }
 
     /// <summary>Gives the game the foreground back when one of this app's windows has it (edit mode took it) or the taskbar
@@ -156,9 +197,11 @@ public static partial class GameWindow
         return new(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
     }
 
-    private const uint MONITOR_DEFAULTTONEAREST = 2, GW_OWNER = 4, DWMWA_CLOAKED = 14;
-    private const int GWL_EXSTYLE = -20, SW_RESTORE = 9;
-    private const long WS_EX_TOOLWINDOW = 0x80;
+    private const uint MONITOR_DEFAULTTONEAREST = 2, GW_OWNER = 4, GW_HWNDPREV = 3, DWMWA_CLOAKED = 14, DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+    private const int GWL_EXSTYLE = -20, SW_RESTORE = 9, SW_SHOWNOACTIVATE = 4;
+    private const long WS_EX_TOOLWINDOW = 0x80, WS_EX_TRANSPARENT = 0x20, WS_EX_NOACTIVATE = 0x08000000;
+    /// <summary>GetWindow's walk can loop if the order changes under it.</summary>
+    private const int MaxWindowsAbove = 2048;
 
     /// <summary>Top-level windows in z-order: parent, class and title all zero (no filter).</summary>
     [LibraryImport("user32.dll")] private static partial IntPtr FindWindowExW(IntPtr parent, IntPtr after, IntPtr cls, IntPtr title);
@@ -173,6 +216,7 @@ public static partial class GameWindow
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int GetWindowTextW(IntPtr hwnd, [Out] char[] text, int max);
     [LibraryImport("dwmapi.dll")] private static partial int DwmGetWindowAttribute(IntPtr hwnd, uint attr, out int value, int size);
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static partial int DwmWindowBounds(IntPtr hwnd, uint attr, out RECT value, int size);
 
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }

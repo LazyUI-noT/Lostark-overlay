@@ -32,6 +32,22 @@ public sealed partial class Settings
         for (int i = 0; i < Math.Min(shots.Count, Profiles.Count); i++) Profiles[i].Shot = shots[i];
     }
 
+    /// <summary>자동's choice. 던전 needs the dungeon read, which is the meter's: turned on if off, without its window.</summary>
+    public void ChooseOverlayAuto(OverlayAuto auto)
+    {
+        Overlay.SetAuto(auto);
+        if (auto == OverlayAuto.던전 && !Meter.On) Meter.SetMode(ThreeWay.표시안함);
+    }
+
+    /// <summary>[Test]: the live object takes <paramref name="other"/>'s options and places, as an undo does, except what
+    /// belongs to the install: 표시 화면 and 창 밖에서도 읽기, and the hotkeys (the one that leaves 테스트 모드 among them).</summary>
+    public void SwapIn(Settings other)
+    {
+        var (screens, hotkeys) = (Screens, Hotkeys);
+        CopyFrom(other);
+        (Screens, Hotkeys) = (screens, hotkeys);
+    }
+
     /// <summary>Properties that only spell another one out for the file (<see cref="SavedTheme"/>, <see cref="Palette"/>:
     /// <see cref="Theme"/>): copied through it.</summary>
     static readonly HashSet<string> SavedForms = [nameof(SavedTheme), nameof(Palette)];

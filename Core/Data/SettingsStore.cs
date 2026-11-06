@@ -25,6 +25,12 @@ public sealed class SettingsStore(string path)
     };
 
     public string Path { get; } = path;
+
+    /// <summary>A copy sharing nothing with <paramref name="s"/>.</summary>
+    public static Settings Copy(Settings s) => JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(s, Json), Json) ?? new Settings();
+
+    /// <summary>[Test]'s file, beside settings.json: 테스트 모드's own options and places.</summary>
+    public static string TestPath { get; } = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(DefaultPath)!, "settings.test.json");
     private string Tmp => Path + ".tmp";
     private string Bak => Path + ".bak";
 
@@ -87,11 +93,13 @@ public sealed class SettingsStore(string path)
         RepairClasses(s);
         PeerSlots(s);
         FiveProfiles(s);
-        if (s.ManualHud is { } hud) s.ManualHud = Settings.NearestHud(hud);   // hand-edited, or saved by the old 70–130 slider
+        // Hand-edited, or saved by the old 70–130 slider: a preset, unless 값 직접 조정 is on (it saves any whole % in FitAdjust's range).
+        if (s.ManualHud is { } hud) s.ManualHud = s.FineSizes && hud == Math.Round(hud) ? Math.Clamp(hud, Vision.FitAdjust.MinHud, Vision.FitAdjust.MaxHud) : Settings.NearestHud(hud);
         foreach (var (key, f) in s.Adjusts.ToList())   // a hand edit the debug window couldn't have made
             if (f is null || !double.IsFinite(f.Hud) || f.Hud is < 50 or > 250 || !double.IsFinite(f.NudgeX) || !double.IsFinite(f.NudgeY)) s.Adjusts.Remove(key);
             else if (f.BossSize is not (null or >= Vision.FitAdjust.MinBoss and <= Vision.FitAdjust.MaxBoss)) s.Adjusts[key] = f with { BossSize = null };
         s.Cores ??= [];
+        if (s.AutoSubclass) (s.ClassDetect, s.AutoSubclass) = (ClassDetectMode.자동, false);   // merged into 클래스 인식 자동 (user, 2026-11-05)
         if (!s.RecordKeepMigrated) (s.RecordKeep, s.RecordKeepMigrated) = (s.RecordKeep == OldRecordKeep ? new Settings().RecordKeep : s.RecordKeep, true);
         foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
             if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
@@ -107,6 +115,7 @@ public sealed class SettingsStore(string path)
             if (slots is null) s.StackSkills.Remove(key);
             else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
         (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
+        s.Debuffs.BossCount = Math.Clamp(s.Debuffs.BossCount, 1, Vision.Geometry.MaxBossSlots);
         s.Buffs.Count = Math.Clamp(s.Buffs.Count, Vision.Geometry.MinBuffBoxCount, Vision.Geometry.MaxBuffBoxCount);   // a hand edit
         if (s.Debuffs.BossIconSize is < Vision.FitAdjust.MinBuffSize or > Vision.FitAdjust.MaxBuffSize) s.Debuffs.BossIconSize = Vision.Geometry.RefBossSize;
         s.Raids ??= new();

@@ -26,14 +26,20 @@ public sealed class HomeworkStore(string path)
             var week = Homework.WeekStart(now);
             if (clear.At < week) return false;   // last week's (a fight given its character late): nothing to cross out
             var all = Read().Where(c => c.At >= week).ToList();
-            bool added = !all.Contains(clear);
-            if (added) all.Add(clear);
+            // A sure clear replaces a maybe of the same raid; a maybe never replaces a sure one (a fight and the fallback never both decide).
+            bool added = !all.Contains(clear) && (!clear.Unsure || !all.Any(c => c.Character == clear.Character && c.Raid == clear.Raid && !c.Unsure));
+            if (added)
+            {
+                all.RemoveAll(c => c.Character == clear.Character && c.Raid == clear.Raid && c.Unsure);
+                all.Add(clear);
+            }
             Write(all);
             return added;
         }
     }
 
-    /// <summary>Takes <paramref name="clear"/> back (편집 of its fight, confirmed by the user); false when it wasn't there.</summary>
+    /// <summary>Takes <paramref name="clear"/> back (편집 of its fight, confirmed by the user, or the fallback's own clear on a retry);
+    /// false when it wasn't there, as when a click replaced it.</summary>
     public bool Remove(HomeworkClear clear)
     {
         lock (_gate)
@@ -42,6 +48,18 @@ public sealed class HomeworkStore(string path)
             if (!all.Remove(clear)) return false;
             Write(all);
             return true;
+        }
+    }
+
+    /// <summary>The 미완 / 클리어 / 확인필요 part clicked: this week's clear of the character's raid becomes <paramref name="to"/>, or none (null).</summary>
+    public void Set(string character, string raid, DateTime now, HomeworkClear? to)
+    {
+        lock (_gate)
+        {
+            var week = Homework.WeekStart(now);
+            var all = Read().Where(c => c.At >= week && !(c.Character == character && c.Raid == raid)).ToList();
+            if (to is not null) all.Add(to);
+            Write(all);
         }
     }
 

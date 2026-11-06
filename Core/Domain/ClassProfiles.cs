@@ -11,7 +11,9 @@ public enum ColorSource { Default, Personal, Received }
 
 /// <summary>What the engine reads (<see cref="ClassProfiles.Reads"/>). <paramref name="BuffSize"/>: the game's 버프 크기,
 /// or null to leave the buff row unread. <paramref name="Gauge"/>: the 아덴 게이지 is shown or sent.</summary>
-public sealed record ReadPlan(IReadOnlySet<SlotId> Skip, bool Label, int? BuffSize, bool Gauge);
+/// <param name="VoteOnly">스킬창 읽기 off: the slots are read every 250 ms for the HUD vote only (is the skill bar on screen),
+/// which the gauge, buffs, debuffs, 단심 and loading screens wait on; nothing of them is tracked, drawn or sent.</param>
+public sealed record ReadPlan(IReadOnlySet<SlotId> Skip, bool Label, int? BuffSize, bool Gauge, bool VoteOnly = false);
 
 /// <summary>What 복사 → 대상 copies.</summary>
 [Flags]
@@ -258,20 +260,43 @@ public static class ClassProfiles
             personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine);
     }
 
-    /// <summary>What the engine reads: a slot is skipped when it is neither shown (its group on, the slot not hidden) nor
-    /// sent to the party, the 초각기 표시 label likewise with its 각성기 group, the gauge likewise, and the buff row only
-    /// while an indicator is on.</summary>
+    /// <summary>What the engine reads: with 스킬창 읽기 on, a slot is skipped when it is neither shown (its group on, the slot
+    /// not hidden), sent to the party nor recorded for the timeline (사용 기록), the 초각기 표시 label likewise with its 각성기
+    /// group; off, no slot. The gauge is read while shown or sent, and the buff row only while an indicator is on.</summary>
+    // ponytail: a hidden window recorded for the timeline is read in full; the light read (ready slots, one read after a
+    // cast) comes when its CPU shows in [perf].
     public static ReadPlan Reads(Settings s, IReadOnlyCollection<SlotId> adenSlots)
     {
         var mine = Mine(s);
-        var sent = s.Party.SendGroups();
-        bool Kept(SlotGroup g) => mine.Groups.GetValueOrDefault(g, true) || sent.Contains(g);
-        bool Skipped(SlotId id, SlotGroup g) => !Kept(g) || !sent.Contains(g) && mine.Hidden.Contains(id);
+        var sent = SentGroups(s);
+        bool recorded = s.Overlay.SkillRead && s.Meter.On && s.Meter.Record;
+        bool Kept(SlotGroup g) => s.Overlay.SkillRead && (mine.Groups.GetValueOrDefault(g, true) || sent.Contains(g) || recorded);
+        bool Skipped(SlotId id, SlotGroup g) => !Kept(g) || !sent.Contains(g) && !recorded && mine.Hidden.Contains(id);
         bool classless = ActiveClass(s) is null;   // 기본 with no class: no 아덴 slots or gauge, not even for the party
         var skip = SlotInfo.All.Where(id => Skipped(id, SlotInfo.GroupOf(id, adenSlots)) || classless && id is SlotId.아덴1 or SlotId.아덴2);
         bool buffs = Enum.GetValues<BuffKind>().Any(k => s.Buffs.Of(k).Visible);
-        return new(skip.ToHashSet(), Kept(SlotGroup.각성기), buffs ? s.Buffs.Size : null, !classless && (mine.Gauge || s.Party.SendGauge));
+        return new(skip.ToHashSet(), Kept(SlotGroup.각성기), buffs ? s.Buffs.Size : null, !classless && (mine.Gauge || s.Party.SendGauge),
+            VoteOnly: !s.Overlay.SkillRead);
     }
+
+    /// <summary>A buff bar drawn for <paramref name="key"/> (null: the character played): its 표시 on for everyone and not hidden
+    /// for that character.</summary>
+    public static bool BuffShown(Settings s, BuffKind kind, string? key = null) =>
+        s.Buffs.Of(kind).Visible && !WindowsOf(s, key ?? ActiveKey(s)).Buffs.Contains(kind);
+
+    /// <summary>The DPS 미터기 window shown: 켜기 for everyone and not hidden for the character played.</summary>
+    public static bool MeterShown(Settings s) => s.Meter.On && s.Meter.Show && !WindowsOf(s, ActiveKey(s)).Meter;
+
+    /// <summary><paramref name="key"/>'s hidden windows (null: 기본, no class known), apart from its boxes: hiding one doesn't
+    /// make a character stop following 기본.</summary>
+    public static CharacterWindows WindowsOf(Settings s, string? key) => s.CharacterWindows.GetValueOrDefault(key ?? Template) ?? new();
+
+    /// <summary>The entry to change, added the first time.</summary>
+    public static CharacterWindows EditWindows(Settings s, string? key) =>
+        s.CharacterWindows.TryGetValue(key ?? Template, out var w) ? w : s.CharacterWindows[key ?? Template] = new();
+
+    /// <summary>The skill groups sent to the party: none while 스킬창 읽기 is off, as nothing is read.</summary>
+    public static IReadOnlySet<SlotGroup> SentGroups(Settings s) => s.Overlay.SkillRead ? s.Party.SendGroups() : new HashSet<SlotGroup>();
 
     /// <summary>The 직업각인 whose 나 settings a member of <paramref name="shipped"/> takes with 내 설정 적용 (each 직업각인 has
     /// its own, so the class's own 나 is no longer edited): the active character's when it plays that class, else the one last

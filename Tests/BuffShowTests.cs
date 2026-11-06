@@ -61,8 +61,9 @@ public class BuffShowTests
         var s = new Settings();
         s.Buffs.Edit(BuffKind.공증).Show = BuffShow.자동;
 
-        TrayToggles.Show(s, OverlayPart.Buffs, false);
-        Assert.Equal(BuffShow.끄기, s.Buffs.Of(BuffKind.공증).Show);
+        TrayToggles.Show(s, OverlayPart.Buffs, false);   // hidden for the character played; 자동 is everyone's and stays
+        Assert.Equal(BuffShow.자동, s.Buffs.Of(BuffKind.공증).Show);
+        Assert.False(ClassProfiles.BuffShown(s, BuffKind.공증));
 
         TrayToggles.Show(s, OverlayPart.Buffs, true);
         Assert.Equal(BuffShow.자동, s.Buffs.Of(BuffKind.공증).Show);

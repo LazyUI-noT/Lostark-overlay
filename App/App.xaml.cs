@@ -111,6 +111,8 @@ public partial class App : Application
     Tray _tray = null!;
     Hotkeys _hotkeys = null!;
     Action _changed = null!;
+    bool _inDungeon;   // 오버레이 표시's 던전 안에서
+    bool _gameBehind;   // 창 밖에서도 읽기: another app in front, the game seen
     bool _gameForeground = true, _hudVisible = true, _ownForeground;   // own: one of the app's windows (설정) is in front
     // The DPS 미터기 and the 줄 수 창 show only while a boss is read, and 10 s after (WindowLinger); they read all the time.
     TimeSpan? _meterReadAt, _countReadAt;
@@ -168,6 +170,8 @@ public partial class App : Application
         _tray.OpenDiagnostics += _settingsWindow.ShowDiagnostics;
         _tray.PartToggled += (part, on) => { TrayToggles.Show(_settings, part, on); _settingsWindow.Reload(); changed(); };
         _settingsWindow.ProfileRequested += SwitchProfile;
+        _settingsWindow.DisplayChosen += ApplyDisplay;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.BeginInvoke(ApplyDisplay);
         _settingsWindow.LayoutChanged += () =>
         {
             _overlay.Replace();
@@ -217,11 +221,13 @@ public partial class App : Application
     /// <summary>오버레이 프로필 (hotkey, tray): the windows go to that profile's spots and sizes, and it is saved.</summary>
     void SwitchProfile(int profile)
     {
+        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 Test 프로필을 씁니다. 끄면 전에 쓰던 프로필로 돌아갑니다."); return; }
         // mid-drag, the drop would land in the other profile's spots
         if (profile == _settings.ActiveProfile || _overlay.Dragging || Others.Any(w => w.Dragging)) return;
         _settings.SwitchProfile(profile);
         _overlay.Replace();
         foreach (var w in Others) w.Replace();
+        ApplyDisplay();
         StackParty();
         _settingsWindow.Reload();
         _changed();
@@ -290,11 +296,25 @@ public partial class App : Application
         }
     }
 
+    /// <summary>표시 화면: every overlay window onto the chosen display. Stateless, so it runs whenever the answer may differ:
+    /// the choice, a profile or 직업각인's places, the displays, the game's monitor.</summary>
+    void ApplyDisplay()
+    {
+        if (_overlay.Dragging || Others.Any(w => w.Dragging)) return;
+        var displays = Displays.All();
+        var target = DisplayMap.Target(_settings.Screens.Display, displays, Displays.DeviceOf(GameWindow.Find()));
+        Displays.UseWorkAreaOf(target?.Device);
+        if (target is null) return;
+        _overlay.MoveInto(displays, target);
+        foreach (var w in Others) w.MoveInto(displays, target);
+        StackParty();
+    }
+
     void UpdateVisibility()
     {
         var o = _settings.Overlay;
         bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
-            gameForeground: _gameForeground, hudVisible: _hudVisible, hideWithoutHud: o.HideWithoutHud, firstRunDone: _settings.FirstRunDone);
+            gameForeground: _gameForeground || _gameBehind, hudVisible: _hudVisible, auto: o.Auto(), inDungeon: _inDungeon || !_settings.Meter.On, firstRunDone: _settings.FirstRunDone);
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
@@ -303,12 +323,14 @@ public partial class App : Application
         _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
         bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
-            gameForeground: _gameForeground, hudVisible: true, hideWithoutHud: false, firstRunDone: _settings.FirstRunDone);
-        _meter.Visibility = _settings.Meter.On && _settings.Meter.Show && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
+            gameForeground: _gameForeground || _gameBehind, hudVisible: true, auto: OverlayAuto.게임앞, inDungeon: true, firstRunDone: _settings.FirstRunDone);
+        _meter.Visibility = ClassProfiles.MeterShown(_settings) && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }
         else if (_meter.Visibility == Visibility.Visible) _meter.BringToFront();
+        // No snapshot comes with the game gone or away: the labels over the game must not stay behind.
+        if (!show && _meter.Visibility != Visibility.Visible) { _shadow.Update(null, false); _shadowDealt.Update(null, false); _bossHp.Update(null, false); }
         _tray.SetOverlayVisible(_settings.Overlay.Visible);
     }
 

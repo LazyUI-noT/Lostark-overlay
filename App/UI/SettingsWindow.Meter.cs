@@ -31,18 +31,42 @@ public partial class SettingsWindow
         FillOrder();
     }
 
+    ComboBox BuffShareCombo(MeterSettings m, Action again)
+    {
+        var c = Combo();
+        c.ItemsSource = m.BuffChoices().Select(v => new ComboBoxItem { Content = v == ThreeWay.표시안함 ? "표시 안 함" : v.ToString(), Tag = v }).ToList();
+        c.SelectedItem = c.Items.Cast<ComboBoxItem>().First(i => (ThreeWay)i.Tag == m.BuffShare());
+        c.SelectionChanged += (_, _) =>
+        {
+            if (c.SelectedItem is not ComboBoxItem { Tag: ThreeWay v } || v == m.BuffShare()) return;
+            m.SetBuffWish(v);
+            Changed();
+            again();
+        };
+        return c;
+    }
+
     void FillMeter()
     {
         var m = _s.Meter;
         void Again() => Dispatcher.BeginInvoke(FillMeter);
         var p = Refill(_secMeter, AreaMeter, "보스가 받은 피해 중 각자의 몫(딜러 딜지분, 서포터 찬조)을 전분(전투분석기)이 기록을 시작한 때부터 보여 줍니다. " +
-            "파티원 몫은 나와 그 파티원이 모두 '내 피해량 보내기'를 켰을 때만 보입니다. 모두 같은 보스 수치로 나누므로 누구에게나 같은 숫자가 보입니다.");
-        p.Children.Add(Row("", Check("켜기", m.On, v => m.On = v, () => { Changed(); Again(); }, "끄면 아무것도 읽지 않습니다 (미터기 창, 전투 기록, 보내기 모두).")));
+            "파티원 몫은 나와 그 파티원이 모두 '내 피해량 보내기'를 켜야 보입니다. 같은 보스 수치로 나누기 때문에 누구 화면에서나 숫자가 같습니다.");
+        p.Children.Add(HelpRow("미터기", "끄기: 아무것도 읽지 않습니다 (미터기 창, 전투 기록, 보내기 모두 멈춤). 표시 안 함: 창만 숨기고 전투 기록과 보내기는 계속합니다.",
+            EnumCombo([(ThreeWay.끄기, "끄기"), (ThreeWay.표시안함, "표시 안 함"), (ThreeWay.켜기, "켜기")], m.Mode(), v => { m.SetMode(v); Again(); })));
+        if (m.Mode() == ThreeWay.켜기)
+        {
+            var who = BoxKey;
+            p.Children.Add(Row("", HideHere(who, ClassProfiles.WindowsOf(_s, who).Meter, v => ClassProfiles.EditWindows(_s, who).Meter = v)));
+        }
+        p.Children.Add(HelpRow("버프 적용률", "내 피해 중 공증 · 아덴 피증 · 초각스 피증이 켜져 있을 때 넣은 비율입니다. 버프 줄을 읽어야 나옵니다. 표시 안 함: 미터기 창에는 없고 타임라인에만 나옵니다. 끄기: 둘 다 없습니다. 미터기를 끄거나 숨기면 고를 수 있는 값이 줄고, 다시 켜면 전에 고른 값으로 돌아옵니다.",
+            BuffShareCombo(m, Again)));
         p.Children.Add(Row("",
-            Check("미터기 창 보이기", m.Show, v => m.Show = v, Changed, "끄면 창만 숨기고, 전투 기록과 보내기는 계속합니다."),
-            Check("전투 기록", m.Record, v => m.Record = v, Changed, "전투를 기록해 설정 → 전투 기록에 남깁니다. 개수는 그곳에서 정합니다.")));
+            Check("전투 기록", m.Record, v => m.Record = v, Changed, "전투를 기록해 설정 → 타임라인에 남깁니다. 개수는 그곳에서 정합니다.")));
         p.Children.Add(Row("", Check("내 피해량 보내기", m.Send, v => m.Send = v, () => { Changed(); FillSend(); },
-            "켜면 1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 다른 파티원의 수치도 받지 않습니다(보내는 사람만 남의 수치를 봅니다). 파티 → 보내기·받기에도 같은 스위치가 있습니다.")));
+            "켜면 1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 파티원의 수치도 못 받습니다. 보내는 사람만 남의 수치를 볼 수 있습니다. 파티 → 보내기·받기에도 같은 스위치가 있습니다.")));
+        if (m.Send) p.Children.Add(Row("", Check("파티원 피해량 받기", m.Receive, v => m.Receive = v, Changed,
+            "끄면 파티원의 수치를 미터기와 타임라인에 쓰지 않고, 내 수치는 계속 보냅니다. 받으려면 내 피해량 보내기도 켜져 있어야 합니다.")));
         if (!m.On) return;
 
         p.Children.Add(SubHeading("보기"));
@@ -53,7 +77,6 @@ public partial class SettingsWindow
             (MeterLook.파티비교, "파티 비교 (공대 · 1·2파티)")], m.Look, v => { m.Look = v; Again(); })));
         p.Children.Add(Row("",
             Check("DPS 그래프", m.Graph, v => m.Graph = v, Changed, "행 아래에 시간에 따른 DPS를 그립니다. 혼자여도 내 선이 그려집니다."),
-            Check("버프 적용률", m.BuffBars, v => m.BuffBars = v, Changed, "내 피해 중 공증 · 아덴 피증 · 초각스 피증이 켜져 있을 때 넣은 비율입니다. 설정 → 버프가 켜져 있어야 합니다."),
             Check("서포터 · 찬조", m.Support, v => m.Support = v, Changed),
             Check("기타", m.Other, v => m.Other = v, Changed, "보스가 받은 피해 중 보이는 딜러 몫이 아닌 나머지입니다.")));
         if (m.ShownLook == MeterLook.파티비교)
@@ -68,7 +91,7 @@ public partial class SettingsWindow
         p.Children.Add(SliderRow("불투명도", 0.1, 1, m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.Opacity = v, Changed));
         p.Children.Add(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => (m.Width, m.Height) = (v, v), Changed));
 
-        p.Children.Add(SubHeading("전분 위치", "전분 창의 화면 위치입니다. 미터기가 켜져 있으면 전투 중에 전분 창을 스스로 찾아 게임 화면 크기마다 저장하고, 옮기면 다시 찾습니다. 직접 넣을 수도 있습니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
+        p.Children.Add(SubHeading("전분 위치", "전분 창이 화면 어디에 있는지입니다. 미터기가 켜져 있으면 전투 중에 알아서 찾아 게임 화면 크기마다 저장하고, 전분 창을 옮기면 다시 찾습니다. 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
         if (GameArea?.Invoke() is not { } key)
         {
             p.Children.Add(Note("스킬창을 먼저 맞춰 주세요. 전분 위치는 게임 화면 크기마다 저장됩니다."));

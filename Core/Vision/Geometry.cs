@@ -244,14 +244,18 @@ public static class Geometry
     /// 12 at 110%, 10 at 120% (user, 2026-11-01).</summary>
     public static int MaxBossDebuffs(int bossSize) => bossSize > 110 ? 10 : bossSize > 100 ? 12 : 14;
 
+    /// <summary>The most slots at any size (100% and under): 감지 개수's top, which caps nothing.</summary>
+    public const int MaxBossSlots = 14;
+
     /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 보스 디버프 크기
     /// (x 927–929 at 1080p on the 빛암 clips, which are HUD 110; x 1250 on the 21:9 clip at HUD 100) while the boss's buffs grow
     /// to its left.</summary>
     const int RefFirstBossDebuffX = 928;
 
-    /// <summary>The boss debuff zone inside <see cref="BossDebuffStrip"/>: where its first slot starts, and how many it shows.</summary>
-    public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize) =>
-        new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, MaxBossDebuffs(bossSize));
+    /// <summary>The boss debuff zone inside <see cref="BossDebuffStrip"/>: where its first slot starts, and how many it reads: what the
+    /// size shows, or fewer with <paramref name="count"/> (감지 개수). The strip is cut the same either way.</summary>
+    public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize, int count = MaxBossSlots) =>
+        new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, Math.Clamp(count, 1, MaxBossDebuffs(bossSize)));
 
     /// <summary>The boss debuff zone's first icon's left edge on screen (<see cref="RefFirstBossDebuffX"/>): the 암수 walk starts there.</summary>
     public static int FirstBossDebuffX(Viewport vp, Fit fit) =>

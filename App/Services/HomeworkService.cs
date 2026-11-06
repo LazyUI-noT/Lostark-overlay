@@ -130,19 +130,76 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     /// <summary>A fight was saved or settled (any thread): its clear is kept and its raid's pick raised.</summary>
     public void Saved(FightRecord r)
     {
-        if (Homework.ClearOf(r, gates, Raids) is not { } clear) return;
+        if (Homework.ClearOf(r, gates, Raids) is { } clear) Keep(clear);
+    }
+
+    void Keep(HomeworkClear clear)
+    {
         try { clears.Add(clear, DateTime.Now); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[homework] clear not kept: {ex.Message}"); return; }
-        Trace.WriteLine($"[homework] {clear.Character}: {clear.Raid} [{clear.Difficulty}] cleared");
+        Trace.WriteLine($"[homework] {clear.Character}: {clear.Raid} [{clear.Difficulty}] {(clear.Unsure ? "cleared, to check" : "cleared")}");
         ui.BeginInvoke(() =>
         {
-            if (settings.Homework.Find(clear.Character) is { } c && Homework.Raise(c.Picks, clear, Raids) is var raised && !ReferenceEquals(raised, c.Picks))
+            if (!clear.Unsure && settings.Homework.Find(clear.Character) is { } c && Homework.Raise(c.Picks, clear, Raids) is var raised && !ReferenceEquals(raised, c.Picks))
             {
                 c.Picks = [.. raised];
                 settingsChanged();
             }
             Updated?.Invoke();
         });
+    }
+
+    readonly List<(WatchDecision Decision, DateTime At)> _unknown = [];   // decided while 캐릭터 불명, given the character read next
+
+    /// <summary>The fallback decided (<see cref="HomeworkWatch"/>, UI thread): a clear kept for the character played, or held until
+    /// it is known (as 불명 fights are); a retry takes the clear back.</summary>
+    public void Fallback(WatchDecision d)
+    {
+        Trace.WriteLine($"[homework] fallback: {d.Raid} [{d.Difficulty ?? "?"}] {d.Outcome}");
+        if (_watch.Current is { } who) KeepFallback(d, who, DateTime.Now);
+        else if (d.Outcome != WatchOutcome.Failed) _unknown.Add((d, DateTime.Now));
+        else _unknown.RemoveAll(x => x.Decision.Raid == d.Raid);
+    }
+
+    void KeepFallback(WatchDecision d, string who, DateTime at)
+    {
+        if (d.Outcome == WatchOutcome.Failed)
+        {
+            // Only the fallback's own clear: one set by hand since (a click replaces it) stays.
+            if (!_fallbackKept.Remove((who, d.Raid), out var mine)) return;
+            try { if (!clears.Remove(mine)) return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[homework] clear not taken back: {ex.Message}"); return; }
+            ui.BeginInvoke(() => Updated?.Invoke());
+            return;
+        }
+        if (Raids.FirstOrDefault(r => r.Id == d.Raid) is not { } raid) return;
+        // The difficulty the data can't tell is the one picked, else the lowest: it is 확인필요 either way.
+        string difficulty = d.Difficulty ?? settings.Homework.Find(who)?.Picks.FirstOrDefault(p => p.Raid == raid.Id)?.Difficulty ?? raid.Levels[0].Difficulty;
+        var clear = new HomeworkClear(who, raid.Id, difficulty, at, d.Outcome == WatchOutcome.Unsure);
+        _fallbackKept[(who, raid.Id)] = clear;
+        Keep(clear);
+    }
+
+    // ponytail: in memory only, so a retry after an app restart keeps the clear (rare; 미완 is one click).
+    readonly Dictionary<(string Character, string Raid), HomeworkClear> _fallbackKept = [];
+
+    /// <summary>The 불명 stretch since <paramref name="since"/> was <paramref name="name"/>'s: the fallback's decisions in it count for them.</summary>
+    void GiveFallback(string name, DateTime since)
+    {
+        foreach (var (d, at) in _unknown.Where(x => x.At >= since).ToList()) KeepFallback(d, name, at);
+        _unknown.Clear();
+    }
+
+    /// <summary>[미완 | 클리어 | 확인필요] clicked (UI thread): this week's state of the pick's raid. A clear that is there keeps its difficulty
+    /// when only the state changes.</summary>
+    public void SetState(HomeworkCharacter c, HomeworkPick pick, HomeworkPart part)
+    {
+        var now = DateTime.Now;
+        var was = clears.Load().Where(x => x.Character == c.Name && x.Raid == pick.Raid && x.At >= Homework.WeekStart(now)).MaxBy(x => x.At);
+        var to = part == HomeworkPart.미완 ? null : new HomeworkClear(c.Name, pick.Raid, was?.Difficulty ?? pick.Difficulty, now, part == HomeworkPart.확인필요);
+        try { clears.Set(c.Name, pick.Raid, now, to); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[homework] state not kept: {ex.Message}"); return; }
+        Updated?.Invoke();
     }
 
     /// <summary>A fight saved as 클리어 was settled 실패 later (the next record's boss was the same): its clear is taken back.</summary>
@@ -188,7 +245,11 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
         Trace.WriteLine($"[character] {change.Name ?? "캐릭터 불명"}{(change.BackfillFrom is { } from ? $" (불명 fights since {from:HH:mm} are its)" : "")}");
         if (Learn()) settingsChanged();
         Updated?.Invoke();
-        if (change is { Name: { } name, BackfillFrom: { } since }) _ = Task.Run(() => Backfill(name, since));
+        if (change is { Name: { } name, BackfillFrom: { } since })
+        {
+            GiveFallback(name, since);
+            _ = Task.Run(() => Backfill(name, since));
+        }
     }
 
     /// <summary>The 불명 fights since <paramref name="since"/> were <paramref name="name"/>'s: rewritten under it, their clears kept.</summary>

@@ -22,7 +22,7 @@ public partial class SettingsWindow
     void FillConnect()
     {
         var party = _s.Party;
-        var p = Refill(_secConnect, "세션", "호스트 1명과 최대 3명이 참가할 수 있고, 토큰으로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
+        var p = Refill(_secConnect, "세션", "호스트를 포함해 8명까지 참가할 수 있고, 토큰으로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
         bool inSession = _partyStatus is not null;
         bool connecting = _partyStatus is "연결 중…" or "승인 기다리는 중…" or "다시 연결 중…";
         p.Children.Add(Row("상태", Label(_partyStatus ?? "연결 안 됨")));
@@ -104,7 +104,7 @@ public partial class SettingsWindow
         var party = _s.Party;
         // party members are per class: a 직업각인 picked shows its class's
         string cls = ClassProfiles.Parent(ShownClass) is { } parent && parent != ClassProfiles.Template ? parent : ShownClass;
-        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})", "이 클래스 파티원의 칸입니다. '내 설정 적용'을 켠 부분은 내 오버레이 → 스킬 칸의 '나' 설정을 쓰고(지금 캐릭터가 같은 클래스면 그 직업각인의 것, 아니면 마지막으로 한 직업각인의 것), 아래 파티원 설정은 그대로 남습니다.");
+        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})", "이 클래스 파티원의 칸입니다. '내 설정 적용'을 켠 부분은 내 오버레이 → 스킬 칸의 '나' 설정을 그대로 씁니다. 지금 캐릭터가 같은 클래스면 그 직업각인의 것, 아니면 마지막으로 플레이한 직업각인의 것입니다. 아래 파티원 설정은 지워지지 않습니다.");
         if (cls != ShownClass && ClassPicker.SharedPartyNote(_chars.Classes.FirstOrDefault(c => c.Name == cls)) is { } shared) p.Children.Add(Note(shared));
         MembersPart(p, ClassProfiles.Of(_s, cls), () => ClassProfiles.Edit(_s, cls), ClassProfiles.Of(_s, ShownClass).Mine);
 
@@ -115,7 +115,7 @@ public partial class SettingsWindow
         p.Children.Add(SliderRow("닉네임 길이", PlayerName.MinUnits, PlayerName.MaxUnits, party.NameLength, 1,
             v => $"{v:0}", v => party.NameLength = (int)v, Changed, "파티원 이름을 내 화면에서 이 길이까지만 보여 줍니다. 영문은 1, 한글은 2로 셉니다 (14 = 한글 7자, 6 = 한글 3자)."));
 
-        p.Children.Add(Heading("딜러 / 서포터 기본 색", help: "파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 한눈에 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
+        p.Children.Add(Heading("딜러 / 서포터 기본 색", help: "파티원 색을 '기본'으로 둔 클래스는 일반스킬 칸을 역할 색으로 그립니다. 클래스마다 정하지 않아도 딜러와 서포터를 바로 구분할 수 있습니다. 다른 그룹은 기본 색입니다."));
         foreach (var role in Enum.GetValues<Role>())
             p.Children.Add(ColorRow(Label(role.ToString()), party.RoleColor.GetValueOrDefault(role, "#808080"),
                 v => party.RoleColor[role] = v, swatch: true, warnGold: true));
@@ -124,7 +124,7 @@ public partial class SettingsWindow
     void FillOrder()
     {
         var party = _s.Party;
-        var p = Refill(_secOrder, "파티원 순서", "번호는 파티원 창 왼쪽에 보입니다. 게임에서 내가 몇 번인지 고르면 파티원은 나머지 번호를 씁니다. 바꾼 순서는 그 이름에 고정되어, 다시 참가해도 같은 자리에 옵니다. " + "파티원마다 창이 따로 있습니다. 편집 모드에서 각 창을 끌어 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꿉니다.");
+        var p = Refill(_secOrder, "파티원 순서", "번호는 파티원 창 왼쪽에 보입니다. 게임에서 내가 몇 번인지 고르면 파티원은 나머지 번호를 씁니다. 바꾼 순서는 이름별로 기억해서, 다시 참가해도 같은 자리에 옵니다. " + "파티원마다 창이 따로 있습니다. 편집 모드에서 각 창을 끌어 옮기고, 오른쪽 아래 모서리를 끌어 크기를 바꿉니다.");
         PartyAssign(p);
         int mine = party.MyNumber;
         p.Children.Add(Row("내 번호", NumberCombo([1, 2, 3, 4], mine, v =>
@@ -139,7 +139,7 @@ public partial class SettingsWindow
             var cells = new List<UIElement> { Label(who ?? "(비어 있음)", 0.7) };
             if (_isHost && who is not null)
             {
-                var kick = new Button { Content = "내보내기", ToolTip = "이 파티원을 내보냅니다. 이 세션에는 다시 참가할 수 없고(연결 → 다시 허용으로 풀 수 있음), 신뢰한 기기에서도 빠집니다." };
+                var kick = new Button { Content = "내보내기", ToolTip = "이 파티원을 내보냅니다. 이번 세션에는 다시 참가할 수 없고(연결 → 다시 허용으로 풀 수 있음), 신뢰한 기기에서도 빠집니다." };
                 kick.Click += (_, _) => KickRequested?.Invoke(who);
                 cells.Add(kick);
             }
@@ -175,7 +175,7 @@ public partial class SettingsWindow
     void FillSend()
     {
         var party = _s.Party;
-        var p = Refill(_secSend, "파티원에게 보내기", "설정은 바꾸는 즉시 저장되지만, 파티원에게는 참가할 때 한 번 가고 그 뒤에는 업데이트를 누를 때만 갑니다.");
+        var p = Refill(_secSend, "파티원에게 보내기", "설정은 바꾸는 즉시 저장되지만, 파티원에게는 참가할 때 한 번 보내고 그 뒤로는 업데이트를 누를 때만 보냅니다.");
         var update = new Button { Content = "업데이트", IsEnabled = InParty,
             ToolTip = "지금 쓰는 색, 칸 크기, 칸 배치를 파티원에게 다시 보냅니다." };
         update.Click += (_, _) => LookUpdateRequested?.Invoke();
@@ -186,9 +186,9 @@ public partial class SettingsWindow
         send.Add(Check("아덴 게이지", party.SendGauge, v => party.SendGauge = v, Changed));
         p.Children.Add(Row(Described("보낼 그룹", "끈 그룹은 파티원에게 보내지 않습니다"), [.. send]));
         p.Children.Add(Row("", Check("내 피해량 보내기 (DPS 미터기)", _s.Meter.Send, v => _s.Meter.Send = v, () => { Changed(); FillMeter(); },
-            "1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 다른 파티원의 수치도 받지 않습니다. DPS 미터기에 있는 스위치와 같습니다.")));
+            "1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 파티원의 수치도 못 받습니다. DPS 미터기에 있는 스위치와 같습니다.")));
 
-        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에 씁니다. 크기와 배치는 아래를 켤 때만 쓰고, 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창이 커지지 않습니다."));
+        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에만 씁니다. 크기와 배치는 아래를 켰을 때만 쓰며, 내가 정한 파티원 칸 크기 안에 비율을 유지해 맞추므로 파티원 창이 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));
         p.Children.Add(Check("배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
     }

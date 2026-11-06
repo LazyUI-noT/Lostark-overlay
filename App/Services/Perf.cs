@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.Services;
 
@@ -16,12 +17,9 @@ public static partial class Perf
     static readonly Dictionary<string, long> Counts = [];
     static long _since = Stopwatch.GetTimestamp();
 
-    public static T Run<T>(string part, Func<T> work)
-    {
-        long t0 = Stopwatch.GetTimestamp();
-        try { return work(); }
-        finally { Add(part, Stopwatch.GetTimestamp() - t0); }
-    }
+    /// <summary>Times <paramref name="work"/> on this thread: wall time as before, and since 리소스 검사 also the thread's CPU time
+    /// (the " [CPU]" entry, not in the total). Only for work that runs on the calling thread.</summary>
+    public static T Run<T>(string part, Func<T> work) => RunCpu(part, work);
 
     public static void Run(string part, Action work) => Run(part, () => { work(); return 0; });
 
@@ -39,6 +37,11 @@ public static partial class Perf
         string? line = null;
         lock (Gate)
         {
+            if (_watch is not null)
+            {
+                _watch[part] = _watch.GetValueOrDefault(part) + ticks;
+                if (!part.EndsWith(CpuTag)) _sinceFrame[part] = _sinceFrame.GetValueOrDefault(part) + ticks;
+            }
             Ticks[part] = Ticks.GetValueOrDefault(part) + ticks;
             long now = Stopwatch.GetTimestamp();
             double seconds = (now - _since) / (double)Stopwatch.Frequency;
@@ -57,7 +60,34 @@ public static partial class Perf
         if (line is not null) Trace.WriteLine(line);
     }
 
-    const string CpuTag = " [CPU]";   // not in the total: the same time as the wall-clock part it goes with
+    // 리소스 검사: kept only while it is on (null: off), apart from the minute's figures above.
+    static Dictionary<string, long>? _watch;
+    static readonly Dictionary<string, long> _sinceFrame = [];
+
+    /// <summary>Starts or stops keeping every part's running total (<see cref="Seconds"/>) and the parts since the last frame (<see cref="TakeSinceFrame"/>).</summary>
+    public static void Watch(bool on)
+    {
+        lock (Gate) { _watch = on ? [] : null; _sinceFrame.Clear(); }
+    }
+
+    /// <summary>Every part's time since <see cref="Watch"/> started, in seconds (a CPU part under its name plus " [CPU]").</summary>
+    public static Dictionary<string, double> Seconds()
+    {
+        lock (Gate) return (_watch ?? []).ToDictionary(kv => kv.Key, kv => kv.Value / (double)Stopwatch.Frequency);
+    }
+
+    /// <summary>The parts' wall ms that ended since the last call (the engine calls it at each captured frame while watching).</summary>
+    public static Dictionary<string, double> TakeSinceFrame()
+    {
+        lock (Gate)
+        {
+            var taken = _sinceFrame.ToDictionary(kv => kv.Key, kv => kv.Value * 1000.0 / Stopwatch.Frequency);
+            _sinceFrame.Clear();
+            return taken;
+        }
+    }
+
+    const string CpuTag = ResourceCheck.CpuTag;   // not in the total: the same time as the wall-clock part it goes with
 
     /// <summary>This thread's CPU time so far (kernel + user), in 100 ns units.</summary>
     public static long ThreadCpu() =>

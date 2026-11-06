@@ -49,7 +49,7 @@ public partial class SettingsWindow
         p.Children.Add(rows);
 
         if (_plate) PlateRows(rows);
-        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과가 나옵니다. 칸 사이의 판을 누르면 창 전체의 옵션이 나옵니다."));
+        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과를, 칸 사이의 판을 누르면 창 전체의 옵션을 바꿀 수 있습니다."));
         else if (BoxOptions.Of(part, BoxAdenSlots) is var (slot, g)) SlotRows(rows, cls, slot, g);
         else if (part >= FreeLayout.FirstBuff) BuffBarRows(rows, (BuffKind)(part - FreeLayout.FirstBuff));
         else if (part == Part.변화)
@@ -143,8 +143,8 @@ public partial class SettingsWindow
         var fx = Fx();
         bool icons = false, ownIcons = ShownClass == ActiveOrTemplate;   // 아이콘 다시 읽기 reads the character's
         var reread = new Button { Content = "아이콘 다시 읽기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(24, 4, 0, 4) };
-        var rereadNote = HelpMark("아이콘은 직업각인마다 저장되고, 저장된 아이콘이 없는 칸이 있을 때만 화면에서 다시 읽습니다. 스킬을 바꿨으면 눌러서 모든 칸을 다시 읽으세요.");
-        var playNote = Note("아이콘은 그 직업각인으로 플레이하며 읽습니다. 아이콘 다시 읽기는 지금 캐릭터를 편집할 때만 쓸 수 있습니다.");
+        var rereadNote = HelpMark("아이콘은 직업각인마다 저장됩니다. 화면에서 다시 읽는 건 저장된 아이콘이 없는 칸이 있을 때뿐이라, 스킬을 바꿨다면 이 버튼으로 모든 칸을 다시 읽으세요.");
+        var playNote = Note("아이콘은 그 직업각인으로 플레이할 때 읽습니다. 아이콘 다시 읽기는 지금 플레이 중인 캐릭터를 편집할 때만 쓸 수 있습니다.");
         void ShowIconRows()
         {
             colour.Visibility = Shown(!icons);
@@ -164,7 +164,7 @@ public partial class SettingsWindow
     }
 
     /// <summary>Under 아이콘으로 표시 in place of 색: where the colour still shows.</summary>
-    internal const string IconColourNote = "색: 아이콘으로 표시 중이라 아이콘을 읽기 전과 파티원 화면에만 쓰입니다.";
+    internal const string IconColourNote = "색: 지금은 아이콘으로 표시 중이라, 이 색은 아이콘을 읽기 전과 파티원 화면에서만 보입니다.";
 
     /// <summary>Whether any box of <paramref name="g"/> glows while ready (빛나는 방식 is the group's).</summary>
     static bool AnyPulses(MineProfile fx, SlotGroup g, IReadOnlyCollection<SlotId> aden) =>
@@ -184,8 +184,28 @@ public partial class SettingsWindow
             Check("끊기기 1초 전 깜빡임", b.EndFlash(k), v => b.Edit(k).EndFlash = v, Changed),
             ColorRow(Label("색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k)]);
         more.Visibility = Shown(i.Visible);
-        p.Children.Add(Row("표시", BuffShowCombo(k, on => more.Visibility = Shown(on))));
+        p.Children.Add(Row("표시", BuffShowCombo(k, on => more.Visibility = Shown(on)), BuffHideHere(k)));
         p.Children.Add(more);
+    }
+
+    /// <summary>The gold part of a switch (the 표시 map's mark): 표시 안 함 for the character played only, read on for everyone.</summary>
+    CheckBox HideHere(string? key, bool hidden, Action<bool> set)
+    {
+        string who = key ?? "기본";
+        var c = Check($"{who}에서 숨기기", hidden, set, Changed, $"이 캐릭터({who})에서만 창을 숨깁니다. 게임은 계속 읽고, 다른 캐릭터에서는 그대로 보입니다.");
+        c.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0xA8, 0x00));
+        return c;
+    }
+
+    /// <summary>For the 편집 중 pick (<see cref="BoxKey"/>), as the preview draws it; the pages are rebuilt when it changes.</summary>
+    CheckBox BuffHideHere(BuffKind k)
+    {
+        var key = BoxKey;
+        return HideHere(key, ClassProfiles.WindowsOf(_s, key).Buffs.Contains(k), v =>
+        {
+            var hidden = ClassProfiles.EditWindows(_s, key).Buffs;
+            if (v) hidden.Add(k); else hidden.Remove(k);
+        });
     }
 
     /// <summary>A buff bar's 표시: 끄기, 켜기, 자동. <paramref name="shown"/> hears whether the bar's other rows apply.</summary>
@@ -195,7 +215,7 @@ public partial class SettingsWindow
         combo.MinWidth = 150;
         combo.ItemsSource = new[] { "끄기", "켜기", "자동 (레이드 안에서만)" };
         combo.SelectedIndex = (int)_s.Buffs.Of(k).Show;
-        combo.ToolTip = "자동: 전분이나 보스 체력바가 보이는 동안(컷신 중에도)만 막대를 보여 줍니다. 다른 막대는 자리를 그대로 지키고, 편집 모드와 미리보기에서는 흐리게 보입니다.";
+        combo.ToolTip = "자동: 전분이나 보스 체력바가 보일 때(컷신 중에도)만 막대를 보여 줍니다. 막대가 숨어도 다른 막대는 움직이지 않고, 편집 모드와 미리보기에서는 흐리게 보입니다.";
         combo.SelectionChanged += (_, _) =>
         {
             if (combo.SelectedIndex < 0) return;

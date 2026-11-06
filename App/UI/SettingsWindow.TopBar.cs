@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
@@ -37,6 +38,11 @@ public partial class SettingsWindow
             b.Checked += (_, _) => { if (n != _s.ActiveProfile) { RecordStep(); ProfileRequested?.Invoke(n); ShowProfileButtons(); } };
             profiles.Children.Add(_profileButtons[i] = b);
         }
+        _testProfile.GroupName = "profile";
+        (_testProfile.Margin, _testProfile.Padding, _testProfile.IsHitTestVisible, _testProfile.Focusable, _testProfile.Style) =
+            (new(6, 0, 2, 0), new(10, 4, 10, 4), false, false, TryFindResource(typeof(ToggleButton)) as Style);
+        _testProfile.ToolTip = "테스트 모드를 켜면 자동으로 이 프로필이 됩니다. 옵션과 위치가 따로 저장되고, 끄면 전에 쓰던 프로필로 돌아갑니다.";
+        profiles.Children.Add(_testProfile);
         TopBarContent.Children.Add(profiles);
 
         _context.VerticalAlignment = VerticalAlignment.Center;
@@ -46,6 +52,24 @@ public partial class SettingsWindow
     /// <summary>The profile buttons as the settings say (switched from the tray or a hotkey, or refused mid-drag).</summary>
     void ShowProfileButtons()
     {
-        for (int i = 0; i < _profileButtons.Length; i++) _profileButtons[i].IsChecked = i == _s.ActiveProfile;
+        for (int i = 0; i < _profileButtons.Length; i++)
+            (_profileButtons[i].IsChecked, _profileButtons[i].IsEnabled) = (!_inTestProfile && i == _s.ActiveProfile, !_inTestProfile);
+        _testProfile.IsChecked = _inTestProfile;
+    }
+
+    readonly RadioButton _testProfile = new() { Content = "Test" };
+    bool _inTestProfile;
+
+    /// <summary>The live settings are now [Test]'s or the ones before it: everything is shown afresh, and undo can't reach across.</summary>
+    public void SettingsSwapped(bool test)
+    {
+        _inTestProfile = test;
+        _history.Clear();
+        _lastChange = default;
+        BuildAll();
+        ShowProfileButtons();
+        ResetBaseline();
+        SettingsChanged?.Invoke();
+        LayoutChanged?.Invoke();
     }
 }

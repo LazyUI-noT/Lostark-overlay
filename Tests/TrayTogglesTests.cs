@@ -37,6 +37,17 @@ public class TrayTogglesTests
     }
 
     [Fact]
+    public void Skills_are_off_while_스킬창_읽기_is_and_showing_them_reads_again()
+    {
+        var s = WithCharacter();
+        s.Overlay.SkillRead = false;
+        Assert.False(TrayToggles.IsShown(s, OverlayPart.Skills));
+        TrayToggles.Show(s, OverlayPart.Skills, true);
+        Assert.True(s.Overlay.SkillRead);
+        Assert.True(TrayToggles.IsShown(s, OverlayPart.Skills));
+    }
+
+    [Fact]
     public void Judgment_without_a_character_stays_off()
     {
         var s = new Settings();
@@ -48,7 +59,8 @@ public class TrayTogglesTests
     public void Buffs_shown_while_any_bar_is()
     {
         var s = new Settings();
-        TrayToggles.Show(s, OverlayPart.Buffs, false);
+        foreach (var k in Enum.GetValues<BuffKind>()) s.Buffs.Edit(k).Visible = false;
+        Assert.False(TrayToggles.IsShown(s, OverlayPart.Buffs));
         s.Buffs.Edit(BuffKind.공증).Visible = true;
         Assert.True(TrayToggles.IsShown(s, OverlayPart.Buffs));
     }
@@ -61,7 +73,7 @@ public class TrayTogglesTests
         Assert.True(s.Meter.On && s.Meter.Show);
         TrayToggles.Show(s, OverlayPart.Meter, false);
         Assert.True(s.Meter.On);
-        Assert.False(s.Meter.Show);
+        Assert.False(TrayToggles.IsShown(s, OverlayPart.Meter));   // hidden for the character played (ClassProfiles.MeterShown)
     }
 
     [Fact]

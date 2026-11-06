@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -97,7 +98,7 @@ sealed class TimelineView : FrameworkElement
     static readonly DashStyle Dashed = Frozen(new DashStyle([4, 3], 0));
     const double TimeGap = 70;   // px between the time labels (and so the time lines)
 
-    IReadOnlyList<(FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons)> _shown = [];
+    IReadOnlyList<(FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, SlotFace> Icons)> _shown = [];
     TimeWindow _window = TimeWindow.Whole(0);
     double _length;
     Point? _drag;
@@ -120,11 +121,14 @@ sealed class TimelineView : FrameworkElement
 
     /// <summary>A fight on the opened one's chart: lined up at <paramref name="Offset"/>, drawn per <paramref name="Look"/>, named
     /// <paramref name="Label"/> in the legend and the hover.</summary>
+    /// <summary>What a slot's casts draw: an icon (saved or downloaded), else, for a skill the fight knows, a chip with its name.</summary>
+    public sealed record SlotFace(ImageSource? Image, RecordSkill? Skill);
+
     public sealed record ComparedFight(FightRecord Record, double Offset, CompareLook Look, string Label);
 
     /// <summary>The fight to draw, with the second that lines up at 0 and my skill icons, and the fights compared with it (their
     /// curves on its chart, each lined up at its own second); the whole length shows.</summary>
-    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, ImageSource> Icons) opened, IReadOnlyList<ComparedFight> compared, IReadOnlyList<FightRegion> regions,
+    public void Show((FightRecord Record, double Offset, IReadOnlyDictionary<SlotId, SlotFace> Icons) opened, IReadOnlyList<ComparedFight> compared, IReadOnlyList<FightRegion> regions,
         IReadOnlyList<(double From, double To)> unhittable, Func<long, double?> hpPerLine, IReadOnlyList<(double T, bool Enter)> gimmicks)
     {
         (_hpPerLine, _gimmicks, _gimmickZones) = (hpPerLine, gimmicks, Timeline.GimmickZones(opened.Record));
@@ -151,6 +155,9 @@ sealed class TimelineView : FrameworkElement
         if (on) _hiddenPlayers.Remove(player); else _hiddenPlayers.Add(player);
         InvalidateVisual();
     }
+
+    /// <summary>버프 적용률 isn't off (MeterSettings.BuffShare): the buff lines show their %.</summary>
+    public bool BuffShareShown { get; set; } = true;
 
     /// <summary>The opened fight is a 4-man raid: each buff line shows the party's share too (Timeline.PartyBuffShare).</summary>
     public bool SmallParty { get; set; }
@@ -193,7 +200,7 @@ sealed class TimelineView : FrameworkElement
         if (_shown.Count > 0) DrawAxis(dc, y, fg);
     }
 
-    double DrawRecord(DrawingContext dc, FightRecord r, double offset, IReadOnlyDictionary<SlotId, ImageSource> icons, double y, Brush fg)
+    double DrawRecord(DrawingContext dc, FightRecord r, double offset, IReadOnlyDictionary<SlotId, SlotFace> icons, double y, Brush fg)
     {
         var seen = new TimeWindow(_window.From + offset, _window.To + offset);   // the seconds shown, on this record's clock
         bool zoomed = _window.From > 0 || _window.To < r.Duration - offset;
@@ -433,9 +440,12 @@ sealed class TimelineView : FrameworkElement
 
     // My casts on one row in time order (user, 2026-11-05): each icon from its cast, 2 s wide at the zoom, over the ones before it;
     // the one under the line is drawn last, on top, so its skill can be seen.
-    void DrawSkills(DrawingContext dc, FightRecord r, double offset, TimeWindow seen, IReadOnlyDictionary<SlotId, ImageSource> icons, double y, Brush fg)
+    void DrawSkills(DrawingContext dc, FightRecord r, double offset, TimeWindow seen, IReadOnlyDictionary<SlotId, SlotFace> icons, double y, Brush fg)
     {
         Text(dc, "내 스킬", new(0, y + 12), 11, fg, opacity: 0.8);
+        // A [Test] fight's skills come from a class proposed from its icons, not yet confirmed in 편집 (plan, decided 3).
+        if (r.MyClassName == RecordCharacter.TestClass && r.ProposedClass is { } proposed)
+            Text(dc, $"추천 {proposed}", new(0, y + 28), 9, fg, opacity: 0.6, width: LabelW - 4);
         dc.DrawLine(Faint(fg, 0.12), new(LabelW, y + SkillH), new(LabelW + PlotW, y + SkillH));
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, SkillH)));
         var chip = Faint(fg, 0.25).Brush;
@@ -448,7 +458,14 @@ sealed class TimelineView : FrameworkElement
         {
             var at = new Rect(lefts[i], y + 2 + places[i].Top, size, size);
             var slot = (SlotId)casts[i].What;
-            if (_useIcons && icons.TryGetValue(slot, out var img)) { dc.DrawImage(img, at); return; }
+            var face = _useIcons ? icons.GetValueOrDefault(slot) : null;
+            if (face?.Image is { } img) { dc.DrawImage(img, at); return; }
+            if (face?.Skill is { } skill)   // a name chip, coloured by kind (user, 2026-11-05)
+            {
+                dc.DrawRoundedRectangle(KindChip(skill.Kind), null, at, 3, 3);
+                Text(dc, SkillLibrary.Short(skill.Name), new(at.X + 1, at.Y + 1), 9, Brushes.White, bold: true, width: Math.Max(1, size - 2));
+                return;
+            }
             dc.DrawRoundedRectangle(chip, null, at, 3, 3);
             Text(dc, SlotKey(slot), new(at.X + 1, at.Y + 1), 9, fg, bold: true, width: Math.Max(1, size - 2));
         }
@@ -467,9 +484,9 @@ sealed class TimelineView : FrameworkElement
         {
             double cy = y + BuffH / 2;
             double whole = Timeline.BuffShare(r, kind, new TimeWindow(0, r.Duration));
-            Text(dc, $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.BuffShare(r, kind, seen) * 100:0}%)" : ""), new(0, y), 11, fg);
+            Text(dc, BuffShareShown ? $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.BuffShare(r, kind, seen) * 100:0}%)" : "") : name, new(0, y), 11, fg);
             // A 4-man raid: the party's share (the boss HP lost under it) at the line's right end, for the window shown.
-            if (SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
+            if (BuffShareShown && SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
                 Text(dc, $"파티 {party * 100:0}%", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
             dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
             var glow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, color.R, color.G, color.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
@@ -569,7 +586,9 @@ sealed class TimelineView : FrameworkElement
         var casts = MyCasts(r);
         double offset = _shown.FirstOrDefault(x => ReferenceEquals(x.Record, r)).Offset;
         var under = Timeline.IconsUnder([.. casts.Select(e => X(e.T, offset))], IconPx, hx);
-        if (under.Count > 0) DrawTag(dc, hx, _skillTop + SkillH / 2, new(0, string.Join(", ", under.Select(i => SlotName((SlotId)casts[i].What))), TipText), flip);
+        var faces = _shown.FirstOrDefault(x => ReferenceEquals(x.Record, r)).Icons;
+        string Named(SlotId s) => faces?.GetValueOrDefault(s)?.Skill?.Name ?? r.Skills?.GetValueOrDefault(s)?.Name ?? SlotName(s);
+        if (under.Count > 0) DrawTag(dc, hx, _skillTop + SkillH / 2, new(0, string.Join(", ", under.Select(i => Named((SlotId)casts[i].What))), TipText), flip);
         var spans = Timeline.BuffSpans(r);
         for (int i = 0; i < Buffs.Length; i++)
         {
@@ -666,6 +685,12 @@ sealed class TimelineView : FrameworkElement
     internal static string Amount(double v) => v >= 1e12 ? $"{v / 1e12:0.0}조" : v >= 1e8 ? $"{v / 1e8:0.0}억" : v >= 1e4 ? $"{v / 1e4:0.0}만" : $"{v:0}";
 
     /// <summary>A cast's name in the hover box: the skill's key (Q, W…), as the lane shows it.</summary>
+    static readonly Brush ChipNormal = Frozen(new SolidColorBrush(Color.FromRgb(0x6B, 0x70, 0x78))),
+        ChipTechnique = Frozen(new SolidColorBrush(Color.FromRgb(0x3A, 0x6F, 0xC9))), ChipAwakening = Frozen(new SolidColorBrush(Color.FromRgb(0xB8, 0x8A, 0x2E)));
+
+    /// <summary>A name chip's fill: 일반 grey, 초각스 blue, 각성기 gold.</summary>
+    static Brush KindChip(SlotGroup kind) => kind switch { SlotGroup.초각스 => ChipTechnique, SlotGroup.각성기 => ChipAwakening, _ => ChipNormal };
+
     string SlotName(SlotId s) => s switch
     {
         SlotId.각성기 => "각성기",

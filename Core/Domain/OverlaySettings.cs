@@ -36,6 +36,10 @@ public sealed class OverlaySettings : IWindowPlace
     /// <summary>Hide the overlay from screen capture (needed when it overlaps the skill bar; also hides it from OBS/Discord).</summary>
     public bool ExcludeFromCapture { get; set; } = true;
 
+    /// <summary>스킬창 읽기: off reads no skill slot (no cooldowns, no 사용 기록, nothing sent to the party); the window's
+    /// 표시 is the groups' switches apart from it (<see cref="ClassProfiles.Reads"/>).</summary>
+    public bool SkillRead { get; set; } = true;
+
     /// <summary>오버레이 표시: off hides your overlay and the party windows (set also by the hotkey and the tray).</summary>
     public bool Visible { get; set; } = true;
     /// <summary>오버레이 표시 항상: on (with <see cref="Visible"/>), shown over any app, not only the game or 설정. Kept apart
@@ -44,7 +48,15 @@ public sealed class OverlaySettings : IWindowPlace
     /// <summary>스킬창이 안 보이면 숨기기: with the game in front, hide while the skill bar isn't seen (cutscene, loading).</summary>
     public bool HideWithoutHud { get; set; }
 
-    public OverlayShow Mode() => !Visible ? OverlayShow.끄기 : Always ? OverlayShow.항상 : OverlayShow.켜기;
+    /// <summary>자동's choice; null until one is picked: files from before it keep what they did (<see cref="Auto"/>).</summary>
+    public OverlayAuto? AutoWhen { get; set; }
+
+    public OverlayAuto Auto() => AutoWhen ?? (HideWithoutHud ? OverlayAuto.스킬창 : OverlayAuto.게임앞);
+
+    /// <summary>Also sets <see cref="HideWithoutHud"/>, which older versions read.</summary>
+    public void SetAuto(OverlayAuto auto) => (AutoWhen, HideWithoutHud) = (auto, auto == OverlayAuto.스킬창);
+
+    public OverlayShow Mode() => !Visible ? OverlayShow.끄기 : Always ? OverlayShow.항상 : OverlayShow.자동;
 
     public void SetMode(OverlayShow mode)
     {

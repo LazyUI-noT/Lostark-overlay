@@ -143,6 +143,53 @@ public class FightRegionsTests
     }
 
     [Fact]
+    public void Boss_damage_that_restarts_in_the_next_file_keeps_counting_in_the_joined_run()
+    {
+        var first = Fight([B(5, Hp21), B(6, Hp21), B(7, Hp21), B(527, Hp21, 900)], [Me(4, 0), Me(527, 100)], 527);
+        var second = Fight([B(530, Hp22), B(531, Hp22), B(532, Hp22), B(800, Hp22, 500)], [Me(530, 100), Me(800, 200)], 800, Start.AddSeconds(530));
+
+        var joined = FightRegions.Join([first, second]);
+
+        Assert.Equal(new long[] { 0, 0, 0, 900, 900, 900, 900, 1400 }, joined.Boss.Select(b => b.Taken));
+        Assert.Equal(new long?[] { 900, 500 }, FightRegions.Of(joined, Gates).Select(x => x.BossTaken));
+    }
+
+    [Fact]
+    public void Boss_damage_that_goes_on_in_the_next_file_is_left_as_it_is()
+    {
+        var first = Fight([B(5, Hp21), B(527, Hp21, 900)], [Me(4, 0), Me(527, 100)], 527);
+        var second = Fight([B(530, Hp22, 900), B(800, Hp22, 1400)], [Me(530, 100), Me(800, 200)], 800, Start.AddSeconds(530));
+
+        var joined = FightRegions.Join([first, second]);
+
+        Assert.Equal(new long[] { 0, 900, 900, 1400 }, joined.Boss.Select(b => b.Taken));
+    }
+
+    [Fact]
+    public void A_small_dip_at_the_file_boundary_is_no_restart()
+    {
+        var first = Fight([B(5, Hp21), B(527, Hp21, 900)], [Me(4, 0), Me(527, 100)], 527);
+        var second = Fight([B(530, Hp22, 880), B(800, Hp22, 1400)], [Me(530, 100), Me(800, 200)], 800, Start.AddSeconds(530));
+
+        var joined = FightRegions.Join([first, second]);
+
+        Assert.Equal(new long[] { 0, 900, 880, 1400 }, joined.Boss.Select(b => b.Taken));
+    }
+
+    [Fact]
+    public void Each_restart_adds_on_and_a_file_without_boss_reads_changes_nothing()
+    {
+        var first = Fight([B(5, Hp21), B(100, Hp21, 900)], [Me(4, 0), Me(100, 100)], 100);
+        var empty = Fight([], [Me(105, 100), Me(110, 100)], 110, Start.AddSeconds(105));
+        var second = Fight([B(115, Hp22), B(200, Hp22, 500)], [Me(115, 100), Me(200, 200)], 200, Start.AddSeconds(115));
+        var third = Fight([B(205, Hp22), B(300, Hp22, 300)], [Me(205, 200), Me(300, 300)], 300, Start.AddSeconds(205));
+
+        var joined = FightRegions.Join([first, empty, second, third]);
+
+        Assert.Equal(new long[] { 0, 900, 900, 1400, 1400, 1700 }, joined.Boss.Select(b => b.Taken));
+    }
+
+    [Fact]
     public void One_fight_alone_joins_to_itself()
     {
         Assert.Same(Part1, FightRegions.Join([Part1]));

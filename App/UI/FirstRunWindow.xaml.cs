@@ -38,7 +38,7 @@ public partial class FirstRunWindow : Window
                 Note("게임의 기본 키가 채워져 있습니다. 게임에서 다르게 쓰는 키만 바꾸세요."),
                 SettingsWindow.BuildKeyPanel(settings, Changed))),
             ("캐릭터", Stack(
-                Note("지금 플레이할 캐릭터를 고르세요. 캐릭터를 바꾸면 게임 화면의 엠블럼으로 자동 전환되고, 트레이 메뉴에서도 고를 수 있습니다."),
+                Note("지금 플레이할 캐릭터를 고르세요. 나중에 캐릭터를 바꾸면 게임 화면의 엠블럼을 보고 자동으로 따라가고, 트레이 메뉴에서 직접 고를 수도 있습니다."),
                 SettingsWindow.BuildCharacterPanel(settings, characters, Changed))),
             ("스킬창 맞추기", FitPage()),
         ];
@@ -94,7 +94,7 @@ public partial class FirstRunWindow : Window
         fit.Click += (_, _) => FitRequested?.Invoke();
         return Stack(
             Note("오버레이가 게임의 스킬창 위치와 크기를 알아내는 단계입니다."),
-            Step("1", "스킬을 쓸 수 있는 곳에서 모든 스킬이 쿨 돈 상태로 둡니다 (수련장에서는 쿨초)."),
+            Step("1", "스킬을 쓸 수 있는 곳에서 모든 스킬의 쿨타임이 끝난 상태로 두세요 (수련장에서는 쿨초)."),
             Step("2", "아래 [맞추기]를 누릅니다. 게임 화면은 그대로 두세요."),
             fit,
             _fitResult,

@@ -34,7 +34,7 @@ public partial class SettingsWindow
         var row = new WrapPanel { Margin = new(0, 4, 0, 6), Children = { import, export } };
         row.Children.Add(new TextBlock
         {
-            Text = "다른 사람에게 보낼 파일로 저장합니다(캐릭터 · 파티원 이름은 빼고, 클래스 · 직업각인은 남깁니다). 받은 파일은 가져오기나 이 창에 끌어다 놓습니다.",
+            Text = "다른 사람에게 보낼 파일로 저장합니다. 캐릭터와 파티원 이름은 빠지고, 클래스 · 직업각인은 남습니다. 받은 파일은 가져오기를 누르거나 이 창에 끌어다 놓으세요.",
             Opacity = 0.7, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
         });
         HookDrop();

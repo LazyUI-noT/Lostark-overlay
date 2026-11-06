@@ -68,12 +68,12 @@ public partial class SettingsWindow
         _context.Children.Add(copy);
         if (cls == ClassProfiles.Template)
         {
-            _contextNotes.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원이 쓰는 설정입니다. 새로 생기는 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 보이고, 아덴 게이지와 아덴스킬은 보이지 않습니다."
-                + (ClassProfiles.ActiveKey(_s) is null ? "" : " 모든 직업각인이 자기 설정을 가지므로, 기본을 바꿔도 지금 오버레이에는 보이지 않습니다.")));
+            _contextNotes.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원에게 쓰입니다. 새 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 있고, 아덴 게이지와 아덴스킬은 없습니다."
+                + (ClassProfiles.ActiveKey(_s) is null ? "" : " 직업각인마다 자기 설정이 있어서, 기본을 바꿔도 지금 오버레이는 달라지지 않습니다.")));
             return;
         }
-        _contextNotes.Children.Add(Note("이 직업각인의 내 칸과 내 창의 위치·크기는 따로 저장됩니다. 파티원 설정은 클래스의 것입니다."
-            + (PreviewTarget is null ? "" : " 설정을 닫을 때까지 화면의 내 오버레이도 이 직업각인의 예시로 바뀝니다.")));
+        _contextNotes.Children.Add(Note("내 칸과 내 창의 위치·크기는 이 직업각인에 따로 저장됩니다. 파티원 설정은 클래스 전체가 같이 씁니다."
+            + (PreviewTarget is null ? "" : " 설정을 닫을 때까지 화면의 내 오버레이도 이 직업각인의 예시로 보입니다.")));
         if (PreviewTarget is not null && PreviewTarget.IconsMissing(ClassProfiles.Of(_s, cls).Mine, PreviewIcons))
             _contextNotes.Children.Add(Note(NoSavedIconsNote));
     }
@@ -84,7 +84,7 @@ public partial class SettingsWindow
     /// <summary>배치: the 레이아웃 편집기, 편집 모드 and the class's 나 layout.</summary>
     void FillPlace(ClassSettings read, Func<ClassSettings> edit)
     {
-        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어 바꿉니다. 편집 모드는 게임 안에서 판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿉니다.");
+        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어서 바꿉니다. 편집 모드를 켜면 게임 안에서 판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿀 수 있습니다.");
         var mode = new Button { Content = "편집 모드", ToolTip = "게임 화면 위에서 판을 끌어 옮깁니다." };
         mode.Click += (_, _) => EditModeRequested?.Invoke();
         p.Children.Add(Wrap(mode));
@@ -98,7 +98,7 @@ public partial class SettingsWindow
         p.Children.Add(HelpRow("색", "칸 하나의 색은 위의 칸 옵션에서 바꿉니다 (바꾸면 개인 설정이 됩니다).", EnumCombo([(ColorSource.Default, "기본"), (ColorSource.Personal, "개인 설정")],
             mine.Color, v => { edit().Mine.Color = v; Dispatcher.BeginInvoke(FillClassSections); })));
         var autoDim = Check("쿨 중 색 자동 (어둡게)", mine.AutoDim, v => { edit().Mine.AutoDim = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed);
-        autoDim.ToolTip = "끄면 색마다 쿨타임 동안의 색을 고릅니다. 처음에는 지금 자동으로 어둡게 한 색입니다.";
+        autoDim.ToolTip = "끄면 색마다 쿨타임 동안의 색을 직접 고릅니다. 처음 값은 지금 자동으로 어둡게 만든 색입니다.";
         autoDim.Visibility = Shown(mine.Color == ColorSource.Personal);
         p.Children.Add(autoDim);
         bool personal = mine.Color == ColorSource.Personal;
@@ -144,12 +144,12 @@ public partial class SettingsWindow
 
         if (!m.UseMineSize)
         {
-            p.Children.Add(SliderRow("너비", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "보내기·받기의 '파티원 크기 받기'나 '파티원 배치 받기'를 켜면, 받은 크기와 배치를 이 크기 안에 비율을 지켜 맞춥니다. 이보다 커지지 않습니다."));
+            p.Children.Add(SliderRow("너비", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "보내기·받기의 '파티원 크기 받기'나 '파티원 배치 받기'를 켜도, 받은 크기와 배치는 비율을 유지한 채 이 크기 안에 맞춥니다. 이보다 커지지 않습니다."));
             p.Children.Add(SliderRow("높이", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Height, 0.05, v => $"{v * 100:0}%", v => edit().Members.Height = v, Changed));
         }
         if (m.UseMineColor) return;
 
-        p.Children.Add(HelpRow("색", "기본: 일반스킬은 아래 기본 역할 색, 나머지는 기본 색입니다. 파티원 설정 받기: 파티원이 보낸 색이고, 아직 받지 못한 그룹은 기본 색입니다.", EnumCombo([(ColorSource.Received, "파티원 설정 받기"), (ColorSource.Default, "기본 (역할 색)"), (ColorSource.Personal, "개인 설정")],
+        p.Children.Add(HelpRow("색", "기본: 일반스킬은 아래 기본 역할 색, 나머지는 기본 색입니다. 파티원 설정 받기: 파티원이 보낸 색을 쓰고, 아직 받지 못한 그룹은 기본 색입니다.", EnumCombo([(ColorSource.Received, "파티원 설정 받기"), (ColorSource.Default, "기본 (역할 색)"), (ColorSource.Personal, "개인 설정")],
             m.Color, v => { edit().Members.Color = v; Refill(); })));
         ColorRows(p, m, () => edit().Members, g => ClassProfiles.BuiltIn[g],
             enabled: m.Color == ColorSource.Personal);

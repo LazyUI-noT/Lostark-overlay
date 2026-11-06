@@ -19,6 +19,22 @@ public static class ScreenSummary
         return new($"{screen.Width}×{screen.Height}" + (gameRunning ? "" : " (마지막)"), Ratio(screen), Hud(s, screen));
     }
 
+    /// <summary>What a folded 게임 설정 box of the 표시 map shows (pyosi-map.plan.md): 해상도 · 비율, the HUD with where it came from, or a
+    /// size in %; null for any other box.</summary>
+    public static string? Value(Settings s, bool gameRunning, string boxId)
+    {
+        var facts = Of(s, gameRunning);
+        return boxId switch
+        {
+            "g-res" => facts.Resolution == None ? None : $"{facts.Resolution} · {facts.Ratio}",
+            "g-hud" => facts.Hud,
+            "g-buff" => $"{s.Buffs.Size}%",
+            "g-debuff" => $"{s.Debuffs.BossIconSize}%",
+            "g-font" => $"{s.Judgment.FontSize}%",
+            _ => null,
+        };
+    }
+
     /// <summary>The ratio's usual name: the forced 21:9 when the game bars a narrower screen to 64:27, else the window's own.</summary>
     public static string Ratio(ManualScreen screen)
     {

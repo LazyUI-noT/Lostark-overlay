@@ -20,10 +20,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Border x:Name="NavHost" Grid.Column="0" Padding="10,12,10,12" BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <StackPanel x:Name="NavFoot" DockPanel.Dock="Bottom" />
-                    <StackPanel x:Name="Nav" />
-                </DockPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Nav" /></ScrollViewer>
             </Border>
             <Grid x:Name="CanvasPage" Grid.Column="1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>

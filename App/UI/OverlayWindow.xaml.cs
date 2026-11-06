@@ -220,7 +220,7 @@ public partial class OverlayWindow : Window
     public void Replace()
     {
         var p = Place;
-        var area = SystemParameters.WorkArea;
+        var area = Displays.WorkArea;
         var (left, top) = WindowDefaults.Place(area.Left, area.Width, area.Bottom, ActualWidth, ActualHeight, _peer, _buffs || _debuffs || _judgment || _raid || _meter || _amsu);
         if (_debuffs) left += WindowDefaults.DebuffsRight;
         if (_judgment) left += WindowDefaults.JudgmentRight;
@@ -232,6 +232,16 @@ public partial class OverlayWindow : Window
         Top = double.IsNaN(p.Top) ? top : p.Top;
         _lastSize = (double.NaN, double.NaN);   // not a gauge change: don't shift the window
         Refresh();
+    }
+
+    /// <summary>표시 화면: this window onto <paramref name="target"/>. Twice: crossing to a monitor of another scale, the first
+    /// move lands by the old scale.</summary>
+    public void MoveInto(IReadOnlyList<DisplayArea> displays, DisplayArea target)
+    {
+        var p = Place;
+        (p.Left, p.Top) = DisplayMap.Into(p.Left, p.Top, ActualWidth, ActualHeight, displays, target);
+        Replace();
+        Replace();
     }
 
     protected override void OnSourceInitialized(EventArgs e)

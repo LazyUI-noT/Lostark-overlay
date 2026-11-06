@@ -87,17 +87,17 @@ public partial class SettingsWindow
 
         // The main 줄 수 switch first: it gates every gate's own 줄 수 창 below, which stays as set.
         p.Children.Add(Row("", Check("줄 수 읽기 (모든 레이드)", r.CountEnabled, v => r.CountEnabled = v, () => { Changed(); Again(); },
-            "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창은 그대로 남아, 다시 켜면 돌아옵니다. " +
+            "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창 설정은 남아서, 다시 켜면 돌아옵니다. " +
             "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다.")));
-        if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 그대로 남아 있고, 다시 켜면 그대로 돌아옵니다."));
+        if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 지워지지 않았고, 다시 켜면 돌아옵니다."));
         // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시 → 디버프 창).
         p.Children.Add(Row("", Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
-            "켜면 디버프가 있는 레이드(3막 모르둠)의 보스를 알아본 동안 그 레이드의 디버프 창을 보여 줍니다. " +
-            "알아보지 못해도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요: 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽도 보이지 않습니다.")));
+            "켜면 디버프가 있는 레이드(3막 모르둠)에서 보스를 알아본 동안 디버프 창을 보여 줍니다. " +
+            "보스를 못 알아봐도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요. 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽이든 보이지 않습니다.")));
 
         p.Children.Add(SubHeading("보스 인식"));
         p.Children.Add(Row("", Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
-            "보스 이름으로 관문을 알아봅니다. 끄면 아래에서 고른 관문으로 정합니다. 트레이 메뉴의 레이드와 같습니다.")));
+            "보스 이름으로 관문을 알아봅니다. 끄면 아래에서 고른 관문을 씁니다. 트레이 메뉴의 레이드와 같습니다.")));
         if (r.Auto) p.Children.Add(Row("지금 인식", Label(RaidData.Find(RaidGates, _raidSeen) is { } seen ? RaidData.Label(seen) : "인식 안 됨", 0.7)));
         else p.Children.Add(Row("관문", GateCombo()));
 
@@ -122,15 +122,17 @@ public partial class SettingsWindow
             string name = raid.Key;
             p.Children.Add(Row("", Check($"{name}: 기믹 중 보스 체력 표시", r.ShadowHpOn(name),
                 v => { r.ShadowHpOff.Remove(name); if (!v) r.ShadowHpOff.Add(name); }, Changed,
-                "보스 체력바가 사라지고 채우는 막대와 숫자가 나오는 기믹 동안, 마지막 체력에서 그 숫자(기믹 중 넣은 피해)를 빼서 남은 줄과 체력을 체력바 자리에 보여 줍니다. " +
-                "DPS 미터기가 켜져 있어야 읽습니다. 기믹 중에 보스가 죽으면 전투 기록을 클리어로 끝냅니다.")));
+                "보스 체력바가 사라지고 채우는 막대와 숫자가 나오는 기믹 동안, 마지막 체력에서 그 숫자(기믹 중 넣은 피해)를 뺀 남은 줄과 체력을 체력바 자리에 보여 줍니다. " +
+                "기믹 중에 보스가 죽으면 전투 기록을 클리어로 끝냅니다 (DPS 미터기가 켜져 있을 때만).")));
         }
+        p.Children.Add(Row("", Check("보스 체력 읽기", r.BossHpRead, v => r.BossHpRead = v, Changed,
+            "DPS 미터기가 꺼져 있어도 보스 체력바의 글자를 읽어 쉽게 보기와 기믹 체력에 씁니다. 끄면 미터기, 줄 수, 암수 중 하나가 켜져 있을 때만 읽습니다.")));
         p.Children.Add(Row("", Check("보스 체력 쉽게 보기", r.BossHpEasy, v => r.BossHpEasy = v, Changed,
             "보스 이름 옆에 남은 체력을 조 · 억으로 보여 줍니다 (예: [1조 5,392억]). 보호막이 있으면 +(1,200억)처럼 함께 보여 줍니다. " +
-            "그림자 레이드의 기믹 중에는 넣은 피해를 숫자 옆에 같은 방식으로 보여 줍니다. 보스 체력바를 읽는 기능(DPS 미터기, 줄 수, 암수)이 켜져 있을 때 읽습니다.")));
+            "그림자 레이드의 기믹 중에는 넣은 피해를 숫자 옆에 같은 방식으로 보여 줍니다.")));
         HpChangeRows(p, Again);
 
-        p.Children.Add(SubHeading("알림", "목표 줄 수에 ±줄을 더한 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
+        p.Children.Add(SubHeading("알림", "목표 줄 수에서 이만큼 더하거나 뺀 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
         p.Children.Add(Row("", Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },
             "끄면 관문마다 ±줄을 따로 정합니다.")));
         if (!r.OffsetPerGate) p.Children.Add(OffsetRow("± 줄", r.Offset, v => r.Offset = v));
@@ -167,7 +169,7 @@ public partial class SettingsWindow
         // Greyed, kept as set, while the main 줄 수 읽기 is off.
         var count = Row("줄 수 창",
             Check("켜기", row.CountWindow, v => r.Gate(g.Id).CountWindow = v, () => { Changed(); again(); }),
-            Check("자동", row.CountAuto, v => r.Gate(g.Id).CountAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 이 관문 알림으로 늘 보여 줍니다."));
+            Check("자동", row.CountAuto, v => r.Gate(g.Id).CountAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 이 관문의 줄 수 창을 항상 보여 줍니다."));
         count.IsEnabled = r.CountEnabled;
         p.Children.Add(count);
         if (row.CountWindow)
@@ -223,21 +225,21 @@ public partial class SettingsWindow
     {
         var r = _s.Raids;
         var row = r.Gates.GetValueOrDefault(g.Id) ?? new GateSettings();
-        p.Children.Add(Note("HP가 ???로 나와 줄 수 창에 남은 HP를 추정해 보여 줍니다(≈62% 1.2조). 2-2 바로 뒤 이어지는 전투에서, DPS 미터기를 켜고 " +
-            "각 파티의 딜러 셋이나 서포터가 앱으로 피해량을 보내야 합니다. 25%에서 모두 쓰러진 뒤 10%로 줄어드는 기믹도 반영합니다. " +
+        p.Children.Add(Note("HP가 ???로 나오는 구간에서 남은 HP를 추정해 줄 수 창에 보여 줍니다(≈62% 1.2조). 2-2 바로 뒤에 이어지는 전투에서 쓸 수 있고, DPS 미터기를 켜고 " +
+            "각 파티의 딜러 셋이나 서포터가 앱으로 피해량을 보내야 합니다. 25%에서 모두 쓰러진 뒤 10%로 줄어드는 기믹도 계산에 넣습니다. " +
             "추정 최대 HP: " + string.Join(", ", g.HiddenHp.Select(h => $"{h.Key} {h.Value:N0}"))));
         var from = RaidData.Find(RaidGates, g.CalibrateFrom);
         p.Children.Add(SliderRow("조력 비율", RaidSettings.MinAssistShare, RaidSettings.MaxAssistShare, r.AssistShare, 0.5, v => $"{v:0.0}%",
-            v => r.AssistShare = v, Changed, "서포터의 조력 피해량이 파티 피해의 몇 %인지. 딜러 셋이 모두 보내지 않는 파티는 조력 피해량 × 100 ÷ 이 값으로 셉니다."));
+            v => r.AssistShare = v, Changed, "서포터의 조력 피해량이 파티 피해의 몇 %인지입니다. 딜러 셋이 모두 보내지는 않는 파티는 조력 피해량 × 100 ÷ 이 값으로 계산합니다."));
         p.Children.Add(SliderRow("다른 파티 배수", 0, RaidSettings.MaxOtherParty, r.OtherParty, 0.1, v => $"×{v:0.0}",
-            v => r.OtherParty = v, Changed, "한 파티만 피해량을 알 때, 다른 파티를 그 파티의 몇 배로 볼지. 1.0이면 같다고 봅니다. 아래 2-1 결과가 두 파티 다 있으면 그 비율을 씁니다."));
+            v => r.OtherParty = v, Changed, "한 파티의 피해량만 알 때, 다른 파티를 그 파티의 몇 배로 볼지입니다. 1.0이면 같다고 봅니다. 아래 2-1 결과에 두 파티 값이 다 있으면 그 비율을 씁니다."));
         if (from is null) return;
         p.Children.Add(Row($"{from.Gate} 끝 조력 피해량 (억)",
             Label("1파티 "), EokBox(row.Assist1, v => r.Gate(g.Id).Assist1 = v, "1파티 서포터의 조력 피해량 (억). 앱을 쓰는 서포터는 클리어 때 채워집니다", refill: true),
             Label("  2파티 "), EokBox(row.Assist2, v => r.Gate(g.Id).Assist2 = v, "2파티 서포터의 조력 피해량 (억). 앱을 쓰는 서포터는 클리어 때 채워집니다", refill: true)));
         if (!(row.Assist1 > 0 && row.Assist2 > 0))
         {
-            p.Children.Add(Note($"두 파티 값을 다 알면 파티 비율을, {from.Gate}의 에스더 계획까지 있으면 조력 비율도 {from.Gate} 결과로 계산합니다."));
+            p.Children.Add(Note($"두 파티 값을 다 알면 파티 비율을 계산합니다. {from.Gate}의 에스더 계획까지 있으면 조력 비율도 {from.Gate} 결과로 계산합니다."));
             return;
         }
         double esther21 = Esther.Total(r.Gates.GetValueOrDefault(from.Id)?.Esthers ?? []);
@@ -266,8 +268,8 @@ public partial class SettingsWindow
         string unit = g.HiddenHp.Count > 0 ? "%" : "줄";
         void Set(List<EstherUse> next) { r.Gate(g.Id).Esthers = next; Changed(); Dispatcher.BeginInvoke(FillRaid); }
         p.Children.Add(SubHeading($"에스더 계획 · 합계 {Esther.Total(plan):N0}억",
-            (g.HiddenHp.Count > 0 ? "추정 HP가 정한 %에 닿을 때 그 피해를 뺍니다. 10% 이하에 둔 에스더(히든 아만)는 25% 기믹 뒤 10%에서 바로 뺍니다. 레이드 중에 바꿔도 바로 다시 계산합니다. "
-                : "이 관문에서 쓸 에스더와 쓰는 줄 수. 합계는 2-3 추정의 조력 비율을 맞추는 데 씁니다. ") +
+            (g.HiddenHp.Count > 0 ? "추정 HP가 정한 %에 닿으면 그 피해를 뺍니다. 10% 이하에 둔 에스더(히든 아만)는 25% 기믹 뒤 10%에서 바로 뺍니다. 레이드 중에 바꿔도 바로 다시 계산합니다. "
+                : "이 관문에서 쓸 에스더와 쓰는 줄 수입니다. 합계는 2-3 추정의 조력 비율을 맞추는 데 씁니다. ") +
             $"피해는 {Esther.Basis} 기준이고, 다른 난이도는 보스 HP 비율로 맞춥니다."));
         for (int i = 0; i < plan.Count; i++)
         {

@@ -258,7 +258,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>The buff bars to draw: yours only, while the buff row is read, the ones whose 표시 is on; on the plate,
     /// or in the buffs' own window (<see cref="BuffsOnly"/>) with 버프 막대 따로 두기.</summary>
     List<BuffKind> ShownBuffs(Snapshot s) => Peer >= 0 || s.Buffs.IsDefaultOrEmpty || Settings.Buffs.Detached != BuffsOnly ? []
-        : [.. Enum.GetValues<BuffKind>().Where(k => Settings.Buffs.Of(k).Visible)];
+        : [.. Enum.GetValues<BuffKind>().Where(k => ClassProfiles.BuffShown(Settings, k, Target?.Key))];
 
     /// <summary>The point the window keeps still on screen when the layout changes (NaN when nothing is laid out): the
     /// top of the fixed grid, so a thicker gauge grows upwards, or where the free layout's cell (0, 0) is drawn, so
@@ -287,6 +287,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     {
         TimeSpan now = _frozenAt ?? Clock.Now();
         double ms = Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
+        long cpu0 = Services.Perf.ThreadCpu();
         bool reduced = !SystemParameters.ClientAreaAnimation;
         _moving = _animating = false;
 
@@ -298,8 +299,9 @@ public sealed partial class OverlayRenderer : FrameworkElement
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         _frameMs = Math.Max(MinFrameMs, _animating ? FastFrameMs : SlowFrameMs);
         SetLoop(_moving || _animating);
-        Services.Perf.Add(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
-            : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창", Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0));
+        Services.Perf.AddCpu(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+            : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창",
+            Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
     }
 
     void DrawPlayer(DrawingContext dc, PlayerLayout l, TimeSpan now, double ms, bool reduced)

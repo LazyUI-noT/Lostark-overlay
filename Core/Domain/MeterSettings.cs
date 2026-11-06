@@ -8,6 +8,9 @@ public enum MeterValue { 지분, 피해량, DPS }
 /// <summary>설정 → DPS 미터기's 표시 방식 (spec § C Display).</summary>
 public enum MeterLook { 행, 세로막대, 선그래프, 한줄막대, 파티비교 }
 
+/// <summary>미터기 and 버프 적용률's switch: off, worked out without a window, or shown.</summary>
+public enum ThreeWay { 끄기, 표시안함, 켜기 }
+
 /// <summary>설정 → DPS 미터기 (spec § C): on or off, 내 피해량 보내기 (also in 파티 → 보내기·받기), what is shown and how, colours
 /// (null: the 파티원 colours), the window's place, and the 전분 panel's spot per game-area size (Geometry.ViewportKey).</summary>
 public sealed class MeterSettings : IWindowPlace
@@ -16,6 +19,12 @@ public sealed class MeterSettings : IWindowPlace
     /// <summary>내 피해량 보내기: my figures go to the party once a second (off by default); off, the party's aren't shown
     /// either (only someone who shares sees the others).</summary>
     public bool Send { get; set; }
+    /// <summary>파티원 피해량 받기 (the 표시 map's 끊기 on 파티 → DPS 미터기): off, the party's figures are dropped while mine are
+    /// still sent; nothing in the party messages changes.</summary>
+    public bool Receive { get; set; } = true;
+
+    /// <summary>Whether the party's figures go into the meter and the record: only someone who shares sees the others.</summary>
+    public bool TakesParty => Send && Receive;
     public MeterScope Scope { get; set; } = MeterScope.파티;
     public MeterValue Value { get; set; } = MeterValue.지분;
     public MeterLook Look { get; set; } = MeterLook.선그래프;
@@ -45,6 +54,38 @@ public sealed class MeterSettings : IWindowPlace
     public double Height { get; set; } = 1.0;
     /// <summary>The 전분 panel's spot on screen per game-area size ("W×H").</summary>
     public Dictionary<string, PixelRect> Panels { get; set; } = [];
+
+    /// <summary>버프 적용률 끄기: not on the meter nor on the timeline. Apart from <see cref="BuffBars"/>, which older versions read.</summary>
+    public bool BuffShareOff { get; set; }
+
+    public ThreeWay Mode() => !On ? ThreeWay.끄기 : Show ? ThreeWay.켜기 : ThreeWay.표시안함;
+
+    /// <summary>끄기 keeps <see cref="Show"/>, for the way back.</summary>
+    public void SetMode(ThreeWay mode)
+    {
+        On = mode != ThreeWay.끄기;
+        if (On) Show = mode == ThreeWay.켜기;
+    }
+
+    /// <summary>What the user picked for 버프 적용률; it comes back with the meter (<see cref="BuffShare"/> is what applies).</summary>
+    public ThreeWay BuffWish() => BuffShareOff ? ThreeWay.끄기 : BuffBars ? ThreeWay.켜기 : ThreeWay.표시안함;
+
+    public void SetBuffWish(ThreeWay wish)
+    {
+        BuffShareOff = wish == ThreeWay.끄기;
+        if (!BuffShareOff) BuffBars = wish == ThreeWay.켜기;
+    }
+
+    /// <summary>The choices the meter leaves: none past 끄기 with it off, none past 표시 안 함 without its window.</summary>
+    public IReadOnlyList<ThreeWay> BuffChoices() => Mode() switch
+    {
+        ThreeWay.끄기 => [ThreeWay.끄기],
+        ThreeWay.표시안함 => [ThreeWay.끄기, ThreeWay.표시안함],
+        _ => [ThreeWay.끄기, ThreeWay.표시안함, ThreeWay.켜기],
+    };
+
+    /// <summary>버프 적용률 as it applies: 켜기 on the meter's window and the timeline, 표시안함 on the timeline only.</summary>
+    public ThreeWay BuffShare() => BuffWish() is var wish && BuffChoices().Contains(wish) ? wish : BuffChoices()[^1];
 
     /// <summary>The look drawn: 파티 비교 needs both parties, so with 나 or 파티 it is 행.</summary>
     [JsonIgnore]

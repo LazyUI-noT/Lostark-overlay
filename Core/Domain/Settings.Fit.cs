@@ -27,6 +27,16 @@ public sealed partial class Settings
         ManualHud = Fits.TryGetValue(Vision.Geometry.ViewportKey(area), out var fit) ? NearestHud(fit.Hud) : 100;
     }
 
+    /// <summary>값 직접 조정 on or off; off snaps the sizes set by 1% to the nearest preset.</summary>
+    public void SetFineSizes(bool on)
+    {
+        FineSizes = on;
+        if (on) return;
+        if (ManualHud is { } hud) ManualHud = GameSizes.Snap(GameSize.Hud, (int)Math.Round(hud));
+        Buffs.Size = GameSizes.Snap(GameSize.Buff, Buffs.Size);
+        Debuffs.BossIconSize = GameSizes.Snap(GameSize.Boss, Debuffs.BossIconSize);
+    }
+
     /// <summary>Where the skill bar's place comes from (설정 → 스킬창).</summary>
     [JsonIgnore]
     public FitMode FitMode => UseAdjusts ? FitMode.수동조정 : ManualHud is not null ? FitMode.직접입력 : FitMode.자동;

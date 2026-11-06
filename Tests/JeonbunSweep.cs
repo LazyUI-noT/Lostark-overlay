@@ -136,6 +136,50 @@ public sealed class JeonbunSweep
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 
+    /// <summary>GAUGE_HOMEWORK: 숙제's fallback (<see cref="HomeworkWatch"/>, stepped once a second as the app does) over a video's boss
+    /// bar, for what 테스트 모드 replays can't show (the fallback is off there). Nothing is stored. GAUGE_AMSU_HUD, GAUGE_AMSU_VP as
+    /// GAUGE_AMSU. GAUGE_HOMEWORK_GATE: the gate id 자동 인식 would name (no OCR here). GAUGE_SWEEP_OUT: each new max HP, each decision, the bar's
+    /// reads. Never blocked (the app holds while the HUD is hidden), so a cutscene counts as the bar gone.</summary>
+    [Fact]
+    public void Homework_in_a_video_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_HOMEWORK") is not { } video) return;
+        int[] a = (Environment.GetEnvironmentVariable("GAUGE_AMSU_VP") ?? "0,0,1920,1080").Split(',').Select(int.Parse).ToArray();
+        var vp = new Viewport(a[0], a[1], a[2], a[3]);
+        var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_AMSU_HUD") ?? "100"));
+        string profiles = Path.Combine(Helpers.RepoRoot(), "Profiles");
+        var gates = GaugeOverlay.Core.Data.RaidData.Load(profiles);
+        var raids = GaugeOverlay.Core.Data.HomeworkData.Load(profiles);
+        var text = Geometry.BossTextRow(vp, fit);
+        var nameGate = gates.FirstOrDefault(g => g.Id == Environment.GetEnvironmentVariable("GAUGE_HOMEWORK_GATE"));   // what 자동 인식 would name
+        var watch = HomeworkWatch.None;
+        var lines = new List<string>();
+        WatchRead? latest = null;
+        long lastMax = -1;
+        int second = 0, frames = 0, reads = 0;
+        void Step(int at)
+        {
+            var (next, decision) = watch.Step(latest, new WatchContext(false, nameGate, TimeSpan.FromSeconds(at)), gates, raids);
+            watch = next;
+            latest = null;
+            if (decision is not null) lines.Add($"{at} DECISION {decision.Raid} {decision.Difficulty ?? "?"} {decision.Outcome}");
+        }
+        foreach (var (t, img) in Frames(video, text.X, text.Y, text.Width, text.Height))
+        {
+            frames++;
+            if ((int)t != second) { Step(second); second = (int)t; }
+            if (BossDigits.ReadBar(img, Geometry.Scale(vp, fit)).Hp is not { } hp) continue;
+            reads++;
+            latest = new WatchRead(hp.Current, hp.Max);
+            if (hp.Max == lastMax) continue;
+            lastMax = hp.Max;
+            lines.Add($"{t:0.0} bar {hp.Current}/{hp.Max} gate {GaugeOverlay.Core.Data.RaidData.ByHp(gates, hp.Max)?.Gate.Id ?? "-"}");
+        }
+        for (int after = 0; after <= FightRecorder.BarGoneFor + 1; after++) Step(second + after);   // the video ends: the bar goes
+        lines.Add($"frames {frames}, bar reads {reads}, watching {(watch.Now is null ? "nothing" : "a bar")}, last {watch.Last?.Fight.Current}/{watch.Last?.Fight.Max} gate {watch.Last?.Fight.Gate?.Id ?? "-"}");
+        File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
+    }
+
     /// <summary>GAUGE_AMSU_BENCH: each step of a 암수 read timed alone over a video's frames (2 a second), each run 5 times over
     /// them so the times are steady: the strip resized, the walk on the line, an identification on the line, the boss's HP
     /// text. GAUGE_AMSU_SIZE, GAUGE_AMSU_VP, GAUGE_AMSU_HUD (default 100) as GAUGE_AMSU; the line is the placed one.</summary>

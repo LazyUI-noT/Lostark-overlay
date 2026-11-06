@@ -39,6 +39,16 @@ public sealed record Snapshot(
     /// <summary>The 줄 수 창 (설정 → 레이드, yours only); null while it isn't shown.</summary>
     public RaidStatus? Raid { get; init; }
 
+    /// <summary>감지 중: each reader's ✓ ? ! by its 표시 map box (<see cref="DetectBoard"/>); yours only, never sent.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, Detection> Detect { get; init; } = DetectBoard.Empty;
+    /// <summary>Where each reader looks (screen pixels), for 감지; the game area is <see cref="DetectView"/>.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, PixelRect> DetectAreas { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, PixelRect>.Empty;
+    public Viewport DetectView { get; init; }
+    /// <summary>Each reader's picture from the moment its mark turned ✓ or ! (in memory only).</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, DetectPicture> DetectPictures { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, DetectPicture>.Empty;
+    /// <summary>The 감지 page's Live box, captured 2/s while it is on; null otherwise.</summary>
+    public DetectPicture? DetectLive { get; init; }
+
     /// <summary>The DPS 미터기's own reads (yours; the party's figures travel as MeterSample); null while it is off.</summary>
     public MeterStatus? Meter { get; init; }
 

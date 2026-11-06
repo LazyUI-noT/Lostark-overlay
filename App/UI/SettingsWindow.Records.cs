@@ -7,6 +7,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
+using GaugeOverlay.App.Services;
 
 using static GaugeOverlay.App.UI.UiBuild;
 
@@ -17,11 +19,11 @@ namespace GaugeOverlay.App.UI;
 /// (SettingsWindow.RecordView.cs).</summary>
 public partial class SettingsWindow
 {
-    const string AreaRecords = "전투 기록";
-    const string TestChip = "테스트";   // the 테스트 모드 fights' chip: no class is named that
+    const string AreaRecords = "타임라인";
+    const string TestChip = RecordCharacter.TestClass;   // the 테스트 모드 fights' chip, "[Test]" (user, 2026-11-05): no character is named that
     const string TestKey = "test/";   // a test record's key in the list (_opened, _compare): its own file names may repeat the game's
-    const string RecordsLead = "DPS 미터기가 따라간 전투를 저장합니다. 자동 기록은 정한 개수만 남기고(가장 오래된 것부터 지움), 보관한 기록은 개수에 들지 않고 지울 때까지 남깁니다. " +
-        "캐릭터마다 따로 저장합니다(ESC 게임 메뉴에서 캐릭터 이름을 읽습니다. 읽기 전에는 '캐릭터 불명'). 기록을 열면 파티원 모두의 DPS · 누적 피해, 내 스킬 사용, 내 공증 · 아덴 피증 · 초각스 피증 구간, 페이즈 경계를 시간 순으로 봅니다. 휠이나 +/−로 확대하고, 끌거나 ←/→로 옮깁니다.";
+    const string RecordsLead = "DPS 미터기가 따라간 전투를 저장합니다. 자동 기록은 정한 개수까지만 남고 오래된 것부터 지워집니다. 보관한 기록은 개수에 들지 않고 직접 지울 때까지 남습니다. " +
+        "캐릭터마다 따로 저장합니다(ESC 게임 메뉴에서 이름을 읽기 전에는 '캐릭터 불명'). 기록을 열면 파티원 모두의 DPS · 누적 피해, 내 스킬 사용, 내 공증 · 아덴 피증 · 초각스 피증 구간, 페이즈 경계를 시간 순으로 볼 수 있습니다. 휠이나 +/−로 확대하고, 끌거나 ←/→로 옮깁니다.";
     readonly CardStack _secRecords = new();
     readonly TimelineView _timeline = new() { Margin = new(0, 8, 0, 4) };
     readonly List<string> _compare = [];
@@ -43,16 +45,78 @@ public partial class SettingsWindow
 
     static bool IsImported(string key) => key.StartsWith(ImportKey);
 
-    /// <summary>My skill icons for a record (its class and 직업각인, as saved by 스킬 등록), drawn on my lane.</summary>
-    IReadOnlyDictionary<SlotId, ImageSource> RecordIcons(FightRecord r)
+    /// <summary>What my lane draws per slot (skill-icons.plan.md, Core SkillFaces): this PC's saved icon (스킬 등록, by the record's
+    /// class and 직업각인) when it shows the fight's skill, else that skill's icon fetched from Smilegate's CDN (requested here when
+    /// missing; the face swaps when it lands), else a name chip; slots the fight doesn't know keep the saved icon, else the key.</summary>
+    Dictionary<SlotId, TimelineView.SlotFace> RecordIcons(FightRecord r)
     {
-        if (_chars.Classes.FirstOrDefault(c => c.Id == r.MyClass)?.Name is not { } cls || r.MySubclass is not { } sub) return new Dictionary<SlotId, ImageSource>();
+        var saved = new Dictionary<SlotId, Core.Domain.Image>();
+        string? cls = _chars.Classes.FirstOrDefault(c => c.Id == r.MyClass)?.Name;
+        if (cls is not null && r.MySubclass is { } sub)
+            try { saved = new IconStore(IconStore.DefaultDir).Load(cls, sub); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] icons: {ex.Message}"); }
+        var faces = new Dictionary<SlotId, TimelineView.SlotFace>();
+        foreach (var slot in SlotInfo.All)
+        {
+            var img = saved.GetValueOrDefault(slot);
+            var skill = r.Skills?.GetValueOrDefault(slot);
+            string? savedName = img is not null && skill is not null && cls is not null && FightSkills.KindOf(slot) is { } kind
+                ? SkillMatch.Identify(IconPrint.Framings(img), SkillLibrary.Shipped.Pool(cls, kind)).Skill?.Name : null;
+            string? local = skill is null ? null : SkillIconDownloader.Local(skill.Icon);
+            switch (SkillFaces.Of(r, slot, img is not null, savedName, local is not null))
+            {
+                case SkillFaceKind.Saved: faces[slot] = new(Bitmap(img!), skill); break;
+                case SkillFaceKind.Library: faces[slot] = new(Png(local!), skill); break;
+                case SkillFaceKind.Chip:
+                    faces[slot] = new(null, skill);
+                    SkillIconDownloader.Request(skill!.Icon);
+                    break;
+            }
+        }
+        if (!_iconsHooked)
+        {
+            _iconsHooked = true;
+            SkillIconDownloader.Landed += (icon, path) => Dispatcher.BeginInvoke(() => IconLanded(icon, path));
+        }
+        _faces = faces;
+        return faces;
+    }
+
+    Dictionary<SlotId, TimelineView.SlotFace>? _faces;   // the opened timeline's faces
+    bool _iconsHooked;
+
+    /// <summary>A downloaded icon: the chips of the opened timeline that show its skill become the icon.</summary>
+    void IconLanded(string icon, string path)
+    {
+        if (_faces is not { } faces) return;
+        var chips = faces.Where(f => f.Value.Image is null && f.Value.Skill?.Icon == icon).Select(f => f.Key).ToList();
+        if (chips.Count == 0 || Png(path) is not { } png) return;
+        foreach (var slot in chips) faces[slot] = faces[slot] with { Image = png };
+        _timeline.InvalidateVisual();
+    }
+
+    static ImageSource Bitmap(Core.Domain.Image img) =>
+        Frozen(System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgra32, null, img.Bgra, img.Stride));
+
+    /// <summary>A downloaded icon; null when its file can't be read (the chip stays).</summary>
+    static ImageSource? Png(string path)
+    {
         try
         {
-            return new IconStore(IconStore.DefaultDir).Load(cls, sub).ToDictionary(kv => kv.Key, kv => (ImageSource)Frozen(
-                System.Windows.Media.Imaging.BitmapSource.Create(kv.Value.Width, kv.Value.Height, 96, 96, PixelFormats.Bgra32, null, kv.Value.Bgra, kv.Value.Stride)));
+            using var file = File.OpenRead(path);   // not a Uri: a '#' or '%' in the folder would break one
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.DecodePixelWidth = 64;   // an icon's size, whatever the file says
+            bmp.StreamSource = file;
+            bmp.EndInit();
+            return Frozen(bmp);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] icons: {ex.Message}"); return new Dictionary<SlotId, ImageSource>(); }
+        catch (Exception ex) when (ex is IOException or NotSupportedException or UnauthorizedAccessException or FileFormatException)
+        {
+            Trace.WriteLine($"[skillicons] {path}: {ex.Message}");
+            return null;
+        }
     }
 
     static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
@@ -98,12 +162,12 @@ public partial class SettingsWindow
         p.Children.Add(SliderRow("글자 크기", Settings.MinRecordFont, Settings.MaxRecordFont,
             Math.Clamp(_s.RecordFontPercent, Settings.MinRecordFont, Settings.MaxRecordFont), 10, v => $"{v:0}%", v => _s.RecordFontPercent = (int)v, Changed));
         p.Children.Add(Row("", Check("자동 저장", _s.RecordAutoSave, v => _s.RecordAutoSave = v, () => { Changed(); FillRecords(); },
-            "끄면 마지막 전투 하나만 '저장 안 됨'으로 남기고 다음 전투가 덮어씁니다. 남기려면 보관을 누릅니다. 기록 자체를 끄려면 DPS 미터기 → 전투 기록을 끕니다.")));
+            "끄면 마지막 전투 하나만 '저장 안 됨'으로 남고 다음 전투가 덮어씁니다. 남기려면 보관을 누르세요. 기록 자체를 끄려면 DPS 미터기 → 전투 기록을 끄세요.")));
         p.Children.Add(SliderRow("멈춤 허용", Settings.MinRecordPause, Settings.MaxRecordPause, Math.Clamp(_s.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause), 10,
             v => $"{v:0}초", v => _s.RecordPauseSeconds = (int)v, Changed));
-        p.Children.Add(Note("던전에서 기록합니다(가디언 토벌 제외). 던전 이름을 읽지 못하면 '알 수 없음'으로 저장하고, 줄의 편집에서 던전 · 난이도 · 결과 · 클래스를 고칠 수 있습니다. 전분이 새로 시작되면 앞 전투를 저장하고, 새 보스가 같으면(재도전) 실패, 다르면(다음 관문) 클리어로 정합니다. " +
-            "다음 기록이 없으면 보스의 마지막 HP가 500억(작은 보스는 최대 HP의 5%) 아래이거나 보스 HP 바가 3초 넘게 사라졌으면 클리어입니다. " +
-            "전멸 등으로 타이머가 멈추거나 컷신 · 인벤토리에 가려지면 '멈춤 허용'만큼 기다렸다가 끝냅니다."));
+        p.Children.Add(Note("던전에서 기록합니다(가디언 토벌 제외). 던전 이름을 못 읽으면 '알 수 없음'으로 저장되고, 줄의 편집에서 던전 · 난이도 · 결과 · 클래스를 고칠 수 있습니다. 전분이 새로 시작되면 앞 전투를 저장합니다. 새 보스가 같으면(재도전) 실패, 다르면(다음 관문) 클리어입니다. " +
+            "다음 기록이 없으면, 보스의 마지막 HP가 500억(작은 보스는 최대 HP의 5%) 아래이거나 보스 HP 바가 3초 넘게 사라졌을 때 클리어입니다. " +
+            "전멸 등으로 타이머가 멈추거나 컷신 · 인벤토리에 가려지면 '멈춤 허용' 시간만큼 기다렸다가 끝냅니다."));
         if (_s.RecordAutoSave)
             p.Children.Add(SliderRow("자동 기록 남기기", 1, 50, Math.Clamp(_s.RecordKeep, 1, 50), 1, v => $"{v:0}개", v => _s.RecordKeep = (int)v, Changed));
         var chips = ChipsOf(all);

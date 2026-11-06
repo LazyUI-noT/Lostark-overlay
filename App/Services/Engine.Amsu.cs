@@ -42,7 +42,7 @@ public sealed partial class Engine
         long? boss = text is null ? null : BossBar(text).Hp?.Max;
         // 강화 읽기: the row's levels stretched (Reinforce.Levels; 1440 → 1080 sweep 74 → 100%).
         if (strip is not null && GameWindow.ReadsReinforced) strip = Reinforce.Levels(strip);
-        var (edges, changed) = _amsuWatch.Read(AmsuLayout.Of(_vp, _fit!, config.BossSize), _amsuPass, boss, strip, t);
+        var (edges, changed) = _amsuWatch.Read(AmsuLayout.Of(_vp, _fit!, config.BossSize, config.BossCount), _amsuPass, boss, strip, t);
         foreach (var e in edges)
             System.Diagnostics.Trace.WriteLine($"[amsu] {e.Kind} {e.Change}" + (e.Change == AmsuChange.끝 ? "" : $", {e.Left:0.0} s left") + $" (line {_amsuWatch.Line})");
         if (Tracing) TraceRead(config, boss, strip, t);

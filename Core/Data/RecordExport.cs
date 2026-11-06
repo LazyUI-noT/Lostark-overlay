@@ -18,8 +18,13 @@ public static class RecordExport
     /// <summary>An imported fight small enough to draw: counts and texts in bounds.</summary>
     public static bool Fits(FightRecord r) =>
         r.Members.Count <= MaxMembers && r.Phases.Count <= MaxPhases && r.Samples.Count <= MaxSamples && r.Events.Count <= MaxEvents && r.Boss.Count <= MaxBoss
-        && new[] { r.Me, r.Gate, r.Difficulty, r.MyClassName, r.MySubclass }.All(s => s is null || s.Length <= MaxText)
-        && r.Members.All(m => m.Name.Length <= MaxText);
+        && new[] { r.Me, r.Gate, r.Difficulty, r.MyClassName, r.MySubclass, r.ProposedClass }.All(s => s is null || s.Length <= MaxText)
+        && r.Members.All(m => m.Name.Length <= MaxText)
+        && (r.Skills ?? new Dictionary<SlotId, RecordSkill>()).Values.All(s => s.Name.Length <= MaxText)
+        && (r.Unsure ?? new Dictionary<SlotId, IReadOnlyList<RecordSkill>>()).Values.All(c => c.Count <= MaxCandidates && c.All(s => s.Name.Length <= MaxText));
+
+    /// <summary>The candidates an unsure slot keeps (FightSkills.Apply).</summary>
+    public const int MaxCandidates = 3;
     const int Version = 1;
     const string MeName = "나";
 

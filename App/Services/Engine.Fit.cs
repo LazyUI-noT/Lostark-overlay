@@ -48,6 +48,8 @@ public sealed partial class Engine
             if (hwnd != _hwnd) (_vpPinned, _pictureNoticed) = (false, false);   // another video in test mode (each keeps its own TestFits)
             (_hwnd, _monitor) = (hwnd, monitor);
             _source = CaptureFactory.Create(hwnd, test);
+            _sourceSeesBehind = _source.SeesBehind;
+            _viewStale = true;
             _seesBehind = test && _source.SeesBehind;   // the game keeps its front waits (Windows 11's borderless WGC too)
             _lastViewport = TimeSpan.MinValue;
         }

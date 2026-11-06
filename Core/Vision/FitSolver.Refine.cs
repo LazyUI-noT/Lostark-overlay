@@ -23,6 +23,19 @@ public static partial class FitSolver
     /// <summary>Whether a bar scoring <paramref name="score"/> reads well (the adjust layer draws it green).</summary>
     public static bool ReadsWell(double score) => score >= ScoreGood;
 
+    /// <summary>The area <see cref="Score"/> looks at for <paramref name="fit"/>: the HP bar and the 각성기 frame, a few pixels over
+    /// (a picture that holds it scores the bar whole).</summary>
+    public static PixelRect CueArea(Viewport vp, Fit fit)
+    {
+        var bare = new Fit(fit.Hud);
+        double k = Geometry.Scale(vp, bare);
+        int dx = (int)Math.Round(fit.NudgeX * k), dy = (int)Math.Round(fit.NudgeY * k), pad = 6;
+        var hp = Geometry.ToScreen(RefHpBar, vp, bare);
+        var frame = Geometry.ToScreen(Geometry.RefAwakeningFrame, vp, bare);
+        int left = Math.Min(hp.X, frame.X) + dx - pad, top = Math.Min(hp.Y, frame.Y) + dy - pad;
+        return new(left, top, Math.Max(hp.Right, frame.Right) + dx + pad - left, Math.Max(hp.Bottom, frame.Bottom) + dy + pad - top);
+    }
+
     /// <summary>The bar's score at exactly <paramref name="fit"/> (its nudge included, no search): the HP bar's top edge (0–1) and
     /// left end (0–1), plus the 각성기 frame's match when it reaches <see cref="MinScore"/> (a blurred one counts nothing). Higher is better.</summary>
     public static double Score(Image band, PixelRect bandRect, Viewport vp, Fit fit)

@@ -244,7 +244,7 @@ public sealed partial class OverlayRenderer
     const double BuffBarRows = 2.4;   // × a row: three bars
 
     /// <summary>버프 적용률 is on and I'm not on a support (the view says so once the meter has read).</summary>
-    bool BuffBarsShown => Settings.Meter.BuffBars && _player?.Snapshot.MeterView?.ShowBuffBars != false;
+    bool BuffBarsShown => Settings.Meter.BuffShare() == ThreeWay.켜기 && _player?.Snapshot.MeterView?.ShowBuffBars != false;
 
     /// <summary>버프 적용률: the share of my damage dealt while each of my three buffs was on (TimelineView's colours); with two
     /// or more dealers sharing, 버프 분배 instead: each buff's bar is 100% of the damage dealt under it, split by dealer (who

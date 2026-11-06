@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
@@ -129,6 +130,16 @@ public partial class SettingsWindow
     /// <summary>Box options and class rows follow 편집 중; the debuff window, the party's window and the overlay as a whole do not.</summary>
     static bool ClassScoped(CanvasBox? box) => box?.Kind is "Skills" or "Gauge" or "BuffBar" or "Plate";
 
+    readonly Dictionary<BuffKind, UIElement> _buffHeads = [];
+
+    readonly Dictionary<int, UIElement> _debuffHeads = [];
+
+    void ScrollToDebuff(int i) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { if (_debuffHeads.TryGetValue(i, out var row)) (row as FrameworkElement)?.BringIntoView(); });
+
+    void ScrollToBuff(BuffKind k) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { if (_buffHeads.TryGetValue(k, out var head)) (head as FrameworkElement)?.BringIntoView(); });
+
     (string Title, string About, UIElement[] Panels) InspectorFor(CanvasBox? box)
     {
         switch (box)
@@ -139,11 +150,13 @@ public partial class SettingsWindow
             case { Kind: "Gauge" }:
                 return ("아덴 게이지", "아덴 게이지의 모양, 색, 읽기 방식입니다.", [GaugeBox]);
             case { Kind: "BuffBar", Part: { } bar }:
-                ShowBox(bar, plate: false);
-                return ("버프 막대", "MP 바 위의 버프를 남은 시간 막대로 보여 줍니다.", [BoxTab, _secBuffs]);
+                // The buff section already holds every bar's rows: no second copy in 칸 옵션, scroll to the clicked bar's.
+                ScrollToBuff((BuffKind)(bar - FreeLayout.FirstBuff));
+                return ("버프 막대", "MP 바 위의 버프를 남은 시간 막대로 보여 줍니다.", [_secBuffs]);
             case { Kind: "Debuff", Debuff: { } d }:
-                ShowDebuffBox(d);
-                return ("디버프", "보스 디버프 칸입니다.", [BoxTab, _secBuffs]);
+                // Same as the buff bars: the section already holds this box's size rows.
+                ScrollToDebuff(d);
+                return ("디버프", "보스 디버프 칸입니다.", [_secBuffs]);
             case { Kind: "Raid" }:
                 return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 설정은 왼쪽의 레이드에서 바꿉니다.", []);
             case { Kind: "Judgment" }:

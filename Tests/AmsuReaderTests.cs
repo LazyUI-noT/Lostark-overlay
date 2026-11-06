@@ -113,6 +113,41 @@ public class AmsuReaderTests
 
     // The boss debuff row holds at most 14 icons at 보스 디버프 크기 100% and under, 12 at 110%, 10 at 120% (user, 2026-11-01); its
     // first icon sits at x 927–929 at every size (1080p, HUD 100: reference/빛암).
+    // 감지 개수 (타겟 UI 버프 크기 (보스)): caps the walk at most; unset it is today's size-fixed count.
+    [Theory]
+    [InlineData(100, 14, 14)]
+    [InlineData(100, 5, 5)]
+    [InlineData(110, 14, 12)]
+    [InlineData(120, 14, 10)]
+    [InlineData(120, 4, 4)]
+    [InlineData(100, 0, 1)]
+    public void The_count_caps_the_slots_the_size_shows(int size, int count, int most) =>
+        Assert.Equal(most, Geometry.BossSlotsIn(Hd, Hud110, size, count).Most);
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(100)]
+    [InlineData(120)]
+    public void Without_a_count_the_slots_and_layout_are_as_before(int size)
+    {
+        Assert.Equal(Geometry.BossSlotsIn(Hd, Hud110, size), Geometry.BossSlotsIn(Hd, Hud110, size, Geometry.MaxBossSlots));
+        Assert.Equal(AmsuLayout.Of(Hd, Hud110, size), AmsuLayout.Of(Hd, Hud110, size, Geometry.MaxBossSlots));
+        Assert.Equal(Geometry.MaxBossDebuffs(size), AmsuLayout.Of(Hd, Hud110, size).Slots.Most);
+    }
+
+    [Fact]
+    public void The_boss_count_is_unset_by_default_and_repaired_from_a_hand_edit()
+    {
+        Assert.Equal(Geometry.MaxBossSlots, new DebuffSettings().BossCount);
+        var s = new Settings();
+        s.Debuffs.BossCount = 40;
+        Core.Data.SettingsStore.Normalize(s);
+        Assert.Equal(Geometry.MaxBossSlots, s.Debuffs.BossCount);
+        s.Debuffs.BossCount = -3;
+        Core.Data.SettingsStore.Normalize(s);
+        Assert.Equal(1, s.Debuffs.BossCount);
+    }
+
     [Theory]
     [InlineData(80, 14)]
     [InlineData(100, 14)]

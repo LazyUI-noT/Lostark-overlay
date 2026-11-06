@@ -15,10 +15,14 @@ public static class FightVerdict
     {
         if (gates is not null && FightRegions.EndedHidden(fight.Boss)) return AfterHidden(fight, nextMax, gates);
         var maxes = fight.Boss.Select(b => b.Max).OfType<long>().Where(m => m > 0).Distinct().ToList();
-        if (nextMax is > 0 and var next && maxes.Count > 0) return !maxes.Any(m => Math.Abs(m - next) <= m * SameHp);
+        if (nextMax is > 0 and var next && maxes.Count > 0) return ByMaxes(maxes, next);
         if (!string.IsNullOrEmpty(nextGate) && !string.IsNullOrEmpty(fight.Gate)) return nextGate != fight.Gate;
         return null;
     }
+
+    /// <summary>Another boss than the fight's bars (true: 클리어 / the next gate) or the same again (false: a retry); 숙제's fallback
+    /// (<see cref="HomeworkWatch"/>) judges by the same rule with no record.</summary>
+    public static bool ByMaxes(IEnumerable<long> maxes, long nextMax) => !maxes.Any(m => Math.Abs(m - nextMax) <= m * SameHp);
 
     /// <summary>After a fight ended on ??? (its raid's last phase) no next gate can come: the same raid again is a retry of it, wherever
     /// the retry starts (2-1, whose HP this file doesn't hold); another raid leaves the 클리어; a boss no gate knows says nothing.</summary>

@@ -6,6 +6,9 @@ namespace GaugeOverlay.Core.Domain;
 /// up is not wrong); null not read at all (that reading is off).</summary>
 public sealed record AdjustReads(bool Bar, bool? Buff, bool? Debuff, bool? Boss)
 {
+    /// <summary>Whether <paramref name="part"/> reads (null: not read at all).</summary>
+    public bool? Of(AdjustPart part) => part switch { AdjustPart.스킬창 => Bar, AdjustPart.버프 => Buff, AdjustPart.디버프 => Debuff, _ => Boss };
+
     /// <param name="barScore"><see cref="FitSolver.Score"/> of the bar at the fit shown.</param>
     /// <param name="buffs">The buff row's states, null when it isn't read.</param>
     /// <param name="debuffs">The debuff and boss rows' status, null when they aren't read (no raid picked).</param>

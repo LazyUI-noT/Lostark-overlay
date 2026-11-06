@@ -635,4 +635,20 @@ public sealed class SettingsStoreTests : IDisposable
 
     [Fact]
     public void New_settings_keep_50() => Assert.Equal(50, new Settings().RecordKeep);
+
+    [Theory]
+    [InlineData(true, 107.0, 107.0)]    // 값 직접 조정 saves a whole %
+    [InlineData(true, 300.0, 250.0)]
+    [InlineData(true, 87.3, 90.0)]      // the old slider's fraction still snaps
+    [InlineData(false, 107.0, 105.0)]
+    public void A_typed_hud_keeps_a_whole_percent_only_with_fine_sizes(bool fine, double saved, double expected) =>
+        Assert.Equal(expected, SettingsStore.Normalize(new Settings { FineSizes = fine, ManualHud = saved }).ManualHud);
+
+    [Fact]
+    public void A_file_without_fine_sizes_or_boss_count_reads_as_today()
+    {
+        var s = SettingsStore.Normalize(System.Text.Json.JsonSerializer.Deserialize<Settings>("{}")!);
+        Assert.False(s.FineSizes);
+        Assert.Equal(Core.Vision.Geometry.MaxBossSlots, s.Debuffs.BossCount);
+    }
 }

@@ -171,7 +171,11 @@ public partial class App
         UpdateVisibility();
         if (args.Contains("--grid-tags"))   // 숙제 tags as under the grid's cards, at goal.png's spots
             _homeworkTags.Update(new Viewport(0, 0, 1920, 1080), [(new PixelRect(846, 426, 245, 19), [new HomeworkTag("세나메", HomeworkColor.Purple, false, 0), new HomeworkTag("종하↓", HomeworkColor.Orange, true, 0)])], allowed: true);
+        if (args.Contains("--homework-demo")) DemoHomework(settings);
         if (args.Contains("--settings")) _settingsWindow.Show();
+        if (Flag("map-open") is not null || Flag("map-pin") is not null || Flag("map-fail") is not null) _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"));
+        if (args.Contains("--resources")) _settingsWindow.DemoResources();
+        if (args.Contains("--map-hover-test")) _settingsWindow.DemoHoverTest();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
         if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare", view == "run");   // with --records: open | compare | run (a fight joined from its files)
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
@@ -234,5 +238,19 @@ public partial class App
             Shutdown();
         };
         timer.Start();
+    }
+    /// <summary>--homework-demo: 설정 → 숙제 with a character, three picks and a week's clears (one of them 확인필요), in a temp file.</summary>
+    void DemoHomework(Settings settings)
+    {
+        var gates = RaidData.Load(CharacterService.DefaultProfilesDir);
+        var shipped = HomeworkData.Load(CharacterService.DefaultProfilesDir);
+        var pick = (HomeworkRaid r) => new HomeworkPick(r.Id, r.Levels[^1].Difficulty);
+        settings.Homework.Characters = [new HomeworkCharacter { Name = "데모", ClassName = "워로드", ItemLevel = 1700, Picks = [.. shipped.Take(3).Select(pick)] }];
+        var store = new HomeworkStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-homework.json"));
+        File.Delete(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-homework.json"));
+        var now = DateTime.Now;
+        store.Add(new HomeworkClear("데모", shipped[0].Id, shipped[0].Levels[^1].Difficulty, now), now);
+        store.Add(new HomeworkClear("데모", shipped[1].Id, shipped[1].Levels[^1].Difficulty, now, Unsure: true), now);
+        _settingsWindow.Homework = new HomeworkService(settings, gates, shipped, [], store, new RecordStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-records")), Dispatcher, () => { }, () => { });
     }
 }

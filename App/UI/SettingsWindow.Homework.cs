@@ -14,9 +14,9 @@ public partial class SettingsWindow
 {
     const string AreaHomework = "숙제";
     const int MaxCustomLevels = 3;
-    static readonly SolidColorBrush ClearedBrush = new(Color.FromRgb(0x2E, 0xA0, 0x43));
-    const string HomeworkLead = "캐릭터마다 이번 주(수요일 오전 6시부터) 클리어한 레이드를 봅니다. 캐릭터는 ESC 게임 메뉴와 '다른 캐릭터 바로 접속' 창에서 읽고, " +
-        "레이드는 전투 기록이 마지막 관문을 클리어로 저장하면 지웁니다. 같은 레이드는 난이도와 상관없이 한 주에 한 번이라, 고른 것보다 낮은 난이도로 깨면 ↓, 높으면 ↑를 붙이고 고른 난이도를 올립니다. 앱 없이 깼다면 레이드 줄의 [클리어]를 누릅니다.";
+    static readonly SolidColorBrush ClearedBrush = new(Color.FromRgb(0x2E, 0xA0, 0x43)), UnsureBrush = new(Color.FromRgb(0xE0, 0x31, 0x31)), UndoneBrush = new(Color.FromRgb(0xE4, 0xE6, 0xE8));
+    const string HomeworkLead = "캐릭터마다 이번 주(수요일 오전 6시부터) 클리어한 레이드를 보여 줍니다. 캐릭터는 ESC 게임 메뉴와 '다른 캐릭터 바로 접속' 창에서 읽습니다. " +
+        "전투 기록이 마지막 관문을 클리어로 저장하면 그 레이드가 지워집니다. 전투 기록이나 DPS 미터기가 꺼져 있으면 보스 체력 바를 보고 대신 판단하는데, 틀릴 수 있어 확실하지 않으면 확인필요(! 표시)로 두니 맞는지 눌러서 고치세요. 같은 레이드는 난이도와 상관없이 한 주에 한 번뿐이라, 고른 것보다 낮은 난이도로 깨면 ↓를 붙이고, 높은 난이도로 깨면 ↑를 붙여 고른 난이도를 올립니다. 앱 없이 깼다면 레이드 줄의 [클리어]를 누르세요.";
     readonly CardStack _secHomework = new();
 
     /// <summary>Who is played, the character list and the clears (null: none yet, the page says so).</summary>
@@ -34,6 +34,12 @@ public partial class SettingsWindow
         var p = Refill(_secHomework, AreaHomework, HomeworkLead);
         if (Homework is not { } hw) { p.Children.Add(Note("숙제는 게임과 함께 켜졌을 때 씁니다.")); return; }
         p.Children.Add(Note(hw.Current is { } now ? $"지금 캐릭터: {now}" : "지금 캐릭터: 캐릭터 불명 (ESC를 눌러 게임 메뉴를 열면 읽습니다)"));
+        p.Children.Add(Note(Core.Domain.Homework.SourceOf(_s.Meter.On, _s.Meter.Record, _s.Raids.BossHpRead) switch
+        {
+            HomeworkSource.RecordedFight => "클리어는 전투 기록이 판단합니다. 게임의 전투 분석기를 닫아 두면 기록이 없어 보스 체력 바를 보고 판단하니, 그때는 ! 표시(확인필요)를 직접 확인하세요.",
+            HomeworkSource.BossBar => "전투 기록이나 DPS 미터기가 꺼져 있어 보스 체력 바를 보고 판단합니다. 전투 기록보다 틀리기 쉬우니 ! 표시(확인필요)는 직접 확인하세요.",
+            _ => "보스 체력 읽기가 꺼져 있어 클리어를 자동으로 표시하지 못합니다. 아래 [클리어]를 직접 누르거나 보스 체력 읽기를 켜세요.",
+        }));
         p.Children.Add(Row("", Check("다른 캐릭터 접속 창에 숙제 표시", _s.Homework.ShowOnGrid, v => _s.Homework.ShowOnGrid = v, Changed,
             "다른 캐릭터 바로 접속 창의 캐릭터 칸 아래에 고른 레이드를 작게 보여 줍니다. 클리어한 것은 줄을 긋습니다.")));
         p.Children.Add(Row("", Check("아이템 레벨이 바뀌면 레이드 자동으로 다시 고르기 (모든 캐릭터)", _s.Homework.FollowLevel, v => _s.Homework.FollowLevel = v, Changed,
@@ -41,8 +47,8 @@ public partial class SettingsWindow
         var clears = hw.Clears();
         var shown = _s.Homework.Characters.Where(c => !c.Hidden).ToList();
         p.Children.Add(Note(shown.Count == 0
-            ? "아직 읽은 캐릭터가 없습니다. 게임에서 ESC → 다른 캐릭터 바로 접속을 열고 캐릭터 칸을 하나씩 누르세요(오른쪽 위에 큰 글씨로 뜬 이름을 읽습니다). 아래에서 직접 추가해도 됩니다."
-            : "목록에 없는 캐릭터는 다른 캐릭터 바로 접속 창에서 그 칸을 한 번 누르면 들어옵니다(칸의 작은 글씨는 잘못 읽힐 때가 많아 큰 글씨 이름만 씁니다)."));
+            ? "아직 읽은 캐릭터가 없습니다. 게임에서 ESC → 다른 캐릭터 바로 접속을 열고 캐릭터 칸을 하나씩 누르세요. 오른쪽 위에 큰 글씨로 뜬 이름을 읽습니다. 아래에서 직접 추가해도 됩니다."
+            : "목록에 없는 캐릭터는 다른 캐릭터 바로 접속 창에서 그 칸을 한 번 누르면 추가됩니다. 칸의 작은 글씨는 잘못 읽힐 때가 많아 오른쪽 위 큰 글씨 이름을 씁니다."));
         foreach (var c in shown) p.Children.Add(CharacterCard(hw, c, clears));
         p.Children.Add(AddCharacterRow(hw));
         if (_s.Homework.Characters.Where(c => c.Hidden).ToList() is { Count: > 0 } hidden) p.Children.Add(HiddenRow(hidden));
@@ -111,23 +117,36 @@ public partial class SettingsWindow
         remove.Click += (_, _) => { c.Picks = [.. c.Picks.Where((_, i) => i != index)]; Changed(); FillHomework(); };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(16, 2, 0, 2) };
         foreach (var e in new UIElement[] { raids, levels, remove }) row.Children.Add(e);
-        if (hw.TagOf(c, pick, clears) is { } tag) row.Children.Add(ClearButton(hw, c, pick, tag.Done));
+        if (hw.TagOf(c, pick, clears) is { } tag) row.Children.Add(StateButtons(hw, c, pick, tag));
         levels.Margin = new(8, 0, 0, 0);
         return row;
     }
 
-    /// <summary>클리어 by hand, for a raid played without the app: lit while cleared this week (by a click or a saved fight); the
-    /// week's reset turns it off. A click takes back either kind.</summary>
-    static Button ClearButton(HomeworkService hw, HomeworkCharacter c, HomeworkPick pick, bool done)
+    /// <summary>[미완 | 클리어 | 확인필요] for a raid, the part for this week lit: 클리어 by a saved fight, by hand or by the fallback;
+    /// 확인필요 where the fallback can't tell (a ! on the tag). A click sets it; the week's reset turns it off.</summary>
+    static UIElement StateButtons(HomeworkService hw, HomeworkCharacter c, HomeworkPick pick, HomeworkTag? tag)
     {
-        var button = new Button
+        var lit = Core.Domain.Homework.PartOf(tag);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(8, 0, 0, 0) };
+        foreach (var part in Enum.GetValues<HomeworkPart>())
         {
-            Content = "클리어", Margin = new(8, 0, 0, 0),
-            ToolTip = done ? "이번 주 클리어했습니다. 누르면 취소합니다." : "앱 없이 클리어했다면 누르세요. 수요일 오전 6시에 풀립니다.",
-        };
-        if (done) (button.Background, button.Foreground, button.FontWeight) = (ClearedBrush, Brushes.White, FontWeights.Bold);
-        button.Click += (_, _) => hw.ToggleClear(c, pick);
-        return button;
+            var (back, ink) = part switch { HomeworkPart.클리어 => (ClearedBrush, Brushes.White), HomeworkPart.확인필요 => (UnsureBrush, Brushes.White), _ => (UndoneBrush, Brushes.Black) };
+            var button = new Button
+            {
+                Content = part.ToString(), MinWidth = 52,
+                ToolTip = part switch
+                {
+                    HomeworkPart.미완 => "이번 주 클리어하지 않았습니다.",
+                    HomeworkPart.클리어 => "클리어했습니다. 앱 없이 깼다면 누르세요. 수요일 오전 6시에 풀립니다.",
+                    _ => "클리어한 것 같지만 앱이 확신하지 못한 상태입니다. 맞으면 클리어를, 아니면 미완을 누르세요.",
+                },
+            };
+            if (part == lit) (button.Background, button.Foreground, button.FontWeight) = (back, ink, FontWeights.Bold);
+            else button.Opacity = 0.75;
+            button.Click += (_, _) => hw.SetState(c, pick, part);
+            row.Children.Add(button);
+        }
+        return row;
     }
 
     /// <summary>A tag as the grid shows it: its colour, crossed out when cleared, ↓ / ↑ when cleared below / above the pick.</summary>
@@ -141,8 +160,8 @@ public partial class SettingsWindow
         };
         var text = new TextBlock
         {
-            Text = tag.Text + tag.Arrow switch { < 0 => "↓", > 0 => "↑", _ => "" }, Foreground = new SolidColorBrush(ink), FontWeight = FontWeights.Bold,
-            TextDecorations = tag.Done ? TextDecorations.Strikethrough : null,
+            Text = tag.Text + tag.Arrow switch { < 0 => "↓", > 0 => "↑", _ => "" } + (tag.Unsure ? "!" : ""), Foreground = new SolidColorBrush(ink), FontWeight = FontWeights.Bold,
+            TextDecorations = !tag.Done ? null : tag.Unsure ? DottedCross(ink) : TextDecorations.Strikethrough,
         };
         return new Border
         {
@@ -150,6 +169,9 @@ public partial class SettingsWindow
             Margin = new(0, 0, 4, 0), Opacity = tag.Done ? 0.55 : 1, VerticalAlignment = VerticalAlignment.Center,
         };
     }
+
+    static TextDecorationCollection DottedCross(Color ink) =>
+        [new TextDecoration(TextDecorationLocation.Strikethrough, new Pen(new SolidColorBrush(ink), 1.5) { DashStyle = DashStyles.Dot }, 0, TextDecorationUnit.FontRecommended, TextDecorationUnit.FontRecommended)];
 
     /// <summary>An added raid's tag: no fight clears it, so a click crosses it out for this week, and another takes that back.</summary>
     static Border ClickableChip(HomeworkService hw, HomeworkCharacter c, HomeworkPick pick, HomeworkTag tag)
@@ -166,7 +188,7 @@ public partial class SettingsWindow
     {
         var panel = new StackPanel { Margin = new(0, 12, 0, 0) };
         panel.Children.Add(new TextBlock { Text = "직접 추가한 레이드", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 4) });
-        panel.Children.Add(Note("목록에 없거나 기간 한정인 레이드(종막 EX 같은)를 넣습니다. 전투 기록으로 지워지지 않으니 위의 태그를 눌러 클리어를 표시합니다. 자동 3개와 따로 남고, 합쳐서 5개까지입니다."));
+        panel.Children.Add(Note("목록에 없거나 기간 한정인 레이드(종막 EX 같은)를 추가합니다. 전투 기록으로는 지워지지 않으니 위의 태그를 눌러 클리어를 표시하세요. 자동 3개와 따로 남고, 합쳐서 5개까지입니다."));
         foreach (var raid in _s.Homework.CustomRaids)
         {
             var remove = new Button { Content = "삭제", Margin = new(8, 0, 0, 0) };

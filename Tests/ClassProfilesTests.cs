@@ -434,6 +434,32 @@ public class ClassProfilesTests
     }
 
     [Fact]
+    public void A_hidden_slot_is_read_while_the_timeline_records_its_casts()
+    {
+        var s = WithCharacter();
+        s.Party.Send[SlotGroup.초각스] = false;
+        ClassProfiles.Edit(s, null).Mine.Groups[SlotGroup.초각스] = false;
+        Assert.Contains(SlotId.초각스, ClassProfiles.Reads(s, []).Skip);
+        (s.Meter.On, s.Meter.Record) = (true, true);   // 사용 기록
+        Assert.DoesNotContain(SlotId.초각스, ClassProfiles.Reads(s, []).Skip);
+    }
+
+    [Fact]
+    public void 스킬창_읽기_off_reads_no_slot_and_sends_none()
+    {
+        var s = WithCharacter();
+        (s.Meter.On, s.Meter.Record) = (true, true);
+        s.Overlay.SkillRead = false;
+        var plan = ClassProfiles.Reads(s, [SlotId.아덴1, SlotId.아덴2]);
+        Assert.Equal(SlotInfo.All.Order(), plan.Skip.Order());
+        Assert.False(plan.Label);
+        Assert.True(plan.Gauge);   // 아덴 게이지 is its own part
+        Assert.True(plan.VoteOnly);   // the HUD vote still sees the bar
+        Assert.False(ClassProfiles.Reads(WithCharacter(), []).VoteOnly);
+        Assert.Empty(ClassProfiles.SentGroups(s));
+    }
+
+    [Fact]
     public void The_gauge_is_read_while_it_is_shown_or_sent()
     {
         var s = WithCharacter();

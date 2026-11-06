@@ -27,9 +27,9 @@ public partial class SettingsWindow
         var unconfirmed = _fightHp.Where(f => f.Trust == HpTrust.Unconfirmed).ToList();
         if (saved.Count == 0 && pending.Count == 0 && unconfirmed.Count == 0) return;
         p.Children.Add(SubHeading("HP 변경 감지",
-            "게임 업데이트로 보스 체력이 바뀌면, 던전 난이도와 맞는 값을 이 PC에 저장해 보스와 난이도를 계속 알아봅니다. " +
-            "처음 보는 난이도의 값은 다음 레이드에서 같은 값을 다시 볼 때 저장합니다. " +
-            "아무 데도 보내지 않습니다. 복사한 줄을 알려 주시면 다음 버전에 넣습니다."));
+            "게임 업데이트로 보스 체력이 바뀌어도 보스와 난이도를 계속 알아보도록, 던전 난이도와 맞는 값을 이 PC에 저장합니다. " +
+            "처음 보는 난이도의 값은 다음 레이드에서 같은 값이 다시 보이면 저장합니다. " +
+            "어디에도 보내지 않습니다. 복사한 줄을 알려 주시면 다음 버전에 넣습니다."));
         var effective = HpChange.Effective(RaidGates, r, _fightHp);
         foreach (var (gate, difficulty, learned) in saved)
         {

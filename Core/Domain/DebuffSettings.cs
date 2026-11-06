@@ -8,6 +8,10 @@ public sealed class DebuffSettings : IWindowPlace
     public Raid Raid { get; set; } = Raid.없음;
     /// <summary>The game's 보스 디버프 크기 setting (%): how big the boss's effect icons and "X n" counts are, apart from 버프 크기.</summary>
     public int BossIconSize { get; set; } = Vision.Geometry.RefBossSize;
+    /// <summary>감지 개수 (user, 2026-11-05): the most slots of the boss debuff row the 암수 walk reads, from the first. The size fixes
+    /// how many the row shows (<see cref="Vision.Geometry.MaxBossDebuffs"/>); this caps it, so the default (all) changes nothing. A bomb
+    /// past the cap is not found.</summary>
+    public int BossCount { get; set; } = Vision.Geometry.MaxBossSlots;
     /// <summary>비었을 때 숨기기 (user, 2026-10-13): a box disappears while nothing is on it; the others keep their place.</summary>
     public bool HideWhenEmpty { get; set; }
     public double Left { get; set; } = double.NaN;

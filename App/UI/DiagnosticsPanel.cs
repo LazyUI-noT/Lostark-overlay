@@ -7,7 +7,7 @@ using Geometry = GaugeOverlay.Core.Vision.Geometry;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>설정 → 화면·인식 → 진단: per slot the crop, the last <see cref="Reading"/> and the <see cref="SlotState"/>
+/// <summary>설정 → 화면·인식 → 감지 (under the screen): per slot the crop, the last <see cref="Reading"/> and the <see cref="SlotState"/>
 /// (ARCHITECTURE.md §4.1), then the buff and debuff boxes and the boss's counts. Fed through <see cref="Update"/> and
 /// <see cref="UpdateExtra"/> while it is shown.</summary>
 public sealed class DiagnosticsPanel : Grid
@@ -18,7 +18,7 @@ public sealed class DiagnosticsPanel : Grid
     {
         foreach (var w in new[] { 70.0, 110, 150, 1 })
             ColumnDefinitions.Add(new ColumnDefinition { Width = w == 1 ? new GridLength(1, GridUnitType.Star) : new GridLength(w) });
-        AddRow(["슬롯", "화면", "읽은 값", "상태"], header: true);
+        AddRow(["칸", "화면", "읽은 값", "상태"], "");   // the header shows with any group
         foreach (var id in SlotInfo.All)
         {
             var crop = new System.Windows.Controls.Image { Width = 88, Height = 88, HorizontalAlignment = HorizontalAlignment.Left };
@@ -26,7 +26,7 @@ public sealed class DiagnosticsPanel : Grid
             TextBlock T() => new() { VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Consolas, Malgun Gothic"), TextWrapping = TextWrapping.Wrap };
             var row = (crop, T(), T());
             _rows[id] = row;
-            AddRow([new TextBlock { Text = id.ToString(), VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3]);
+            AddRow([new TextBlock { Text = id.ToString(), VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3], DetectPlace.Slots);
         }
         // The buff and debuff boxes and the boss's counts, fed by UpdateExtra while their reads run.
         foreach (var key in Enumerable.Range(1, Geometry.MaxBuffBoxCount).Select(i => $"버프 {i}")
@@ -37,7 +37,8 @@ public sealed class DiagnosticsPanel : Grid
             TextBlock T() => new() { Text = "—", VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("Consolas, Malgun Gothic"), TextWrapping = TextWrapping.Wrap };
             var row = (crop, T(), T());
             _extra[key] = row;
-            AddRow([new TextBlock { Text = key, VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3]);
+            AddRow([new TextBlock { Text = key, VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3],
+                key.StartsWith("디버프") ? DetectPlace.Debuffs : key.StartsWith("버프") ? DetectPlace.Buffs : DetectPlace.Boss);
         }
     }
 
@@ -67,14 +68,25 @@ public sealed class DiagnosticsPanel : Grid
             : "—";
     }
 
-    void AddRow(object[] cells, bool header = false)
+    readonly List<(string Group, UIElement Cell)> _cells = [];
+
+    /// <summary>Shows only the rows of <paramref name="group"/> (<see cref="DetectPlace"/>'s groups), or nothing when null.</summary>
+    public void ShowOnly(string? group)
     {
+        foreach (var (g, cell) in _cells) cell.Visibility = group is not null && (g == "" || g == group) ? Visibility.Visible : Visibility.Collapsed;
+        Visibility = group is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    void AddRow(object[] cells, string group)
+    {
+        bool header = group == "";
         int row = RowDefinitions.Count;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         for (int c = 0; c < cells.Length; c++)
         {
             var e = cells[c] as UIElement ?? new TextBlock { Text = (string)cells[c], FontWeight = header ? FontWeights.SemiBold : FontWeights.Normal };
             if (e is FrameworkElement f) f.Margin = new(0, 4, 12, 4);
+            _cells.Add((group, e));
             Grid.SetRow(e, row);
             Grid.SetColumn(e, c);
             Children.Add(e);

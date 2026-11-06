@@ -14,6 +14,14 @@ public sealed class SettingsHistory(int capacity = 100, long maxChars = Settings
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
 
+    /// <summary>No steps either way: what they would restore has gone ([Test] on or off).</summary>
+    public void Clear()
+    {
+        _undo.Clear();
+        _redo.Clear();
+        _chars = 0;
+    }
+
     /// <summary>The settings as they are about to change. A new change drops what could be redone; the oldest step goes
     /// past <c>capacity</c>; the same snapshot twice in a row is one step.</summary>
     public void Record(string before)

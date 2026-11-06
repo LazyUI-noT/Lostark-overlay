@@ -16,6 +16,9 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     const string AreaOverlay = "내 오버레이", AreaCharacter = "캐릭터", AreaParty = "파티", AreaFit = "화면·인식", AreaKeys = "키·단축키";
+    const string AreaApp = "테마·업데이트", AreaScreens = "표시 화면·창 밖", AreaSkills = "스킬창", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수";
+    /// <summary>A form's width at most: rows don't stretch across a wide window (user, 2026-11-05: long blocks sideways).</summary>
+    const double FormMaxWidth = 620;
     const string SecMembers = "파티원 모양";
     const string CardBrushKey = Themes.CardBrushKey, StrokeBrushKey = Themes.StrokeBrushKey;
 
@@ -32,7 +35,7 @@ public partial class SettingsWindow
     readonly CardStack _secCharacter = new(), _secFit = new();
     readonly CardStack _secSkillLook = new(), _secDisplay = new(), _secBuffs = new(), _secOther = new(), _secAmsu = new(), _secPlace = new(), _secCopy = new();
     readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
-    readonly CardStack _secKeys = new(), _secHotkeys = new();
+    readonly CardStack _secKeys = new(), _secHotkeys = new(), _secApp = new();
     readonly StackPanel _context = new() { Orientation = Orientation.Horizontal };   // 편집 중 (top bar): the class the class sections edit
     Area[] _areas = [];
     Area _area = null!;
@@ -110,37 +113,55 @@ public partial class SettingsWindow
         _areas =
         [
             new(AreaFavorites, "★를 단 설정을 한곳에서 바꿉니다. 설정 행을 오른쪽 클릭하거나, 검색 결과의 ☆로 답니다.", (AreaFavorites, _secFavorites)),
-            new(AreaShow, "오버레이 창을 한눈에 보고 켜고 끕니다. 오버레이를 언제 보일지도 여기서 정합니다.", (AreaShow, _secShow)),
+            new(AreaShow, "오버레이 창을 한눈에 보고 켜고 끕니다. 언제 보일지도 여기서 정합니다.", (AreaShow, _secShow)),
             new(AreaOverlay, ""),
+            new(AreaScreens, "오버레이를 띄울 화면과, 다른 앱을 쓰는 동안의 읽기를 정합니다.", (AreaScreens, _secScreens)),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", ("캐릭터", _secCharacter)),
+            new(AreaSkills, "스킬 칸의 모양입니다. 칸마다의 색과 효과는 내 오버레이에서 칸을 눌러 바꿉니다.", (AreaSkills, _secSkillLook)),
+            new(AreaJudgment, "단죄·심판 룬의 심판 시간입니다.", (AreaJudgment, _secOther)),
+            new(AreaBuffs, "내 버프 줄에서 찾아 남은 시간을 막대로 보여 줍니다.", (AreaBuffs, _secBuffs)),
+            new(AreaAmsu, "보스에 걸린 암흑수류탄의 남은 시간입니다.", (AreaAmsu, _secAmsu)),
             new(AreaMeter, "보스가 받은 피해 중 각자의 몫(딜지분, 찬조)을 보여 줍니다.", (AreaMeter, _secMeter)),
             new(AreaParty, "연결, 파티원 칸의 모양과 순서, 보내고 받을 것을 정합니다.",
                 ("연결", _secConnect), (SecMembers, _secMembers), ("순서", _secOrder), ("보내기·받기", _secSend)),
             new(AreaRaid, "보스를 알아보고, 줄 수 창과 디버프 창을 관문마다 켭니다.", ("레이드", _secRaid)),
             new(AreaRecords, "캐릭터마다 저장된 전투를 보고, 열어서 시간 순으로 봅니다. 둘을 골라 비교합니다.", (AreaRecords, _secRecords)),
             new(AreaHomework, "캐릭터마다 이번 주에 클리어한 레이드를 봅니다.", (AreaHomework, _secHomework)),
-            new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 알려 줍니다. 진단에서 칸마다 읽은 값을 봅니다.", ("스킬창", _secFit), (SecDiag, _secDiag)),
+            new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 앱에 알려 줍니다. 감지에서 칸을 눌러 칸마다 읽은 값을 봅니다.", ("스킬창", _secFit), (SecDetect, _secDetect)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
+            new(AreaApp, "화면 테마, 업데이트, 전체 초기화입니다.", (AreaApp, _secApp)),
         ];
-        _area = _areas[2];   // 내 오버레이
+        _area = _areas.First(a => a.Name == AreaShow);
 
-        foreach (var area in _areas)
+        foreach (var group in FeatureMap.Rail)
         {
-            if (area.Name == AreaFit) Nav.Children.Add(new TextBlock { Text = "가끔", Opacity = 0.6, Margin = new(12, 14, 0, 6) });
-            var b = Toggle(area.Name, "area", area == _area);
-            // Full width with an icon: the areas read as one list, not as buttons of different widths.
-            (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (area.Name, AreaLabel(area.Name), HorizontalAlignment.Left, HorizontalAlignment.Stretch);
-            System.Windows.Automation.AutomationProperties.SetName(b, area.Name);   // read as the area, not the icon glyph
-            b.Checked += (_, _) => { if (_area != area) Go(area.Name); };
-            Nav.Children.Add(b);
+            var color = group.Color.Length > 0 ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(group.Color)) : null;
+            if (group.Name.Length > 0)
+            {
+                var heading = new TextBlock { Text = group.Name, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new(4, 6, 0, 1) };
+                if (color is not null) heading.Foreground = color;
+                Nav.Children.Add(heading);
+            }
+            foreach (var name in group.Areas)
+            {
+                var area = _areas.First(a => a.Name == name);
+                var b = Toggle(name, "area", area == _area);
+                b.Margin = new(0, 0, 0, 2);
+                b.Padding = new(8, 3, 8, 3);
+                // Full width with the group's bar: the areas read as one list, not as buttons of different widths.
+                (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (name, AreaLabel(name, color), HorizontalAlignment.Left, HorizontalAlignment.Stretch);
+                System.Windows.Automation.AutomationProperties.SetName(b, name);   // read as the area, not the icon glyph
+                b.Checked += (_, _) => { if (_area != area) Go(name); };
+                Nav.Children.Add(b);
+            }
         }
         var theme = EnumCombo([(UiTheme.LostArk, "로스트아크"), (UiTheme.DeepTeal, "딥 틸"), (UiTheme.Graphite, "그래파이트"), (UiTheme.ArkesiaNight, "아크라시아 밤"),
             (UiTheme.Light, "밝게"), (UiTheme.Dark, "어둡게"), (UiTheme.System, "Windows 설정 따름")],
             _s.Theme, v => { _s.Theme = v; ApplyTheme(); });
         theme.MinWidth = 150;
-        NavFoot.Children.Add(Wrap(Label("테마"), theme));
-        NavFoot.Children.Add(_navNote);
-        NavFoot.Children.Add(ResetButton("전체 초기화",
+        _secApp.Children.Add(Wrap(Label("테마"), theme));
+        _secApp.Children.Add(_navNote);
+        _secApp.Children.Add(ResetButton("전체 초기화",
             "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
             + "캐릭터, 오버레이 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
@@ -151,7 +172,7 @@ public partial class SettingsWindow
             (_update.IsEnabled, _update.Content) = (false, "확인 중…");
             CheckRequested?.Invoke();
         };
-        NavFoot.Children.Add(_update);
+        _secApp.Children.Add(_update);
         // 업데이트 채널 (user, 2026-11-03): 베타 tries new features early; 안정 again takes a beta back to the stable release.
         var channel = EnumCombo([(UpdateChannel.Stable, "안정"), (UpdateChannel.Beta, "베타")], _s.Updates.Channel, v =>
         {
@@ -161,9 +182,9 @@ public partial class SettingsWindow
             (_update.IsEnabled, _update.Content) = (false, "확인 중…");
             CheckRequested?.Invoke();
         });
-        channel.ToolTip = "베타: 새 기능을 먼저 써 봅니다. 문제가 있으면 안정으로 바꿔 안정 버전으로 되돌립니다(설정 파일은 백업됩니다).";
-        NavFoot.Children.Add(Wrap(Label("업데이트 채널"), channel));
-        NavFoot.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
+        channel.ToolTip = "베타: 새 기능을 먼저 씁니다. 문제가 있으면 안정으로 바꿔 안정 버전으로 돌아갈 수 있습니다(설정 파일은 백업됩니다).";
+        _secApp.Children.Add(Wrap(Label("업데이트 채널"), channel));
+        _secApp.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
@@ -174,7 +195,7 @@ public partial class SettingsWindow
         ApplyTheme();
     }
 
-    readonly TextBlock _navNote = Note("바꾼 설정은 바로 저장되고 오버레이에 반영됩니다. 파티원에게는 파티 → 보내기·받기에서 따로 보냅니다.");
+    readonly TextBlock _navNote = Note("바꾼 설정은 바로 저장되고 오버레이에도 바로 보입니다. 파티원에게 보내려면 파티 → 보내기·받기에서 따로 보내세요.");
 
     const string BackgroundBrushKey = Themes.BackgroundBrushKey, NavBrushKey = Themes.NavBrushKey;
 
@@ -183,17 +204,19 @@ public partial class SettingsWindow
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE7B3", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765",
+        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE7B3", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765",
     };
 
-    static StackPanel AreaLabel(string name)
+    /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name.</summary>
+    static StackPanel AreaLabel(string name, Brush? color)
     {
+        var bar = new Border { Width = 3, Height = 16, CornerRadius = new(1.5), Margin = new(0, 0, 8, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
         var icon = new TextBlock
         {
             Text = AreaIcons[name], FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
             Margin = new(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
         };
-        return new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
+        return new StackPanel { Orientation = Orientation.Horizontal, Children = { bar, icon, new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
     }
 
     /// <summary>A section button (or area button): one of a group, drawn as a toggle.</summary>
@@ -230,7 +253,7 @@ public partial class SettingsWindow
         ShowHeader();
         ShowBody();
         Body.ScrollToTop();
-        DiagnosticsShownChanged?.Invoke();
+        DiagnosticsMaybeChanged();
     }
 
     void ShowHeader()
@@ -257,6 +280,10 @@ public partial class SettingsWindow
         var panel = _area.Sections.First(s => s.Name == _area.Shown).Panel;
         if (panel == _secCharacter && IsVisible) MarkSupportSeen();
         Form.Children.Clear();
+        // Wide by nature: the scene, the timeline, the read-out table, the 숙제 grid.
+        bool wide = _area.Name is AreaShow or AreaRecords or AreaHomework || _area.Shown is SecDetect;
+        Form.MaxWidth = wide ? double.PositiveInfinity : FormMaxWidth;
+        Form.HorizontalAlignment = wide ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         Detach(panel);
         Form.Children.Add(panel);   // its own cards (CardStack)
     }
