@@ -10,7 +10,7 @@ public sealed partial class Settings
     [
         nameof(Theme),
         nameof(FirstRunDone), nameof(Updates), nameof(Characters), nameof(ActiveCharacter), nameof(Cores), nameof(StackSkills),
-        nameof(SubclassHistory), nameof(SeenSupport), nameof(Fits), nameof(DetectedScreen), nameof(Adjusts),
+        nameof(SubclassHistory), nameof(SeenSupport), nameof(RailSeen), nameof(Fits), nameof(DetectedScreen), nameof(Adjusts),
         nameof(Homework),   // characters read from the game and picks raised by clears
     ];
 

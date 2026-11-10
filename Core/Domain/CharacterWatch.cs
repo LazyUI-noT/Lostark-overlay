@@ -38,7 +38,7 @@ public sealed record CharacterWatch(string? Current, DateTime UnknownSince, stri
     }
 
     /// <summary>The app's class and 직업각인 now. Away from the current character's class: 캐릭터 불명 (a switch the menu didn't
-    /// show). While 불명: the one character on the list with this class and 직업각인, when no other of the class could be it.</summary>
+    /// show). While 불명: the one character on the list with this class and 직업각인, when no other could be it.</summary>
     public (CharacterWatch Watch, CharacterChange? Change) Playing(string? className, string? subclass, IReadOnlyList<HomeworkCharacter> roster, DateTime wall)
     {
         if (Current is { } current)
@@ -47,8 +47,9 @@ public sealed record CharacterWatch(string? Current, DateTime UnknownSince, stri
             return away ? (new CharacterWatch(null, wall, null, TimeSpan.MinValue), new CharacterChange(null, null)) : (this, null);
         }
         if (className is null || subclass is null) return (this, null);
+        if (roster.Any(c => c.ClassName is null)) return (this, null);   // one not learned yet could be it
         var sameClass = roster.Where(c => c.ClassName == className).ToList();
-        if (sameClass.Any(c => c.Subclass is null)) return (this, null);   // one not learned yet could be it
+        if (sameClass.Any(c => c.Subclass is null)) return (this, null);   // likewise
         var match = sameClass.Where(c => c.Subclass == subclass).ToList();
         if (match.Count != 1) return (this, null);
         return (this with { Current = match[0].Name }, new CharacterChange(match[0].Name, UnknownSince));

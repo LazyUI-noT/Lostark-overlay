@@ -434,6 +434,20 @@ public class ClassProfilesTests
     }
 
     [Fact]
+    public void A_hidden_slot_the_meter_counts_is_read_even_without_records()
+    {
+        var s = WithCharacter();
+        s.Party.Send[SlotGroup.초각스] = false;
+        ClassProfiles.Edit(s, null).Mine.Groups[SlotGroup.초각스] = false;
+        (s.Meter.On, s.Meter.Record) = (true, false);
+        Assert.Contains(SlotId.초각스, ClassProfiles.Reads(s, []).Skip);
+        ClassProfiles.EditWindows(s, ClassProfiles.ActiveKey(s)).MeterSkill = SlotId.초각스;
+        Assert.DoesNotContain(SlotId.초각스, ClassProfiles.Reads(s, []).Skip);
+        s.Overlay.SkillRead = false;
+        Assert.Contains(SlotId.초각스, ClassProfiles.Reads(s, []).Skip);
+    }
+
+    [Fact]
     public void A_hidden_slot_is_read_while_the_timeline_records_its_casts()
     {
         var s = WithCharacter();

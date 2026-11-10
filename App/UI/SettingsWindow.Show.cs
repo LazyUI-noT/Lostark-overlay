@@ -12,13 +12,13 @@ using static GaugeOverlay.App.UI.UiBuild;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>설정 → 표시: whether the overlays show (오버레이 표시, 스킬창이 안 보이면 숨기기), every window's show switch (the same
+/// <summary>설정 → 기능 Map: whether the overlays show (오버레이 표시, 스킬창이 안 보이면 숨기기), every window's show switch (the same
 /// as tray → 표시, <see cref="TrayToggles"/>), and a scene of the game screen with every window at its spot, playing a sample
 /// fight and stepping through each window's looks. The scene draws a copy of the settings: nothing it shows is saved. A
 /// window's looks are chosen on its own page; a click in the scene goes there.</summary>
 public partial class SettingsWindow
 {
-    const string AreaShow = "표시";
+    const string AreaShow = "기능 맵";
     const double SceneHeight = 420, SwitchesWidth = 250;
     /// <summary>Every second one window in three steps to its next look: each window every 3 s, not all at once.</summary>
     const int LookEvery = 3;
@@ -45,14 +45,14 @@ public partial class SettingsWindow
             _secShow.IsVisibleChanged += (_, _) => SceneShown(_secShow.IsVisible);
         }
         var o = _s.Overlay;
-        var p = Refill(_secShow, AreaShow, "오버레이 창을 켜고 끕니다 (트레이 메뉴의 표시와 같은 스위치). 그림은 게임 화면 위의 모습이고, 창마다 표시 방식을 " +
+        var p = Refill(_secShow, AreaShow, "오버레이 창을 켜고 끕니다 (트레이 메뉴의 기능 맵과 같은 스위치). 그림은 게임 화면 위의 모습이고, 창마다 표시 방식을 " +
             "돌아가며 보여 줍니다. 마우스를 올리면 멈추고, 누르면 그 창의 설정으로 갑니다. 꺼진 창은 흐린 점선으로 보입니다.");
         p.Children.Add(HelpRow("오버레이 표시", "끄기: 내 오버레이와 파티원 창을 모두 숨깁니다. 자동: 게임이나 설정 창이 앞에 있을 때 아래 조건에 맞으면 보여 줍니다. 항상 표시: 어떤 창이 앞에 있어도 보여 줍니다. 트레이 메뉴와 '오버레이 켜기/끄기' 단축키는 끄기와 마지막으로 켠 방식을 오갑니다.",
             EnumCombo([(OverlayShow.끄기, "끄기"), (OverlayShow.자동, "자동"), (OverlayShow.항상, "항상 표시")], o.Mode(), v => { o.SetMode(v); Dispatcher.BeginInvoke(BuildAll); })));
         if (o.Mode() == OverlayShow.자동)
         {
-            p.Children.Add(HelpRow("자동일 때", "스킬창이 보일 때: 컷신이나 로딩으로 스킬창이 안 보이면 숨깁니다. 던전 안에서: 게임의 전투 분석기나 보스 체력이 보이면 던전으로 봅니다. 전투 분석기를 게임에서 열어 두어야 하고, 이 항목을 고를 때 미터기가 꺼져 있으면 표시 안 함으로 켜집니다. DPS 미터기 창은 이 설정을 따르지 않습니다.", AutoWhenCombo(o)));
-            if (o.Auto() == OverlayAuto.던전) p.Children.Add(Note(_s.Meter.On ? "게임에서 전투 분석기를 열어 두세요. 안 보이면 오버레이도 나오지 않습니다." : "미터기가 꺼져 있어 던전을 알 수 없습니다. 게임이 앞에 있으면 보여 줍니다."));
+            p.Children.Add(HelpRow("자동일 때", "스킬창이 보일 때: 컷신이나 로딩으로 스킬창이 안 보이면 숨깁니다. 전투 중일 때: 게임의 전투 분석기나 보스 체력바가 보이면 전투 중으로 봅니다. 전투 분석기를 게임에서 열어 두어야 하고, 이 항목을 고를 때 미터기가 꺼져 있으면 표시 안 함으로 켜집니다. DPS 미터기 창은 이 설정을 따르지 않습니다.", AutoWhenCombo(o)));
+            if (o.Auto() == OverlayAuto.던전) p.Children.Add(Note(_s.Meter.On ? "게임에서 전투 분석기를 열어 두세요. 안 보이면 오버레이도 나오지 않습니다." : "미터기가 꺼져 있어 전투 중인지 알 수 없습니다. 게임이 앞에 있으면 보여 줍니다."));
         }
 
         AddMap(p);
@@ -89,22 +89,47 @@ public partial class SettingsWindow
         DetectAreasChanged(mine);
     }
 
-    /// <summary>--demo --map-open=all|id,id --map-pin=id --map-fail=id,id: the map with those boxes open, one box's lines held and those readers failing, for screenshots.</summary>
-    internal void DemoMap(string? open, string? pin, string? fail = null)
+    /// <summary>--demo --map-open=all|id,id --map-pin=id --map-fail=id,id --map-seen=id,id --map-preview=id --map-scroll=px --map-line=id --map-cut=id: the map with those boxes
+    /// open, one box's lines held, those readers failing or ✓ and one box's hover card under it (a popup PrintWindow can't see), scrolled, one box's line to 파티 hovered and one cut, for screenshots.</summary>
+    internal void DemoMap(string? open, string? pin, string? fail = null, string? seen = null, string? preview = null, string? scroll = null, string? line = null, string? cut = null)
     {
-        if (fail is not null) _detect = fail.Split(',').ToDictionary(id => id, _ => new Detection(DetectMark.Failed, TimeSpan.Zero));
+        var marks = new Dictionary<string, Detection>();
+        foreach (var id in fail?.Split(',') ?? []) marks[id] = new Detection(DetectMark.Failed, TimeSpan.Zero, Why: "데모: 읽어야 하는데 못 읽었습니다.");
+        foreach (var id in seen?.Split(',') ?? []) marks[id] = new Detection(DetectMark.Concrete, TimeSpan.Zero);
+        if (marks.Count > 0) _detect = marks;
+        if (preview is not null)
+        {
+            var bgra = new byte[320 * 80 * 4];
+            for (int i = 0; i < bgra.Length; i += 4) (bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3]) = (0x60, (byte)(i / 4 % 320 * 255 / 320), 0x30, 255);
+            _detectPictures = new Dictionary<string, DetectPicture> { [preview] = new DetectPicture(new Core.Domain.Image(320, 80, bgra), default, TimeSpan.Zero) };
+            _mapDemoCard = preview;
+        }
         if (open == "all") _mapOpen.UnionWith(FeatureMap.Boxes.Select(b => b.Id));
         else if (open is not null) _mapOpen.UnionWith(open.Split(','));
         _mapPin = pin;
+        if (cut is not null) FeatureMap.SetCut(_s, FeatureMap.Edges.First(e => e.From == cut && FeatureMap.Cuttable(e)), true);
         FillShow();
+        if (scroll is null && line is null) return;
+        _ = Dispatcher.InvokeAsync(async () =>   // once the page is up: --tab goes there after this
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Body.ScrollToVerticalOffset(double.Parse(scroll ?? "0"));
+            if (line is not null) _map?.DemoLine(line);
+        });
     }
+
+    string? _mapDemoCard;
+
+    /// <summary>A map box's hover card: its window's GIF, its reader's capture from the moment its mark turned.</summary>
+    UIElement? MapCard(string id) => MapPreview.Card(FeatureMap.Boxes.First(b => b.Id == id).Title, FeatureMap.WindowOf(id), _detect.GetValueOrDefault(id),
+        _detectPictures.TryGetValue(id, out var picture) ? BitmapOf(picture) : null, _detectAt);
 
     /// <summary>The 표시 map (FeatureMapView): 모두 접기 / 모두 펼치기 above it, a note line under it for what a switch also did.</summary>
     void AddMap(Panel p)
     {
         var note = new TextBlock { Opacity = 0.8, Margin = new(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
         var map = _map = new FeatureMapView(_s, _mapOpen, _mapPin, () => { Changed(); Dispatcher.BeginInvoke(FillShow); }, area => Go(area),
-            text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, ShowResources = _checkOn, ShowDetect = id => { _detectPicked = id; Go(AreaFit, SecDetect); DrawDetect(); } };
+            text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, Preview = MapCard, ShowResources = _checkOn, ShowDetect = id => { _detectPicked = id; Go(AreaFit, SecDetect); DrawDetect(); } };
         map.SetDetect(_detect, _detectAt);
         note.Text = _mapNote ?? "";
         _mapNote = null;
@@ -113,7 +138,7 @@ public partial class SettingsWindow
         fold.Click += (_, _) => map.SetAll(false);
         open.Click += (_, _) => map.SetAll(true);
         p.Children.Add(HelpRow("기능 맵", "왼쪽 게임 설정에서 오른쪽 기능으로, 무엇이 무엇을 쓰는지 보여 줍니다. 칸을 누르면 펼쳐지거나 접히고, 펼친 칸에서 켜고 끕니다. "
-            + "⚙는 그 설정 화면으로 갑니다. 점 색: 초록 켜짐, 파랑 표시 안 함(읽기는 함), 회색 꺼짐. 금색 테는 캐릭터마다 따로 정하는 것입니다. 분홍 점선은 파티와 주고받는 것, 빨간 점선은 끊긴 것입니다. 진한 주황 빛이 게임 설정 쪽으로 흐르면 그 기능이 읽지 못하는 중이니 게임 설정을 확인하세요.",
+            + "⚙는 그 설정 화면으로 갑니다. 점: 초록 켜짐, 파랑 표시 안 함(읽기는 함), 회색 꺼짐. 금색 테: 캐릭터마다 따로 정함. 분홍 점선은 파티와 주고받는 것, 회색 점선은 끊긴 것이고, 파티 옆 선을 누르면 끊거나 잇습니다. 칸이나 선에 마우스를 올리면 이어진 곳과 창의 모습이 보입니다. 주황 빛이 게임 설정 쪽으로 흐르면 그 기능이 못 읽는 중이니 게임 설정을 확인하세요.",
             new StackPanel { Orientation = Orientation.Horizontal, Children = { fold, open, CheckButton() } }));
         var host = new ScrollViewer { Content = map, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Margin = new(0, 8, 0, 0) };
         host.PreviewMouseWheel += (_, e) =>   // the page scrolls, not this sideways-only viewer, which would swallow the wheel
@@ -125,6 +150,7 @@ public partial class SettingsWindow
         CardStack.SetBreak(host, true);
         p.Children.Add(host);
         p.Children.Add(note);
+        if (_mapDemoCard is { } demo && MapCard(demo) is { } card) p.Children.Add(card);
         Detach(_checkTable);
         CardStack.SetBreak(_checkTable, true);
         p.Children.Add(_checkTable);
@@ -158,8 +184,8 @@ public partial class SettingsWindow
     {
         var p = Refill(_secScreens, AreaScreens, "게임과 디스코드 같은 다른 앱을 서로 다른 모니터에 두고 쓸 때의 설정입니다.");
         p.Children.Add(HelpRow("표시 화면", "오버레이를 띄울 모니터입니다. 바꾸면 오버레이 창들이 그 모니터의 같은 자리쯤으로 옮겨 갑니다. 그 모니터를 빼면 게임이 있는 모니터로 돌아옵니다.", DisplayCombo()));
-        p.Children.Add(Check("다른 앱을 쓰는 중에도 읽기", _s.Screens.ReadBehind, v => { _s.Screens.ReadBehind = v; ShowBehindLine(); }, Changed,
-            "켜면 디스코드나 브라우저를 눌러 쓰고 있어도 게임을 계속 읽고, 오버레이도 그대로 보여 줍니다. 끄면 게임을 다시 누를 때까지 멈춥니다. 게임 화면이 모니터에 보이고 있어야 읽을 수 있어서, 게임을 최소화하거나 다른 창이 게임을 덮으면 그동안은 멈춥니다. 게임이 전체 화면 모드면 다른 앱을 누르는 순간 게임이 내려가니, 전체 창 모드로 쓰세요."));
+        p.Children.Add(Check("Alt+Tab 중에도 항상 표시", _s.Screens.ReadBehind, v => { _s.Screens.ReadBehind = v; ShowBehindLine(); }, Changed,
+            "켜면 디스코드나 브라우저를 쓰는 동안에도 게임을 읽고 오버레이를 보여 줍니다. 전체 화면 모드는 다른 앱을 누르면 게임이 내려가니 전체 창 모드로 쓰세요. 끄면 게임을 다시 누를 때까지 멈춥니다. 켜 두어도 게임이 최소화되거나 다른 창에 가려지면 멈춥니다."));
         Detach(_behindLine);
         p.Children.Add(_behindLine);
         ShowBehindLine();
@@ -168,7 +194,7 @@ public partial class SettingsWindow
     /// <summary>스킬창이 보일 때 and 던전 안에서; the old 켜기 (게임앞) only while it's still the one in use.</summary>
     ComboBox AutoWhenCombo(OverlaySettings o)
     {
-        var items = new List<ComboBoxItem> { new() { Content = "스킬창이 보일 때", Tag = OverlayAuto.스킬창 }, new() { Content = "던전 안에서", Tag = OverlayAuto.던전 } };
+        var items = new List<ComboBoxItem> { new() { Content = "스킬창이 보일 때", Tag = OverlayAuto.스킬창 }, new() { Content = "전투 중일 때", Tag = OverlayAuto.던전 } };
         if (o.Auto() == OverlayAuto.게임앞) items.Insert(0, new() { Content = "게임이 앞에 있을 때 (지금 설정)", Tag = OverlayAuto.게임앞 });
         var c = Combo();
         c.ItemsSource = items;
@@ -306,13 +332,13 @@ public partial class SettingsWindow
     {
         OverlayPart.Skills => "지금 캐릭터의 스킬 칸 전부입니다. 끄기 전에 꺼 둔 칸은 다시 켤 때 그대로 꺼져 있습니다.",
         OverlayPart.Gauge => "지금 캐릭터의 아덴 게이지입니다.",
-        OverlayPart.Buffs => "공증, 아덴 피증, 초각스 피증, 뎀증 막대 전부입니다. 끄기 전에 꺼 둔 막대는 다시 켤 때 그대로입니다.",
+        OverlayPart.Buffs => "공증, 아덴 피증, 초각스 피증, 초각성기 뎀증 막대 전부입니다. 끄기 전에 꺼 둔 막대는 다시 켤 때 그대로입니다.",
         OverlayPart.Debuffs => "3막 모르둠의 디버프 창을 직접 켭니다. 레이드 안에서는 늘 보입니다. 끄면 레이드의 디버프 창 자동 설정대로 보스를 알아본 동안만 보입니다.",
         OverlayPart.Judgment => "지금 캐릭터의 단심 창입니다.",
         OverlayPart.Amsu => "보스에 걸린 암흑수류탄의 남은 시간입니다. 켜면 모든 보스에서 읽습니다.",
         OverlayPart.Meter => "끄면 창만 숨깁니다. 전투 기록에 쓰려고 계속 읽습니다. 읽기까지 끄려면 DPS 미터기에서 끄세요.",
         OverlayPart.BarCount => "모든 레이드의 줄 수 읽기입니다. 관문마다 켠 줄 수 창 설정은 남습니다. 레이드 화면 맨 위 스위치와 같습니다.",
-        OverlayPart.Party => "파티원 창 전부입니다. 파티 연결은 그대로입니다.",
+        OverlayPart.Party => "파티원 창 전부입니다. 공유 연결은 그대로입니다.",
         _ => null,
     };
 

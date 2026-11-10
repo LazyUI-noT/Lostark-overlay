@@ -109,9 +109,9 @@ public sealed partial class Engine
     }
 
     /// <summary>The boss text row, when a raid read is on and a probe is due (twice a second; it is how a boss bar is seen
-    /// when the overlay's meter is off).</summary>
+    /// when the overlay's meter is off; faster during 대난투).</summary>
     PixelRect? BossProbeRect(Config config, TimeSpan now) =>
-        (RaidReadsOn(config) || !_meterOn && BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) && Elapsed(now, _lastBossProbe, BossProbeEvery)
+        (RaidReadsOn(config) || !_meterOn && BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) && Elapsed(now, _lastBossProbe, BossReadEvery(BossProbeEvery))
             ? Geometry.BossTextRow(_vp, _fit!) : null;
 
     /// <summary>With the meter off this is the boss HP's read, the 그림자 number's too; with it on, the meter's step does both.</summary>
@@ -140,6 +140,17 @@ public sealed partial class Engine
         _bossSoft.Reset();
         _jeonbunSoft.Reset();
         _softHp = null;
+        ResetIconGates();
+    }
+
+    /// <summary>The icon gates identify every box again: sharpening or another source can keep a thumbnail within the
+    /// threshold while the answer would differ (icon-gates step 2 review).</summary>
+    void ResetIconGates()
+    {
+        _buffIdentify.Reset();
+        _debuffIdentify.Reset();
+        _judgmentIcon.Reset();
+        _amsuWatch.ResetGate();
     }
 
     /// <summary>At each step: 강화 읽기 switched since the last one starts its readers over.</summary>

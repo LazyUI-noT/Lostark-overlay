@@ -38,6 +38,11 @@ public static class Timeline
     public static bool SameRaid(FightRecord a, FightRecord b) =>
         !string.IsNullOrEmpty(a.Gate) && a.Gate == b.Gate && a.Difficulty == b.Difficulty;
 
+    /// <summary>전투 기록's 레이드순 (user, 2026-11-10): one gate's fights together, its difficulties apart, each group where its newest
+    /// fight stands in <paramref name="newestFirst"/>, newest first inside.</summary>
+    public static IReadOnlyList<T> ByRaid<T>(IReadOnlyList<T> newestFirst, Func<T, string?> gate, Func<T, string?> difficulty) =>
+        [.. newestFirst.GroupBy(gate).SelectMany(g => g.GroupBy(difficulty).SelectMany(d => d))];
+
     /// <summary>The window the boss must lose under a line in to count as unhittable (user, 2026-11-04).</summary>
     public const double UnhittableSeconds = 5;
 
@@ -68,6 +73,15 @@ public static class Timeline
         }
         if (spans.Count > 0 && spans[^1].To >= boss[^1].T) spans.RemoveAt(spans.Count - 1);
         return spans;
+    }
+
+    /// <summary>My casts of <paramref name="slot"/> a minute over the fight, with <paramref name="excluded"/> (보스 타격 불가) taken
+    /// off: its time and the casts in it (user, 2026-11-09); null with no time left.</summary>
+    public static double? SkillRate(FightRecord r, SlotId slot, IReadOnlyList<(double From, double To)> excluded)
+    {
+        double seconds = r.Duration - excluded.Sum(s => Math.Max(0, Math.Min(s.To, r.Duration) - Math.Max(s.From, 0)));
+        return seconds <= 0 ? null : r.Events.Count(e => e.Name == r.Me && e.Kind == RecordEventKind.사용 && e.What == (int)slot
+            && !excluded.Any(s => e.T >= s.From && e.T < s.To)) * 60 / seconds;
     }
 
     /// <summary>Where the figures beside the chart's line go, in the input's order: at their own height, pushed apart by
@@ -208,6 +222,11 @@ public static class Timeline
     public static IReadOnlyList<(string Name, double Dps)> DpsAverages(FightRecord r, TimeWindow w) =>
         [.. r.Samples.Where(s => s.T >= w.From && s.T <= w.To).GroupBy(s => s.Name).Select(g => (Name: g.Key, Dps: g.Average(s => (double)s.Dps)))
             .OrderBy(x => x.Name != r.Me).ThenByDescending(x => x.Dps)];
+
+    /// <summary>My average DPS over the whole fight, as the timeline's legend has it when not zoomed (the 전투 기록 list beside 내 몫,
+    /// user 2026-11-09); null when I have no figures.</summary>
+    public static double? MyDps(FightRecord r) =>
+        DpsAverages(r, TimeWindow.Whole(r.Duration)) is [var first, ..] && first.Name == r.Me ? first.Dps : null;
 
     public static IReadOnlyList<RecordEvent> Visible(FightRecord r, TimeWindow w) => [.. r.Events.Where(e => e.T >= w.From && e.T <= w.To)];
 

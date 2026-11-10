@@ -1,4 +1,5 @@
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
@@ -18,6 +19,13 @@ public class AdjustReadsTests
         Assert.Null(r.Buff);
         Assert.Null(r.Debuff);
         Assert.Null(r.Boss);
+    }
+
+    [Fact]
+    public void The_panel_reads_as_told_and_is_unread_by_default()
+    {
+        Assert.True(AdjustReads.From(0, null, null, panel: true).Of(AdjustPart.전분));
+        Assert.Null(AdjustReads.From(0, null, null).Of(AdjustPart.전분));
     }
 
     [Fact]

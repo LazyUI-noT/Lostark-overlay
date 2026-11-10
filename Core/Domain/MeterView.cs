@@ -5,12 +5,13 @@ namespace GaugeOverlay.Core.Domain;
 public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long BossTaken, int? Timer, bool Running, bool PanelFound,
     MeterHistory History, IReadOnlyList<double>? BuffCover = null, bool ShowBuffBars = true,
     IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>>? BuffSplit = null, string? BossName = null,
-    IReadOnlyList<double>? BuffParty = null)
+    IReadOnlyList<double>? BuffParty = null, MeterSkillLine? Skill = null, MeterGhost? Ghost = null)
 {
-    /// <summary>The header's right side: the boss's name (else "보스") and my share of its damage, else the boss damage.</summary>
-    public string? Header(ulong me, Func<long, string> amount) =>
-        Rows.FirstOrDefault(r => r.Id == me)?.Share is { } mine ? $"{BossName ?? "보스"} · 내 {mine * 100:0.0}%"
-        : BossTaken > 0 ? $"{BossName ?? "보스"} {amount(BossTaken)}" : null;
+    /// <summary>The header's right side: the boss's name (else "보스"), then my share of its damage, else the boss damage.
+    /// Apart, so a long name can be shortened and the figure after it kept.</summary>
+    public (string Name, string After)? Header(ulong me, Func<long, string> amount) =>
+        Rows.FirstOrDefault(r => r.Id == me)?.Share is { } mine ? (BossName ?? "보스", $" · 내 {mine * 100:0.0}%")
+        : BossTaken > 0 ? (BossName ?? "보스", $" {amount(BossTaken)}") : null;
 
     /// <summary>The line graph's rows: the dealers and always me (alone, or as a support), me first.</summary>
     public IEnumerable<MeterRow> Lines(ulong me, int max) =>

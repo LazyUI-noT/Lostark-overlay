@@ -25,8 +25,16 @@ public partial class SettingsWindow
         PreviewKeyDown += (_, e) =>
         {
             if (Keyboard.Modifiers != ModifierKeys.Control || Keyboard.FocusedElement is TextBox || UiBuild.KeyFieldCapturing()) return;   // a text box keeps its own undo
-            if (e.Key == Key.Z) { Step(undo: true); e.Handled = true; }
-            else if (e.Key == Key.Y) { Step(undo: false); e.Handled = true; }
+            if (e.Key == Key.Z)
+            {
+                if (!PlaceBack()) Step(undo: true);   // placing on the 감지 page: its own steps, not 설정's
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y)
+            {
+                if (!_placeWanted) Step(undo: false);
+                e.Handled = true;
+            }
         };
     }
 

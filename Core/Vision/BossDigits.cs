@@ -42,7 +42,9 @@ public static class BossDigits
         string number = text.ToString().Trim(',');
         return Grouped.IsMatch(number) ? long.Parse(number.Replace(",", "")) : null;
     }
-    const double NumberPop = 1.5;
+    // The line bounds (MinLine..MaxLine) scaled for the number: 13.6–27.2 px at 1080p HUD 110, around its 16 px glyphs (15%
+    // under) and a 1.5× pop's 24 (13% over; 1.5 itself put 24 on the bound, and a pop rounding to 22 px at HUD 100 failed).
+    const double NumberPop = 1.7;
     static readonly Regex Grouped = new(@"^\d{1,3}(?:,\d{3})+$", RegexOptions.CultureInvariant);
 
     /// <summary>The bar count ("X 494" → 494), or null.</summary>

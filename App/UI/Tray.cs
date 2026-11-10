@@ -19,7 +19,7 @@ public sealed class Tray : IDisposable
     readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _testReinforced, _parts;
     readonly Dictionary<OverlayPart, ToolStripMenuItem> _partItems = [];
 
-    /// <summary>표시 ▸'s names, in menu order (as 설정 → 표시).</summary>
+    /// <summary>기능 Map ▸'s names, in menu order (as 설정 → 기능 Map).</summary>
     internal static readonly (OverlayPart Part, string Name)[] PartNames =
         [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Debuffs, "디버프 창"),
          (OverlayPart.Judgment, "단심 창"), (OverlayPart.Amsu, "암수 창"), (OverlayPart.Meter, "DPS 미터기"), (OverlayPart.BarCount, "줄 수 창"), (OverlayPart.Party, "파티원 창")];
@@ -31,7 +31,7 @@ public sealed class Tray : IDisposable
     public event Action<string, string, string>? CharacterPicked;
     /// <summary>기본 (no class) picked from the 캐릭터 menu.</summary>
     public event Action? DefaultPicked;
-    /// <summary>표시 ▸: a part turned on (true) or off.</summary>
+    /// <summary>기능 Map ▸: a part turned on (true) or off.</summary>
     public event Action<OverlayPart, bool>? PartToggled;
     /// <summary>오버레이 프로필 picked (0-based).</summary>
     public event Action<int>? ProfileChosen;
@@ -68,10 +68,10 @@ public sealed class Tray : IDisposable
         // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
         _test.DropDownItems.Add(_testFront);
         _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
-        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
-        _profiles = new ToolStripMenuItem("프로필");
+        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"배치 {i + 1}", () => ProfileChosen?.Invoke(i)))];
+        _profiles = new ToolStripMenuItem("배치");
         _profiles.DropDownItems.AddRange(_profileItems);
-        _parts = new ToolStripMenuItem("표시");
+        _parts = new ToolStripMenuItem("기능 맵");
         foreach (var (part, name) in PartNames)
         {
             var item = new ToolStripMenuItem(name);
@@ -79,20 +79,20 @@ public sealed class Tray : IDisposable
             _partItems[part] = item;
             _parts.DropDownItems.Add(item);
         }
-        _character = new ToolStripMenuItem("캐릭터: 없음");
+        _character = new ToolStripMenuItem("직업 인식: 없음");
         _raid = new ToolStripMenuItem();
         _raidCount = Item("줄 수 읽기 (모든 레이드)", () => CountToggled?.Invoke(!_raidCount!.Checked));
         _raid.DropDownItems.AddRange([_raidCount, new ToolStripSeparator(), Item("자동 인식", () => RaidPicked?.Invoke(null))]);
         SetRaid(new RaidSettings(), [], null);
-        _refit = Item("스킬창 재맞춤 (+캐릭터 감지)", () => Refit?.Invoke());
-        _detectSubclass = Item("직업각인 다시 감지", () => DetectSubclass?.Invoke());
+        _refit = Item("스킬창 다시 맞추기 (+직업 확인)", () => Refit?.Invoke());
+        _detectSubclass = Item("직업각인 다시 읽기", () => DetectSubclass?.Invoke());
         var submitSkills = Item("스킬 등록", () => SubmitSkills?.Invoke());
         _rereadIcons = Item("아이콘 다시 읽기", () => RereadIcons?.Invoke());
         _host = Item("호스트 시작", () => HostParty?.Invoke());
         _join = Item("참가…", () => JoinParty?.Invoke());
-        _copyToken = Item("토큰 복사", () => CopyToken?.Invoke());
+        _copyToken = Item("참가 코드 복사", () => CopyToken?.Invoke());
         _leave = Item("나가기", () => LeaveParty?.Invoke());
-        _party = new ToolStripMenuItem("파티: 없음");
+        _party = new ToolStripMenuItem("공유: 없음");
         _party.DropDownItems.AddRange([_host, _join, _copyToken, _leave]);
 
         // Rarely used tools in one submenu, so the top level keeps what is used between gates.
@@ -164,7 +164,7 @@ public sealed class Tray : IDisposable
     /// <summary>Checkmark on "오버레이 표시".</summary>
     public void SetOverlayVisible(bool visible) => _overlay.Checked = visible;
 
-    /// <summary>표시 ▸'s ticks as the settings say.</summary>
+    /// <summary>기능 Map ▸'s ticks as the settings say.</summary>
     public void SetParts(Func<OverlayPart, bool> shown)
     {
         foreach (var (part, item) in _partItems) item.Checked = shown(part);
@@ -272,7 +272,7 @@ public sealed class Tray : IDisposable
     public void SetCharacters(IEnumerable<(string Family, IEnumerable<(string Class, IReadOnlyList<string> Subclasses)> Classes)> tree,
         string? active, IReadOnlyCollection<string> favorites)
     {
-        _character.Text = $"캐릭터: {active ?? "기본"}";
+        _character.Text = $"직업 인식: {active ?? "기본"}";
         _character.DropDownItems.Clear();
         var none = new ToolStripMenuItem("기본 (클래스 없음)") { Checked = active is null };
         none.Click += (_, _) => DefaultPicked?.Invoke();
@@ -307,7 +307,7 @@ public sealed class Tray : IDisposable
     public void SetParty(string? status)
     {
         _partyActive = status is not null;
-        _party.Text = $"파티: {status ?? "없음"}";
+        _party.Text = $"공유: {status ?? "없음"}";
         _host.Visible = _join.Visible = !_partyActive;
         _copyToken.Visible = _leave.Visible = _partyActive;
         if (_icon is not null) UpdateIcon();

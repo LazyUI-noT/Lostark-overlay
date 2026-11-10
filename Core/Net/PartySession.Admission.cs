@@ -15,7 +15,7 @@ public sealed partial class PartySession
     enum Approval { None, Asking, Approved }
 
     public const string Declined = "호스트가 참가를 거절했습니다.";
-    public const string BlockedText = "호스트가 내보낸 기기라서 이 파티에 다시 참가할 수 없습니다.";
+    public const string BlockedText = "호스트가 내보낸 기기라서 이 공유 방에 다시 참가할 수 없습니다.";
     public const string Replaced = "같은 기기로 다른 곳에서 다시 참가해서 이 연결은 끝났습니다.";
     /// <summary>Requests open at once: more new devices meanwhile are ignored (they time out), so throwaway keys from
     /// spoofed addresses can't bury the host in popups.</summary>
@@ -120,7 +120,7 @@ public sealed partial class PartySession
         {
             _send(_crypto.Seal(_crypto.Group, (byte)MessageType.Refuse, Protocol.Refuse(reason)), from);
             string? why = h.Version != Protocol.Version || Membership.AppRefusal(_app, h.App) is not null ? "버전이 다릅니다"
-                : confirmed.Count >= Membership.MaxMembers ? "파티가 가득 찼습니다" : null;   // a nonce clash isn't news
+                : confirmed.Count >= Membership.MaxMembers ? "공유 방이 가득 찼습니다" : null;   // a nonce clash isn't news
             if (why is not null) Report($"{from.Address}|{h.Name}|{why}", h, why, now);
             return;
         }

@@ -8,6 +8,9 @@ public enum MeterValue { 지분, 피해량, DPS }
 /// <summary>설정 → DPS 미터기's 표시 방식 (spec § C Display).</summary>
 public enum MeterLook { 행, 세로막대, 선그래프, 한줄막대, 파티비교 }
 
+/// <summary>The DPS graph's span: the whole 전분 record, or its last minute with older points pushed out.</summary>
+public enum MeterRange { 전체, 최근1분 }
+
 /// <summary>미터기 and 버프 적용률's switch: off, worked out without a window, or shown.</summary>
 public enum ThreeWay { 끄기, 표시안함, 켜기 }
 
@@ -34,6 +37,12 @@ public sealed class MeterSettings : IWindowPlace
     public bool Record { get; set; } = true;
     /// <summary>The DPS graph under the rows.</summary>
     public bool Graph { get; set; } = true;
+    /// <summary>그래프 범위. Only the graph: the rows stay the 전분's figures.</summary>
+    public MeterRange Range { get; set; } = MeterRange.전체;
+    /// <summary>스킬 사용 횟수 counts over <see cref="Range"/>; off, always the whole fight's average.</summary>
+    public bool SkillFollowsRange { get; set; } = true;
+    /// <summary>The timeline's skill average leaves out 보스 타격 불가's time (its casts stay).</summary>
+    public bool SkillRateExcludes { get; set; }
     /// <summary>버프 적용률: how much of my damage was dealt under 공증 / 아덴 피증 / 초각스 피증, as three bars.</summary>
     public bool BuffBars { get; set; } = true;
     /// <summary>The 서포터 · 찬조 section.</summary>

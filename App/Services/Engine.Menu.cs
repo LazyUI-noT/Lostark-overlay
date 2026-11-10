@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 using Windows.Graphics.Imaging;
@@ -11,10 +13,12 @@ namespace GaugeOverlay.App.Services;
 /// (<see cref="MenuMemory"/>): the title strip is compared 10/s and, open, the watched area every step; a card seen before gets its
 /// tags within a step or two (<see cref="MenuRecalled"/>). The panel's OCR (about 0.4 s, on the thread pool, one at a time, sharing the
 /// dungeon panel's engine) runs as <see cref="MenuPace"/> says, to meet new cards and hear who is played. Until the title's pixels are
-/// known its OCR is the check, once a second.</summary>
+/// known its OCR is the check, once a second. The title's pixels are saved per screen size (<see cref="MenuTitleStore"/>, not in
+/// 테스트 모드), and no title OCR runs while a fight does (<see cref="FightClock.Running"/>): perf-hotspots.plan.md step 2.</summary>
 public sealed partial class Engine
 {
     static readonly TimeSpan MenuProbeEvery = TimeSpan.FromSeconds(1), MenuTitleEvery = TimeSpan.FromMilliseconds(100), MenuRelearnEvery = TimeSpan.FromSeconds(5);
+    static readonly MenuTitleStore MenuTitles = new(Path.GetDirectoryName(SettingsStore.DefaultPath)!);
     const int TitleMissesToClose = 2;
     // The card names are ~13 px tall at 1080p. Measured on goal.png and the video's frames (--read-menu, 2026-11-04): 3× with the
     // contrast stretched from 60 and inverted reads the portrait, the header and the waiting text right on every frame; 2×, or
@@ -48,6 +52,8 @@ public sealed partial class Engine
             if (_menuOpen) MenuSeen?.Invoke(MenuRead.Closed, _vp, now);   // the tags go and the name votes start over
             (_menuVp, _menuOpen) = (_vp, false);
             _menuMemory.Clear();
+            var word = Geometry.MenuArea(_vp, MenuSlots.RefTitleWord);
+            if (!_testMode && MenuTitles.Load(_vp.Width, _vp.Height, word.Width * word.Height) is { } saved) _menuMemory.LearnTitle(saved);
         }
         if (Interlocked.Exchange(ref _titleOcrSeen, 0) == 1 && !_menuOpen) OpenMenu(now);
         bool known = _menuMemory.TitleKnown;
@@ -72,7 +78,8 @@ public sealed partial class Engine
     void StepMenuTitle(Image img, TimeSpan t)
     {
         _lastMenuTitle = t;
-        if (!_menuMemory.TitleKnown) { StartMenu(img, null, null, t); return; }
+        bool fighting = FightClock.Running(_meter.Clock, t, _presence.BossUp(t));   // the menu is opened once the 전분 stopped
+        if (!_menuMemory.TitleKnown) { if (!fighting) StartMenu(img, null, null, t); return; }
         bool same = _menuMemory.IsTitle(MenuSlots.Grey(img, Geometry.MenuArea(_vp, Geometry.RefMenuTitle), Geometry.MenuArea(_vp, MenuSlots.RefTitleWord)));
         if (same)
         {
@@ -85,7 +92,17 @@ public sealed partial class Engine
             _menuOpen = false;
             MenuSeen?.Invoke(MenuRead.Closed, _vp, t);
         }
-        else if (Elapsed(t, _lastMenuProbe, MenuRelearnEvery)) StartMenu(img, null, null, t);
+        else if (!fighting && Elapsed(t, _lastMenuProbe, MenuRelearnEvery)) StartMenu(img, null, null, t);
+    }
+
+    /// <summary>Keeps the title's pixels, and saves them for this screen size (pool thread; not in 테스트 모드: a video's
+    /// title isn't the game's on this PC).</summary>
+    void LearnTitle(byte[] title, Viewport vp)
+    {
+        _menuMemory.LearnTitle(title);
+        if (_testMode) return;
+        try { MenuTitles.Save(vp.Width, vp.Height, title); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[menu] title not saved: {ex.Message}"); }
     }
 
     /// <summary>The watched area: when it changed, a read is called for and the cards it knows go out at once. The only source of the
@@ -141,7 +158,7 @@ public sealed partial class Engine
             if (read.Waiting) Trace.WriteLine($"[menu] waiting: {read.Picked} picked (playing {read.Current})");
             var area = Geometry.MenuArea(vp, Geometry.RefMenuPanel);
             if (GameMenu.IsTitle(lines.Select(l => string.Join(' ', l.Select(w => w.Text)))))
-                _menuMemory.LearnTitle(MenuSlots.Grey(panel, area, Geometry.MenuArea(vp, MenuSlots.RefTitleWord)));   // the same frame's pixels
+                LearnTitle(MenuSlots.Grey(panel, area, Geometry.MenuArea(vp, MenuSlots.RefTitleWord)), vp);   // the same frame's pixels
             if (!read.Open)
             {
                 if (_menuMemory.TitleKnown) return;   // the title's pixels decide once known: this read just missed the words
@@ -200,6 +217,7 @@ public sealed partial class Engine
         var big = Contrasted(ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), MenuUpscale));
         using var bmp = SoftwareBitmap.CreateCopyFromBuffer(big.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, big.Width, big.Height, BitmapAlphaMode.Premultiplied);
         await OcrGate.WaitAsync();
+        Perf.Count("OCR 게임 메뉴");
         try
         {
             var result = await Ocr.Value!.RecognizeAsync(bmp);

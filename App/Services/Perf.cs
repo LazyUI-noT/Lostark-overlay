@@ -52,12 +52,35 @@ public static partial class Perf
                 line = $"[perf] {total:0.0} ms/s in all: " + string.Join(", ", Ticks.OrderByDescending(kv => kv.Value)
                     .Select(kv => $"{kv.Key} {kv.Value * 1000.0 / Stopwatch.Frequency / seconds:0.0}"));
                 if (Counts.Count > 0) line += " | per s: " + string.Join(", ", Counts.Select(kv => $"{kv.Key} {kv.Value / seconds:0.0}"));
+                line += " | " + Whole(seconds, Ticks.Where(kv => kv.Key.EndsWith(CpuTag)).Sum(kv => kv.Value) * 1000.0 / Stopwatch.Frequency / seconds);
                 Ticks.Clear();
                 Counts.Clear();
                 _since = now;
             }
         }
         if (line is not null) Trace.WriteLine(line);
+    }
+
+    // The whole process since the last line (under Gate): its CPU and the runtime's garbage collection.
+    static TimeSpan _cpuWas = CpuNow(), _gcPauseWas = GC.GetTotalPauseDuration();
+    static long _allocatedWas = GC.GetTotalAllocatedBytes();
+    static readonly int[] _collectionsWas = [GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)];
+
+    static TimeSpan CpuNow() { using var p = System.Diagnostics.Process.GetCurrentProcess(); return p.TotalProcessorTime; }
+
+    /// <summary>The process's CPU over the minute, the part of it no "[CPU]" part covers (WPF's render thread, the runtime, the
+    /// finalizer, Windows OCR's own threads), the GC's pauses, its collections by generation and the memory allocated.</summary>
+    static string Whole(double seconds, double partsCpuMs)
+    {
+        var (cpu, pause, allocated) = (CpuNow(), GC.GetTotalPauseDuration(), GC.GetTotalAllocatedBytes());
+        int[] collections = [GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)];
+        double cpuMs = (cpu - _cpuWas).TotalMilliseconds / seconds;
+        string text = $"프로세스 CPU {cpuMs:0.0} ms/s, 측정 밖 {cpuMs - partsCpuMs:0.0}, GC 멈춤 {(pause - _gcPauseWas).TotalMilliseconds / seconds:0.0} ms/s, "
+            + $"GC {collections[0] - _collectionsWas[0]}/{collections[1] - _collectionsWas[1]}/{collections[2] - _collectionsWas[2]}, "
+            + $"할당 {(allocated - _allocatedWas) / 1048576.0 / seconds:0.0} MB/s";
+        (_cpuWas, _gcPauseWas, _allocatedWas) = (cpu, pause, allocated);
+        collections.CopyTo(_collectionsWas, 0);
+        return text;
     }
 
     // 리소스 검사: kept only while it is on (null: off), apart from the minute's figures above.

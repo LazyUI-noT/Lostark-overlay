@@ -37,7 +37,7 @@ public partial class FirstRunWindow : Window
             ("키 설정", Stack(
                 Note("게임의 기본 키가 채워져 있습니다. 게임에서 다르게 쓰는 키만 바꾸세요."),
                 SettingsWindow.BuildKeyPanel(settings, Changed))),
-            ("캐릭터", Stack(
+            ("직업 인식", Stack(
                 Note("지금 플레이할 캐릭터를 고르세요. 나중에 캐릭터를 바꾸면 게임 화면의 엠블럼을 보고 자동으로 따라가고, 트레이 메뉴에서 직접 고를 수도 있습니다."),
                 SettingsWindow.BuildCharacterPanel(settings, characters, Changed))),
             ("스킬창 맞추기", FitPage()),

@@ -74,6 +74,38 @@ public sealed class HomeworkStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_raid_without_gates_is_kept_only_when_a_level_has_an_entry()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, RaidData.FileName), """
+            { "homework": [
+              { "id": "kamen", "name": "카멘", "levels": [ { "difficulty": "하드", "tag": "카하", "entry": 1630 } ] },
+              { "id": "nothing", "name": "없음", "levels": [ { "difficulty": "노말", "tag": "x" } ] } ] }
+            """);
+
+        var raids = HomeworkData.Load(_dir);
+
+        var kamen = Assert.Single(raids);
+        Assert.Equal("kamen", kamen.Id);
+        Assert.Empty(kamen.Gates);
+    }
+
+    [Fact]
+    public void The_shipped_raids_give_three_picks_at_every_level_from_1640()
+    {
+        var raids = HomeworkData.Load(Path.Combine(Helpers.RepoRoot(), "Profiles"));
+
+        for (int level = 1640; level <= 1900; level += 5)
+            Assert.Equal(Homework.AutoPicks, Homework.Allocate(level, raids).Count);
+        Assert.Equal([("echidna", "하드"), ("behemoth", "노말"), ("kamen", "하드")],
+            Homework.Allocate(1640, raids).Select(p => (p.Raid, p.Difficulty)));
+        Assert.Equal([("act1", "노말"), ("echidna", "하드"), ("behemoth", "노말")],
+            Homework.Allocate(1660, raids).Select(p => (p.Raid, p.Difficulty)));
+        Assert.Equal([("act2", "하드"), ("act3", "노말"), ("act1", "하드")],
+            Homework.Allocate(1690, raids).Select(p => (p.Raid, p.Difficulty)));
+    }
+
+    [Fact]
     public void The_shipped_raids_json_tracks_only_gates_it_knows()
     {
         string profiles = Path.Combine(Helpers.RepoRoot(), "Profiles");

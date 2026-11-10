@@ -327,6 +327,30 @@ public class FightRecorderTests
     }
 
     [Fact]
+    public void No_boss_hp_inside_daenantu_is_no_kill()
+    {
+        // 대난투 shows no boss HP at all, only the damage dealt (user, 2026-11-08): its number unread a few seconds (ShadowOn off,
+        // no HP) and the fight ending then is not the bar-gone clear.
+        for (int t = 0; t <= 2; t++) TickHp(t, t, 600_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 3; t <= 5; t++) TickHp(t, t, 600_000_000_000);
+        _r.ShadowOn = false;
+        for (int t = 6; t <= 9; t++) Assert.Null(TickHp(t, t, 600_000_000_000, read: false));
+        Assert.False(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
+    public void A_bar_gone_after_daenantu_ended_is_a_clear_again()
+    {
+        for (int t = 0; t <= 2; t++) TickHp(t, t, 600_000_000_000);
+        _r.ShadowOn = true;
+        for (int t = 3; t <= 5; t++) TickHp(t, t, 600_000_000_000);
+        _r.ShadowOn = false;
+        for (int t = 6; t <= 20; t++) TickHp(t, t, 600_000_000_000, read: false);   // 대난투종료 at 5 (logged at 10), then the bar stays gone
+        Assert.True(_r.Finish()!.Cleared);
+    }
+
+    [Fact]
     public void A_bar_missed_for_two_seconds_at_the_end_is_still_a_fail()
     {
         for (int t = 0; t <= 10; t++) TickHp(t, t, 600_000_000_000);
@@ -470,6 +494,21 @@ public class FightRecorderTests
         Tick(7, 7); Tick(8, 8);
         var buffs = _r.Finish()!.Events.Where(e => e.Kind != RecordEventKind.사용).Select(e => (e.T, e.Kind)).ToList();
         Assert.Equal([(2.0, RecordEventKind.버프시작), (6.5, RecordEventKind.버프끝)], buffs);   // on at the last second known
+    }
+
+    [Fact]
+    public void A_buff_back_on_after_a_late_timer_read_stays_on_after_its_end()
+    {
+        // 구원의 종탑 2관문 (2026-11-09): 공증 off at 107.11, on again while the timer read lagged (the edge dropped), put back at
+        // 107 by the catch-up: sorted, 공증 read off for 80 s.
+        Tick(0, 0); Tick(1, 1);
+        See("나", Snap(SlotPhase.Ready, 1.2, aden: true), 1.2);
+        Tick(2, 2);
+        See("나", Snap(SlotPhase.Ready, 2.1, aden: false), 2.1);   // off at 2.1
+        See("나", Snap(SlotPhase.Ready, 3.6, aden: true), 3.6);    // on again 1.6 s after the timer moved: dropped
+        Tick(3, 3.7); Tick(4, 4.7);
+        var buffs = _r.Finish()!.Events.Where(e => e.Kind != RecordEventKind.사용).OrderBy(e => e.T).Select(e => e.Kind).ToList();
+        Assert.Equal([RecordEventKind.버프시작, RecordEventKind.버프끝, RecordEventKind.버프시작], buffs);
     }
 
     [Fact]

@@ -96,9 +96,10 @@ public class MeterViewTests
     public void The_header_names_the_boss_and_my_share()
     {
         var v = MeterView.Build(Mine(40 * Eok, 100 * Eok), MeterRole.딜러, "나", 3, [], me: 0, host: 0, new MeterSettings(), new MeterHistory(), S(3));
-        Assert.Equal("고통의 마녀, 세르카 · 내 40.0%", (v with { BossName = "고통의 마녀, 세르카" }).Header(0, x => $"{x / Eok}억"));
-        Assert.Equal("보스 · 내 40.0%", v.Header(0, x => $"{x / Eok}억"));   // no name known
-        Assert.Equal("보스 100억", (v with { Rows = [] }).Header(0, x => $"{x / Eok}억"));   // no share of mine: the boss damage
+        Assert.Equal(("고통의 마녀, 세르카", " · 내 40.0%"), (v with { BossName = "고통의 마녀, 세르카" }).Header(0, x => $"{x / Eok}억"));
+        Assert.Equal(("보스", " · 내 40.0%"), v.Header(0, x => $"{x / Eok}억"));   // no name known
+        Assert.Equal(("보스", " 100억"), (v with { Rows = [] }).Header(0, x => $"{x / Eok}억"));   // no share of mine: the boss damage
+        Assert.Null((v with { Rows = [], BossTaken = 0 }).Header(0, x => $"{x / Eok}억"));   // nothing to show
     }
 
     [Fact]

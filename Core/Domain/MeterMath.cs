@@ -83,6 +83,16 @@ public sealed class MeterHistory
 
     public IReadOnlyList<(TimeSpan At, double? Share, long Dps)> Series(ulong id) => _series.TryGetValue(id, out var l) ? l : [];
 
+    /// <summary>그래프 범위 최근 1분: this much of the record's clock (a stopped timer holds it, as it holds the graph).</summary>
+    public static readonly TimeSpan RecentSpan = TimeSpan.FromSeconds(60);
+
+    /// <summary>The points the graph draws of <paramref name="points"/>, <paramref name="latest"/> being the newest point of any line.</summary>
+    public static IReadOnlyList<(TimeSpan At, double? Share, long Dps)> Shown(IReadOnlyList<(TimeSpan At, double? Share, long Dps)> points, MeterRange range, TimeSpan latest) =>
+        range == MeterRange.전체 ? points : [.. points.Where(p => p.At >= latest - RecentSpan)];
+
+    /// <summary>My casts this record, for 스킬 사용 횟수.</summary>
+    public CastLog Casts { get; } = new();
+
     // 버프 적용률 for this 전분 record: my damage in all, and the part dealt while 공증 / 아덴 피증 / 초각스 피증 was on. Each
     // second's new damage goes to each buff by the part of that second it was on (a buff on from halfway takes half: the
     // damage is taken as even over the second, the panel updating once a second). A guide, not what each buff added.

@@ -33,6 +33,13 @@ public static class GridScale
     public static double Seconds(double span, double width, double minGap) =>
         TimeSteps.FirstOrDefault(s => span > 0 && width * s / span >= minGap, TimeSteps[^1]);
 
+    /// <summary>The time lines inside (<paramref name="from"/>, <paramref name="from"/> + <paramref name="span"/>): round seconds of the
+    /// fight, so a graph that doesn't start at 0 keeps its labels true.</summary>
+    public static IEnumerable<double> Ticks(double from, double span, double step)
+    {
+        for (double t = (Math.Floor(from / step) + 1) * step; t < from + span; t += step) yield return t;
+    }
+
     /// <summary>Whether a graph of <paramref name="height"/> × <paramref name="width"/> has room for its labels: four lines of
     /// <paramref name="font"/> tall, and the label column (<paramref name="labelWidth"/>) no more than a third of the width.
     /// Without it the graph draws its lines alone.</summary>

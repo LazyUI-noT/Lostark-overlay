@@ -66,10 +66,32 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <summary>± bars added to every alert ("전 관문 공통"); per gate when <see cref="OffsetPerGate"/>. Target 750, +5 → 755.</summary>
     public int Offset { get; set; }
     public bool OffsetPerGate { get; set; }
-    /// <summary>그림자 레이드 기믹 체력 (ShadowHp): the raids (RaidGate.Raid) it is turned off for; on for every other (user, 2026-11-04).</summary>
+    /// <summary>Old (to 0.19.0-beta.1) per-raid 대난투 체력 (ShadowHp): the raids (RaidGate.Raid) it was off for. Still written
+    /// (every 대난투 raid when <see cref="ShadowHp"/> is off, none when on) so an older version reads the same meaning.</summary>
     public List<string> ShadowHpOff { get; set; } = [];
-    public bool ShadowHpOn(string raid) => !ShadowHpOff.Contains(raid);
-    /// <summary>보스 체력 쉽게 보기: the boss's HP (and shield) in 조 · 억 beside its name, in every raid (user, 2026-11-05).</summary>
+    /// <summary>대난투 체력 for every raid with 대난투, all or none (user, 2026-11-08). Null: a file from before it, read from
+    /// <see cref="ShadowHpOff"/> once (<see cref="MigrateShadowHp"/>).</summary>
+    public bool? ShadowHp { get; set; }
+    public bool ShadowHpOn(string raid) => ShadowHp ?? !ShadowHpOff.Contains(raid);
+
+    static List<string> ShadowRaids(IEnumerable<RaidGate> gates) => [.. gates.Where(g => g.IsShadow).Select(g => g.Raid).Distinct()];
+
+    /// <summary>The one switch as 설정 shows it: unmigrated, on when any 대난투 raid's own switch was on.</summary>
+    public bool ShadowHpAll(IEnumerable<RaidGate> gates) =>
+        ShadowHp ?? (ShadowRaids(gates) is var raids && !(raids.Count > 0 && raids.All(ShadowHpOff.Contains)));
+
+    public void SetShadowHp(bool on, IEnumerable<RaidGate> gates) => (ShadowHp, ShadowHpOff) = (on, on ? [] : ShadowRaids(gates));
+
+    /// <summary>A file from before the one switch: on when any raid's was on. True when changed (save). Needs the shipped raids,
+    /// so it runs at start-up (App.Wiring), not in Normalize.</summary>
+    public bool MigrateShadowHp(IEnumerable<RaidGate> gates)
+    {
+        var list = gates.ToList();
+        if (ShadowHp is not null || ShadowRaids(list).Count == 0) return false;
+        SetShadowHp(ShadowHpAll(list), list);
+        return true;
+    }
+    /// <summary>보스 체력 간소화 (was 쉽게 보기): the boss's HP (and shield) in 조 · 억 beside its name, in every raid (user, 2026-11-05).</summary>
     public bool BossHpEasy { get; set; } = true;
     /// <summary>보스 체력 읽기: the boss bar's text read for 쉽게 보기 and 그림자 기믹 체력 with the DPS 미터기 off (<see cref="BossHpPlan"/>).</summary>
     public bool BossHpRead { get; set; } = true;

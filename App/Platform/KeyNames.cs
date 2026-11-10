@@ -16,6 +16,10 @@ public static class KeyNames
         _ => k.ToString(),
     };
 
+    /// <summary>The key set for <paramref name="slot"/>, or the slot's own name with none.</summary>
+    public static string OfSlot(GaugeOverlay.Core.Domain.Settings s, GaugeOverlay.Core.Domain.SlotId slot) =>
+        s.Keys.TryGetValue(slot, out var k) && k != "" ? Display(k) : slot.ToString();
+
     public static bool IsModifier(string name) => name is "Shift" or "Ctrl" or "Alt";
 
     public static string Combo(bool ctrl, bool alt, bool shift, string key) =>

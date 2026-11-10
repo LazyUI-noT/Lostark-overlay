@@ -10,7 +10,7 @@ public class CharacterWatchTests
 
     static MenuRead Menu(string? current = null, string? picked = null, bool waiting = false) => new(true, current, picked, [], waiting);
 
-    static HomeworkCharacter C(string name, string cls, string? sub) => new() { Name = name, ClassName = cls, Subclass = sub };
+    static HomeworkCharacter C(string name, string? cls, string? sub) => new() { Name = name, ClassName = cls, Subclass = sub };
 
     [Fact]
     public void Unknown_until_the_menu_names_the_character_then_its_fights_since_start_are_its()
@@ -35,7 +35,7 @@ public class CharacterWatchTests
     [Fact]
     public void A_misread_name_snaps_to_the_known_one()
     {
-        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "너무아파오살살"), ["너무아파요살살"], T0);
+        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "너무아파8살살"), ["너무아파요살살"], T0);
 
         Assert.Equal("너무아파요살살", watch.Current);
     }
@@ -115,5 +115,13 @@ public class CharacterWatchTests
         var roster = new[] { C("살살", "워로드", "고독한기사"), C("워로드2", "워로드", null) };
 
         Assert.Null(CharacterWatch.Start(Started).Playing("워로드", "고독한기사", roster, Started).Change);
+    }
+
+    [Fact]
+    public void A_character_with_its_class_not_yet_learned_blocks_the_guess()
+    {
+        var roster = new[] { C("너무아파요살살", "가디언나이트", "드레드로어"), C("너무아파용살살", null, null) };
+
+        Assert.Null(CharacterWatch.Start(Started).Playing("가디언나이트", "드레드로어", roster, Started).Change);
     }
 }

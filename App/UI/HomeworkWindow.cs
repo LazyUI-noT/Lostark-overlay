@@ -20,6 +20,14 @@ sealed class HomeworkWindow : Window
         [HomeworkColor.Orange] = Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0x9A, 0x3C))),
         [HomeworkColor.Purple] = Frozen(new SolidColorBrush(Color.FromRgb(0xC7, 0x7D, 0xFF))),
     };
+    /// <summary>전투력 in the game's role colours: orange with a sword for 딜러, green with ✚ for 서포터.</summary>
+    static readonly Dictionary<Role, (Brush Ink, string Mark)> PowerInk = new()
+    {
+        [Role.딜러] = (Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0x9A, 0x3C))), "⚔"),
+        [Role.서포터] = (Frozen(new SolidColorBrush(Color.FromRgb(0x7E, 0xD9, 0x57))), "✚"),
+    };
+    /// <summary>A role's 전투력 colour, for 전투력 shown elsewhere (the timeline's top bar).</summary>
+    internal static Brush RoleBrush(Role role) => PowerInk[role].Ink;
     const double TagHeight = 17, TextSize = 12, Gap = 3, Pad = 4, DoneOpacity = 0.55;   // at 1080p
 
     readonly Tags _tags = new();
@@ -42,12 +50,14 @@ sealed class HomeworkWindow : Window
     }
 
     /// <summary>Shows the tags under <paramref name="cards"/> (screen pixels, the card from its level line down to its bottom)
-    /// over the game area <paramref name="vp"/>; hides when there are none or the overlays are hidden.</summary>
-    public void Update(Viewport vp, IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> cards, bool allowed)
+    /// and the 전투력 <paramref name="power"/> (screen pixels, from each line's left) over the game area <paramref name="vp"/>;
+    /// hides when there are none or the overlays are hidden.</summary>
+    public void Update(Viewport vp, IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> cards, IReadOnlyList<PowerTag> power, bool allowed)
     {
-        if (!allowed || cards.Count == 0) { if (IsVisible) Hide(); return; }
+        if (!allowed || cards.Count + power.Count == 0) { if (IsVisible) Hide(); return; }
         var area = new PixelRect(vp.X, vp.Y, vp.Width, vp.Height);
-        _tags.Set([.. cards.Select(c => (c.Card with { X = c.Card.X - vp.X, Y = c.Card.Y - vp.Y }, c.Tags))], vp.Height / 1080.0);
+        _tags.Set([.. cards.Select(c => (c.Card with { X = c.Card.X - vp.X, Y = c.Card.Y - vp.Y }, c.Tags))],
+            [.. power.Select(t => t with { Line = t.Line with { X = t.Line.X - vp.X, Y = t.Line.Y - vp.Y } })], vp.Height / 1080.0);
         if (!IsVisible) Show();
         if (area != _at) WindowStyles.PlaceInPixels(new WindowInteropHelper(this).Handle, _at = area);
     }
@@ -58,11 +68,12 @@ sealed class HomeworkWindow : Window
     internal sealed class Tags : FrameworkElement
     {
         IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> _cards = [];
+        IReadOnlyList<PowerTag> _power = [];
         double _scale = 1;
 
-        public void Set(IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> cards, double scale)
+        public void Set(IReadOnlyList<(PixelRect Card, IReadOnlyList<HomeworkTag> Tags)> cards, IReadOnlyList<PowerTag> power, double scale)
         {
-            (_cards, _scale) = (cards, scale);
+            (_cards, _power, _scale) = (cards, power, scale);
             InvalidateVisual();
         }
 
@@ -85,6 +96,17 @@ sealed class HomeworkWindow : Window
                     x += w + Gap * k;
                 }
             }
+            foreach (var power in _power) DrawPower(dc, power, dpi, k);
+        }
+
+        /// <summary>One 전투력: its role's mark and value on a dark plate, centred on the item level's line.</summary>
+        static void DrawPower(DrawingContext dc, PowerTag tag, double dpi, double k)
+        {
+            var (ink, mark) = PowerInk[tag.Role];
+            var ft = new FormattedText($"{mark} {tag.Text}", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, TextSize * k, ink, dpi);
+            double h = TagHeight * k, x = tag.Line.X / dpi, y = (tag.Line.Y + tag.Line.Height / 2.0) / dpi - h / 2;
+            dc.DrawRoundedRectangle(Back, null, new Rect(x, y, ft.Width + 2 * Pad * k, h), 3 * k, 3 * k);
+            dc.DrawText(ft, new Point(x + Pad * k, y + (h - ft.Height) / 2));
         }
     }
 }

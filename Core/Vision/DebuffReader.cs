@@ -67,6 +67,65 @@ public static class DebuffReader
         return all == 0 ? (0, 0) : (red / (double)all, green / (double)all);
     }
 
+    /// <summary><see cref="FrameColours"/> for many windows over one image: each pixel's frame colour counted once into tables
+    /// of sums, so a window's band is its outer box less its inner box, four lookups each (icon-gates.plan.md: the boss row's
+    /// walk asked for the same pixels hundreds of times a pass). The same integers, so the same shares.</summary>
+    internal sealed class FrameMap
+    {
+        readonly int[] _red, _green;   // (Width + 1) × (Height + 1) sums of the frame-red and frame-green pixels above and left
+        readonly int _w, _h;
+
+        /// <summary>The width of the image this map was made from.</summary>
+        public int Width => _w;
+
+        public FrameMap(Image area)
+        {
+            (_w, _h) = (area.Width, area.Height);
+            _red = new int[(_w + 1) * (_h + 1)];
+            _green = new int[_red.Length];
+            for (int y = 0; y < _h; y++)
+            {
+                int rowRed = 0, rowGreen = 0, o = (y + 1) * (_w + 1), up = y * (_w + 1);
+                for (int x = 0; x < _w; x++)
+                {
+                    var (b, g, rr) = area.Pixel(x, y);
+                    if (rr >= FrameMin && rr - Math.Max(g, b) >= FrameLead) rowRed++;
+                    else if (g >= FrameMin && g - Math.Max(rr, b) >= FrameLead) rowGreen++;
+                    _red[o + x + 1] = _red[up + x + 1] + rowRed;
+                    _green[o + x + 1] = _green[up + x + 1] + rowGreen;
+                }
+            }
+        }
+
+        /// <summary>The same as <see cref="FrameColours"/> on the image this map was made from.</summary>
+        public (double Red, double Green) Colours(PixelRect icon)
+        {
+            int band = Math.Max(1, (int)Math.Round(icon.Width * 2 / 31.0));
+            var inner = new PixelRect(icon.X + band, icon.Y + band, icon.Width - 2 * band, icon.Height - 2 * band);
+            int all = Count(icon) - Count(inner);
+            return all == 0 ? (0, 0) : ((Sum(_red, icon) - Sum(_red, inner)) / (double)all, (Sum(_green, icon) - Sum(_green, inner)) / (double)all);
+        }
+
+        (int X0, int Y0, int X1, int Y1) Clip(PixelRect r) =>
+            (Math.Clamp(r.X, 0, _w), Math.Clamp(r.Y, 0, _h), Math.Clamp(r.Right, 0, _w), Math.Clamp(r.Bottom, 0, _h));
+
+        int Count(PixelRect r)
+        {
+            if (r.Width <= 0 || r.Height <= 0) return 0;
+            var (x0, y0, x1, y1) = Clip(r);
+            return Math.Max(0, x1 - x0) * Math.Max(0, y1 - y0);
+        }
+
+        int Sum(int[] s, PixelRect r)
+        {
+            if (r.Width <= 0 || r.Height <= 0) return 0;
+            var (x0, y0, x1, y1) = Clip(r);
+            if (x1 <= x0 || y1 <= y0) return 0;
+            int w = _w + 1;
+            return s[y1 * w + x1] - s[y0 * w + x1] - s[y1 * w + x0] + s[y0 * w + x0];
+        }
+    }
+
     // A frame pixel's own channel at least this, and this far over the other two: red (169,51,42), (124,6,0); green (114,174,88)
     // (bitam_80). Blue scenery fails both.
     const int FrameMin = 90, FrameLead = 40;
@@ -139,11 +198,14 @@ public static class DebuffReader
     /// <summary>The boss buff zone on line <paramref name="y"/> of <paramref name="r"/> (reference px): the x of each green-framed
     /// icon, left to right. Green frame share: the sigils 0.30–0.45 (bossrow*), 0.10–0.31 shrunk to HUD 80 and back; any other
     /// window 0.00 (the debuffs' frames are red).</summary>
-    internal static IReadOnlyList<int> BuffZone(Image r, int y)
+    internal static IReadOnlyList<int> BuffZone(Image r, int y) => BuffZone(new FrameMap(r), y);
+
+    /// <summary><see cref="BuffZone(Image, int)"/> from a frame map already made over the strip (the 암수 walk's).</summary>
+    internal static IReadOnlyList<int> BuffZone(FrameMap map, int y)
     {
         var green = new List<(int X, double Share)>();
-        for (int x = 0; x + BossIcon <= r.Width; x++)
-            if (FrameColours(r, new PixelRect(x, y, BossIcon, BossIcon)).Green is var g && g >= MinBuffFrame) green.Add((x, g));
+        for (int x = 0; x + BossIcon <= map.Width; x++)
+            if (map.Colours(new PixelRect(x, y, BossIcon, BossIcon)).Green is var g && g >= MinBuffFrame) green.Add((x, g));
         // One slot per icon width: the slots are 34 px apart, while a window 30 px past an icon sees its right frame line in its
         // own left band (0.13) and would pass as a slot of its own, pushing the red sigil out of the last two (review, 2026-11-01).
         return [.. green.Where(a => !green.Any(b => Math.Abs(b.X - a.X) <= BossIcon && (b.Share > a.Share || b.Share == a.Share && b.X < a.X)))

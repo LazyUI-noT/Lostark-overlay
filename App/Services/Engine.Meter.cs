@@ -41,7 +41,7 @@ public sealed partial class Engine
         var dungeon = dungeonOn ? DungeonRect(now) : null;
         if (!_meterOn) return (null, null, dungeon, null);
         _meterFull = Elapsed(now, _lastMeter, MeterEvery);
-        if (!_meterFull) return Elapsed(now, _lastBossHp, BossHpEvery) ? (Geometry.BossTextRow(_vp, _fit!), null, dungeon, null) : (null, null, dungeon, null);
+        if (!_meterFull) return Elapsed(now, _lastBossHp, BossReadEvery(BossHpEvery)) ? (Geometry.BossTextRow(_vp, _fit!), null, dungeon, null) : (null, null, dungeon, null);
         var panel = PanelSpot(config);
         bool search = PanelSearch.Due(panel is not null, _panelMisses, _presence.BossSeen, _dungeon is not null || _presence.InDungeon(now), now) && Elapsed(now, _lastSearch, SearchEvery);
         // the bar's whole text row: the HP wherever 21:9 or the HUD puts it
@@ -94,9 +94,13 @@ public sealed partial class Engine
         }
         var bar = BossBar(hp);
         var read = bar.Hp;   // a shield in brackets counts as HP (its breaking is damage)
+        var gimmickWas = _shadow;
         // The 그림자 gimmick: no bar, its number gives the HP (Engine.Shadow.cs).
         var hpRead = ShadowStep(bar, shadow, t) ?? (read is var (cur, max, _) ? (cur, max) : null);
         Saw(meter: present, boss: hpRead is not null, t);
+        // Between full steps the gimmick's fast reads move its number alone: a new status would go to the party and the record
+        // at their rate too (App StepMeter runs on every new status).
+        if (!_meterFull && _shadow is not null) return !Equals(gimmickWas, _shadow);
         var next = MeterTracker.Step(_meter, hpRead, reading, reading is not null, t, read?.Shield ?? 0);
         if (FightClock.Restarted(_meter.Clock, next.Clock)) NewGate();
         _meterChanged |= next != _meter;

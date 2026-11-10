@@ -15,8 +15,10 @@ public static class RaidRecognition
 {
     public static readonly TimeSpan Keep = TimeSpan.FromSeconds(10);
 
-    public static RaidRecognitionState Update(RaidRecognitionState s, string? matched, TimeSpan now)
+    /// <param name="daenantu">대난투 is up: it shows no boss name (user, 2026-11-09), so a miss then keeps the gate as a read would.</param>
+    public static RaidRecognitionState Update(RaidRecognitionState s, string? matched, TimeSpan now, bool daenantu = false)
     {
+        if (matched is null && daenantu && s.Gate is not null) return s with { Pending = null, SeenAt = now };
         if (matched is null) return s.Gate is not null && now - s.SeenAt > Keep ? RaidRecognitionState.None : s with { Pending = null };
         if (matched == s.Gate) return s with { Pending = null, SeenAt = now };
         return s.Pending == matched ? new(matched, null, now) : s with { Pending = matched };

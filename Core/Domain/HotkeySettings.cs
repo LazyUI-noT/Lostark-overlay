@@ -9,7 +9,7 @@ public sealed class HotkeySettings
     public string DetectCharacter { get; set; } = "Ctrl+Shift+D";
     /// <summary>테스트 모드: the window last in front (a video player) stands in for the game, which isn't looked for.</summary>
     public string TestMode { get; set; } = "Ctrl+Shift+T";
-    /// <summary>직업각인 다시 감지: reads the 직업각인 again, past the history; unset ("") by default.</summary>
+    /// <summary>직업각인 다시 읽기: reads the 직업각인 again, past the history; unset ("") by default.</summary>
     public string DetectSubclass { get; set; } = "";
     /// <summary>아이콘 다시 읽기: copies every slot's icon again (아이콘으로 표시); unset ("") by default.</summary>
     public string RereadIcons { get; set; } = "";

@@ -118,7 +118,7 @@ public sealed class PartyService : IDisposable
             });
             if (valid) return done.Task;
             udp.Dispose();
-            return Task.FromResult(Fail("토큰이 올바르지 않습니다. 호스트가 준 토큰을 그대로 붙여 넣고, 호스트와 같은 버전인지 확인해 주세요."));
+            return Task.FromResult(Fail("참가 코드가 올바르지 않습니다. 호스트가 준 참가 코드를 그대로 붙여 넣고, 호스트와 같은 버전인지 확인해 주세요."));
         }
         finally { lock (_lock) _starting = false; }
     }

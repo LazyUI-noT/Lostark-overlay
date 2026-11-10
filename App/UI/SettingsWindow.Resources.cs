@@ -66,7 +66,7 @@ public sealed partial class SettingsWindow
         }
         var cores = sample.Report.Cores;
         _map?.SetResources(sample.Report.Rows.ToDictionary(r => r.Id, r => (r.Approx ? "≤ " : "") + ResourceCheck.Label(r.Percent, cores)));
-        _checkTable.Children.Add(note($"지난 {sample.Seconds:0}초 평균입니다. 한 코어를 100%로 본 값이고, 괄호는 전체 코어({cores}개)로 나눈 값입니다. 이 PC에서만 재고, 어디에도 보내거나 기록하지 않습니다. ≤ 는 기다린 시간이 섞여 실제보다 크게 나올 수 있는 값입니다.", 0.8));
+        _checkTable.Children.Add(note($"지난 {sample.Seconds:0}초 평균입니다. CPU 한 스레드를 100%로 본 값이고, 괄호는 전체 스레드({cores}개)로 나눈 값입니다. 이 PC에서만 재고, 어디에도 보내거나 기록하지 않습니다. ≤ 는 기다린 시간이 섞여 실제보다 크게 나올 수 있는 값입니다.", 0.8));
         var grid = new Grid { Margin = new(0, 4, 0, 4) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

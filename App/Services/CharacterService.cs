@@ -24,7 +24,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// <summary>Every class, in classes.json order.</summary>
     public IReadOnlyList<ClassInfo> Classes => _classes;
 
-    /// <summary>The supported 직업각인 and their features (설정 → 캐릭터), slots named by <paramref name="keyName"/>.</summary>
+    /// <summary>The supported 직업각인 and their features (설정 → 직업 인식), slots named by <paramref name="keyName"/>.</summary>
     public IReadOnlyList<SupportRow> Support(Func<SlotId, string> keyName) => ClassSupport.Rows(profilesDir, _classes, keyName);
 
     public ClassInfo? ActiveClass => Active is { } c ? _classes.FirstOrDefault(x => x.Name == c.Class) : null;
@@ -145,7 +145,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         var was = settings.ActiveCharacter;
         var now = CharacterDetect.Resolve(settings, _classes, Learned(emblem), Fits, shown, bgra);
         if (now == was) return null;
-        return now is null ? "캐릭터를 알아보지 못해 기본으로 돌아갔습니다. 트레이나 설정 → 캐릭터에서 고를 수 있습니다." : $"캐릭터를 {now}(으)로 바꿨습니다.";
+        return now is null ? "캐릭터를 인식하지 못해 기본으로 돌아갔습니다. 트레이나 설정 → 직업 인식에서 고를 수 있습니다." : $"캐릭터를 {Josa.By(now)} 바꿨습니다.";
     }
 
     /// <summary>The characters whose learned emblem matches <paramref name="emblem"/>, with the score.</summary>
@@ -236,25 +236,25 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         {
             (sub, bool unlike) = SubclassMatcher.Match(slot, _icons, greyed);
             if (!quiet) (_missFor, _misses) = (cls.Name, unlike ? (_missFor == cls.Name ? _misses + 1 : 1) : 0);   // 자동 감지 warns of nothing
-            // Asked for (직업각인 다시 감지) the class stands: an unlike icon is one it can't tell.
+            // Asked for (직업각인 다시 읽기) the class stands: an unlike icon is one it can't tell.
             if (unlike && !asked && _confirmed != cls.Name)
             {
                 settings.ActiveCharacter = null;
-                return "초각스 아이콘이 고른 클래스와 달라 기본으로 돌아갔습니다. 트레이나 설정 → 캐릭터에서 고를 수 있습니다.";
+                return "초각스 아이콘이 고른 클래스와 달라 기본으로 돌아갔습니다. 트레이나 설정 → 직업 인식에서 고를 수 있습니다.";
             }
         }
         if (sub is null && greyedSkills is not null) sub = SkillPool.Pick(greyedSkills, _skills.Load(cls.Name, cls.Subclasses.Keys));
         if (sub is null)
-            return !asked || quiet ? null : _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {c.Subclass}(으)로 둡니다."
-                : $"직업각인을 알아보지 못해 {c.Subclass}(으)로 둡니다.";
+            return !asked || quiet ? null : _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {Josa.By(c.Subclass)} 둡니다."
+                : $"직업각인을 인식하지 못해 {Josa.By(c.Subclass)} 둡니다.";
         if (sub != c.Subclass) return Detected(sub);
         settings.SubclassHistory[cls.Name] = sub;
-        return asked && !quiet ? $"직업각인이 {sub}(으)로 맞습니다." : null;
+        return asked && !quiet ? $"직업각인이 {Josa.By(sub)} 맞습니다." : null;
     }
 
     bool _redetect, _quiet, _register;
 
-    /// <summary>직업각인 다시 감지: the next ready 초각스 is read past the history. Returns why it can't be (no class, or a class whose
+    /// <summary>직업각인 다시 읽기: the next ready 초각스 is read past the history. Returns why it can't be (no class, or a class whose
     /// 직업각인 have the same skills), or null when the engine should capture it.</summary>
     public string? RedetectSubclass()
     {
@@ -267,7 +267,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// <summary>Drops a 직업각인 read asked for (다시 감지, 자동 감지, 등록) and not captured yet: a pick or a refit came first.</summary>
     public void ForgetRequests() => (_redetect, _quiet, _register, _watchTries) = (false, false, false, 0);
 
-    /// <summary>클래스 인식 자동: the 초각스 about to be handled is read as by 직업각인 다시 감지, but only the 직업각인 changes and only a
+    /// <summary>클래스 인식 자동: the 초각스 about to be handled is read as by 직업각인 다시 읽기, but only the 직업각인 changes and only a
     /// change is told. Only for a class with an icon for every 직업각인 (shipped or 직업각인 등록).</summary>
     void ReadSubclassQuietly()
     {
@@ -291,7 +291,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     }
 
     /// <summary>The 초각스 captured now goes to <see cref="SkillClassFinder"/>: 자동's watch, or 스킬창 다시 맞추기 for a class its centre piece
-    /// didn't tell. Not for 직업각인 다시 감지 or 등록, and not with 끄기. <paramref name="notACharacter"/>: 테스트 모드's video.</summary>
+    /// didn't tell. Not for 직업각인 다시 읽기 or 등록, and not with 끄기. <paramref name="notACharacter"/>: 테스트 모드's video.</summary>
     public bool ClassSearchDue(bool notACharacter) => settings.ClassDetect != ClassDetectMode.끄기 && !notACharacter && !_register
         && (Watching || (!_redetect && _confirmed != ActiveClass?.Name));
 
@@ -310,7 +310,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             string? known = pick.Subclass is { } s && cls.Subclasses.ContainsKey(s) ? s : null;
             string sub = known ?? cls.Remembered(settings.SubclassHistory) ?? cls.Subclasses.Keys.First();
             settings.PickCharacter(cls.Family, cls.Name, sub, remember: known is not null);
-            note = $"클래스를 {cls.Name} · {sub}(으)로 바꿨습니다.";
+            note = $"클래스를 {cls.Name} · {Josa.By(sub)} 바꿨습니다.";
         }
         if (watch) ReadSubclassQuietly();
         return note;
@@ -349,16 +349,16 @@ public sealed class CharacterService(Settings settings, string profilesDir)
 
     /// <summary>Why the active class's 직업각인 is only picked by hand, or null.</summary>
     public string? SameSkillsNote => ActiveClass is { SameSkills: true } ? SameSkills : null;
-    const string SameSkills = "두 직업각인의 스킬이 같아 알아볼 수 없습니다. 마지막으로 고른 직업각인을 씁니다 (트레이나 설정 → 캐릭터에서 바꿀 수 있습니다).";
+    const string SameSkills = "두 직업각인의 스킬이 같아 알아볼 수 없습니다. 마지막으로 고른 직업각인을 씁니다 (트레이나 설정 → 직업 인식에서 바꿀 수 있습니다).";
 
     string Detected(string sub)
     {
         settings.DetectedSubclass(sub);
-        return $"직업각인을 {sub}(으)로 바꿨습니다.";
+        return $"직업각인을 {Josa.By(sub)} 바꿨습니다.";
     }
 
     readonly SkillPoolStore _skills = new(SkillPoolStore.DefaultDir);
-    const string NoSubclass = "캐릭터와 직업각인을 먼저 고르세요 (트레이나 설정 → 캐릭터).";
+    const string NoSubclass = "캐릭터와 직업각인을 먼저 고르세요 (트레이나 설정 → 직업 인식).";
 
     /// <summary>Why 스킬 등록 can't run now (no character or 직업각인 picked, or its 직업각인 have the same skills), or null.</summary>
     public string? SkillsBlocked => Active is { Subclass.Length: > 0 } && ActiveClass is not null ? SameSkillsNote : NoSubclass;
@@ -369,7 +369,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     {
         if (Active is not { Subclass.Length: > 0 } c || ActiveClass is not { } cls) return NoSubclass;
         if (ready is null) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
-        if (ready.Count == 0) return "준비된 일반 스킬이 없습니다. 재사용 대기 중이 아닐 때 다시 눌러 주세요.";
+        if (ready.Count == 0) return "준비된 일반스킬이 없습니다. 스킬 쿨이 돌았을 때 다시 눌러 주세요.";
         try
         {
             var (added, total) = _skills.Add(cls.Name, c.Subclass, ready);

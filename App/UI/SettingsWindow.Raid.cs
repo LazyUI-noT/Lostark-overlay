@@ -18,6 +18,7 @@ public partial class SettingsWindow
     readonly CardStack _secRaid = new();
     static readonly IReadOnlyList<RaidGate> RaidGates = RaidData.Load(CharacterService.DefaultProfilesDir);
     string? _raidSeen;
+    string? _raidSeenDifficulty;   // the dungeon panel's difficulty when the gate was recognised (지금 인식's capsule)
     string? _raidTab;   // the tab shown (카제로스 레이드 …); null: the recognised gate's, else the first
     HashSet<string>? _raidOpen;   // the raid boxes open; null until first shown (then the recognised, else last recognised, raid)
     string? _raidLast;   // the gate recognised last (kept after the fight ends)
@@ -26,9 +27,9 @@ public partial class SettingsWindow
     public void RefreshRaid() => Dispatcher.BeginInvoke(FillRaid);
 
     /// <summary>What 자동 인식 recognises now (a gate id, null: none), shown under 보스 인식.</summary>
-    public void SetRaidSeen(string? id)
+    public void SetRaidSeen(string? id, string? difficulty = null)
     {
-        _raidSeen = id;
+        (_raidSeen, _raidSeenDifficulty) = (id, difficulty);
         if (RaidData.Find(RaidGates, id) is { } seen && _raidLast != id)
         {
             _raidLast = id;
@@ -81,25 +82,41 @@ public partial class SettingsWindow
     {
         var r = _s.Raids;
         void Again() => Dispatcher.BeginInvoke(FillRaid);
-        var p = Refill(_secRaid, "레이드", "보스 체력바 위의 이름으로 레이드·관문을 알아보고, 체력바 오른쪽 끝의 줄 수(X 494)를 줄 수 창에 따로 보여 줍니다. " +
-            "정한 줄 수가 되면 창이 빛납니다. 알아보지 못한 보스에는 아무것도 띄우지 않습니다.");
-        p.Children.Add(Note("아직 실제 레이드 화면으로 확인하지 않았습니다. 스크린샷 몇 장으로만 맞췄습니다."));
+        var p = Refill(_secRaid, "레이드", "보스 체력바 위의 이름으로 레이드·관문을 인식하고, 체력바 오른쪽 끝의 줄 수(예: X 494)를 줄 수 창에 따로 보여 줍니다. " +
+            "정한 줄 수가 되면 창이 빛납니다. 인식하지 못한 보스에는 아무것도 띄우지 않습니다.");
 
         // The main 줄 수 switch first: it gates every gate's own 줄 수 창 below, which stays as set.
-        p.Children.Add(Row("", Check("줄 수 읽기 (모든 레이드)", r.CountEnabled, v => r.CountEnabled = v, () => { Changed(); Again(); },
-            "끄면 모든 레이드에서 줄 수(X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창 설정은 남아서, 다시 켜면 돌아옵니다. " +
-            "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다.")));
+        p.Children.Add(DefaultedCheck(Check("줄 수 읽기 (모든 레이드)", r.CountEnabled, v => r.CountEnabled = v, () => { Changed(); Again(); },
+            "끄면 모든 레이드에서 줄 수(예: X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창 설정은 남아서, 다시 켜면 돌아옵니다. " +
+            "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다."), s => s.Raids.CountEnabled, (s, v) => s.Raids.CountEnabled = v));
         if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 지워지지 않았고, 다시 켜면 돌아옵니다."));
         // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시 → 디버프 창).
-        p.Children.Add(Row("", Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
+        p.Children.Add(DefaultedCheck(Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
             "켜면 디버프가 있는 레이드(3막 모르둠)에서 보스를 알아본 동안 디버프 창을 보여 줍니다. " +
-            "보스를 못 알아봐도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요. 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽이든 보이지 않습니다.")));
+            "보스를 못 알아봐도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요. 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽이든 보이지 않습니다."), s => s.Raids.DebuffsAuto, (s, v) => s.Raids.DebuffsAuto = v));
 
         p.Children.Add(SubHeading("보스 인식"));
-        p.Children.Add(Row("", Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
-            "보스 이름으로 관문을 알아봅니다. 끄면 아래에서 고른 관문을 씁니다. 트레이 메뉴의 레이드와 같습니다.")));
-        if (r.Auto) p.Children.Add(Row("지금 인식", Label(RaidData.Find(RaidGates, _raidSeen) is { } seen ? RaidData.Label(seen) : "인식 안 됨", 0.7)));
+        p.Children.Add(DefaultedCheck(Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
+            "보스 이름으로 관문을 알아봅니다. 끄면 아래에서 고른 관문을 씁니다. 트레이 메뉴의 레이드와 같습니다."), s => s.Raids.Auto, (s, v) => s.Raids.Auto = v));
+        if (r.Auto) p.Children.Add(RaidData.Find(RaidGates, _raidSeen) is { } seen
+            ? Row("지금 인식", RaidBadgeView.Of(seen.Raid, _raidSeenDifficulty), Label(RaidData.Label(seen), 0.7))
+            : Row("지금 인식", Label("인식 안 됨", 0.7)));
         else p.Children.Add(Row("관문", GateCombo()));
+
+        // 기타 인식 (user, 2026-11-08): the boss bar's own reads, and 대난투 체력 as one switch for every raid with 대난투.
+        p.Children.Add(SubHeading("기타 인식"));
+        p.Children.Add(DefaultedCheck(Check("보스 체력 읽기", r.BossHpRead, v => r.BossHpRead = v, Changed,
+            "DPS 미터기가 꺼져 있어도 보스 체력바의 글자를 읽어 간소화와 대난투 체력에 씁니다. 끄면 미터기, 줄 수, 암수 중 하나가 켜져 있을 때만 읽습니다."), s => s.Raids.BossHpRead, (s, v) => s.Raids.BossHpRead = v));
+        p.Children.Add(WithExample(BossBarExample.EasyHp(), DefaultedCheck(Check("보스 체력 간소화", r.BossHpEasy, v => r.BossHpEasy = v, Changed,
+            "보스 이름 옆에 남은 체력을 조 · 억으로 보여 줍니다 (예: [1조 5,392억]). 보호막이 있으면 +(1,200억)처럼 함께 보여 줍니다. " +
+            "대난투 중에는 넣은 피해를 숫자 옆에 같은 방식으로 보여 줍니다."), s => s.Raids.BossHpEasy, (s, v) => s.Raids.BossHpEasy = v)));
+        string daenantu = string.Join(", ", RaidGates.Where(g => g.IsShadow).Select(g => g.Raid).Distinct());
+        p.Children.Add(WithExample(BossBarExample.Daenantu(), DefaultedCheck(Check("대난투 체력 표시 (모든 대난투 레이드)", r.ShadowHpAll(RaidGates), v => r.SetShadowHp(v, RaidGates), Changed,
+            "보스 체력바가 사라지고 채우는 막대와 숫자가 나오는 대난투 동안, 마지막 체력에서 그 숫자(대난투 중 넣은 피해)를 뺀 남은 줄과 체력을 체력바 자리에 보여 줍니다. " +
+            "대난투 중에 보스가 죽으면 전투 기록을 클리어로 끝냅니다 (DPS 미터기가 켜져 있을 때만). " +
+            "끄면 체력바 자리의 표시만 사라집니다. 대난투 숫자는 계속 읽어서, 전투 기록의 클리어 (대난투 중 보스를 잡았을 때, DPS 미터기가 켜져 있을 때)와 숙제 (보스 체력바 읽기)는 그대로 동작합니다. " +
+            $"대난투가 있는 레이드 모두에 한 번에 켜고 끕니다{(daenantu.Length > 0 ? $" (지금: {daenantu})" : "")}."),
+            s => s.Raids.ShadowHpAll(RaidGates), (s, v) => s.Raids.SetShadowHp(v, RaidGates))));
 
         // Tabs (카제로스 레이드, 그림자 레이드, 어비스 던전), then each raid as a heading with its gates, in raids.json order.
         var tabs = RaidGates.Select(g => g.TabName).Distinct().ToList();
@@ -116,41 +133,30 @@ public partial class SettingsWindow
         // Opened at first: the raid recognised now, else the one recognised last.
         _raidOpen ??= RaidData.Find(RaidGates, _raidSeen ?? _raidLast) is { } open ? [open.Raid] : [];
         foreach (var raid in RaidGates.Where(g => g.TabName == tab).GroupBy(g => g.Raid))
-        {
             p.Children.Add(RaidBox(raid.Key, [.. raid], Again));
-            if (tab != "그림자 레이드") continue;
-            string name = raid.Key;
-            p.Children.Add(Row("", Check($"{name}: 기믹 중 보스 체력 표시", r.ShadowHpOn(name),
-                v => { r.ShadowHpOff.Remove(name); if (!v) r.ShadowHpOff.Add(name); }, Changed,
-                "보스 체력바가 사라지고 채우는 막대와 숫자가 나오는 기믹 동안, 마지막 체력에서 그 숫자(기믹 중 넣은 피해)를 뺀 남은 줄과 체력을 체력바 자리에 보여 줍니다. " +
-                "기믹 중에 보스가 죽으면 전투 기록을 클리어로 끝냅니다 (DPS 미터기가 켜져 있을 때만).")));
-        }
-        p.Children.Add(Row("", Check("보스 체력 읽기", r.BossHpRead, v => r.BossHpRead = v, Changed,
-            "DPS 미터기가 꺼져 있어도 보스 체력바의 글자를 읽어 쉽게 보기와 기믹 체력에 씁니다. 끄면 미터기, 줄 수, 암수 중 하나가 켜져 있을 때만 읽습니다.")));
-        p.Children.Add(Row("", Check("보스 체력 쉽게 보기", r.BossHpEasy, v => r.BossHpEasy = v, Changed,
-            "보스 이름 옆에 남은 체력을 조 · 억으로 보여 줍니다 (예: [1조 5,392억]). 보호막이 있으면 +(1,200억)처럼 함께 보여 줍니다. " +
-            "그림자 레이드의 기믹 중에는 넣은 피해를 숫자 옆에 같은 방식으로 보여 줍니다.")));
         HpChangeRows(p, Again);
 
-        p.Children.Add(SubHeading("알림", "목표 줄 수에서 이만큼 더하거나 뺀 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
-        p.Children.Add(Row("", Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },
-            "끄면 관문마다 ±줄을 따로 정합니다.")));
+        p.Children.Add(SubHeading("빛남 기준", "목표 줄 수에서 이만큼 더하거나 뺀 곳에서 빛납니다. 750에 +5면 755에서 빛납니다."));
+        p.Children.Add(DefaultedCheck(Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },
+            "끄면 관문마다 ±줄을 따로 정합니다."), s => !s.Raids.OffsetPerGate, (s, v) => s.Raids.OffsetPerGate = !v));
         if (!r.OffsetPerGate) p.Children.Add(OffsetRow("± 줄", r.Offset, v => r.Offset = v));
-        p.Children.Add(Row("", Check("빛나기", r.Glow, v => r.Glow = v, () => { Changed(); Again(); })));
+        p.Children.Add(DefaultedCheck(Check("빛나기", r.Glow, v => r.Glow = v, () => { Changed(); Again(); }), s => s.Raids.Glow, (s, v) => s.Raids.Glow = v));
         if (r.Glow)
         {
-            p.Children.Add(Row("빛나는 동안", EnumCombo([(GlowUntil.Seconds, "정한 초 동안"), (GlowUntil.Bars, "정한 줄만큼 지날 때까지")], r.GlowUntil,
-                v => { r.GlowUntil = v; Again(); })));
+            p.Children.Add(Defaulted(Row("빛나는 동안", EnumCombo([(GlowUntil.Seconds, "정한 초 동안"), (GlowUntil.Bars, "정한 줄만큼 지날 때까지")], r.GlowUntil,
+                v => { r.GlowUntil = v; Again(); })), s => s.Raids.GlowUntil, (s, v) => s.Raids.GlowUntil = v));
             p.Children.Add(r.GlowUntil == GlowUntil.Seconds
-                ? SliderRow("초", 1, 120, r.GlowSeconds, 1, v => $"{v:0}초", v => r.GlowSeconds = (int)v, Changed)
-                : SliderRow("줄", 1, 50, r.GlowBars, 1, v => $"{v:0}줄", v => r.GlowBars = (int)v, Changed));
+                ? Defaulted(SliderRow("초", 1, 120, r.GlowSeconds, 1, v => $"{v:0}초", v => r.GlowSeconds = (int)v, Changed), s => s.Raids.GlowSeconds, (s, v) => s.Raids.GlowSeconds = v)
+                : Defaulted(SliderRow("줄", 1, 50, r.GlowBars, 1, v => $"{v:0}줄", v => r.GlowBars = (int)v, Changed), s => s.Raids.GlowBars, (s, v) => s.Raids.GlowBars = v));
         }
 
         p.Children.Add(SubHeading("줄 수 창 모양"));
-        p.Children.Add(Row("표시", EnumCombo([(BarCountLook.숫자, "숫자"), (BarCountLook.화면그대로, "화면 그대로")], r.Look, v => r.Look = v)));
-        p.Children.Add(ColorRow(Label("배경 색"), r.Background, v => r.Background = v, swatch: false));
-        p.Children.Add(SliderRow("불투명도", 0.1, 1, r.Opacity, 0.05, v => $"{v * 100:0}%", v => r.Opacity = v, Changed));
-        p.Children.Add(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, r.Width, 0.05, v => $"{v * 100:0}%", v => (r.Width, r.Height) = (v, v), Changed));
+        p.Children.Add(Defaulted(Row("표시", EnumCombo([(BarCountLook.숫자, "숫자"), (BarCountLook.화면그대로, "화면 그대로")], r.Look, v => r.Look = v)),
+            s => s.Raids.Look, (s, v) => s.Raids.Look = v));
+        p.Children.Add(Defaulted(ColorRow(Label("배경 색"), r.Background, v => r.Background = v, swatch: false), s => s.Raids.Background, (s, v) => s.Raids.Background = v));
+        p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, r.Opacity, 0.05, v => $"{v * 100:0}%", v => r.Opacity = v, Changed), s => s.Raids.Opacity, (s, v) => s.Raids.Opacity = v));
+        p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, r.Width, 0.05, v => $"{v * 100:0}%", v => (r.Width, r.Height) = (v, v), Changed),
+            s => (s.Raids.Width, s.Raids.Height), (s, v) => (s.Raids.Width, s.Raids.Height) = v));
         p.Children.Add(Note("편집 모드나 내 오버레이 화면에서 줄 수 창을 끌어 옮깁니다."));
     }
 
@@ -164,7 +170,7 @@ public partial class SettingsWindow
             string.Join(" ", new[]
             {
                 g.Hp.Count == 0 ? null : "보스 HP로 알아봅니다: " + string.Join(", ", g.Hp.Select(h => $"{h.Key} {h.Value:N0}")) + ".",
-                g.Shields.Count == 0 ? null : "실드 기믹: " + string.Join(", ", g.Shields.Select(x => $"{x.At}줄에서 +{x.Lines}줄")) + " (HP 뒤 괄호 수치로 읽어 DPS에 넣습니다).",
+                g.Shields.Count == 0 ? null : "보호막 기믹: " + string.Join(", ", g.Shields.Select(x => $"{x.At}줄에서 +{x.Lines}줄")) + " (HP 뒤 괄호 수치로 읽어 DPS에 넣습니다).",
             }.OfType<string>()) is { Length: > 0 } help ? help : null));
         // Greyed, kept as set, while the main 줄 수 읽기 is off.
         var count = Row("줄 수 창",
@@ -174,7 +180,7 @@ public partial class SettingsWindow
         p.Children.Add(count);
         if (row.CountWindow)
         {
-            var alerts = Row(g.HiddenHp.Count > 0 ? "알림 HP %" : "알림 줄 수", AlertChips(g, again));
+            var alerts = Row(g.HiddenHp.Count > 0 ? "빛날 HP %" : "빛날 줄 수", AlertChips(g, again));
             alerts.IsEnabled = r.CountEnabled;
             p.Children.Add(alerts);
         }
@@ -211,7 +217,7 @@ public partial class SettingsWindow
         add.Click += (_, _) => Add();
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Add(); };
         var reset = new Button { Content = "기본값", Margin = new(0, 0, 0, 4), IsEnabled = r.Gates.GetValueOrDefault(g.Id)?.Alerts is not null,
-            ToolTip = g.Alerts.Count == 0 ? "이 관문의 기본 알림은 아직 없습니다." : $"기본값: {string.Join(", ", g.Alerts)}" };
+            ToolTip = g.Alerts.Count == 0 ? "이 관문의 기본 빛남 기준은 아직 없습니다." : $"기본값: {string.Join(", ", g.Alerts)}" };
         reset.Click += (_, _) => Set(null);
         wrap.Children.Add(box);
         wrap.Children.Add(add);
@@ -340,7 +346,14 @@ public partial class SettingsWindow
     UIElement[] DebuffSizeSliders(int i, string prefix = "")
     {
         var box = _s.Debuffs.Box(i);
-        return [SliderRow(prefix + "너비", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Width, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Width = v, Changed),
-            SliderRow(prefix + "높이", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Height, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Height = v, Changed)];
+        // Peek, not Box, in the getters: reading must not add an entry (Box adds one the first time).
+        DebuffBox Peek(Settings s) => s.Debuffs.Boxes.ElementAtOrDefault(i) ?? new();
+        return [Defaulted(SliderRow(prefix + "너비", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Width, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Width = v, Changed),
+                s => Peek(s).Width, (s, v) => s.Debuffs.Box(i).Width = v),
+            Defaulted(SliderRow(prefix + "높이", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Height, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Height = v, Changed),
+                s => Peek(s).Height, (s, v) => s.Debuffs.Box(i).Height = v)];
     }
+
+    /// <summary>A row with its example under it (BossBarExample), one child so the card's divider stays between rows, not inside one.</summary>
+    static UIElement WithExample(FrameworkElement? example, UIElement row) => example is null ? row : Stack(row, example);
 }

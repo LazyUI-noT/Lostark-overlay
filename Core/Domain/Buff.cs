@@ -10,11 +10,11 @@ public sealed record BuffReading(BuffKind Kind, double? Seconds, TimeSpan At);
 
 /// <summary>What an indicator draws. Active with <see cref="EndsAt"/> and <see cref="Total"/> it drains; Active with no
 /// end (a timer never read) it shows full. <see cref="Estimated"/>: the end is carried forward, not just read.
-/// <see cref="Misses"/> and <see cref="Pending"/> are BuffTracker's: reads in a row without the icon, and the end implied
+/// <see cref="MissedAt"/> and <see cref="Pending"/> are BuffTracker's: the first read of a run without the icon, and the end implied
 /// by a read that jumped away from <see cref="EndsAt"/>, held until the next read agrees; <see cref="Resets"/>, 1 s 공증
 /// resets seen in a row while the 8 s bar is held.</summary>
 public sealed record BuffState(BuffKind Kind, bool Active, TimeSpan? EndsAt, TimeSpan? Total, bool Estimated, TimeSpan ChangedAt,
-    int Misses = 0, TimeSpan? Pending = null, int Resets = 0)
+    TimeSpan? MissedAt = null, TimeSpan? Pending = null, int Resets = 0)
 {
     public static BuffState Absent(BuffKind kind, TimeSpan at) => new(kind, false, null, null, false, at);
 

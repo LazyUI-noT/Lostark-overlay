@@ -7,7 +7,7 @@ public static class Membership
     public const int MaxMembers = 8;
     /// <summary>One party: the party windows show the other three of mine (the 공대's other party only in the meter).</summary>
     public const int PartySize = 4;
-    public static readonly string Full = $"파티가 가득 찼습니다 ({MaxMembers}/{MaxMembers}).";
+    public static readonly string Full = $"공유 방이 가득 찼습니다 ({MaxMembers}/{MaxMembers}).";
 
     /// <summary>Null to accept, else the refusal text shown to the joining user.
     /// <paramref name="members"/> are the confirmed members' sender ids, the host included (a join still in progress

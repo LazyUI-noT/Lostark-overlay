@@ -3,12 +3,12 @@ using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Core.Cooldown;
 
-/// <summary>What the debuff row read last: how many boxes from the left hold a debuff, what each is (kept between
-/// identifications), each timed box's seconds (null: none or unread), and when each pass last ran. Immutable.</summary>
+/// <summary>What the debuff row read last: how many boxes from the left hold a debuff, what each is, each timed box's
+/// seconds (null: none or unread), and when each pass last ran. Immutable.</summary>
 public sealed record DebuffSlots(int Filled, IReadOnlyList<DebuffKind?> Kinds, IReadOnlyList<double?> Seconds,
-    TimeSpan FramesAt, TimeSpan ClassifiedAt, TimeSpan TimersAt)
+    TimeSpan FramesAt, TimeSpan TimersAt)
 {
-    public static readonly DebuffSlots None = new(0, [], [], TimeSpan.MinValue, TimeSpan.MinValue, TimeSpan.MinValue);
+    public static readonly DebuffSlots None = new(0, [], [], TimeSpan.MinValue, TimeSpan.MinValue);
 }
 
 /// <summary>Your debuff row on the shared cadence (<see cref="RowCadence"/>, the user's spec 2026-10-30): its boxes, the timed
@@ -27,16 +27,12 @@ public static class DebuffSchedule
     public static IReadOnlyList<int> FastTimers(DebuffSlots s) =>
         [.. Enumerable.Range(0, s.Filled).Where(i => s.Kinds[i] == DebuffKind.결투자 || Timed(s.Kinds[i]) && RowCadence.Fast(s.Seconds[i]))];
 
-    /// <summary>Whether the frame pass that found <paramref name="filled"/> boxes identifies their icons again.</summary>
-    public static bool Classify(DebuffSlots s, int filled, TimeSpan now) =>
-        RowCadence.Identify(s.Filled, filled, s.ClassifiedAt, Enumerable.Range(0, s.Filled).Any(i => Timed(s.Kinds[i]) && s.Seconds[i] is null), now);
+    /// <summary>After a frame pass: each filled box's debuff (identified on change, the engine's <c>IconGate</c>, icon-gates
+    /// step 2) and the seconds read on the timed boxes.</summary>
+    public static DebuffSlots Frames(DebuffSlots s, int filled, IReadOnlyList<DebuffKind?> kinds, IReadOnlyList<double?> seconds, TimeSpan now) =>
+        new(filled, kinds, seconds, now, now);
 
-    /// <summary>After a frame pass: <paramref name="kinds"/> the boxes identified now, or null when they weren't (kept); the
-    /// seconds read on the timed boxes.</summary>
-    public static DebuffSlots Frames(DebuffSlots s, int filled, IReadOnlyList<DebuffKind?>? kinds, IReadOnlyList<double?> seconds, TimeSpan now) =>
-        new(filled, kinds ?? s.Kinds, seconds, now, kinds is null ? s.ClassifiedAt : now, now);
-
-    /// <summary>After a timer pass: the seconds read per box (null: unread, which asks for an identification next frame pass).</summary>
+    /// <summary>After a timer pass: the seconds read per box (null: unread).</summary>
     public static DebuffSlots Timers(DebuffSlots s, IReadOnlyDictionary<int, double?> seconds, TimeSpan now) =>
         s with { Seconds = [.. s.Seconds.Select((v, i) => seconds.TryGetValue(i, out var read) ? read : v)], TimersAt = now };
 }

@@ -159,6 +159,109 @@ public class FitAdjustTests
         }
     }
 
+    static readonly PixelRect Spot = new(1000, 500, 470, 114);
+    static FitAdjust WithPanel(PixelRect? panel = null) => FitAdjust.Begin(Fhd, 120, new Fit(100), panel: panel ?? Spot);
+
+    [Fact]
+    public void The_panel_starts_on_its_spot_or_the_usual_one_when_none_is_saved()
+    {
+        Assert.Equal(Spot, WithPanel().RectOf(AdjustPart.전분));
+        Assert.Equal(new PixelRect(1448, 848, 470, 114), Session().RectOf(AdjustPart.전분));
+    }
+
+    [Fact]
+    public void The_usual_panel_follows_the_game_areas_corner_and_height()
+    {
+        Assert.Equal(new PixelRect(100 + 1448 * 2, 50 + 848 * 2, 940, 228), Geometry.UsualPanel(new Viewport(100, 50, 3840, 2160)));
+        Assert.Equal(new PixelRect(2568, 848, 470, 114), Geometry.UsualPanel(new Viewport(0, 0, 3040, 1080)));
+    }
+
+    [Fact]
+    public void An_unmoved_panel_is_not_a_change_so_the_usual_spot_is_never_saved_by_itself()
+    {
+        var a = Session();
+
+        Assert.False(a.PanelMoved);
+        Assert.False(a.Changed);
+    }
+
+    [Fact]
+    public void Moving_only_the_panel_leaves_the_fit_unchanged()
+    {
+        var a = WithPanel().Move(AdjustPart.전분, 20, -10);
+
+        Assert.True(a.PanelMoved);
+        Assert.False(a.FitChanged);
+        Assert.True(a.Changed);
+        Assert.Equal(new PixelRect(1020, 490, 470, 114), a.Panel);
+        Assert.Equal((20.0, -10.0), a.Offset(AdjustPart.전분));
+    }
+
+    [Fact]
+    public void Moving_the_bar_is_not_moving_the_panel()
+    {
+        var a = WithPanel().Move(AdjustPart.스킬창, 5, 0);
+
+        Assert.True(a.FitChanged);
+        Assert.False(a.PanelMoved);
+    }
+
+    [Fact]
+    public void Going_back_returns_the_panel()
+    {
+        var a = WithPanel().Move(AdjustPart.전분, 20, 10).Resize(AdjustPart.전분, 47).Reverted();
+
+        Assert.Equal(Spot, a.Panel);
+        Assert.False(a.Changed);
+    }
+
+    [Theory]
+    [InlineData(47, 517, 125)]     // the reader's 470:114 shape, whatever the size
+    [InlineData(-235, 235, 57)]
+    public void Resizing_the_panel_keeps_its_shape_and_top_left(int step, int width, int height)
+    {
+        var r = WithPanel().Resize(AdjustPart.전분, step).Panel;
+
+        Assert.Equal(new PixelRect(1000, 500, width, height), r);
+    }
+
+    [Fact]
+    public void The_panels_handle_sizes_it_by_the_whole_drag()
+    {
+        var a = WithPanel();
+        Assert.Equal((1470, 614), a.Handle(AdjustPart.전분));
+
+        Assert.Equal(517, a.DragCorner(AdjustPart.전분, 47).Panel.Width);
+    }
+
+    [Fact]
+    public void The_panels_size_has_limits_and_it_stays_in_the_game_area()
+    {
+        Assert.Equal(235, WithPanel().Resize(AdjustPart.전분, -9000).Panel.Width);
+        var big = WithPanel().Resize(AdjustPart.전분, 9000).Panel;
+        Assert.True(big.Width <= Fhd.Width && big.Right <= Fhd.Width && big.Bottom <= Fhd.Height, $"{big}");
+        var moved = WithPanel().Move(AdjustPart.전분, 9000, 9000).Panel;
+        Assert.Equal((1920, 1080), (moved.Right, moved.Bottom));
+    }
+
+    [Fact]
+    public void A_saved_spot_outside_the_game_area_opens_inside_it()
+    {
+        var a = WithPanel(new PixelRect(5000, 5000, 470, 114));
+
+        Assert.Equal((1920, 1080), (a.Panel.Right, a.Panel.Bottom));
+        Assert.True(a.PanelMoved);
+    }
+
+    [Fact]
+    public void A_press_takes_the_panel_and_its_handle()
+    {
+        var a = WithPanel();
+
+        Assert.Equal((AdjustPart.전분, false), a.PartAt(1100, 550, 6));
+        Assert.Equal((AdjustPart.전분, true), a.PartAt(1470, 614, 6));
+    }
+
     [Fact]
     public void Clamp_limits_the_scale_to_50_250()
     {

@@ -307,6 +307,120 @@ public class HomeworkTests
         Assert.DoesNotContain(Homework.OnGrid(read, null, [mine, other]), x => x.Card.Name == "");   // 캐릭터 불명: the played card is nobody's yet
     }
 
+    static HomeworkCharacter Lv(string name, int? level) => new() { Name = name, ItemLevel = level, Picks = [new HomeworkPick("serka", "노말")] };
+
+    [Fact]
+    public void Two_cards_read_alike_go_to_the_characters_their_levels_fit()
+    {
+        // The user's grid, 2026-11-08: the small font read both 너무아파요살살 (1791) and 너무아파용살살 (1755) as "너무Ot파용살살".
+        IReadOnlyList<HomeworkCharacter> listed = [Lv("너무아파요살살", 1791), Lv("너무아파용살살", 1755)];
+
+        Assert.Equal("너무아파요살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1791), listed));
+        Assert.Equal("너무아파용살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1755), listed));
+    }
+
+    [Fact]
+    public void A_card_whose_level_rose_still_goes_to_its_character_not_to_one_it_would_lower()
+        => Assert.Equal("너무아파용살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1760),
+            [Lv("너무아파요살살", 1791), Lv("너무아파용살살", 1755)]));
+
+    [Fact]
+    public void A_rise_both_look_alikes_could_have_leaves_it_to_the_name_not_the_smaller_rise()
+        // 용 really rose 1700 -> 1730; 요 (1720) would rise less. The smaller rise must not take the card and lift 요 to 1730.
+        => Assert.Equal("너무아파용살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1730),
+            [Lv("너무아파요살살", 1720), Lv("너무아파용살살", 1700)]));
+
+    static HomeworkCharacter LvClass(string name, int? level, string? cls) => new() { Name = name, ItemLevel = level, ClassName = cls };
+
+    [Fact]
+    public void A_card_misread_past_any_name_is_the_one_character_at_its_level_and_class()
+    {
+        // The user's grid, 2026-11-08: 검지관절브레이커 (1752) read "김시관절브래0P1", too far for its name, and listed twice.
+        IReadOnlyList<HomeworkCharacter> listed = [LvClass("검지관절브레이커", 1752, null), LvClass("도화G", 1640, "도화가"), LvClass("공과여우와티라노", 1640, "환수사")];
+        var card = new MenuCard("김시관절브래0P1", "브레이커", 0, 0, 245, 0, 1752);
+
+        Assert.Equal("검지관절브레이커", Homework.CardOwner(card, listed));
+        Assert.Null(Homework.SureOwner(card, listed));   // level alone: its level goes there, a class (kept for good) doesn't
+        Assert.Null(Homework.NewFromCard(card, listed, current: null));
+    }
+
+    [Fact]
+    public void A_new_alt_at_the_played_characters_level_is_still_new()
+    {
+        // The played character's card shows 접속 중, so no grid card is its: it can't own one (review, 2026-11-08).
+        IReadOnlyList<HomeworkCharacter> listed = [LvClass("밝키리", 1640, null)];
+        Assert.Equal("바드바드", Homework.NewFromCard(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1640), listed, current: "밝키리"));
+    }
+
+    [Fact]
+    public void A_far_name_at_a_shared_level_or_another_class_is_a_new_character()
+    {
+        IReadOnlyList<HomeworkCharacter> listed = [LvClass("도화G", 1640, "도화가"), LvClass("공과여우와티라노", 1640, "환수사"), LvClass("배럭3호봉", 1701, "블래스터")];
+        Assert.Null(Homework.CardOwner(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1640), listed));   // two at 1640
+        Assert.Null(Homework.CardOwner(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1701), listed));   // 1701 is a 블래스터
+        Assert.Equal("바드바드", Homework.NewFromCard(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1701), listed, current: null));
+    }
+
+    [Fact]
+    public void Only_a_sure_owner_takes_a_cards_class_its_exact_name_or_its_exact_level()
+    {
+        IReadOnlyList<HomeworkCharacter> listed = [Lv("너무아파요살살", 1791), Lv("밝키", null)];
+        Assert.Equal("너무아파요살살", Homework.SureOwner(new MenuCard("너무아파요살살", null, 0, 0, 245, 0, 1700), listed));   // read exactly
+        Assert.Equal("너무아파요살살", Homework.SureOwner(new MenuCard("너무Ot파요살살", null, 0, 0, 245, 0, 1791), listed));   // its level
+        Assert.Null(Homework.SureOwner(new MenuCard("너무Ot파요살살", null, 0, 0, 245, 0, 1800), listed));   // a rise: owner, not sure
+        Assert.Null(Homework.SureOwner(new MenuCard("밝기", null, 0, 0, 245, 0, 1700), listed));   // a near name alone: maybe a new alt
+    }
+
+    [Fact]
+    public void A_card_read_exactly_is_that_character_whatever_its_level_reads()
+        => Assert.Equal("배럭3호봉", Homework.CardOwner(new MenuCard("배럭3호봉", null, 0, 0, 245, 0, 1761),
+            [Lv("배럭3호봉", 1701), Lv("배럭4호봉", 1761)]));
+
+    [Fact]
+    public void Without_a_level_a_card_goes_to_the_nearest_name_and_a_tie_to_none()
+    {
+        IReadOnlyList<HomeworkCharacter> listed = [Lv("너무아파요살살", 1791), Lv("너무아파용살살", 1755)];
+        Assert.Equal("너무아파용살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0), listed));
+        Assert.Null(Homework.CardOwner(new MenuCard("너무아파오살살", null, 0, 0, 245, 0), listed));
+        Assert.Null(Homework.CardOwner(new MenuCard("김뚜까뚜까", null, 0, 0, 245, 0, 1791), listed));
+    }
+
+    [Fact]
+    public void A_level_that_fits_no_one_leaves_it_to_the_name()
+    {
+        IReadOnlyList<HomeworkCharacter> listed = [Lv("너무아파요살살", 1791), Lv("너무아파용살살", 1755)];
+        Assert.Equal(Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0), listed),
+            Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1751), listed));   // a dropped digit: both would fall, as with no level
+        Assert.Equal("너무아파용살살", Homework.CardOwner(new MenuCard("너무Ot파용살살", null, 0, 0, 245, 0, 1700),
+            [Lv("너무아파요살살", null), Lv("너무아파용살살", 1755)]));   // unknown and falling alike: the nearer name
+    }
+
+    [Fact]
+    public void A_card_too_far_from_the_nearest_name_is_no_one_even_if_a_longer_name_allows_it()
+        // 3 letters from both; the short name allows 2, the long one 4: Nearest's rule (the nearest name's own tolerance) gives none.
+        => Assert.Null(Homework.CardOwner(new MenuCard("가나다라마", null, 0, 0, 245, 0), [Lv("가나바사아", 1700), Lv("가나다라마바사아", 1700)]));
+
+    [Theory]
+    [InlineData("1729.99", 1729)]
+    [InlineData(" 1730 ", 1730)]
+    [InlineData("1729,99", null)]
+    [InlineData("abc", null)]
+    [InlineData("2500", null)]
+    public void A_typed_level_drops_its_decimals_and_never_rounds_up(string typed, int? expected)
+        => Assert.Equal(expected, Homework.TypedLevel(typed));   // 1729.99 can't enter a 1730 raid (user, 2026-11-08)
+
+    [Fact]
+    public void The_grid_tags_follow_the_levels()
+    {
+        var (yo, yong) = (Lv("너무아파요살살", 1791), Lv("너무아파용살살", 1755));
+        var read = new MenuRead(true, null, null,
+            [new("너무Ot파용살살", null, 846, 426, 245, 452, 1791), new("너무Ot파용살살", null, 1106, 426, 245, 452, 1755)], false);
+
+        var grid = Homework.OnGrid(read, null, [yo, yong]);
+
+        Assert.Equal([yo, yong], grid.Select(x => x.Character));
+    }
+
     static string TempFile() => Path.Combine(Path.GetTempPath(), $"homework-{Guid.NewGuid():N}.json");
 
     [Fact]

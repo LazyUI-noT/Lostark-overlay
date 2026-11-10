@@ -11,19 +11,20 @@ public static class DetectPlace
     public const string DebuffRowTitle = "디버프 줄";
 
     /// <summary>The boxes 위치 조정 moves, in <see cref="AdjustPart"/> order.</summary>
-    public static readonly string[] Movable = ["skill", "buff", DebuffRow, "amsu"];
+    public static readonly string[] Movable = ["skill", "buff", DebuffRow, "amsu", "g-jeonbun"];
 
     /// <summary>The table's row groups.</summary>
     public const string Slots = "슬롯", Buffs = "버프", Debuffs = "디버프", Boss = "보스";
 
     /// <summary>The part of 위치 조정 that moves box <paramref name="id"/>; null: nothing moves it (아덴 and the class check follow
-    /// 스킬창, 인게임 전분 finds its own place, 보스 체력 / 던전 / 메뉴 are placed by resolution and HUD, 단심 by 데미지 폰트).</summary>
+    /// 스킬창, 보스 체력 / 던전 / 메뉴 are placed by resolution and HUD, 단심 by 데미지 폰트).</summary>
     public static AdjustPart? PartOf(string id) => id switch
     {
         "skill" => AdjustPart.스킬창,
         "buff" => AdjustPart.버프,
         DebuffRow => AdjustPart.디버프,
         "amsu" => AdjustPart.보스,   // the boss row's debuff strip follows its shift
+        "g-jeonbun" => AdjustPart.전분,
         _ => null,
     };
 

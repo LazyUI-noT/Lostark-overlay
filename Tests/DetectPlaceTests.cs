@@ -14,7 +14,20 @@ public class DetectPlaceTests
     [InlineData("buff", AdjustPart.버프)]
     [InlineData("amsu", AdjustPart.보스)]
     [InlineData(DetectPlace.DebuffRow, AdjustPart.디버프)]
+    [InlineData("g-jeonbun", AdjustPart.전분)]
     public void A_box_that_the_adjust_layer_moves_has_its_part(string id, AdjustPart part) => Assert.Equal(part, DetectPlace.PartOf(id));
+
+    [Fact]
+    public void The_panel_reads_green_on_a_real_panel_and_plain_on_nothing()
+    {
+        var panel = Fixture.Load("jeonbun_1").Frames[0];
+        var at = new PixelRect(100, 100, panel.Width, panel.Height);
+
+        Assert.True(PictureReads.Panel(panel));
+        Assert.False(PictureReads.Panel(new Image(panel.Width, panel.Height)));
+        Assert.True(PictureReads.Of(AdjustPart.전분, panel, at, Fhd, new Fit(100), 100, Geometry.BuffBoxCount, 100, at));
+        Assert.Null(PictureReads.Of(AdjustPart.전분, panel, at, Fhd, new Fit(100), 100, Geometry.BuffBoxCount, 100, at with { X = 900 }));
+    }
 
     [Fact]
     public void Every_movable_box_has_a_part_and_the_parts_are_all_covered() =>
@@ -24,7 +37,6 @@ public class DetectPlaceTests
     [InlineData("aden")]
     [InlineData("judg")]
     [InlineData("boss")]
-    [InlineData("g-jeonbun")]
     [InlineData("dungeon")]
     [InlineData("char")]
     [InlineData("meter")]

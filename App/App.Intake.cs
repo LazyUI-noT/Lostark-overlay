@@ -92,6 +92,11 @@ public partial class App
     {
         var report = new System.Text.StringBuilder();
         var memory = new MenuMemory();   // the pictures in turn, as a session sees them: each one known from those before
+        var hw = new SettingsStore(SettingsStore.DefaultPath).Load(out _).Homework;
+        // The card order learned over the pictures as a session would (CardOrder.Step); --order=a,b,… starts from that instead of this PC's.
+        IReadOnlyList<string> order = Option(args, "order") is { } given ? given.Split(',') : hw.Order;
+        IReadOnlyDictionary<int, string>? mismatch = null;
+        string? current = null;
         foreach (var path in Operands(args, "--read-menu"))
         {
             report.AppendLine($"## {Path.GetFileName(path)}");
@@ -108,7 +113,12 @@ public partial class App
                 report.AppendLine($"→ open {read.Open}, current {read.Current ?? "-"} ({read.CurrentLevel}), picked {read.Picked ?? "-"}, waiting {read.Waiting}");
                 if (read.PlayingCard is { } playing) report.AppendLine($"  playing card at {playing.X:0},{playing.Y:0}–{playing.Bottom:0}");
                 foreach (var c in read.Cards) report.AppendLine($"  card {c.Name} [{c.ClassName}] {c.ItemLevel} at {c.X:0},{c.Y:0}–{c.Bottom:0}");
-                if (Option(args, "tags-out") is { } outDir) report.Append(DrawTags(screen, read, Path.Combine(outDir, Path.GetFileNameWithoutExtension(path) + "-tags.png")));
+                if (read.Current is { } big) current = CharacterName.Snap(big, [.. hw.Characters.Select(x => x.Name)]);
+                (order, mismatch) = CardOrder.Step(order, mismatch, CardOrder.Sure(read, current, hw.Characters));
+                report.AppendLine($"  order: {string.Join(" / ", order.Select(n => n.Length > 0 ? n : "?"))}{(mismatch is null ? "" : " (mismatch)")}");
+                report.AppendLine($"  owners: {string.Join(" / ", CardOrder.Owners(read, current, hw.Characters, order).Select(x => $"{x.Card.Name}@{MenuSlots.SlotOf(x.Card)}→{x.Owner ?? "?"}"))}"
+                    + ((read.PlayingCard ?? CardOrder.PlayingCard(read, current, hw.Characters, order)) is { } pc ? $" + 접속 중@{MenuSlots.SlotOf(pc)}→{current ?? "?"}" : ""));
+                if (Option(args, "tags-out") is { } outDir) report.Append(DrawTags(screen, read, order, Path.Combine(outDir, Path.GetFileNameWithoutExtension(path) + "-tags.png"), args.Contains("--power-sample")));
             }
             catch (Exception ex) { report.AppendLine($"  {ex.GetType().Name}: {ex.Message}"); }
         }
@@ -116,8 +126,10 @@ public partial class App
     }
 
     /// <summary>--read-menu … --tags-out=&lt;folder&gt;: the picture with the 숙제 tags the grid would get, from this PC's settings, clears
-    /// and raids, matched and drawn as the app does (Homework.OnGrid, HomeworkWindow.Tags). Who is played: the portrait's name.</summary>
-    static string DrawTags(Image screen, MenuRead read, string outPath)
+    /// and raids, matched and drawn as the app does (Homework.OnGrid, HomeworkWindow.Tags), with the 전투력 beside the levels
+    /// (MenuPower). Who is played: the portrait's name. <paramref name="powerSample"/> (--power-sample): made-up 전투력 for every
+    /// character, every third a 서포터, to see the placement on a PC with none stored; settings are not changed.</summary>
+    static string DrawTags(Image screen, MenuRead read, IReadOnlyList<string> order, string outPath, bool powerSample)
     {
         var settings = new SettingsStore(SettingsStore.DefaultPath).Load(out _);
         var hw = settings.Homework;
@@ -126,12 +138,17 @@ public partial class App
         string? current = read.Current is { } c ? CharacterName.Snap(c, [.. hw.Characters.Select(x => x.Name)]) : null;
         var week = Homework.WeekStart(DateTime.Now);
         var vp = new Viewport(0, 0, screen.Width, screen.Height);
-        var cards = Homework.OnGrid(read, current, hw.Characters).Select(x => (
+        var cards = Homework.OnGrid(read, current, hw.Characters, order).Select(x => (
             Card: Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))),
             Who: x.Character.Name,
             Tags: (IReadOnlyList<HomeworkTag>)[.. x.Character.Picks.Select(p => Homework.Tag(p, clears.Where(k => k.Character == x.Character.Name), raids, hw.Tags, week)).OfType<HomeworkTag>()])).ToList();
+        var classes = ProfileLoader.LoadClasses(CharacterService.DefaultProfilesDir);
+        var book = powerSample
+            ? hw.Characters.Select((x, i) => (x.Name, i)).ToDictionary(x => x.Name, x => new Dictionary<string, double> { [x.i % 3 == 2 ? "해방자" : ""] = 1000 + x.i * 345.67 })
+            : settings.CombatPower;
+        var power = MenuPower.Tags(read, current, CardOrder.Owners(read, current, hw.Characters, order), book, key => MenuPower.RoleIn(classes, key));
         var tags = new UI.HomeworkWindow.Tags();
-        tags.Set([.. cards.Select(x => (x.Card, x.Tags))], vp.Height / 1080.0);
+        tags.Set([.. cards.Select(x => (x.Card, x.Tags))], [.. power.Select(t => t with { Line = Geometry.MenuArea(vp, t.Line) })], vp.Height / 1080.0);
         var picture = new System.Windows.Controls.Image { Source = System.Windows.Media.Imaging.BitmapSource.Create(screen.Width, screen.Height, 96, 96,
             System.Windows.Media.PixelFormats.Bgra32, null, screen.Bgra, screen.Width * 4) };
         var both = new System.Windows.Controls.Grid { Width = screen.Width, Height = screen.Height, Children = { picture, tags } };

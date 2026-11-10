@@ -57,6 +57,18 @@ public static class Geometry
 
     public static string ViewportKey(Viewport vp) => $"{vp.Width}×{vp.Height}";
 
+    const double RefPanelFromRight = 472, RefPanelY = 848;   // the 전분 panel's usual spot, 1920×1080 sample
+
+    /// <summary>Where 전분 usually sits, for placing it by hand before any spot is known: the bottom right of the game area. Follows the
+    /// resolution and the ratio (kept to the right edge; its size by the screen's height, as the panel's), not the HUD or the in-game
+    /// sizes, which don't move it. Measured at 1080p only: the player drags it from here.</summary>
+    public static PixelRect UsualPanel(Viewport vp)
+    {
+        double s = vp.Height / 1080.0;
+        return new(vp.X + vp.Width - (int)Math.Round(RefPanelFromRight * s), vp.Y + (int)Math.Round(RefPanelY * s),
+            (int)Math.Round(JeonbunReader.RefW * s), (int)Math.Round(JeonbunReader.RefH * s));
+    }
+
     /// <summary>The game's forced 21:9: 64:27 in fact (1920×810, 3840×1620).</summary>
     public const double ForcedWide = 64.0 / 27;
 
@@ -315,9 +327,11 @@ public static class Geometry
     public static PixelRect BossTextRow(Viewport vp, Fit fit) => FromTop(RefBossTextRow, vp, fit);
 
     /// <summary>The 그림자 레이드 gimmick's number above its fill bar, where the boss bar was ("134,046,661,186": x 882–1035,
-    /// y 62–82 at 1080p HUD 110, Lost Ark 2026.11.03 - 21.46.27.02.mp4 9:03; popping up to 1.5× as it jumps). Follows the HUD
-    /// and the resolution from the top centre like the boss bar; 21:9 and other HUD sizes untested on footage.</summary>
-    public static readonly PixelRect RefShadowNumber = new(760, 56, 400, 30);
+    /// y 62–82 at 1080p HUD 110, Lost Ark 2026.11.03 - 21.46.27.02.mp4 9:03). As it jumps it pops bigger about (960, 91): glyphs
+    /// 16 px at y 64–80, 21 px at y 56–77 (ShadowNumberSweep, the whole 대난투), so a 1.5× pop reaches y 51; the top at 46 keeps
+    /// 5 px over that (the old 56 cut it). Follows the HUD and the resolution from the top centre like the boss bar; 21:9 and
+    /// other HUD sizes untested on footage (ShadowGimmickTests draws the clip's frames there).</summary>
+    public static readonly PixelRect RefShadowNumber = new(760, 46, 400, 40);
     public static PixelRect ShadowNumber(Viewport vp, Fit fit) => FromTop(RefShadowNumber, vp, fit);
     /// <summary>The gimmick's fill bar under its number, inside its frame (x 638–1282, y 101–121 at 1080p HUD 110, the same video at
     /// 9:05 empty and 9:30 filling): OverlayTextWindow draws the boss's HP and lines in it (user, 2026-11-05). Follows the HUD and the
@@ -391,6 +405,10 @@ public static class Geometry
     /// <summary>The ESC menu from its title down past the portrait's "Lv.70 name" (y 676) and across the 다른 캐릭터 접속 grid and
     /// the right panel's header (x 1790), at 1080p in the 16:9 frame.</summary>
     public static readonly PixelRect RefMenuPanel = new(250, 250, 1540, 540);
+
+    /// <summary>The portrait's item level digits ("1791.66" at x 376–432, y 704–714 on goal-tags.png), at 1080p in the 16:9 frame:
+    /// centred under the portrait, so its place doesn't move with the name's length.</summary>
+    public static readonly PixelRect RefMenuPortraitLevel = new(376, 704, 57, 11);
 
     /// <summary>A menu area on screen. The menu is drawn centred at the game area's height (like the loading screen), so it
     /// follows the game area's height and centre only: not the HUD 크기 or the other in-game sizes.</summary>

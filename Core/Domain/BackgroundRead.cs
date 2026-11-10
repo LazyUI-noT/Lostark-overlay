@@ -6,10 +6,10 @@ public enum GameView { Clear, Covered, Minimized }
 /// <summary>The status line under 창 밖에서도 읽기.</summary>
 public readonly record struct BehindStatus(bool Reading, GameView View, string? CoveredBy)
 {
-    public string Text => Reading ? "읽고 있어요"
-        : View == GameView.Minimized ? "게임이 최소화되어 멈췄어요"
-        : View == GameView.Covered ? $"{CoveredBy} 창이 게임을 덮고 있어 멈췄어요"
-        : "다른 앱이 앞에 있어 멈췄어요";
+    public string Text => Reading ? "읽고 있습니다"
+        : View == GameView.Minimized ? "게임이 최소화되어 멈췄습니다"
+        : View == GameView.Covered ? $"{CoveredBy} 창이 게임을 덮고 있어 멈췄습니다"
+        : "다른 앱이 앞에 있어 멈췄습니다";
 }
 
 /// <summary>창 밖에서도 읽기: Desktop Duplication shows whatever is on top of the game's monitor, so reads with another app in

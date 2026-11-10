@@ -20,7 +20,7 @@ public sealed record SubmissionNote(string File, bool Ok, string Text, string? F
 public static partial class Submission
 {
     public const string AskPng = "스크린샷이 압축되어 화질이 떨어졌습니다. 원본 PNG 파일 그대로 올려 주세요.";
-    public const string AskSkillBar = "스크린샷에서 스킬창을 찾지 못했습니다. 수련장에서 재사용 대기시간을 초기화해 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍어 주세요.";
+    public const string AskSkillBar = "스크린샷에서 스킬창을 찾지 못했습니다. 수련장에서 쿨초해 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍어 주세요.";
     public const string AskGaugePair = "아덴 게이지가 완전히 빈 화면과 가득 찬 화면을 각각 한 장씩 보내 주세요. 다른 것은 바뀌지 않게, 같은 자리에서 찍어 주세요.";
     public const string AskIcon = "초각스 아이콘이 보이는 스킬 창 스크린샷이 빠졌습니다.";
 

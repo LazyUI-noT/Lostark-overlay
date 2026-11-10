@@ -51,6 +51,15 @@ public class HpChangeTests
     }
 
     [Fact]
+    public void A_value_within_one_percent_of_a_stored_one_is_a_misread_not_a_patch()
+    {
+        Assert.Null(HpChange.Judge(Echidna, Hard + 4, "하드"));   // the "4 off" row
+        Assert.Null(HpChange.Judge(Echidna, Nerf(Hard, 0.009), "하드"));
+        Assert.Null(HpChange.Judge(Echidna, Hard - 4, null));
+        Assert.Equal(("하드", HpTrust.Confirmed), HpChange.Judge(Echidna, Nerf(Hard, 0.02), "하드"));
+    }
+
+    [Fact]
     public void A_max_hp_counts_only_after_three_equal_reads_in_a_row()
     {
         var s = HpStreak.None;
@@ -121,6 +130,20 @@ public class HpChangeTests
         Assert.False(kept.ContainsKey("나이트메어"));   // a first value waits for a later raid
         Assert.False(kept.ContainsKey("노말"));
         Assert.False(HpChange.Keep([Echidna], raids, fight, Day1));   // nothing new: no save
+    }
+
+    [Fact]
+    public void Reading_raids_json_value_again_drops_the_learned_one_instead_of_listing_it_as_a_change()
+    {
+        var raids = new RaidSettings();
+        raids.Gate("act4-g1").LearnedHp = new() { ["하드"] = new(Nerf(Hard, 0.15), Hard) };
+        // Judge runs on the effective HP (learned merged in), so raids.json's own value reads as near the learned one.
+        List<FightHp> fight = [new("act4-g1", "하드", Hard, HpTrust.Confirmed)];
+
+        Assert.True(HpChange.Keep([Echidna], raids, fight, Day1));
+
+        Assert.Empty(raids.Gates["act4-g1"].LearnedHp!);
+        Assert.Empty(HpChange.Found([Echidna], raids));   // no "905,014,093,444 → 905,014,093,444" row
     }
 
     static readonly DungeonInfo HardPanel = new(DungeonKind.Raid, "파멸의 성채", "하드");

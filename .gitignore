@@ -17,3 +17,9 @@ reference/
 .superpowers/
 graphify-out/
 .worktrees/
+# an agent's notes in its worktree root (global CLAUDE.md, Parallel Agents)
+/RESUME.md
+
+# local editor workspace and images for a forum post
+GaugeOverlay.code-workspace
+inven-post/

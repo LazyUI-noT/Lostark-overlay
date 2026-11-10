@@ -31,13 +31,13 @@ public class HomeworkWatchTests
 
         /// <summary>One step per second for <paramref name="seconds"/>: the bar at <paramref name="current"/> of <paramref name="max"/>, or
         /// no bar when <paramref name="max"/> is null.</summary>
-        public Play Run(int seconds, long? max, long current = 0, RaidGate? name = null, bool blocked = false)
+        public Play Run(int seconds, long? max, long current = 0, RaidGate? name = null, bool blocked = false, bool daenantu = false, bool killed = false)
         {
             for (int i = 0; i < seconds; i++)
             {
                 Time += 1;
                 var read = max is { } m ? new WatchRead(current, m) : null;
-                var (next, decision) = Watch.Step(read, new WatchContext(blocked, name, TimeSpan.FromSeconds(Time)), Gates, Raids);
+                var (next, decision) = Watch.Step(read, new WatchContext(blocked, name, TimeSpan.FromSeconds(Time), daenantu, killed), Gates, Raids);
                 Watch = next;
                 if (decision is not null) Decisions.Add(decision);
             }
@@ -51,6 +51,49 @@ public class HomeworkWatchTests
         var play = new Play().Run(5, G2, G2 / 2).Run(2, G2, G2 / 100).Run(4, null);
 
         Assert.Equal([new WatchDecision("serka", "하드", WatchOutcome.Cleared)], play.Decisions);
+    }
+
+    [Fact]
+    public void Daenantu_and_a_few_seconds_after_it_are_no_bar_gone()
+    {
+        // 대난투 shows no boss HP, only the damage dealt (user, 2026-11-08); its number unread a few seconds (or the gimmick just
+        // ended) is held as FightRecorder holds it, until ShadowEndAfter.
+        var play = new Play().Run(3, G2, G2 / 100).Run(20, null, daenantu: true).Run(6, null);
+
+        Assert.Empty(play.Decisions);
+    }
+
+    [Fact]
+    public void A_bar_still_gone_after_daenantu_s_hold_is_judged_again()
+    {
+        var play = new Play().Run(3, G2, G2 / 100).Run(20, null, daenantu: true).Run(7, null);
+
+        Assert.Equal([new WatchDecision("serka", "하드", WatchOutcome.Cleared)], play.Decisions);
+    }
+
+    [Fact]
+    public void A_boss_killed_in_daenantu_whose_bar_never_returns_is_cleared()
+    {
+        // The bar was at half before 대난투; the gimmick's number reached the boss's HP (Dead), and no bar came back.
+        var play = new Play().Run(3, G2, G2 / 2).Run(20, null, daenantu: true).Run(12, null, killed: true);
+
+        Assert.Equal([new WatchDecision("serka", "하드", WatchOutcome.Cleared)], play.Decisions);
+    }
+
+    [Fact]
+    public void Daenantu_without_a_kill_leaves_a_half_bar_undecided()
+    {
+        var play = new Play().Run(3, G2, G2 / 2).Run(20, null, daenantu: true).Run(12, null);
+
+        Assert.Empty(play.Decisions);
+    }
+
+    [Fact]
+    public void A_real_bar_read_after_a_daenantu_kill_wins_over_the_kill()
+    {
+        var play = new Play().Run(3, G2, G2 / 2).Run(20, null, daenantu: true).Run(2, null, killed: true).Run(3, G2, G2 / 2, killed: true).Run(12, null);
+
+        Assert.Empty(play.Decisions);
     }
 
     [Fact]

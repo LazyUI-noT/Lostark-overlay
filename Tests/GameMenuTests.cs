@@ -115,19 +115,44 @@ public class GameMenuTests
     [InlineData("너무아파요살살.", "너무아파요살살")]
     [InlineData("1791.66", null)]   // an item level
     [InlineData("가", null)]        // too short
+    [InlineData("가Ot나", "가Ot나")]   // a typed name stays as typed
     public void A_name_is_letters_and_digits_with_a_letter(string text, string? name)
     {
         Assert.Equal(name, CharacterName.Clean(text));
     }
+
+    [Theory]
+    [InlineData("너무Ot파요살살", "너무아파요살살")]   // the small font's 아 reads "Ot" (user, 2026-11-08)
+    [InlineData("Ot파요", "Ot파요")]                // only between Hangul letters
+    [InlineData("Otto", "Otto")]
+    [InlineData("1791.66", null)]
+    public void A_card_name_puts_back_the_small_fonts_misreads(string text, string? name)
+        => Assert.Equal(name, CharacterName.CardName(text));
 
     [Fact]
     public void A_misread_letter_snaps_to_the_known_name()
     {
         string[] known = ["너무아파요살살", "매우아파요살살"];
 
-        Assert.Equal("너무아파요살살", CharacterName.Snap("너무아파오살살", known));
+        Assert.Equal("너무아파요살살", CharacterName.Snap("너무아파8살살", known));
         Assert.Equal("매우아파요살살", CharacterName.Snap("매우아파요살살", known));
         Assert.Equal("새캐릭터", CharacterName.Snap("새캐릭터", known));
+    }
+
+    [Theory]
+    [InlineData("Lazy0ne", "LazyOne")]
+    [InlineData("Lazy1ne", "Lazylne")]
+    public void A_letter_read_as_a_digit_is_a_misread(string read, string known)
+    {
+        Assert.Equal(known, CharacterName.Snap(read, [known]));
+    }
+
+    [Theory]
+    [InlineData("너무아파용살살", "너무아파요살살")]   // the user's two characters, one not listed yet
+    [InlineData("도화H", "도화G")]
+    public void A_name_one_real_letter_off_a_known_one_is_another_character(string read, string known)
+    {
+        Assert.Equal(read, CharacterName.Snap(read, [known]));
     }
 
     // The video's card names as Windows OCR reads them (--read-menu, 2026-11-04), against the real names.
@@ -197,7 +222,7 @@ public class GameMenuTests
         var read = GameMenu.Parse(lines, ["장시만 기다려주세요•"]);
 
         Assert.Equal("너무아파요살살", read.Current);
-        Assert.Equal(["매우Ot파요살살"], read.Cards.Select(c => c.Name));
+        Assert.Equal(["매우아파요살살"], read.Cards.Select(c => c.Name));
         Assert.True(read.Waiting);
     }
 
@@ -212,6 +237,10 @@ public class GameMenuTests
     [InlineData("00", null)]
     [InlineData("-", null)]
     [InlineData("9999.00", null)]     // no such level
+    [InlineData("1639.99", null)]     // under 1640 and over 1900: a misread (user, 2026-11-08)
+    [InlineData("1900.00", 1900)]
+    [InlineData("1901.00", null)]
+    [InlineData("쉬639.00", null)]    // the swallowed-1 read is bounded too
     public void An_item_level_is_found_in_what_the_ocr_reads(string text, int? level)
     {
         Assert.Equal(level, GameMenu.ItemLevel(text));
@@ -246,8 +275,54 @@ public class GameMenuTests
     }
 
     [Fact]
+    public void The_portrait_reads_when_the_ocr_splits_Lv_from_its_number()
+    {
+        // m4k.png (4K, --read-menu, 2026-11-09): "Lv." and "70" come as two words, where 1080p reads "LⅥ70".
+        IReadOnlyList<IReadOnlyList<MenuWord>> lines =
+        [
+            L(W("계임", 1043, 262, 40, 18), W("메뉴", 1085, 262, 40, 18)),
+            L(W("Lv.", 321, 677, 22, 16), W("70", 347, 677, 20, 16), W("너무아파요살살", 373, 676, 120, 16)),
+            L(W("수", 357, 703, 12, 16), W("1791.66", 376, 704, 57, 16)),
+        ];
+
+        var read = GameMenu.Parse(lines, []);
+
+        Assert.Equal("너무아파요살살", read.Current);
+        Assert.Equal(1791, read.CurrentLevel);
+    }
+
+    [Fact]
+    public void Cards_read_the_same_when_every_Lv_comes_split_from_its_number()
+    {
+        IReadOnlyList<IReadOnlyList<MenuWord>> split = [.. Grid.Select(l => (IReadOnlyList<MenuWord>)[.. l.SelectMany(w => w.Text.StartsWith("Lv.")
+            ? new[] { w with { Text = "Lv.", W = 18 }, w with { Text = w.Text[3..], X = w.X + 20, W = w.W - 20 } }
+            : [w])])];
+
+        var (whole, apart) = (GameMenu.Parse(Grid, []), GameMenu.Parse(split, []));
+
+        Assert.Equal(whole.Current, apart.Current);
+        Assert.Equal(whole.Cards, apart.Cards);
+    }
+
+    [Fact]
+    public void A_bare_Lv_before_a_word_that_is_no_number_is_left_alone()
+    {
+        IReadOnlyList<IReadOnlyList<MenuWord>> lines =
+        [
+            L(W("계임", 1043, 262, 40, 18), W("메뉴", 1085, 262, 40, 18)),
+            L(W("Lv.", 321, 677, 22, 16), W("너무아파요살살", 373, 676, 120, 16)),
+        ];
+
+        Assert.Null(GameMenu.Parse(lines, []).Current);
+    }
+
+    [Fact]
     public void A_read_near_two_known_names_is_kept_as_read()
     {
         Assert.Equal("아파요살살", CharacterName.Snap("아파요살살", ["너파요살살", "매파요살살"]));
     }
+
+    [Fact]
+    public void A_read_level_drops_its_decimals_and_never_rounds_up()
+        => Assert.Equal(1729, GameMenu.ItemLevel("1729.99"));   // 1729.99 can't enter a 1730 raid (user, 2026-11-08)
 }

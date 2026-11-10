@@ -22,7 +22,7 @@ public partial class SettingsWindow
     void FillConnect()
     {
         var party = _s.Party;
-        var p = Refill(_secConnect, "세션", "호스트를 포함해 8명까지 참가할 수 있고, 토큰으로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
+        var p = Refill(_secConnect, "세션", "호스트를 포함해 8명까지 참가할 수 있고, 참가 코드로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
         bool inSession = _partyStatus is not null;
         bool connecting = _partyStatus is "연결 중…" or "승인 기다리는 중…" or "다시 연결 중…";
         p.Children.Add(Row("상태", Label(_partyStatus ?? "연결 안 됨")));
@@ -47,12 +47,12 @@ public partial class SettingsWindow
             join.IsEnabled = !inSession && _joinToken.Trim().Length > 0;
         };
         join.Click += (_, _) => { if (_joinToken.Trim().Length > 0) JoinRequested?.Invoke(_joinToken.Trim()); };
-        p.Children.Add(Row("참가 토큰", token, join));
+        p.Children.Add(Row("참가 코드", token, join));
         if (inSession)
         {
             var leave = new Button { Content = "나가기" };
             leave.Click += (_, _) => LeaveRequested?.Invoke();
-            var copy = new Button { Content = "토큰 복사", IsEnabled = _hasToken };
+            var copy = new Button { Content = "참가 코드 복사", IsEnabled = _hasToken };
             copy.Click += (_, _) => CopyTokenRequested?.Invoke();
             p.Children.Add(Row("", copy, leave));
         }
@@ -67,7 +67,7 @@ public partial class SettingsWindow
         name.TextChanged += (_, _) => { party.DisplayName = PlayerName.Clip(name.Text); Changed(); };
         name.LostKeyboardFocus += (_, _) => name.Text = party.DisplayName;
         p.Children.Add(Row(Described("표시 이름", "한글 7자, 영문 14자까지. 파티원 화면에서 클래스 아이콘 아래에 보입니다."), name));
-        p.Children.Add(ResetButton("기본값", "파티의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
+        p.Children.Add(ResetButton("기본값", "파티 공유의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
             () => SettingsResets.Party(_s)));
     }
 
@@ -179,7 +179,7 @@ public partial class SettingsWindow
         var update = new Button { Content = "업데이트", IsEnabled = InParty,
             ToolTip = "지금 쓰는 색, 칸 크기, 칸 배치를 파티원에게 다시 보냅니다." };
         update.Click += (_, _) => LookUpdateRequested?.Invoke();
-        p.Children.Add(Row(Described("내 모양 보내기", InParty ? "색, 칸 크기, 칸 배치" : "파티에 있을 때 쓸 수 있습니다"), update));
+        p.Children.Add(Row(Described("내 모양 보내기", InParty ? "색, 칸 크기, 칸 배치" : "공유 방에 있을 때 쓸 수 있습니다"), update));
         var send = new List<UIElement>();
         foreach (var g in Enum.GetValues<SlotGroup>())
             send.Add(Check(g.ToString(), party.Send.GetValueOrDefault(g, true), v => party.Send[g] = v, Changed));
@@ -188,7 +188,7 @@ public partial class SettingsWindow
         p.Children.Add(Row("", Check("내 피해량 보내기 (DPS 미터기)", _s.Meter.Send, v => _s.Meter.Send = v, () => { Changed(); FillMeter(); },
             "1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 파티원의 수치도 못 받습니다. DPS 미터기에 있는 스위치와 같습니다.")));
 
-        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에만 씁니다. 크기와 배치는 아래를 켰을 때만 쓰며, 내가 정한 파티원 칸 크기 안에 비율을 유지해 맞추므로 파티원 창이 커지지 않습니다."));
+        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 공유 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에만 씁니다. 크기와 배치는 아래를 켰을 때만 쓰며, 내가 정한 파티원 칸 크기 안에 비율을 유지해 맞추므로 파티원 창이 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));
         p.Children.Add(Check("배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
     }

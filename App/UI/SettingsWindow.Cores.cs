@@ -15,9 +15,9 @@ public partial class SettingsWindow
     const string NoSlotChosen = "선택 안 함";
 
     /// <summary>What 코어 빌드 is, said under the 지원하는 직업각인 table whose 코어 column lists what each 직업각인's cores do.</summary>
-    const string CoresExplained = "코어 빌드: 직업각인마다 고를 수 있고, 기본은 꺼짐입니다. 켜지 않으면 아무것도 달라지지 않습니다. " +
+    const string CoresExplained = "코어 빌드(아크 그리드 코어): 직업각인마다 고를 수 있고, 기본은 꺼짐입니다. 켜지 않으면 아무것도 달라지지 않습니다. " +
         "딜러는 해와 달, 서포터는 별의 레벨(1~3)을 고릅니다. 켜면 쿨타임을 초기화하는 스킬을 쓴 직후, 초기화되는 스킬의 쿨타임을 더 빨리 읽습니다. 달라지는 건 그것뿐이고, " +
-        "코어 빌드를 화면에서 알아보지도, 파티원에게 보내지도 않습니다. 선택은 직업각인마다 따로 저장됩니다.";
+        "코어 빌드는 화면에서 읽지도, 파티원에게 보내지도 않습니다. 선택은 직업각인마다 따로 저장됩니다.";
 
     /// <summary>The 코어 빌드 rows of the active 직업각인: 적용, the levels its role chooses, and for each skill an effect tracks the slot
     /// it sits in. Edits go to <see cref="Settings.SetCore"/> and the engine at once (<see cref="Changed"/>); the rows after the checkbox

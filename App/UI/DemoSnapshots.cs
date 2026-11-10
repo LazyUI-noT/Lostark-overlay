@@ -9,6 +9,8 @@ namespace GaugeOverlay.App.UI;
 public sealed class DemoSnapshots
 {
     const double Loop = 30;
+    /// <summary>--meter-skill=name: the meter's 스킬 사용 횟수 line ("none": no data).</summary>
+    public static MeterSkillLine? MeterSkillShown { get; set; }
     static readonly SlotId[] Aden = [SlotId.아덴2];
     readonly TimeSpan _origin = Clock.Now();
     readonly bool _duelist;
@@ -42,7 +44,7 @@ public sealed class DemoSnapshots
     }
 
     /// <summary>A 공대 of eight sharing (two parties of three dealers and a support), <paramref name="timer"/> seconds into the
-    /// record, with the half minute before it as history; "나" is id 1.</summary>
+    /// record, with the minute and a half before it as history; "나" is id 1.</summary>
     static MeterView DemoMeter(int timer)
     {
         (string Name, int Class, MeterRole Role, int Party, double Share)[] who =
@@ -58,14 +60,16 @@ public sealed class DemoSnapshots
             return new MeterSample((ulong)i + 1, w.Name, w.Class, w.Role, w.Party, damage, damage / Math.Max(1, t), t, true, 1, Boss * t / timer);
         })];
         var history = new MeterHistory();
-        for (int t = timer - 30; t < timer; t++)
+        for (int t = Math.Max(1, timer - 90); t < timer; t++)
             history.Add(Sec(t), 1, MeterMath.Rows(At(t), 1, 1, MeterScope.공대, null));
         var rows = MeterMath.Rows(At(timer), 1, 1, MeterScope.공대, history.SharesAt(Sec(timer - 10)));
         history.Add(Sec(timer), 1, rows);
         // 버프 분배 as a support would see it (the dealers only; "나" is a dealer here, so it is only for the look)
         IReadOnlyList<(ulong, string, double)> Split(params double[] s) => [(2, "민수", s[0]), (3, "지현", s[1]), (5, "철수", s[2])];
         return new(rows, MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
-            BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)]);
+            BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)], Skill: MeterSkillShown,
+            BossName: "고통의 마녀, 세르카 [나이트메어]",   // a long name: the header shortens it before the 비교 label
+            Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동));   // 비교: an earlier fight, a little behind
     }
 
     /// <summary>Two 전투 기록 fights for --records: four players, a phase change, my casts and buff windows; the second a
@@ -112,7 +116,9 @@ public sealed class DemoSnapshots
             return new(new DateTime(2026, 10, 30, 21, minute, 0), "3막 · 3관문", length, [phase], "나", 0, null,
                 [.. who.Select(w => new RecordMember(w.Name, w.Class, w.Role, 1))], samples, boss, [.. events.OrderBy(e => e.T)]);
         }
-        return [Fight(4, 182, 95, 1.0) with { AmsuOn = true }, Fight(40, 168, 88, 1.08) with { Kept = true }];
+        // The first with the API's item level and 전투력 (lostark-api.plan.md phase 5), the second as an older record without.
+        return [Fight(4, 182, 95, 1.0) with { AmsuOn = true, ItemLevel = 1791.66, CombatPower = 5004.5, Character = "데모캐릭", Difficulty = "하드" },
+            Fight(40, 168, 88, 1.08) with { Kept = true, Character = "데모캐릭", Difficulty = "하드" }];   // a character: 「미터기 비교」 shows
     }
 
     static bool Same(Snapshot a, Snapshot b) =>

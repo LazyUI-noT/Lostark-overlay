@@ -33,8 +33,8 @@ public partial class TokenDialog : Window
     /// <summary>The hint says whether the token is on the clipboard: the auto-copy can fail, and then it must be copied by hand.</summary>
     void ShowCopied(bool copied)
     {
-        Hint.Text = (copied ? "파티원에게 이 토큰을 보내 주세요. 클립보드에 복사했습니다."
-            : "파티원에게 이 토큰을 보내 주세요. 클립보드를 쓸 수 없어 복사하지 못했습니다. [복사]를 다시 누르거나 직접 선택해 복사하세요.")
+        Hint.Text = (copied ? "파티원에게 이 참가 코드를 보내 주세요. 클립보드에 복사했습니다."
+            : "파티원에게 이 참가 코드를 보내 주세요. 클립보드를 쓸 수 없어 복사하지 못했습니다. [복사]를 다시 누르거나 직접 선택해 복사하세요.")
             + $" 공유기에서 UDP {_port} 포트를 열어 두어야 합니다.";
         CopyButton.Content = copied ? "복사됨" : "복사";
         if (copied) { _copiedReset.Stop(); _copiedReset.Start(); }   // back to 복사, so a second press shows again

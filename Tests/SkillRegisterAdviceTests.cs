@@ -20,7 +20,15 @@ public class SkillRegisterAdviceTests
     public void Asks_to_start_the_game_when_it_is_not_running()
         => Assert.Equal(SkillRegister.StartGame, SkillRegisterAdvice.For(Warlord, Warlord, gameRunning: false));
 
+    [Theory]
+    [InlineData(RecordCharacter.TestClass, true)]
+    [InlineData(RecordCharacter.TestClass, false)]
+    [InlineData(RecordCharacter.NoClass, true)]
+    [InlineData(RecordCharacter.NoClass, false)]
+    public void A_fight_without_a_class_asks_for_one_in_edit_first(string recordClass, bool gameRunning)
+        => Assert.Equal(SkillRegister.SetClassFirst, SkillRegisterAdvice.For(recordClass, recordClass, gameRunning));
+
     [Fact]
-    public void An_unknown_fight_character_is_never_registered_as_the_one_being_played()
-        => Assert.Equal(SkillRegister.PlayThatCharacter, SkillRegisterAdvice.For(RecordCharacter.NoClass, Warlord, gameRunning: true));
+    public void A_test_fight_given_a_class_registers_like_any_other()
+        => Assert.Equal(SkillRegister.Go, SkillRegisterAdvice.For(Warlord, Warlord, gameRunning: true));
 }

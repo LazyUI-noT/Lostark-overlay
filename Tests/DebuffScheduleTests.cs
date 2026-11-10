@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Tests;
 
 /// <summary>Debuff cadence v2 (the user's spec, 2026-10-30): the frame check of the filled boxes and the first empty one 5/s,
-/// the icons identified 2/s or at once when the row shifts or a timer can't be read, the timers of timed boxes (번개, 교체,
+/// the icons identified on change (IconGate, icon-gates step 2; DebuffTests), the timers of timed boxes (번개, 교체,
 /// 결투자) 5/s on the frame pass and 10/s on their own while under 2 s, following the box a debuff moved to.</summary>
 public class DebuffScheduleTests
 {
@@ -26,26 +26,6 @@ public class DebuffScheduleTests
     {
         var s = DebuffSchedule.Frames(DebuffSlots.None, 2, [DebuffKind.빨강, DebuffKind.파랑], [null, null], Ms(0));
         Assert.Equal(3, DebuffSchedule.Boxes(s));
-    }
-
-    [Fact]
-    public void Icons_are_identified_twice_a_second_or_at_once_when_the_count_changes()
-    {
-        var s = DebuffSchedule.Frames(DebuffSlots.None, 1, [DebuffKind.빨강], [null], Ms(0));
-        Assert.False(DebuffSchedule.Classify(s, 1, Ms(200)));
-        Assert.True(DebuffSchedule.Classify(s, 1, Ms(500)));
-        Assert.True(DebuffSchedule.Classify(s, 2, Ms(200)));   // a debuff came: the row may have shifted
-        Assert.True(DebuffSchedule.Classify(s, 0, Ms(200)));
-        s = DebuffSchedule.Frames(s, 1, null, [null], Ms(200));   // kept, not identified again
-        Assert.Equal([DebuffKind.빨강], s.Kinds);
-        Assert.False(DebuffSchedule.Classify(s, 1, Ms(400)));   // the clock runs from the last identification (0)
-    }
-
-    [Fact]
-    public void A_timed_box_whose_timer_was_not_read_is_identified_again_at_once()
-    {
-        var s = DebuffSchedule.Frames(DebuffSlots.None, 1, [DebuffKind.번개], [null], Ms(0));
-        Assert.True(DebuffSchedule.Classify(s, 1, Ms(200)));
     }
 
     [Fact]
@@ -84,18 +64,9 @@ public class DebuffScheduleTests
         // The user's example: [debuff, 번개 1.5 s, empty] → [번개 1.2 s, empty, empty]: box 1's timer at 10/s, box 2 no more.
         var s = DebuffSchedule.Frames(DebuffSlots.None, 2, [DebuffKind.빨강, DebuffKind.번개], [null, 1.5], Ms(0));
         Assert.Equal([1], DebuffSchedule.FastTimers(s));
-        Assert.True(DebuffSchedule.Classify(s, 1, Ms(200)));   // one box fewer: identify again
         s = DebuffSchedule.Frames(s, 1, [DebuffKind.번개], [1.2], Ms(200));
         Assert.Equal([0], DebuffSchedule.FastTimers(s));
         Assert.Equal(2, DebuffSchedule.Boxes(s));
-    }
-
-    [Fact]
-    public void A_failed_fast_read_asks_for_identification_on_the_next_frame_pass()
-    {
-        var s = DebuffSchedule.Frames(DebuffSlots.None, 1, [DebuffKind.번개], [1.5], Ms(0));
-        s = DebuffSchedule.Timers(s, new Dictionary<int, double?> { [0] = null }, Ms(100));
-        Assert.True(DebuffSchedule.Classify(s, 1, Ms(200)));
     }
 
     [Fact]

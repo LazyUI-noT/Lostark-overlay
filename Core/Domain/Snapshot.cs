@@ -31,8 +31,13 @@ public sealed record Snapshot(
 
     /// <summary>암흑수류탄 on the boss (amsu.design.md); null while its switch is off. The 암수 창 counts down from it (Amsu.View).</summary>
     public AmsuState? Amsu { get; init; }
-    /// <summary>The 그림자 레이드 gimmick's boss HP (ShadowHp) while it is up; null otherwise.</summary>
+    /// <summary>The 그림자 레이드 gimmick's boss HP (ShadowHp) while it is up and its raid's 기믹 체력 switch is on; null otherwise.</summary>
     public ShadowView? Shadow { get; init; }
+    /// <summary>대난투 is up (its number read, ShadowRead), whatever the display switch: no boss bar or name then, which
+    /// 전투 기록 and 숙제's fallback must not take for a gone bar.</summary>
+    public bool Daenantu { get; init; }
+    /// <summary>The boss died in 대난투 (ShadowHp.Dead, until a real bar is read again): 숙제's fallback counts it as a kill.</summary>
+    public bool DaenantuKilled { get; init; }
     /// <summary>보스 체력 쉽게 보기: the boss's HP beside its name while its bar is read (BossHpLabel); null otherwise.</summary>
     public BossHpView? BossHp { get; init; }
 

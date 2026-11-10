@@ -29,12 +29,12 @@ public partial class SettingsWindow
             case "g-hud": HudBody(p); break;
             case "g-buff":
                 p.Children.Add(Field("버프 크기 (%)", BuffSizeCombo()));
-                p.Children.Add(Field("감지 개수", CompactSlider(Core.Vision.Geometry.MinBuffBoxCount, Core.Vision.Geometry.MaxBuffBoxCount, _s.Buffs.Count, v => $"{v:0}칸", v => _s.Buffs.Count = v)));
+                p.Children.Add(Field("읽을 칸 수", CompactSlider(Core.Vision.Geometry.MinBuffBoxCount, Core.Vision.Geometry.MaxBuffBoxCount, _s.Buffs.Count, v => $"{v:0}칸", v => _s.Buffs.Count = v)));
                 p.Children.Add(Small("버프 줄 오른쪽 끝에서부터 읽을 칸 수입니다. 칸이 많을수록 컴퓨터를 조금 더 씁니다. 버프가 많이 떠서 놓칠 때만 늘리세요."));
                 break;
             case "g-debuff":
                 p.Children.Add(Field("타겟 UI 버프 크기 (%)", BossSizeCombo()));
-                p.Children.Add(Field("감지 개수", CompactSlider(1, Core.Vision.Geometry.MaxBossSlots, _s.Debuffs.BossCount, BossCountText, v => _s.Debuffs.BossCount = v)));
+                p.Children.Add(Field("읽을 칸 수", CompactSlider(1, Core.Vision.Geometry.MaxBossSlots, _s.Debuffs.BossCount, BossCountText, v => _s.Debuffs.BossCount = v)));
                 p.Children.Add(Small(BossCountNote));
                 break;
             case "g-font":
@@ -95,7 +95,7 @@ public partial class SettingsWindow
         return f;
     }
 
-    static TextBlock Small(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Opacity = 0.7, FontSize = 11.5, Margin = new(0, 0, 0, 4) };
+    static TextBlock Small(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Opacity = 0.7, FontSize = 12, Margin = new(0, 0, 0, 4) };
 
     /// <summary>A whole-number slider for a narrow box: the value beside it, saved as it moves.</summary>
     UIElement CompactSlider(int min, int max, int value, Func<int, string> format, Action<int> set)

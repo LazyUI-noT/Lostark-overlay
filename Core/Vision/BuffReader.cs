@@ -64,20 +64,27 @@ public sealed class BuffReader
         var best = Enumerable.Repeat(-2.0, thumbs.Length).ToArray();
         var hue = new double[thumbs.Length];
         var lookAlike = Enumerable.Repeat(-2.0, thumbs.Length).ToArray();
+        int x0 = Math.Max(0, inner.X - search), y0 = Math.Max(0, inner.Y - search);
+        var region = new PixelRect(x0, y0, Math.Min(area.Width, inner.Right + search) - x0, Math.Min(area.Height, inner.Bottom + search) - y0);
+        if (region.Width <= 0 || region.Height <= 0) return (best, hue, lookAlike);
+        // Every offset's thumbnail from one table of sums: no crop or array per offset (perf-hotspots.plan.md, 3a).
+        using var sums = new BgrSums(area, region);
+        Span<float> thumb = stackalloc float[Grid * Grid * 3];
         for (int dy = -search; dy <= search; dy++)
             for (int dx = -search; dx <= search; dx++)
             {
                 var r = inner with { X = inner.X + dx, Y = inner.Y + dy };
                 if (r.X < 0 || r.Y < 0 || r.Right > area.Width || r.Bottom > area.Height) continue;
-                var crop = Crop(area, r);
-                var thumb = Thumb(crop);
+                sums.Thumb(r, thumb);
                 foreach (var (of, t) in lookAlikes) lookAlike[of] = Math.Max(lookAlike[of], ChannelNcc(thumb, t));
+                double? meanHue = null;   // once per offset, and only when a template's best moved here
                 for (int k = 0; k < thumbs.Length; k++)
                 {
                     double s = ChannelNcc(thumb, thumbs[k]);
                     if (s <= best[k]) continue;
                     best[k] = s;
-                    hue[k] = HueDistance(SlotClassifier.ColourStats(crop).MeanHue, hues[k]);
+                    meanHue ??= SlotClassifier.ColourStats(area, r).MeanHue;
+                    hue[k] = HueDistance(meanHue.Value, hues[k]);
                 }
             }
         return (best, hue, lookAlike);
@@ -86,27 +93,73 @@ public sealed class BuffReader
     /// <summary>Grid × Grid block means of B, G and R.</summary>
     internal static float[] Thumb(Image img)
     {
+        var whole = new PixelRect(0, 0, img.Width, img.Height);
         var t = new float[Grid * Grid * 3];
-        for (int gy = 0; gy < Grid; gy++)
+        using var sums = new BgrSums(img, whole);
+        sums.Thumb(whole, t);
+        return t;
+    }
+
+    internal const int ThumbLength = Grid * Grid * 3;
+
+    /// <summary><see cref="Thumb(Image)"/> of <paramref name="r"/> in <paramref name="img"/> (inside it) into <paramref name="t"/>.</summary>
+    internal static void Thumb(Image img, PixelRect r, Span<float> t)
+    {
+        using var sums = new BgrSums(img, r);
+        sums.Thumb(r, t);
+    }
+
+    /// <summary>Summed-area tables of B, G and R over a region of an image: any rectangle's sums in four lookups, the same
+    /// integers as adding its pixels. The array is pooled: dispose.</summary>
+    internal sealed class BgrSums : IDisposable
+    {
+        readonly int[] _s;
+        readonly int _x, _y, _w;
+
+        public BgrSums(Image img, PixelRect region)
         {
-            int y0 = gy * img.Height / Grid, y1 = Math.Max(y0 + 1, (gy + 1) * img.Height / Grid);
-            for (int gx = 0; gx < Grid; gx++)
+            (_x, _y, _w) = (region.X, region.Y, region.Width + 1);
+            int rows = region.Height + 1;
+            _s = System.Buffers.ArrayPool<int>.Shared.Rent(_w * rows * 3);
+            Array.Clear(_s, 0, _w * 3);
+            for (int y = 1; y < rows; y++)
             {
-                int x0 = gx * img.Width / Grid, x1 = Math.Max(x0 + 1, (gx + 1) * img.Width / Grid), b = 0, g = 0, r = 0;
-                for (int y = y0; y < y1; y++)
-                    for (int i = y * img.Stride + x0 * 4, e = y * img.Stride + x1 * 4; i < e; i += 4)
-                    { b += img.Bgra[i]; g += img.Bgra[i + 1]; r += img.Bgra[i + 2]; }
-                float n = (x1 - x0) * (y1 - y0);
-                int c = (gy * Grid + gx) * 3;
-                (t[c], t[c + 1], t[c + 2]) = (b / n, g / n, r / n);
+                int o = y * _w * 3, up = o - _w * 3, b = 0, g = 0, r = 0;
+                (_s[o], _s[o + 1], _s[o + 2]) = (0, 0, 0);
+                for (int x = 1, i = (region.Y + y - 1) * img.Stride + region.X * 4; x < _w; x++, i += 4)
+                {
+                    b += img.Bgra[i]; g += img.Bgra[i + 1]; r += img.Bgra[i + 2];
+                    int c = o + x * 3, u = up + x * 3;
+                    (_s[c], _s[c + 1], _s[c + 2]) = (_s[u] + b, _s[u + 1] + g, _s[u + 2] + r);
+                }
             }
         }
-        return t;
+
+        /// <summary><see cref="BuffReader.Thumb(Image)"/> of <paramref name="r"/> (image coordinates, inside the region) into <paramref name="t"/>.</summary>
+        public void Thumb(PixelRect r, Span<float> t)
+        {
+            for (int gy = 0; gy < Grid; gy++)
+            {
+                int y0 = gy * r.Height / Grid, y1 = Math.Max(y0 + 1, (gy + 1) * r.Height / Grid);
+                for (int gx = 0; gx < Grid; gx++)
+                {
+                    int x0 = gx * r.Width / Grid, x1 = Math.Max(x0 + 1, (gx + 1) * r.Width / Grid);
+                    int a = Index(r.X + x0, r.Y + y0), b = Index(r.X + x1, r.Y + y0), c = Index(r.X + x0, r.Y + y1), d = Index(r.X + x1, r.Y + y1);
+                    float n = (x1 - x0) * (y1 - y0);
+                    int o = (gy * Grid + gx) * 3;
+                    for (int ch = 0; ch < 3; ch++) t[o + ch] = (_s[d + ch] - _s[b + ch] - _s[c + ch] + _s[a + ch]) / n;
+                }
+            }
+        }
+
+        int Index(int x, int y) => ((y - _y) * _w + x - _x) * 3;
+
+        public void Dispose() => System.Buffers.ArrayPool<int>.Shared.Return(_s);
     }
 
     /// <summary>Correlation of two colour thumbnails with each channel's own mean removed: the same shapes in each
     /// channel, whatever the colour balance (every gold icon has R &gt; G &gt; B; colour is the hue check's job).</summary>
-    internal static double ChannelNcc(float[] a, float[] b)
+    internal static double ChannelNcc(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
     {
         Span<double> ma = stackalloc double[3], mb = stackalloc double[3];
         for (int i = 0; i < a.Length; i++) { ma[i % 3] += a[i]; mb[i % 3] += b[i]; }
@@ -166,8 +219,11 @@ public sealed class BuffReader
         return Read(text) ?? Read(TextGrey(text));
     }
 
-    double? Read(Image text)
+    double? Read(Image image)
     {
+        // The luminance once for the whole text (icon-gates.plan.md): each glyph window is copied out of it, the same numbers
+        // LumaFast gave per window.
+        var text = new Luma(LumaFast(image, new PixelRect(0, 0, image.Width, image.Height)), image.Width, image.Height);
         int top = (int)Math.Round(Margin * _enlarge), bottom = text.Height - top;
         LastScores = default;
         var cho = Best([_set.Cho], text, 0, text.Width - _set.Cho.W, top - 2, bottom - _set.Cho.H + 2);
@@ -189,18 +245,26 @@ public sealed class BuffReader
     }
 
     /// <summary>The best of <paramref name="glyphs"/> with its top-left anywhere in x0..x1 × y0..y1.</summary>
-    static (Glyph? Glyph, int X, int Y, double Score) Best(Glyph[] glyphs, Image img, int x0, int x1, int y0, int y1)
+    static (Glyph? Glyph, int X, int Y, double Score) Best(Glyph[] glyphs, Luma img, int x0, int x1, int y0, int y1)
     {
         var best = ((Glyph?)null, 0, 0, -2.0);
         foreach (var g in glyphs)
+        {
+            var window = new float[g.W * g.H];
             for (int y = Math.Max(0, y0); y <= Math.Min(img.Height - g.H, y1); y++)
                 for (int x = Math.Max(0, x0); x <= Math.Min(img.Width - g.W, x1); x++)
                 {
-                    double s = Correlate(LumaFast(img, new PixelRect(x, y, g.W, g.H)), g.Luma);
+                    for (int row = 0; row < g.H; row++)
+                        Array.Copy(img.V, (y + row) * img.Width + x, window, row * g.W, g.W);
+                    double s = Correlate(window, g.Luma);
                     if (s > best.Item4) best = (g, x, y, s);
                 }
+        }
         return best;
     }
+
+    /// <summary>An image's <see cref="ImageOps.LumaFast"/> values, row by row.</summary>
+    readonly record struct Luma(float[] V, int Width, int Height);
 
     // ── Pixels ────────────────────────────────────────────────────────────────────────────────────────────────────
     // Timer text is green-grey or gold with a dark outline. On a bright gold floor (공증bug.mp4) the green-grey fill has

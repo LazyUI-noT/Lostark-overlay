@@ -1,0 +1,25 @@
+{
+  "source": "Lost Ark 2026.11.03 - 21.46.27.02.mp4, cut from 540 s, every 0.05 s frame of ShadowNumberSweep: the number at 16 px (normal), 17-18 (settling) and 20-21 (popped)",
+  "slot": "shadow",
+  "hud": 110,
+  "rect": [
+    760,
+    36,
+    400,
+    60
+  ],
+  "width": 400,
+  "height": 60,
+  "pts": [
+    546.0,
+    548.0,
+    548.15,
+    556.65,
+    561.3,
+    565.0,
+    570.2,
+    580.0,
+    585.15,
+    594.9
+  ]
+}

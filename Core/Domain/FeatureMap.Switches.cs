@@ -52,7 +52,7 @@ public static partial class FeatureMap
             case ("peers", 0): s.Party.ShowMembers = shown; break;
             case ("rec", 0):
                 s.Meter.Record = on;
-                if (on && !s.Meter.On) { s.Meter.SetMode(ThreeWay.표시안함); return "타임라인에 쓰려고 DPS 미터기를 표시 안 함으로 켰어요."; }
+                if (on && !s.Meter.On) { s.Meter.SetMode(ThreeWay.표시안함); return "타임라인에 쓰려고 DPS 미터기를 표시 안 함으로 켰습니다."; }
                 break;
         }
         return null;
@@ -62,15 +62,15 @@ public static partial class FeatureMap
     public static string Page(string id) => id switch
     {
         "skill" or "skillview" => "스킬창",
-        "cls" => "캐릭터",
+        "cls" => "직업 인식",
         "aden" => "내 오버레이",
         "judg" => "단심",
         "buff" or "cover" or "buffrows" => "버프 줄",
         "g-jeonbun" or "meter" => "DPS 미터기",
         "boss" or "count" or "debuff" or "shadow" => "레이드",
         "amsu" => "암수",
-        "party" or "peers" => "파티",
-        "hw" or "char" => "숙제",
+        "party" or "peers" => "파티 공유",
+        "hw" or "char" => "레이드 숙제",
         "rec" or "icons" or "amsuline" or "zone" or "dungeon" => "타임라인",
         _ => "화면·인식",
     };

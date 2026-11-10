@@ -29,11 +29,13 @@ public sealed partial class Engine
             for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
             _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
             (_debuffs, _slots, _gauge, _gaugeSpent) = (DebuffStatus.None, DebuffSlots.None, null, false);
+            ResetIconGates();
             _gaugeFilter.Reset();
             // What casts add to the gauge: the game's is saved before a video plays, and what the video taught is dropped after.
             if (!_testMode) SaveGains();
             _gains = new(_gainsFor is not null ? _savedGains?.GetValueOrDefault(_gainsFor) : null);
             _gainsSaved = _gains.Version;
+            (_foundPanel, _panelMisses) = (null, 0);   // a spot placed on the video isn't the game's
         }
         _testMode = test;
         // 테스트 모드: a minimised window pauses everything (its capture would be stale), as if it weren't there.

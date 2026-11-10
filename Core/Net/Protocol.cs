@@ -149,6 +149,15 @@ public static class Protocol
 
     // ── State ────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The slots a State carries: those of a group both sent and shown. Any other slot (the meter's 스킬 사용 횟수 reads one
+    /// the party may not get) stays on this PC.</summary>
+    public static IEnumerable<SlotState> SentSlots(Snapshot s, IReadOnlySet<SlotGroup> send) =>
+        s.Slots.Where(st => SlotInfo.GroupOf(st.Slot, s.AdenSlots) is var g && send.Contains(g) && s.Groups.Contains(g));
+
+    /// <summary>The 초각기 표시 flag a State carries: it goes with 각성기.</summary>
+    public static bool SentAwakening(Snapshot s, IReadOnlySet<SlotGroup> send) =>
+        s.AwakeningChanged && send.Contains(SlotGroup.각성기) && s.Groups.Contains(SlotGroup.각성기);
+
     /// <summary>Encodes the slots of the groups in <paramref name="send"/> (and the 초각기 표시 flag with 각성기)
     /// as remaining/total ms at <paramref name="now"/>, plus the 아덴 게이지 when <paramref name="sendGauge"/>.
     /// Layout: <c>[8B origin][1B group mask][1B 아덴 slot mask][1B 변화][2B gauge, 0xFFFF = none][1B class][1B n]
@@ -159,10 +168,10 @@ public static class Protocol
         var groups = Enum.GetValues<SlotGroup>().Where(g => send.Contains(g) && s.Groups.Contains(g)).ToList();
         w.Write((byte)groups.Aggregate(0, (m, g) => m | 1 << (int)g));
         w.Write((byte)((s.AdenSlots.Contains(SlotId.아덴1) ? 1 : 0) | (s.AdenSlots.Contains(SlotId.아덴2) ? 2 : 0)));
-        w.Write(s.AwakeningChanged && groups.Contains(SlotGroup.각성기));
+        w.Write(SentAwakening(s, send));
         w.Write(sendGauge && s.Gauge is { } g ? (ushort)Math.Round(Math.Clamp(g, 0, 1) * 65534) : ushort.MaxValue);
         w.Write((byte)Math.Clamp(s.ClassId, 0, 255));
-        var slots = s.Slots.Where(st => groups.Contains(SlotInfo.GroupOf(st.Slot, s.AdenSlots))).ToList();
+        var slots = SentSlots(s, send).ToList();
         w.Write((byte)slots.Count);
         foreach (var st in slots)
         {

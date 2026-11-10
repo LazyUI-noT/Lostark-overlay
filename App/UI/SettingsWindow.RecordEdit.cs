@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
@@ -17,7 +18,8 @@ public partial class SettingsWindow
 
     const string Cleared = "클리어", Failed = "실패";
 
-    UIElement RecordEditor(string file, FightRecord r, IReadOnlyList<(string File, FightRecord Record)> all)
+    /// <summary>The fight's editor below its row, and its 적용 · 취소 for the row.</summary>
+    (UIElement Panel, UIElement[] Buttons) RecordEditor(string file, FightRecord r, IReadOnlyList<(string File, FightRecord Record)> all)
     {
         var (store, name) = StoreOf(file);
         // A fixed list (결과, 클래스) is picked by item: Text doesn't select one in a box that can't be typed in.
@@ -45,27 +47,58 @@ public partial class SettingsWindow
         const string NotKnown = "모름";
         var unsure = (r.Unsure ?? new Dictionary<SlotId, IReadOnlyList<RecordSkill>>()).OrderBy(u => u.Key)
             .Select(u => (Slot: u.Key, Options: u.Value, Box: Pick(u.Value.Select(s => s.Name).Append(NotKnown), NotKnown, editable: false))).ToList();
-        var who = Pick(_s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
-            .Where(n => n.Trim().Length > 0).Distinct(), r.Character, editable: true);
-        // Picking a character sets its saved class · 직업각인; it can still be changed below.
-        who.SelectionChanged += (_, _) =>
+        // 캐릭터: a plain text box, the known characters starting with what is typed in a dropdown under it (user, 2026-11-09). An
+        // editable ComboBox rewrote its text mid-IME composition (the next 자모 lost) and, filtered, stopped taking typing. The
+        // list never takes focus, so typing goes on in the box.
+        var known = _s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
+            .Select(n => n.Trim()).Where(n => n.Length > 0).Distinct().ToList();
+        var who = new TextBox { Text = r.Character ?? "", MinWidth = 220, Margin = new(0, 2, 0, 2) };
+        var list = new ListBox { MaxHeight = 240, BorderThickness = new(0), Background = System.Windows.Media.Brushes.Transparent, Focusable = false };
+        list.ItemContainerStyle = new Style(typeof(ListBoxItem), TryFindResource(typeof(ListBoxItem)) as Style) { Setters = { new Setter(FocusableProperty, false) } };
+        var drop = new Border { Child = list, BorderThickness = new(1), CornerRadius = new(6), Padding = new(2) };
+        drop.SetResourceReference(Border.BackgroundProperty, "ComboBoxDropDownBackground");   // the theme's dropdown look
+        drop.SetResourceReference(Border.BorderBrushProperty, "ComboBoxDropDownBorderBrush");
+        var popup = new Popup { PlacementTarget = who, Placement = PlacementMode.Bottom, AllowsTransparency = true, Child = drop };
+        who.LostKeyboardFocus += (_, _) => popup.IsOpen = false;
+        who.PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && popup.IsOpen) { popup.IsOpen = false; e.Handled = true; } };
+        list.SelectionChanged += (_, _) =>
         {
-            if (RecordCharacter.SavedClass(who.SelectedItem as string, _s.Homework.Characters, all.Select(x => x.Record)) is { } saved
+            if (list.SelectedItem is not string n) return;
+            who.Text = n;   // its TextChanged follows the class and closes the list: the name now matches in full
+            who.CaretIndex = n.Length;
+        };
+        // A known character, picked or typed in full, sets its saved class · 직업각인; it can still be changed below.
+        void FollowClass(string name)
+        {
+            if (RecordCharacter.SavedClass(name, _s.Homework.Characters, all.Select(x => x.Record)) is { } saved
                 && characters.FindIndex(x => RecordCharacter.Label(x.Class.Name, x.Sub) == saved) is >= 0 and var at)
                 character.SelectedIndex = at;
-        };
-
-        var apply = new Button { Content = "적용", Margin = new(0, 6, 8, 0) };
-        var cancel = new Button { Content = "취소", Margin = new(0, 6, 0, 0) };
-        cancel.Click += (_, _) => { _editing = null; FillRecords(); };
-        apply.Click += (_, _) =>
+        }
+        void Suggest()
         {
-            static string? Text(ComboBox c) => c.Text.Trim() is { Length: > 0 } t ? t : null;
+            string typed = who.Text.Trim();
+            var matches = known.Where(n => n != typed && n.StartsWith(typed, StringComparison.Ordinal)).Take(MaxSuggested).ToList();
+            list.ItemsSource = matches;
+            drop.MinWidth = who.ActualWidth;
+            popup.IsOpen = who.IsKeyboardFocused && matches.Count > 0;
+        }
+        who.GotKeyboardFocus += (_, _) => Suggest();
+        who.TextChanged += (_, _) =>
+        {
+            Suggest();
+            if (known.Contains(who.Text.Trim())) FollowClass(who.Text.Trim());
+        };
+        Suggest();
+
+        static string? Text(ComboBox c) => c.Text.Trim() is { Length: > 0 } t ? t : null;
+        // What 적용 stores: the fight as the boxes read now. The unapplied check compares it with the fight as stored.
+        FightRecord Draft()
+        {
             var edited = r with
             {
                 Gate = Text(dungeon), Difficulty = Text(difficulty),
                 Cleared = result.SelectedItem switch { Cleared => true, Failed => false, _ => null },
-                Character = Text(who) is { } n && n != RecordCharacter.Unknown ? n : null,
+                Character = who.Text.Trim() is { Length: > 0 } n && n != RecordCharacter.Unknown ? n : null,
             };
             if (character.SelectedIndex >= 0 && characters[character.SelectedIndex] is var (cls, sub))
                 edited = edited with
@@ -75,7 +108,22 @@ public partial class SettingsWindow
                 };
             var picks = unsure.Where(u => u.Box.SelectedIndex >= 0 && u.Box.SelectedIndex < u.Options.Count)
                 .ToDictionary(u => u.Slot, u => u.Options[u.Box.SelectedIndex]);
-            edited = FightSkills.Confirm(r, edited, picks);
+            return RecordPower.Edited(r, FightSkills.Confirm(r, edited, picks));
+        }
+
+        // 적용 and 취소 sit in the fight's row, where 편집 was (user, 2026-11-09).
+        var apply = new Button { Content = "적용", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var cancel = new Button { Content = "취소", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        void ShowUnapplied() => UiBuild.MarkUnapplied(apply, RecordEdits.Unapplied(r, Draft()));
+        cancel.Click += (_, _) => { _editing = null; FillRecords(); };
+        apply.Click += (_, _) =>
+        {
+            var edited = Draft();
+            // A footage fight given a real character and class leaves [Test] for that character's fights (user, 2026-11-05).
+            bool toReal = store is { } t && t == TestRecords && Records is not null && edited.Character is not null && edited.MyClassName != RecordCharacter.TestClass;
+            if ((toReal ? Records : store)?.WouldBin(toReal ? "" : name, edited, _s.RecordKeep) == true
+                && !Warn(WarningKind.PushToBin, "이렇게 고치면 그 캐릭터의 최근 기록 수를 넘어, 보관하지 않은 가장 오래된 기록(이 기록일 수도 있습니다)이 휴지통으로 갑니다."))
+                return;
             if (store != TestRecords && BossBook.Taught(r, edited) is var (hp, entry))
             {
                 _s.BossBook[hp] = entry;
@@ -85,32 +133,35 @@ public partial class SettingsWindow
             bool homework = store == Records && Homework is { } hw && hw.Affects(r, edited)
                 && MessageBox.Show(this, "이 수정으로 이번 주 숙제(클리어한 레이드)가 바뀝니다. 숙제도 바꿀까요?", AreaRecords, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
             _editing = null;
-            // A footage fight given a real character and class leaves [Test] for that character's fights (user, 2026-11-05).
-            if (store is { } test && test == TestRecords && Records is { } real && edited.Character is not null && edited.MyClassName != RecordCharacter.TestClass)
+            if (toReal && store is { } test && Records is { } real)
                 RecordAction(() =>
                 {
                     var moved = real.Save(edited, _s.RecordKeep);
-                    try { test.Delete(name); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { real.Delete(moved); throw; }   // not in both lists
+                    try { test.Erase(name); }   // moved, not deleted: no copy in the 휴지통
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { real.Erase(moved); throw; }   // not in both lists
                 });
             else RecordAction(() => store?.Edit(name, edited, _s.RecordKeep));
             if (homework) Homework!.Edited(r, edited);
         };
 
         var panel = new StackPanel { Margin = new(16, 2, 0, 10) };
-        panel.Children.Add(Row("던전", dungeon));
+        panel.Children.Add(Row("콘텐츠", dungeon));
         panel.Children.Add(Row("난이도", difficulty));
         panel.Children.Add(Row("결과", result));
         panel.Children.Add(Row("캐릭터", who));
         panel.Children.Add(Row(proposal ? "클래스 · 직업각인 (추천)" : "클래스 · 직업각인", character));
         foreach (var u in unsure) panel.Children.Add(Row($"스킬 {SlotKeyName(u.Slot)}", u.Box));
         if (proposal) panel.Children.Add(Note("추천은 스킬 아이콘으로 찾은 클래스입니다. 적용하면 그대로 확정되고, 다른 클래스를 고르면 찾은 스킬 이름은 지워집니다."));
-        panel.Children.Add(Note("던전과 난이도는 목록에서 고르거나 직접 씁니다. 바꾸면 이 보스 HP를 기억해서 다음 전투부터 같은 이름으로 저장합니다. " +
+        panel.Children.Add(Note("콘텐츠와 난이도는 목록에서 고르거나 직접 씁니다. 바꾸면 이 보스 HP를 기억해서 다음 전투부터 같은 이름으로 저장합니다. " +
             "캐릭터를 바꾸면 그 캐릭터의 기록으로 옮깁니다. 그쪽이 가득 찼으면 가장 오래된 자동 기록이 지워집니다. 비우면 캐릭터 불명이 됩니다. 캐릭터를 고르면 저장된 클래스 · 직업각인으로 맞추고, 그 뒤에 바꿀 수 있습니다. 클래스는 스킬 아이콘에 씁니다."));
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        buttons.Children.Add(apply);
-        buttons.Children.Add(cancel);
-        panel.Children.Add(buttons);
-        return panel;
+        // 적용 lights up while a box differs from the fight as stored. Attached last, so the who → class handler above runs first.
+        apply.Loaded += (_, _) => ShowUnapplied();   // the theme's colours resolve once it is in the page
+        foreach (var box in new[] { dungeon, difficulty, result, character }.Concat(unsure.Select(u => u.Box)))
+            box.SelectionChanged += (_, _) => ShowUnapplied();
+        foreach (var box in new Control[] { dungeon, difficulty, who })   // typing changes the text, not a selection
+            box.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => ShowUnapplied()));
+        return (panel, [apply, cancel]);
     }
+
+    const int MaxSuggested = 8;   // known characters offered under 캐릭터
 }

@@ -165,25 +165,23 @@ public class JudgmentTrackerTests
         Assert.Equal(At(31), s.TriggeredAt);
     }
 
-    // 준비 아이콘 (user, 2026-10-13): the icon with its seconds while 심판 is on; through the cooldown nothing, or a dim icon
-    // with the seconds to ready; at ready a white flash (under 0.5 s), a fade over 1 s, then nothing until the next 심판.
+    // 아이콘 (user, 2026-11-10): 심판's icon with its seconds while it is on, grey with the seconds to ready through the
+    // cooldown, then 단죄's icon while ready (what builds toward the next 심판), under a white flash for its first 0.4 s.
     [Theory]
-    [InlineData(0.0, false, 1.0, false, false, 6)]
-    [InlineData(2.5, false, 1.0, false, false, 3)]
-    [InlineData(10.0, false, null, false, false, null)]   // cooldown, hidden
-    [InlineData(10.0, true, 1.0, true, false, 20)]        // cooldown, dim with the seconds to ready
-    [InlineData(30.1, false, 1.0, false, true, null)]     // the flash
-    [InlineData(30.9, true, 0.5, false, false, null)]     // halfway through the fade
-    [InlineData(31.5, false, null, false, false, null)]   // gone
-    public void The_icon_counts_down_then_flashes_and_fades_when_ready(double after, bool showCooldown, double? opacity, bool dim, bool flash, int? seconds)
+    [InlineData(0.0, false, false, false, 6)]
+    [InlineData(2.5, false, false, false, 3)]
+    [InlineData(10.0, false, true, false, 20)]     // cooldown: grey, the seconds to ready
+    [InlineData(30.1, true, false, true, null)]    // ready: 단죄 under the flash
+    [InlineData(31.5, true, false, false, null)]   // ready: 단죄 stays
+    public void The_icon_counts_down_greys_then_shows_단죄_when_ready(double after, bool conviction, bool dim, bool flash, int? seconds)
     {
-        var icon = Run((0, Text), (0.1, Text)).Icon(At(after), showCooldown);
-        Assert.Equal(opacity, icon?.Opacity is { } o ? Math.Round(o, 2) : null);
-        if (icon is { } i) Assert.Equal((dim, flash, seconds), (i.Dim, i.Flash, i.Seconds));
+        var i = Run((0, Text), (0.1, Text)).Icon(At(after));
+        Assert.Equal((conviction, dim, flash, seconds), (i.Conviction, i.Dim, i.Flash, i.Seconds));
     }
 
     [Fact]
-    public void No_icon_before_any_심판_is_seen() => Assert.Null(JudgmentState.Ready.Icon(At(0), showCooldown: true));
+    public void 단죄_shows_before_any_심판_is_seen() =>
+        Assert.Equal(new JudgmentIcon(true, false, false, null), JudgmentState.Ready.Icon(At(0)));
 
     [Fact]
     public void The_ready_flash_survives_the_cycle_being_reset_by_a_read()
@@ -191,7 +189,7 @@ public class JudgmentTrackerTests
         var s = Run((0, Text), (0.1, Text));
         s = JudgmentTracker.Update(s, None, At(30.05), hudVisible: true);   // the first poll after the cycle: ready again
         Assert.Equal(JudgmentPhase.Ready, s.Phase(At(30.1)));
-        Assert.True(s.Icon(At(30.1), showCooldown: false)?.Flash);
+        Assert.True(s.Icon(At(30.1)).Flash);
     }
 
     [Fact]
@@ -200,7 +198,7 @@ public class JudgmentTrackerTests
         var s = Run((0, Text), (0.1, Text));
         s = JudgmentTracker.Update(s, None, At(30.05), hudVisible: true);
         s = JudgmentTracker.Update(s, Icon, At(30.2), hudVisible: true);   // 심판 again, inside the old flash
-        Assert.Equal((false, 6), (s.Icon(At(30.2), showCooldown: false)!.Value.Flash, s.Icon(At(30.2), showCooldown: false)!.Value.Seconds));
+        Assert.Equal(new JudgmentIcon(false, false, false, 6), s.Icon(At(30.2)));
     }
 
     [Fact]

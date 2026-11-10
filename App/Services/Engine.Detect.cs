@@ -77,17 +77,20 @@ public sealed partial class Engine
         areas["boss"] = Geometry.BossTextRow(_vp, fit);
         areas["amsu"] = Geometry.BossDebuffStrip(_vp, fit, config.BossSize);
         areas["judg"] = Geometry.JudgmentBand(_vp);
-        if (PanelSpot(config) is { } panel) areas["g-jeonbun"] = panel;
+        if (ShownPanel(config) is { } panel) areas["g-jeonbun"] = panel;
         double s = Geometry.Scale(_vp, fit);
         areas["dungeon"] = new PixelRect(_vp.X, _vp.Y + (int)(RefDungeonPanel.Y * s), (int)(RefDungeonPanel.Width * s), (int)(RefDungeonPanel.Height * s));
         areas["char"] = Geometry.MenuArea(_vp, Geometry.RefMenuPanel);   // the ESC 게임 메뉴's panel, read while it is open
         return areas.ToImmutable();
     }
+    /// <summary>The 전분 box the 감지 page draws: the session's while placing, else the spot in use, else with the meter on the usual spot, so
+    /// the page can pick the box and place it. Null: the meter is off with no spot, nothing to show.</summary>
+    PixelRect? ShownPanel(Config config) => _previewPanel ?? PanelSpot(config) ?? (_meterOn ? Geometry.UsualPanel(_vp) : null);
+
     (Viewport, Fit?) _detectLayout;
     /// <summary>The menu is read about 1/s while open: a name this recent still counts as finding.</summary>
     static readonly TimeSpan CharacterNamedFor = TimeSpan.FromSeconds(2.5);
     object? _areasKey;
-    string _flowing = "";
 
     /// <returns>Publish: a mark changed.</returns>
     bool StepDetect(Config config, TimeSpan t)
@@ -114,11 +117,7 @@ public sealed partial class Engine
             _fit is not { } fit || Amsu.Readable(_vp, fit, config.BossSize), _amsu.Up.Count > 0, _judgment.IconSeen,
             Interlocked.Read(ref _menuNamedTicks) is var named && named > 0 && t - TimeSpan.FromTicks(named) <= CharacterNamedFor);
         var next = DetectBoard.Step(_detect, inputs, on, t);
-        // Publish on a mark change, and when a reader's lights start or stop (LastFound moves every step, so the map's
-        // lights would otherwise freeze at the last publish).
-        var flowing = string.Join(",", next.Keys.Where(id => DetectBoard.Flowing(next, id, t)).Order());
-        bool changed = next.Count != _detect.Count || next.Any(kv => _detect.GetValueOrDefault(kv.Key)?.Mark != kv.Value.Mark) || flowing != _flowing;
-        _flowing = flowing;
+        bool changed = next.Count != _detect.Count || next.Any(kv => _detect.GetValueOrDefault(kv.Key)?.Mark != kv.Value.Mark);
         foreach (var id in DetectBoard.Moments(_detect, next)) _pictureWanted.Add((id, false));   // the moment a mark turns, next step
         _detectPictures = _detectPictures.RemoveRange(_detectPictures.Keys.Where(id => !next.ContainsKey(id)).ToList());   // switched off
         if (_detectLiveId is not { } live) { changed |= _detectLivePicture is not null; _detectLivePicture = null; }
@@ -129,7 +128,7 @@ public sealed partial class Engine
             if (_detect.GetValueOrDefault(id)?.Mark != d.Mark && d.Mark != DetectMark.Waiting)
                 System.Diagnostics.Trace.WriteLine($"[detect] {id} {(d.Mark == DetectMark.Concrete ? "✓" : "!")} at {t.TotalSeconds:0.0}s{(d.Why is { } why ? $": {why}" : "")}");
         _detect = next;
-        var areasKey = (_vp, _fit, config.DebuffSize, config.BuffCount, config.BossSize, PanelSpot(config));
+        var areasKey = (_vp, _fit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config));
         if (areasKey.Equals(_areasKey)) return changed;
         (_areasKey, _detectAreas) = (areasKey, Areas(config));   // only when the layout moves
         return true;

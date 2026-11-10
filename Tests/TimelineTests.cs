@@ -71,6 +71,14 @@ public class TimelineTests
         Assert.False(Timeline.SameRaid(a with { Gate = null }, a with { Gate = null }));   // 알 수 없음 is no raid to match
     }
 
+    [Fact]
+    public void By_raid_groups_gate_then_difficulty_newest_group_first_and_keeps_dates_inside()
+    {
+        (string Name, string? Gate, string? Difficulty)[] newestFirst =
+            [("f", "2관", "하드"), ("e", "1관", "노말"), ("d", "2관", "노말"), ("c", "2관", "하드"), ("b", null, null), ("a", "1관", "노말")];
+        Assert.Equal(["f", "c", "d", "e", "a", "b"], Timeline.ByRaid(newestFirst, x => x.Gate, x => x.Difficulty).Select(x => x.Name));
+    }
+
     /// <summary>A fight of 120 s on a bar of 2,000,000, losing 100 a second but for <paramref name="rate"/>'s seconds.</summary>
     static FightRecord BossFight(Func<int, long>? rate = null, Func<int, long>? max = null)
     {
@@ -329,6 +337,14 @@ public class TimelineTests
             Samples = [new(1, "철수", 0, 50), new(1, "나", 0, 100), new(2, "나", 0, 200), new(1, "민수", 0, 300), new(2, "민수", 0, 300), new(30, "민수", 0, 900)],
         };
         Assert.Equal([("나", 150.0), ("민수", 300.0), ("철수", 50.0)], Timeline.DpsAverages(r, new TimeWindow(0, 10)));
+    }
+
+    [Fact]
+    public void My_dps_is_my_average_over_the_whole_fight_or_null_without_my_figures()
+    {
+        var r = R(60) with { Samples = [new(1, "민수", 0, 300), new(1, "나", 0, 100), new(59, "나", 0, 300)] };
+        Assert.Equal(200.0, Timeline.MyDps(r));
+        Assert.Null(Timeline.MyDps(r with { Samples = [new(1, "민수", 0, 300)] }));
     }
 
     [Fact]

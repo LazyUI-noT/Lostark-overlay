@@ -16,10 +16,10 @@ namespace GaugeOverlay.App.UI;
 /// live in the reads while open (<see cref="AdjustChanged"/>); only 적용 keeps it.</summary>
 public sealed partial class AdjustLayer : Window
 {
-    /// <summary>A new fit and game 버프 크기 to preview, for session gen.</summary>
-    public event Action<int, Fit, int>? AdjustChanged;
-    /// <summary>적용: the game area, the fit, the game's 버프 크기, and whether it is 테스트 모드's (then the fit isn't saved).</summary>
-    public event Action<Viewport, Fit, int, bool>? ApplyRequested;
+    /// <summary>The edit to preview, for session gen.</summary>
+    public event Action<int, FitAdjust>? AdjustChanged;
+    /// <summary>적용: the edit, and whether it is 테스트 모드's (then nothing is saved).</summary>
+    public event Action<FitAdjust, bool>? ApplyRequested;
     /// <summary>Closed without 적용 (Esc, 닫기): back to the saved fit.</summary>
     public event Action? Dismissed;
 
@@ -57,10 +57,10 @@ public sealed partial class AdjustLayer : Window
 
     /// <summary>A preview session began (opened, or the game area or fit changed): the layer goes over <paramref name="vp"/> and its
     /// boxes start on <paramref name="fit"/>.</summary>
-    public void Open(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize)
+    public void Open(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize, PixelRect? panel)
     {
         (_gen, _test, _drag, _reads, _toolbarDrag) = (gen, test, null, null, null);
-        _adj = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize);
+        _adj = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize, panel);
         if (!IsVisible)
         {
             _result.Text = "";   // a re-open after 적용 keeps its result
@@ -70,7 +70,7 @@ public sealed partial class AdjustLayer : Window
         Activate();
         ShowFocus();
         Redraw();
-        if (_adj.Changed) AdjustChanged?.Invoke(_gen, _adj.Current, _adj.BuffSize);   // the start was outside the game area: clamped
+        AdjustChanged?.Invoke(_gen, _adj);   // the 전분 box to look at, and a start outside the game area clamped
     }
 
     /// <summary>The session's read states, ~5 a second.</summary>
@@ -101,14 +101,14 @@ public sealed partial class AdjustLayer : Window
 
     void Apply()
     {
-        if (_adj is { } a) ApplyRequested?.Invoke(a.Vp, a.Current, a.BuffSize, _test);
+        if (_adj is { } a) ApplyRequested?.Invoke(a, _test);
     }
 
     void Changed(FitAdjust next)
     {
         _adj = next;
         Redraw();
-        AdjustChanged?.Invoke(_gen, next.Current, next.BuffSize);
+        AdjustChanged?.Invoke(_gen, next);
     }
 
     double Dpi => VisualTreeHelper.GetDpi(this).DpiScaleX;

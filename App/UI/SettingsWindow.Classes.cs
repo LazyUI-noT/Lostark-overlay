@@ -38,6 +38,7 @@ public partial class SettingsWindow
         _skillsClass.Children.Add(ResetButton("모든 클래스의 칸 설정 지우기", "모든 클래스의 표시·배치·색·크기·효과 설정을 지웁니다(나, 파티원).",
             () => SettingsResets.Classes(_s)));
         FillPlace(read, Edit);
+        FillSkillList();
         CopyPart(Refill(_secCopy, "복사", "이 설정의 나 또는 파티원 설정에서 고른 부분을 다른 설정으로 복사합니다. 크기는 파티원 설정에만 있습니다."), cls);
         FillMembers();
     }
@@ -63,16 +64,18 @@ public partial class SettingsWindow
             star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); };
             _context.Children.Add(star);
         }
-        var copy = new Button { Content = "다른 직업각인에 복사…", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var copy = _copyButton = new Button { Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = CopyLabel };
+        AutomationProperties.SetName(copy, CopyLabel);
         copy.Click += (_, _) => ShowCopy();
         _context.Children.Add(copy);
+        FitCopyButton();
         if (cls == ClassProfiles.Template)
         {
             _contextNotes.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원에게 쓰입니다. 새 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 있고, 아덴 게이지와 아덴스킬은 없습니다."
                 + (ClassProfiles.ActiveKey(_s) is null ? "" : " 직업각인마다 자기 설정이 있어서, 기본을 바꿔도 지금 오버레이는 달라지지 않습니다.")));
             return;
         }
-        _contextNotes.Children.Add(Note("내 칸과 내 창의 위치·크기는 이 직업각인에 따로 저장됩니다. 파티원 설정은 클래스 전체가 같이 씁니다."
+        _contextNotes.Children.Add(Note("내 칸과 내 창의 위치·크기는 이 직업각인에 따로 저장됩니다. 파티원 설정은 클래스 안의 모든 직업각인이 같이 씁니다."
             + (PreviewTarget is null ? "" : " 설정을 닫을 때까지 화면의 내 오버레이도 이 직업각인의 예시로 보입니다.")));
         if (PreviewTarget is not null && PreviewTarget.IconsMissing(ClassProfiles.Of(_s, cls).Mine, PreviewIcons))
             _contextNotes.Children.Add(Note(NoSavedIconsNote));
@@ -84,8 +87,8 @@ public partial class SettingsWindow
     /// <summary>배치: the 레이아웃 편집기, 편집 모드 and the class's 나 layout.</summary>
     void FillPlace(ClassSettings read, Func<ClassSettings> edit)
     {
-        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어서 바꿉니다. 편집 모드를 켜면 게임 안에서 판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿀 수 있습니다.");
-        var mode = new Button { Content = "편집 모드", ToolTip = "게임 화면 위에서 판을 끌어 옮깁니다." };
+        var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어서 바꿉니다. 편집 모드를 켜면 게임 안에서 배경판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿀 수 있습니다.");
+        var mode = new Button { Content = "편집 모드", ToolTip = "게임 화면 위에서 배경판을 끌어 옮깁니다." };
         mode.Click += (_, _) => EditModeRequested?.Invoke();
         p.Children.Add(Wrap(mode));
         PlacementRow(p, read.Mine, () => edit().Mine, "화면에서 내 칸을 끌어 옮기면 지금 캐릭터의 배치가 바뀝니다. 다른 직업각인의 배치는 그 캐릭터로 접속해 바꿉니다.");
@@ -140,7 +143,7 @@ public partial class SettingsWindow
             Check("크기", m.UseMineSize, v => { edit().Members.UseMineSize = v; Refill(); }, Changed),
             copyMine));
         DisplayRows(p, m, () => edit().Members, enabled: !m.UseMineDisplay);
-        PlacementRow(p, m, () => edit().Members, "화면에서 파티원 판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
+        PlacementRow(p, m, () => edit().Members, "화면에서 파티원 배경판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
 
         if (!m.UseMineSize)
         {
@@ -190,7 +193,7 @@ public partial class SettingsWindow
         foreach (var g in Enum.GetValues<SlotGroup>())
             groups.Add(Check(g.ToString(), read.Groups.GetValueOrDefault(g, true), v => edit().Groups[g] = v, Changed));
         groups.Add(Check("아덴 게이지", read.Gauge, v => edit().Gauge = v, Changed));
-        p.Children.Add(Row(Described("표시", "끈 그룹은 빠지고 판이 그만큼 줄어듭니다"), [.. groups]));
+        p.Children.Add(Row(Described("표시", "끈 그룹은 빠지고 배경판이 그만큼 줄어듭니다"), [.. groups]));
         var slots = new List<UIElement>();
         foreach (var id in SlotInfo.All)
             slots.Add(Check(SlotWithKey(_s, id), read.HiddenSlots.Contains(id), v =>
@@ -240,7 +243,7 @@ public partial class SettingsWindow
     void SkillColorRows(Panel p, ClassProfile read, Func<ClassProfile> edit, bool enabled)
     {
         var rows = new StackPanel { Visibility = Shown(enabled) };
-        rows.Children.Add(Check("일반 스킬 색 통일", read.SkillsOneColor,
+        rows.Children.Add(Check("일반스킬 색 통일", read.SkillsOneColor,
             v => { edit().SkillsUnified = v; Dispatcher.BeginInvoke(FillClassSections); }, Changed, "끄면 스킬마다 색을 정합니다. 스킬마다의 색은 내 화면에만 쓰입니다."));
         p.Children.Add(rows);
         if (read.SkillsOneColor) return;

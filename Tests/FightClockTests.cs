@@ -61,4 +61,28 @@ public class FightClockTests
         Assert.True(FightClock.Restarted(Run((12, 0), (13, 1), (0, 2)), Run((12, 0), (13, 1), (0, 2), (1, 3))));
         Assert.False(FightClock.Restarted(before, before));
     }
+
+    // Running: no menu OCR while it is true (perf-hotspots.plan.md step 2; the menu is opened in a dungeon once the 전분 stopped).
+    [Fact]
+    public void A_counting_clock_is_a_running_fight_even_without_a_boss_bar()
+    {
+        var clock = Run((12, 0), (13, 1));
+        Assert.True(FightClock.Running(clock, S(1.5), bossUp: false));
+    }
+
+    [Fact]
+    public void A_frozen_clock_is_no_fight_even_with_a_boss_bar()
+    {
+        var clock = Run((12, 0), (13, 1), (13, 2), (13, 3));
+        Assert.False(FightClock.Running(clock, S(3), bossUp: true));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Without_a_fresh_clock_the_boss_bar_decides(bool bossUp)
+    {
+        Assert.Equal(bossUp, FightClock.Running(FightClockState.None, S(100), bossUp));
+        Assert.Equal(bossUp, FightClock.Running(Run((12, 0), (13, 1)), S(10), bossUp));   // last read 9 s ago: the 전분 closed
+    }
 }

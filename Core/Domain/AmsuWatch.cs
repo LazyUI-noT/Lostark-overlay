@@ -29,6 +29,10 @@ public sealed class AmsuWatch
     AmsuLayout? _layout;                 // the layout the line was placed at
     TimeSpan _framesAt = TimeSpan.MinValue, _timersAt = TimeSpan.MinValue;
     TimeSpan? _foundSince;               // since when bombs have been found without a break (AmsuPace's lock)
+    IconCache<(Bomb Kind, int Dx)?> _gate = AmsuReader.Gate();   // a slot matched only when it shows an icon not matched lately
+
+    /// <summary>Every slot matched again (강화 읽기 switched: the strip is prepared differently).</summary>
+    public void ResetGate() => _gate.Reset();
 
     /// <summary>설정's 읽기 빈도 (AmsuPace): 높음 reads on the shared cadence, 낮음 far less.</summary>
     public AmsuRate Rate { get; set; } = AmsuRate.높음;
@@ -94,7 +98,7 @@ public sealed class AmsuWatch
         var (_, classify) = Pace(t, layout.Timed);
         bool bossRead = IdentifyDue(t, classify);
         (_framesAt, _timersAt) = (t, t);
-        if (layout != _layout) (_layout, _snap, _snapped) = (layout, 0, false);   // another HUD, size or resolution: placed again
+        if (layout != _layout) (_layout, _snap, _snapped, _gate) = (layout, 0, false, AmsuReader.Gate());   // another HUD, size or resolution: placed again
         // The strip at reference size, once for the pass: the walk and the identification both use it.
         Image? sized = null;
         Image Sized() => sized ??= DebuffReader.ToReference(strip, layout.Scale);
@@ -119,7 +123,7 @@ public sealed class AmsuWatch
             // The placed line, snapped once to the boss's debuff frames, then read there alone.
             if (!_snapped && AmsuReader.SnapIn(Sized(), layout.Scale, layout.Slots, layout.Line, Geometry.BossLineSnap) is { } snapped)
                 (_snap, _snapped) = (snapped - layout.Line, true);
-            var find = AmsuReader.LocateIn(Sized(), layout.Scale, layout.Slots, layout.Line + _snap);
+            var find = AmsuReader.LocateIn(Sized(), layout.Scale, layout.Slots, layout.Line + _snap, _gate);
             (_found, _full, _seen, _filled, ClassifiedAt) = (find.Bombs, find.Full, find.Seen, find.Filled, t);
         }
         else if (walk is not null)   // the same row (no identification means a walk): the bombs kept, each moved to its slot's box (gone with its slot)

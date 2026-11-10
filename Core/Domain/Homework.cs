@@ -1,3 +1,4 @@
+using System.Globalization;
 using GaugeOverlay.Core.Data;
 
 namespace GaugeOverlay.Core.Domain;
@@ -39,15 +40,8 @@ public sealed record HomeworkTag(string Text, HomeworkColor Color, bool Done, in
 /// clear on any of them crosses the pick out; one above the pick raises it. Pure.</summary>
 public static class Homework
 {
-    static readonly TimeSpan ResetHour = TimeSpan.FromHours(6);
-
     /// <summary>The start of the 숙제 week <paramref name="local"/> is in: the last Wednesday 06:00 at or before it.</summary>
-    public static DateTime WeekStart(DateTime local)
-    {
-        var day = local.Date.AddDays(-(((int)local.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7));
-        var start = day + ResetHour;
-        return start <= local ? start : start.AddDays(-7);
-    }
+    public static DateTime WeekStart(DateTime local) => BinSchedule.Last(local, DayOfWeek.Wednesday, 6);
 
     /// <summary>The clear a saved fight makes: 클리어 on its difficulty's last gate, by a known character; else null.</summary>
     public static HomeworkClear? ClearOf(FightRecord r, IReadOnlyList<RaidGate> gates, IReadOnlyList<HomeworkRaid> raids)
@@ -152,21 +146,157 @@ public static class Homework
 
     public const string CustomPrefix = "custom-";
 
+    /// <summary>A level typed on 설정 → 숙제, whole part only: "1729.99" is 1729, never 1730, which it can't enter (user,
+    /// 2026-11-08). Null for anything but digits with an optional ".digits", or outside 1000–2000.</summary>
+    public static int? TypedLevel(string text)
+    {
+        string t = text.Trim();
+        int dot = t.IndexOf('.');
+        string whole = dot < 0 ? t : t[..dot], fraction = dot < 0 ? "" : t[(dot + 1)..];
+        return whole.Length > 0 && whole.All(char.IsAsciiDigit) && fraction.All(char.IsAsciiDigit)
+            && int.TryParse(whole, NumberStyles.None, CultureInfo.InvariantCulture, out int level) && level is >= 1000 and <= 2000 ? level : null;
+    }
+
     /// <summary>The level kept after a read: a level doesn't fall, nor rise more than <see cref="MaxLevelStep"/> at once (a misread
     /// that would stick; a real jump is typed on 설정 → 숙제).</summary>
     public static int LevelFrom(int? stored, int read) =>
         stored is not { } level ? read : read > level && read - level <= MaxLevelStep ? read : level;
 
-    /// <summary>The grid's cards with whose they are: a card's small name to the nearest listed character (never the one played, whose
-    /// card shows 접속 중), the played card to <paramref name="current"/>; only shown characters with picks.</summary>
-    public static IReadOnlyList<(MenuCard Card, HomeworkCharacter Character)> OnGrid(MenuRead read, string? current, IReadOnlyList<HomeworkCharacter> characters)
+    /// <summary>The grid's cards with whose they are (<see cref="CardOrder.Owners"/>: by name, the learned <paramref name="order"/>
+    /// placing an unclear one; never the one played, whose card shows 접속 중), the played card to <paramref name="current"/>; only
+    /// shown characters with picks.</summary>
+    public static IReadOnlyList<(MenuCard Card, HomeworkCharacter Character)> OnGrid(MenuRead read, string? current, IReadOnlyList<HomeworkCharacter> characters,
+        IReadOnlyList<string>? order = null)
     {
-        var names = characters.Select(c => c.Name).Where(n => n != current).ToList();
         HomeworkCharacter? Of(string? name) => characters.FirstOrDefault(c => c.Name == name);
-        var cards = read.Cards.Select(card => (card, c: Of(CharacterName.Nearest(card.Name, names))));
-        if (read.PlayingCard is { } playing && current is not null) cards = cards.Append((playing, Of(current)));
+        var cards = CardOrder.Owners(read, current, characters, order ?? []).Select(x => (card: x.Card, c: Of(x.Owner)));
+        var playing = read.PlayingCard ?? CardOrder.PlayingCard(read, current, characters, order ?? []);   // 접속 중 not read: its place in the order
+        if (playing is not null && current is not null) cards = cards.Append((playing, Of(current)));
         return [.. cards.Where(x => x.c is { Hidden: false, Picks.Count: > 0 }).Select(x => (x.card, x.c!))];
     }
+
+    /// <summary>Whose a grid card is, of <paramref name="characters"/>: its name read exactly; else, of the names near enough
+    /// (<see cref="CharacterName.Near"/>), the one whose saved level the card's fits (the same, then a rise of up to
+    /// <see cref="MaxLevelStep"/>, all rises alike), then the nearest name. Rises don't rank by size: the look-alike who really
+    /// leveled would lose to the other, whose level would then rise and stick (review, 2026-11-08). A level that fits no one (not known, or falling: a misread digit)
+    /// doesn't steer: the name decides, as without a level. The small font reads two
+    /// names a letter apart alike (both 너무아파요살살 and 너무아파용살살 as "너무Ot파용살살", user 2026-11-08): the level tells
+    /// them apart. With no name near, the one character at the card's level whose class doesn't differ (<see cref="AtLevel"/>).
+    /// Null when none is near or two fit alike.</summary>
+    public static string? CardOwner(MenuCard card, IReadOnlyList<HomeworkCharacter> characters)
+    {
+        var near = CharacterName.Near(card.Name, characters.Select(c => c.Name));
+        if (near.Any(x => x.Distance == 0)) return card.Name;
+        var ranked = near.Select(x => (x.Name, Key: (Fit(characters.First(c => c.Name == x.Name).ItemLevel, card.ItemLevel), x.Distance)))
+            .OrderBy(x => x.Key).ToList();
+        if (ranked.Count == 0) return AtLevel(card, characters);
+        return ranked.Count > 1 && ranked[1].Key == ranked[0].Key ? null : ranked[0].Name;
+    }
+
+    /// <summary>A card whose name the small font read past any listed one (검지관절브레이커 as "김시관절브래0P1", user 2026-11-08):
+    /// the only character saved at its level, the card's class read and the same as the saved one or the saved one unknown. Two
+    /// at the level (alts fresh at 1640), or no class read, is no one: a new character could share a level.</summary>
+    static string? AtLevel(MenuCard card, IReadOnlyList<HomeworkCharacter> characters)
+    {
+        if (card.ItemLevel is not { } level || card.ClassName is not { } read) return null;
+        var at = characters.Where(c => c.ItemLevel == level).ToList();
+        if (at.Count != 1) return null;
+        var c = at[0];
+        return c.ClassName is null || CharacterName.Nearest(read, [c.ClassName]) is not null ? c.Name : null;
+    }
+
+    /// <summary>The card's owner (<see cref="CardOwner"/>) when sure enough to take what the card shows for good, such as its class:
+    /// its name read exactly, or its level the owner's saved one with its name near. A near name alone may be a new character read
+    /// a letter off; a level alone (<see cref="AtLevel"/>) another character at that level.</summary>
+    public static string? SureOwner(MenuCard card, IReadOnlyList<HomeworkCharacter> characters) =>
+        CardOwner(card, characters) is { } name
+            && (card.Name == name || card.ItemLevel is { } level && characters.First(c => c.Name == name).ItemLevel == level
+                && CharacterName.Near(card.Name, [name]).Count > 0) ? name : null;   // the level alone (AtLevel) isn't sure
+
+    /// <summary>How well a card's level fits a saved one, best first: the same 0, a rise within <see cref="MaxLevelStep"/> 1;
+    /// anything else 2. Without the card's level all fit alike.</summary>
+    internal static int Fit(int? saved, int? card) => (saved, card) switch
+    {
+        (_, null) => 0,
+        ({ } s, { } c) when c == s => 0,
+        ({ } s, { } c) when c > s && c - s <= MaxLevelStep => 1,
+        _ => NoFit,
+    };
+
+    /// <summary><see cref="Fit"/>: the card's level isn't the saved one's.</summary>
+    internal const int NoFit = 2;
+
+    /// <summary>Renames <paramref name="from"/> to <paramref name="to"/> on the list (homework-auto.plan.md). Onto a listed name the two
+    /// merge into that one: its picks first, then the raids only the other had (up to <see cref="HomeworkCharacter.MaxPicks"/>), the
+    /// higher level, a class or 직업각인 either had. Either way the character is confirmed. False when <paramref name="from"/> isn't
+    /// listed or the names are the same. The caller cleans <paramref name="to"/> (<see cref="CharacterName.Clean"/>).</summary>
+    public static bool Rename(HomeworkSettings hw, string from, string to)
+    {
+        if (from == to || hw.Find(from) is not { } c) return false;
+        bool merged = hw.Order.Contains(to);
+        hw.Order = [.. hw.Order.Select(n => n != from ? n : merged ? "" : to)];   // the card order keeps one place per name (CardOrder)
+        if (hw.Find(to) is not { } target)
+        {
+            c.Name = to;
+            c.FromCard = false;
+            return true;
+        }
+        target.Picks = [.. target.Picks.Concat(c.Picks.Where(p => target.Picks.All(t => t.Raid != p.Raid))).Take(HomeworkCharacter.MaxPicks)];
+        target.ItemLevel = c.ItemLevel is { } other && (target.ItemLevel is not { } mine || other > mine) ? other : target.ItemLevel;
+        target.ClassName ??= c.ClassName;
+        target.Subclass ??= c.Subclass;
+        target.Hidden &= c.Hidden;   // shown when either was
+        target.FromCard = false;
+        hw.Characters.Remove(c);
+        return true;
+    }
+
+    /// <summary>The clears after a rename: <paramref name="from"/>'s are <paramref name="to"/>'s; of <paramref name="to"/>'s clears of one
+    /// raid only the latest is kept (a merge can bring two), so a later toggle can't uncover the older one.</summary>
+    public static IReadOnlyList<HomeworkClear> RenameClears(IEnumerable<HomeworkClear> clears, string from, string to)
+    {
+        var renamed = clears.Select(c => c.Character == from ? c with { Character = to } : c).Distinct().ToList();
+        var latest = renamed.Where(c => c.Character == to).GroupBy(c => c.Raid).Select(g => g.MaxBy(c => c.At)!).ToHashSet();
+        return [.. renamed.Where(c => c.Character != to || latest.Contains(c))];
+    }
+
+    /// <summary>The character a big name is when that character was added from its card's small name under a misread: the nearest
+    /// of those (<see cref="CharacterName.Nearest"/>), and only when the grid agrees it is that card. <paramref name="played"/>
+    /// (the portrait's name): its card shows 접속 중, so the character's small name must be off the grid; else (the clicked card's
+    /// header) the nearest card on the grid must be the character's. A near name with a card of its own is another character.
+    /// Null when the big name is listed already or near none of them. Confirmed characters are never renamed this way.</summary>
+    public static HomeworkCharacter? ConfirmedBy(string bigName, IReadOnlyList<HomeworkCharacter> characters, IReadOnlyList<string> cardNames, bool played)
+    {
+        if (characters.Any(c => c.Name == bigName)) return null;
+        var fromCard = characters.Where(c => c.FromCard).ToList();
+        if (CharacterName.Nearest(bigName, fromCard.Select(c => c.Name)) is not { } name) return null;
+        bool gridAgrees = played ? !cardNames.Contains(name) : CharacterName.Nearest(bigName, cardNames) == name;
+        return gridAgrees ? fromCard.First(c => c.Name == name) : null;
+    }
+
+    /// <summary>A big name read exactly as a character listed from its card: that name is right, so the character is confirmed (big names
+    /// snap to it from now on). True when that changed it.</summary>
+    public static bool ConfirmName(HomeworkSettings hw, string bigName)
+    {
+        if (hw.Find(bigName) is not { FromCard: true } c) return false;
+        c.FromCard = false;
+        return true;
+    }
+
+    /// <summary>A grid card's small name when it is a character not listed yet: a name (<see cref="CharacterName.Clean"/>) near no
+    /// listed one (<see cref="CharacterName.Nearest"/>, which takes "밝기리" for a listed "밟키리"); else null. The caller votes it
+    /// twice alike and lists it <see cref="HomeworkCharacter.FromCard"/>.</summary>
+    /// <summary>A grid card's character when not listed yet: no listed character but <paramref name="current"/> owns the card
+    /// (<see cref="CardOwner"/>: the played one's card shows 접속 중, not a name), and its name is near none.</summary>
+    public static string? NewFromCard(MenuCard card, IReadOnlyList<HomeworkCharacter> characters, string? current) =>
+        CardOwner(card, [.. characters.Where(c => c.Name != current)]) is null ? NewFromCard(card.Name, [.. characters.Select(c => c.Name)]) : null;
+
+    /// <summary>The name alone (<see cref="NewFromCard(MenuCard, IReadOnlyList{HomeworkCharacter}, string?)"/> also asks whose card it is).</summary>
+    public static string? NewFromCard(string read, IReadOnlyList<string> known) =>
+        CharacterName.Clean(read) is { } name && CharacterName.Nearest(name, known) is null && CharacterName.Nearest(name, [PlayingMark]) is null ? name : null;
+
+    /// <summary>What the played card shows where its name would be ("접속 중", spaces dropped): a misread of it is no character.</summary>
+    const string PlayingMark = "접속중";
 
     public const int AutoPicks = 3, MaxLevelStep = 60;
 

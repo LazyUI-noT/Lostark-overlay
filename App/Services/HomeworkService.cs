@@ -17,6 +17,9 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     (string? Class, string? Sub) _playing;
     NameVote _currentVote = NameVote.None, _pickedVote = NameVote.None;   // the portrait's and the header's names, twice alike
     readonly Dictionary<string, NameVote> _levelVotes = [];   // each character's item level, twice alike
+    readonly Dictionary<(double X, double Y), NameVote> _cardVotes = [];   // each card's small name, twice alike, by its place on the grid
+    string? _ownersLogged;   // the last [homework] owners line: logged on change only
+    IReadOnlyDictionary<int, string>? _orderMismatch;   // the last read's sure cards when they fit the learned card order nowhere (CardOrder.Step)
 
     /// <summary>The shipped raids and the ones the user added.</summary>
     public IReadOnlyList<HomeworkRaid> Raids => Homework.AllRaids(shipped, settings.Homework.CustomRaids);
@@ -31,20 +34,33 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
 
     IReadOnlyList<string> Known => [.. settings.Homework.Characters.Select(c => c.Name)];
 
+    /// <summary>The names the big names snap to: not the ones from a card's small name, which a big name corrects instead.</summary>
+    IReadOnlyList<string> Confirmed => [.. settings.Homework.Characters.Where(c => !c.FromCard).Select(c => c.Name)];
+
     /// <summary>A game menu read (UI thread). The big names (under the portrait: who is played; the right panel's header: the card
-    /// clicked) join the list once read alike twice, with the class of their card; the cards' own small names are too often
-    /// misread to add anyone (--read-menu, 2026-11-04), so a character is listed once its card is clicked.</summary>
+    /// clicked) join the list once read alike twice, with the class of their card. The cards' small names join too, twice alike
+    /// (homework-auto.plan.md, user 2026-11-08), marked <see cref="HomeworkCharacter.FromCard"/>: they can misread the same way
+    /// every time, so a big name near one renames it.</summary>
     public void Menu(MenuRead read, TimeSpan t)
     {
-        if (!read.Open) { (_currentVote, _pickedVote) = (NameVote.None, NameVote.None); return; }
-        (_currentVote, var current) = _currentVote.Read(read.Current is { } c ? CharacterName.Snap(c, Known) : null);
-        (_pickedVote, var picked) = _pickedVote.Read(read.Picked is { } p ? CharacterName.Snap(p, Known) : null);
+        if (!read.Open) { (_currentVote, _pickedVote, _orderMismatch) = (NameVote.None, NameVote.None, null); _cardVotes.Clear(); return; }
+        (_currentVote, var current) = _currentVote.Read(read.Current is { } c ? CharacterName.Snap(c, Confirmed) : null);
+        (_pickedVote, var picked) = _pickedVote.Read(read.Picked is { } p ? CharacterName.Snap(p, Confirmed) : null);
         bool listed = false;
-        if (current is not null) listed |= Add(current, ClassOnCard(read, current));
-        if (picked is not null) listed |= Add(picked, ClassOnCard(read, picked));
+        if (current is not null) listed |= Confirm(current, read, played: true) | Add(current, ClassOnCard(read, current));
+        if (picked is not null) listed |= Confirm(picked, read, played: false) | Add(picked, ClassOnCard(read, picked));
+        foreach (var (card, owner) in CardOrder.Owners(read, current, settings.Homework.Characters, settings.Homework.Order))
+            listed |= FromCard(card, current, owned: owner is not null);   // a card the order places is that character, not a new one
         foreach (var card in read.Cards)
-            if (card.ItemLevel is { } level && CharacterName.Nearest(card.Name, CardNames(current)) is { } name) listed |= ReadLevel(name, level);
+        {
+            var others = CardCharacters(current);
+            if (card.ClassName is { } cls && Homework.SureOwner(card, others) is { } sure)
+                listed |= Add(sure, CharacterName.Nearest(cls, classNames));   // fills only an empty class, kept for good: sure owners only
+            if (card.ItemLevel is { } level && Homework.CardOwner(card, others) is { } name) listed |= ReadLevel(name, level);
+        }
         if (current is not null && read.CurrentLevel is { } mine) listed |= ReadLevel(current, mine);
+        listed |= LearnOrder(read, current);
+        LogOwners(read, current ?? _watch.Current);
         var (watch, change) = _watch.Menu(read with { Current = current, Picked = picked }, Known, t);
         _watch = watch;
         if (listed) settingsChanged();
@@ -121,8 +137,15 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     {
         if (!read.Open || !settings.Homework.ShowOnGrid) return [];
         var all = Clears();
-        return [.. Homework.OnGrid(read, _watch.Current, settings.Homework.Characters).Select(x => (x.Card, TagsOf(x.Character, all)))];
+        return [.. Homework.OnGrid(read, _watch.Current, settings.Homework.Characters, settings.Homework.Order).Select(x => (x.Card, TagsOf(x.Character, all)))];
     }
+
+    /// <summary>The 전투력 tags for an open menu (UI thread): the cards' owners and the played character; none while
+    /// 게임 메뉴에 전투력 표시 is off. Not gated by 숙제 표시.</summary>
+    public IReadOnlyList<PowerTag> PowerTags(MenuRead read, Func<string, Role> roleOf) =>
+        settings.ApiShowCombatPower
+            ? MenuPower.Tags(read, _watch.Current, CardOrder.Owners(read, _watch.Current, settings.Homework.Characters, settings.Homework.Order), settings.CombatPower, roleOf)
+            : [];
 
     /// <summary>The fight as saved: named after the character being played (any thread).</summary>
     public FightRecord Name(FightRecord fight) => fight with { Character = _watch.Current };
@@ -269,8 +292,8 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[character] backfill failed: {ex.Message}"); }
     }
 
-    /// <summary>The names a card can be: not the character being played, whose card shows "접속 중" and is never read.</summary>
-    IReadOnlyList<string> CardNames(string? current) => [.. Known.Where(n => n != current)];
+    /// <summary>Whose a grid card can be: every listed character but the one played (its card shows 접속 중).</summary>
+    IReadOnlyList<HomeworkCharacter> CardCharacters(string? current) => [.. settings.Homework.Characters.Where(c => c.Name != current)];
 
     /// <summary>A level read for <paramref name="name"/>: counts once read alike twice in a row, and only upward
     /// (<see cref="Homework.LevelFrom"/>); true when it changed the character.</summary>
@@ -303,17 +326,65 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
         Updated?.Invoke();
     }
 
-    /// <summary>The class on <paramref name="name"/>'s card (the card whose name is nearest to it), snapped to a known class; null
+    /// <summary>The class on <paramref name="name"/>'s card (the card surely its, Homework.SureOwner), snapped to a known class; null
     /// when no card is its (the card being played shows "접속 중" instead).</summary>
     string? ClassOnCard(MenuRead read, string name)
     {
-        var names = Known.Append(name).Distinct().ToList();
-        var card = read.Cards.FirstOrDefault(c => CharacterName.Nearest(c.Name, names) == name);
+        var characters = settings.Homework.Characters.Any(c => c.Name == name) ? settings.Homework.Characters
+            : [.. settings.Homework.Characters, new HomeworkCharacter { Name = name }];
+        var card = read.Cards.FirstOrDefault(c => Homework.SureOwner(c, characters) == name);
         return card?.ClassName is { } cls ? CharacterName.Nearest(cls, classNames) : null;
     }
 
+    /// <summary>The grid's card order after this read (<see cref="CardOrder.Step"/>, card-order.plan.md); true when it changed.</summary>
+    bool LearnOrder(MenuRead read, string? current)
+    {
+        (var order, _orderMismatch) = CardOrder.Step(settings.Homework.Order, _orderMismatch, CardOrder.Sure(read, current, settings.Homework.Characters));
+        if (order.SequenceEqual(settings.Homework.Order)) return false;
+        settings.Homework.Order = [.. order];   // a new list: the save thread reads it
+        Trace.WriteLine($"[homework] card order: {string.Join(" / ", order.Select(n => n.Length > 0 ? n : "?"))}");
+        return true;
+    }
+
+    /// <summary>Whose each card is, as the grid tags take it (a replay or a user's log shows it): logged when it changes.</summary>
+    void LogOwners(MenuRead read, string? current)
+    {
+        var hw = settings.Homework;
+        var owners = CardOrder.Owners(read, current, hw.Characters, hw.Order).Select(x => $"{x.Card.Name}→{x.Owner ?? "?"}");
+        bool placed = read.PlayingCard is not null || CardOrder.PlayingCard(read, current, hw.Characters, hw.Order) is not null;
+        string line = string.Join(" / ", owners) + (placed ? $" + 접속 중→{current ?? "?"}" : "");
+        if (line == _ownersLogged) return;
+        _ownersLogged = line;
+        Trace.WriteLine($"[homework] owners: {line}");
+    }
+
+    /// <summary>The 원정대 from the Lost Ark API (lostark-api.plan.md: the API wins, the screen fills gaps): misread card names take
+    /// the API's spelling, every character is listed with its class, item level and (from its armory) 직업각인, and its name counts
+    /// as confirmed. UI thread.</summary>
+    public void FromApi(IReadOnlyList<ApiCharacter> roster, IReadOnlyList<ApiProfile> profiles)
+    {
+        bool changed = false;
+        foreach (var (from, to) in ApiRoster.Renames(settings.Homework.Characters, [.. roster.Select(c => c.Name)]))
+            changed |= Move(from, to);
+        foreach (var a in roster)
+        {
+            string? cls = classNames.Contains(a.ClassName) ? a.ClassName : null;   // "전사(남)" (not awakened) is no class here
+            changed |= Add(a.Name, cls);
+            if (settings.Homework.Find(a.Name) is not { } c) continue;
+            if (cls is not null && c.ClassName != cls) (c.ClassName, changed) = (cls, true);
+            if (c.FromCard) (c.FromCard, changed) = (false, true);
+            int level = (int)Math.Floor(a.ItemLevel);
+            if (level > 0 && level != c.ItemLevel) { SetLevel(c, level); changed = true; }
+            if (profiles.FirstOrDefault(p => p.Name == a.Name)?.Subclass is { } sub && CombatPowerBook.KeyOf(sub) is { Length: > 0 } key && c.Subclass != key)
+                (c.Subclass, changed) = (key, true);
+        }
+        if (!changed) return;
+        settingsChanged();
+        Updated?.Invoke();
+    }
+
     /// <summary>Adds a character to the list, or fills its class when it had none; true when the list changed.</summary>
-    bool Add(string name, string? className)
+    bool Add(string name, string? className, bool fromCard = false)
     {
         if (settings.Homework.Find(name) is { } known)
         {
@@ -322,8 +393,76 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
             return true;
         }
         var picks = settings.Homework.CustomRaids.Where(r => r.Auto).Select(Homework.AsRaid).Aggregate((IReadOnlyList<HomeworkPick>)[], Homework.WithRaid);
-        settings.Homework.Characters.Add(new HomeworkCharacter { Name = name, ClassName = className, Picks = [.. picks] });
+        settings.Homework.Characters.Add(new HomeworkCharacter { Name = name, ClassName = className, FromCard = fromCard, Picks = [.. picks] });
+        if (fromCard) Trace.WriteLine($"[homework] {name}: listed from its card");
         return true;
+    }
+
+    /// <summary>A card's small name: listed once read alike twice when it is near no listed name (<see cref="Homework.NewFromCard"/>).</summary>
+    bool FromCard(MenuCard card, string? current, bool owned)
+    {
+        var slot = (Math.Round(card.X, 3), Math.Round(card.Y, 3));
+        var (vote, name) = _cardVotes.GetValueOrDefault(slot, NameVote.None).Read(owned ? null : Homework.NewFromCard(card, settings.Homework.Characters, current));
+        _cardVotes[slot] = vote;
+        return name is not null && Add(name, card.ClassName is { } cls ? CharacterName.Nearest(cls, classNames) : null, fromCard: true);
+    }
+
+    /// <summary>A big name read: a character listed from its card is confirmed when read as listed, or takes this name when its card's
+    /// small name was a misread of it (<see cref="Homework.ConfirmedBy"/>).</summary>
+    bool Confirm(string bigName, MenuRead read, bool played) =>
+        Homework.ConfirmName(settings.Homework, bigName)
+        || Homework.ConfirmedBy(bigName, settings.Homework.Characters, [.. read.Cards.Select(c => c.Name)], played) is { } c && Move(c.Name, bigName);
+
+    /// <summary>A character renamed on 설정 → 숙제 (UI thread): cleaned, onto a listed name the two merge; false when the text isn't a
+    /// name or nothing changed.</summary>
+    public bool Rename(HomeworkCharacter c, string text)
+    {
+        if (CharacterName.Clean(text) is not { } name || !Move(c.Name, name)) return false;
+        settingsChanged();
+        Updated?.Invoke();
+        return true;
+    }
+
+    /// <summary>The list, this week's clears, who is played and the saved fights (in the background) follow a rename.</summary>
+    bool Move(string from, string to)
+    {
+        if (from == to || settings.Homework.Find(from) is null) return false;
+        try { clears.Rename(from, to); }   // first: a file that can't be written leaves the list as it was, not split from its clears
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[homework] not renamed {from} → {to}: clears unwritable ({ex.Message})");
+            return false;
+        }
+        Homework.Rename(settings.Homework, from, to);
+        Trace.WriteLine($"[homework] renamed {from} → {to}");
+        var w = _watch;
+        if (w.Current == from || w.Pending == from) _watch = w with { Current = w.Current == from ? to : w.Current, Pending = w.Pending == from ? to : w.Pending };
+        _levelVotes.Remove(from);
+        foreach (var ((who, raid), clear) in _fallbackKept.Where(x => x.Key.Character == from).ToList())
+        {
+            _fallbackKept.Remove((who, raid));
+            _fallbackKept[(to, raid)] = clear with { Character = to };
+        }
+        lock (_renamesGate) _renames = _renames.ContinueWith(_ => RenameFights(from, to), TaskScheduler.Default);   // in order: A→B then B→C
+        return true;
+    }
+
+    readonly object _renamesGate = new();
+    Task _renames = Task.CompletedTask;
+
+    /// <summary>The saved fights of <paramref name="from"/> are <paramref name="to"/>'s; a file that fails is traced and the rest go on.
+    /// A fight named before the rename and saved after this ran keeps the old name (rare: only while a fight is being saved).</summary>
+    void RenameFights(string from, string to)
+    {
+        int n = 0, failed = 0;
+        IReadOnlyList<(string File, FightRecord Record)> all;
+        try { all = records.List(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[homework] fights not renamed: {ex.Message}"); return; }
+        foreach (var (file, _) in all.Where(x => x.Record.Character == from))
+            try { if (records.SetCharacter(file, to) is not null) n++; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed++; Trace.WriteLine($"[homework] fight {file} not renamed: {ex.Message}"); }
+        if (n > 0 || failed > 0) Trace.WriteLine($"[homework] {n} fight(s) of {from} renamed {to}{(failed > 0 ? $", {failed} failed" : "")}");
+        if (n > 0) recordsChanged();
     }
 
     /// <summary>The character played takes the app's 직업각인 when the app is on its class (read from its card: the app's class

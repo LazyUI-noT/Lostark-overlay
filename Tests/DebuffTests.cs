@@ -53,6 +53,62 @@ public class DebuffTests
         }
     }
 
+    // icon-gates step 2: your debuff row identified on change, through the buffs' gate (IconGate, threshold 8).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]   // 테스트 모드 강화 읽기: the gate sees the sharpened row, as ReadDebuffs does
+    public void Through_the_gate_every_box_reads_as_the_reader_and_a_repeated_frame_adds_no_identify(bool reinforced)
+    {
+        var boxes = Boxes();
+        var gate = new IconGate<DebuffKind?>(DebuffReader.Classify);
+        int[] frames = [.. Enumerable.Range(0, Labels.Length), .. Enumerable.Range(0, Labels.Length).Reverse()];
+
+        foreach (int f in frames)
+        {
+            var raw = Fixture.Load($"debuffrow_{f}").Frames[0];
+            var img = reinforced ? Reinforce.Clean(raw) : raw;
+            var first = boxes.Select((b, i) => gate.Classify(img, i, b.Icon)).ToArray();
+            int once = gate.Identifies;
+            var again = boxes.Select((b, i) => gate.Classify(img, i, b.Icon)).ToArray();
+
+            Assert.Equal(boxes.Select(b => DebuffReader.Classify(img, b.Icon)), first);
+            Assert.Equal(first, again);
+            Assert.Equal(once, gate.Identifies);
+        }
+    }
+
+    /// <summary>A box swapping straight to another debuff, or 결투자 to its look-alike 빨강, must move the thumbnail past the gate,
+    /// with room for compression noise (0.8–2.4 on the buff sweeps): twice the threshold.</summary>
+    [Fact]
+    public void Every_two_debuff_icons_differ_by_more_than_twice_the_gate_threshold()
+    {
+        var kinds = Enum.GetValues<DebuffKind>();
+        var thumbs = kinds.Select(k => BuffReader.Thumb(DebuffReader.Icon(k))).ToArray();
+
+        var closest = kinds.SelectMany((a, i) => kinds.Skip(i + 1).Select((b, j) => (a, b, d: IconGate.Change(thumbs[i], thumbs[i + 1 + j]))))
+            .MinBy(p => p.d);
+
+        Assert.True(closest.d > 2 * IconGate.Threshold, $"{closest.a}/{closest.b} change {closest.d:0.0}");
+    }
+
+    /// <summary>A timed debuff whose timer didn't read is identified again on the next pass (ReadDebuffs: a false 결투자, which
+    /// shows no "NN초", doesn't stick while its picture stays).</summary>
+    [Fact]
+    public void A_forgotten_box_is_identified_again_and_the_others_are_kept()
+    {
+        var boxes = Boxes();
+        var img = Fixture.Load("debuffrow_1").Frames[0];
+        var gate = new IconGate<DebuffKind?>(DebuffReader.Classify);
+        for (int i = 0; i < 2; i++) gate.Classify(img, i, boxes[i].Icon);
+
+        gate.Forget(1);
+        var again = gate.Classify(img, 1, boxes[1].Icon);
+        gate.Classify(img, 0, boxes[0].Icon);
+
+        Assert.Equal(DebuffKind.번개, again);
+        Assert.Equal(3, gate.Identifies);
+    }
+
     // How many boxes, from the left, hold any debuff icon (a red frame), known or not: 4 in debuffrow_3, two unknown first.
     static readonly int[] Filled = [1, 2, 2, 4, 2, 1];
 

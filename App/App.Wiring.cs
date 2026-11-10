@@ -32,12 +32,16 @@ public partial class App
         _raidGates = raidGates;
         // HP 변경 감지: a value raids.json now ships (or a newer one) replaces the learned one.
         if (HpChange.Prune(raidGates, settings.Raids)) debounce.Changed(Clock.Now());
+        if (raidGates.Count > 0)   // no raids.json read: Found is empty, and every picture would go
+            HpCrops.Clean(HpChange.Found(raidGates, settings.Raids).Select(f => (f.Gate.Id, f.Difficulty, f.To)));   // pictures of rows gone since
+        // 대난투 체력: one switch for every raid with 대난투 (from 0.19); a file with the per-raid ones keeps its meaning.
+        if (settings.Raids.MigrateShadowHp(raidGates)) debounce.Changed(Clock.Now());
         IReadOnlyList<FightHp> fightHp = [];   // the values this raid uses (Engine.FightHpChanged)
         // The gates with learned and this raid's HP values: what RaidData.ByHp and HiddenHp name a boss by.
         IReadOnlyList<RaidGate> HpGates() => HpChange.Effective(raidGates, settings.Raids, fightHp);
         // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
         if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
-        // 설정 → 캐릭터 marks what was added since: the first run of a version with the list records what ships now.
+        // 설정 → 직업 인식 marks what was added since: the first run of a version with the list records what ships now.
         // Saved by the debounced writer (retries a locked file); unsaved, the next start just records it again.
         if (settings.SeenSupport is null)
         {
@@ -88,6 +92,7 @@ public partial class App
         var meterAlign = new MeterAlign();   // the party's figures on one 전분 second
         (MeterStatus? From, MeterView? View) meterView = (null, null);   // built once per engine meter step (1 Hz)
         var recorder = new FightRecorder();   // 전투 기록: the fight the meter follows
+        (string? compareKey, MeterGhost? compareGhost) = (null, null);   // the meter's 비교 (CompareGhost)
         HiddenHpState? hidden = null;   // 종막 EX 2-3: its HP shows ???, estimated from the party's damage
         var hiddenBar = BarCountState.None;
         RaidStatus? hiddenStatus = null;   // the 줄 수 창 while it is estimated
@@ -97,6 +102,8 @@ public partial class App
         // 숙제 and who is being played (homework.plan.md): the game menu names the character; the game's fights count, 테스트 모드's don't.
         var homework = new HomeworkService(settings, raidGates, HomeworkData.Load(CharacterService.DefaultProfilesDir), [.. characters.Classes.Select(c => c.Name)],
             new HomeworkStore(HomeworkStore.DefaultPath), records, Dispatcher, () => Save(now: false), () => _settingsWindow.RefreshRecords());
+        // 로아 API (lostark-api.plan.md): the 원정대 looked up on a 게임 메뉴 read (ApiPace) or on 새로고침; before the fights it stamps (Named).
+        var api = new ApiService(settings, homework, Dispatcher, () => Save(now: false));
         Task lastSave = Task.CompletedTask;
         // A fight ended by a new 전분 record: its 클리어 / 실패 is settled by that record's boss once its bar is read (FightVerdict).
         // Only while that same record runs: a later record (left and came back) says nothing about this fight.
@@ -140,15 +147,34 @@ public partial class App
         string? iconsFor = null;   // "클래스_직업각인" whose icons are loaded, "" for none; null before the first Configure
         bool copyingIcons = false, rereadingIcons = false, iconSaveFailed = false;
         int iconRun = 0;   // the engine's copy run now (Engine.CopyIcons); icons of an earlier run are dropped
+        bool firstRailRecord = settings.RailSeen is null;   // the window records it while it is built (RailNews)
         BuildUi(settings, characters, OnSettingsChanged);
+        if (firstRailRecord && settings.RailSeen is not null) debounce.Changed(Clock.Now());   // saved, and flushed on exit
         _settingsWindow.DetectLive = engine.DetectLive;
         _settingsWindow.WatchFrames = engine.WatchFrames;
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
         _settingsWindow.Records = records;
         _settingsWindow.TestRecords = testRecords;
         _settingsWindow.ImportedRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "imported"));   // other users' fights: apart, never pruned
+        // 휴지통 비우기 (user, 2026-11-10): every week at the chosen day and hour; a time passed while the app was off runs at start.
+        void EmptyBins()
+        {
+            if (BinSchedule.Due(DateTime.Now, settings.BinEmptyDay, settings.BinEmptyHour, settings.BinEmptiedAt) is not { } at) return;
+            bool done = true;
+            foreach (var store in new[] { records, testRecords, _settingsWindow.ImportedRecords })
+                try { Trace.WriteLine($"[records] bin emptied: {store.EmptyBin(at.ToUniversalTime())}"); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { done = false; Trace.WriteLine($"[records] bin emptying failed: {ex.Message}"); }
+            if (!done) return;   // a file held open: tried again next minute, not marked as run
+            settings.BinEmptiedAt = at;
+            Save(now: false);
+            _settingsWindow.RefreshRecords();
+        }
+        EmptyBins();
+        new DispatcherTimer(TimeSpan.FromMinutes(1), DispatcherPriority.Background, (_, _) => EmptyBins(), Dispatcher).Start();
         _settingsWindow.Homework = homework;
         homework.Updated += _settingsWindow.HomeworkUpdated;
+        _settingsWindow.ApiLookups = api;
+        api.Updated += _settingsWindow.ApiUpdated;
         // 숙제's fallback: with the meter or 전투 기록 off, or the 전분 panel closed and no fight being recorded, the boss bar alone decides
         // (HomeworkWatch); a recorded fight never and it both: a record starting mid-fight switches the fallback off, which drops its watch.
         var fallback = new HomeworkFallback(homework, HpGates);
@@ -157,7 +183,7 @@ public partial class App
         engine.GameRunningChanged += running => gameUp = running;
         new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) =>
             fallback.Step(!GameWindow.TestMode && Homework.SourceOf(settings.Meter.On, settings.Meter.Record, settings.Raids.BossHpRead, latest?.Meter?.PanelFound == true || recorder.Recording) == HomeworkSource.BossBar,
-                !gameUp || !_hudVisible || foreground.IsOtherForeground || latest?.Shadow is not null, RaidData.Find(raidGates, _raidSeen), Clock.Now()), Dispatcher).Start();
+                !gameUp || !_hudVisible || foreground.IsOtherForeground, latest?.Daenantu == true, latest?.DaenantuKilled == true, RaidData.Find(raidGates, _raidSeen), Clock.Now()), Dispatcher).Start();
         _settingsWindow.RefreshRecords();
         _settingsWindow.GameArea = () => engine.GameAreaKey;
         _settingsWindow.PartyMove = (id, p) =>
@@ -236,7 +262,7 @@ public partial class App
             bool warn = settings.Gauge.ReadMode == GaugeReadMode.Predicted && characters.ClassMismatch;
             if (warn && !_overlay.Renderer.ClassWarning)
                 _tray.Notify(characters.ShownClass is { } shown
-                    ? $"스킬창 가운데가 {shown}(으)로 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
+                    ? $"스킬창 가운데가 {Josa.By(shown)} 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
                     : $"초각스 아이콘이 고른 클래스({characters.ActiveClass?.Name})와 다릅니다. 클래스를 확인하세요. 게이지 예측은 멈췄습니다.");
             _overlay.Renderer.ClassWarning = warn;
             // About 10 s of flashing with no fix: back to 기본, so a wrong class doesn't stay on.
@@ -363,6 +389,7 @@ public partial class App
             _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
             CheckInUse();
             if (mine is not null) party.Publish(mine, PartyName(), ClassProfiles.SentGroups(settings), settings.Party.SendGauge);
+            if (mine?.Meter is { } seen) meterHistory.Casts.Observe(mine.Slots, seen.Clock, Clock.Now());   // every frame: a cast is an edge
             if (mine?.Meter is { } status && !ReferenceEquals(status, meterView.From)) meterView = (status, StepMeter(status));
             else if (mine?.Meter is null && meterView.From is not null) (meterHistory, meterAlign, meterView) = (new(), new(), (null, null));   // off: graphs start over
             if (mine is not null && mine.Meter is not null) mine = mine with { MeterView = meterView.View };
@@ -371,7 +398,11 @@ public partial class App
                 var now = Clock.Now();
                 recorder.ObserveMine(mine, now);
             }
-            else if (recorder.Finish() is { } fight) SaveRecord(fight);   // the meter went off
+            else if (recorder.Finish() is { } fight)   // the meter went off
+            {
+                Trace.WriteLine($"[records] fight ended ({fight.Gate ?? "?"}, {fight.Duration:0}s): meter off");
+                SaveRecord(fight);
+            }
             _overlay.Update(mine is not null ? new Player("", mine) : null);
             _buffs.Update(mine is not null ? new Player("", mine) : null);
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
@@ -399,7 +430,8 @@ public partial class App
             bool small = (RaidData.ByHp(HpGates(), status.Boss.Max)?.Gate ?? RaidData.Find(raidGates, _raidSeen))?.SmallParty == true
                 || latest?.Dungeon?.Kind == DungeonKind.Guardian;
             var view = MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small)
-                with { BossName = HeaderBoss(status.Boss.Max) };
+                with { BossName = HeaderBoss(status.Boss.Max), Skill = MeterSkill.Line(settings, ClassProfiles.ActiveKey(settings), meterHistory, status.Clock.Timer, s => KeyNames.OfSlot(settings, s)),
+                    Ghost = CompareGhost(status.Boss.Max) };
             RecordStep(status, role, samples, me, myParty, view.BossTaken);
             StepHidden(status, Everyone(status, role, samples, me, myParty), myParty);
             return view;
@@ -448,18 +480,25 @@ public partial class App
             hiddenBar = BarAlert.Update(hiddenBar, (int)Math.Ceiling(est.Percent), now, BarAlert.Thresholds(r.AlertsOf(est.Gate), r.OffsetOf(est.Gate.Id)));
             bool glow = r.Glow && BarAlert.Glowing(hiddenBar, r.GlowUntil, r.GlowSeconds, r.GlowBars, now);
             string left = est.Left >= 1_000_000_000_000 ? $"{est.Left / 1e12:0.00}조" : $"{est.Left / 1e8:0}억";
-            string gimmick = est.Phase is GimmickPhase.Waiting or GimmickPhase.Paused ? " 기믹" : "";   // at 25%: waiting for the 10% jump
+            string gimmick = est.Phase is GimmickPhase.Waiting or GimmickPhase.Paused ? " · 25% 대기" : "";   // at 25%: waiting for the 10% jump
             hiddenStatus = new RaidStatus(est.Gate, null, glow, null, est.Base is null ? "≈?" : $"≈{est.Percent:0}% {left}{gimmick}");
         }
 
         // 전투 기록's second: everyone's figures (mine from this PC, as the meter shows them) and who is in the fight.
         void RecordStep(MeterStatus status, MeterRole role, IReadOnlyList<MeterSample> samples, ulong me, int myParty, long bossTaken)
         {
-            if (!settings.Meter.Record) { recorder.Finish(); return; }   // 전투 기록 off: a fight under way is dropped, not saved
+            if (!settings.Meter.Record)   // 전투 기록 off: a fight under way is dropped, not saved
+            {
+                if (recorder.Finish() is { } dropped) Trace.WriteLine($"[records] fight dropped ({dropped.Gate ?? "?"}, {dropped.Duration:0}s): 전투 기록 off");
+                return;
+            }
             // Any dungeon but a guardian raid (user, 2026-11-03): its panel read, or unread with a boss bar (saved as 알 수 없음,
             // named in 편집). The 전분 timer alone (a dummy, the field) starts nothing.
-            recorder.InRaid = latest?.Dungeon is { } dungeon ? dungeon.Kind != DungeonKind.Guardian : status.Boss.Max is not null;
-            recorder.ShadowOn = latest?.Shadow is not null;
+            bool inRaid = latest?.Dungeon is { } dungeon ? dungeon.Kind != DungeonKind.Guardian : status.Boss.Max is not null;
+            if (inRaid != recorder.InRaid)
+                Trace.WriteLine($"[records] in raid: {inRaid} (dungeon {latest?.Dungeon?.Kind.ToString() ?? "unread"}, boss bar {(status.Boss.Max is null ? "unread" : "read")})");
+            recorder.InRaid = inRaid;
+            recorder.ShadowOn = latest?.Daenantu == true;
             recorder.AmsuOn = settings.Amsu.On;   // the bombs are recorded (and their gain shown) only while read
             recorder.PauseLimit = TimeSpan.FromSeconds(Math.Clamp(settings.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause));
             // My name as the party knows it (a taken name gets a number there), so no member's lane is mine.
@@ -472,8 +511,13 @@ public partial class App
                 .. party.Members.Where(m => m.Id != me).Select(m => new RecordMember(m.Name, peers.FirstOrDefault(p => p.Name == m.Name)?.Snapshot.ClassId ?? 0, null, m.Party)),
             ];
             string? gate = RaidData.Find(raidGates, _raidSeen) is { } g ? RaidData.Label(g) : null;
-            if (recorder.Step(status, all, members, bossTaken, gate, Clock.Now(), DateTime.Now) is { } fight)
+            bool wasRecording = recorder.Recording;
+            var ended = recorder.Step(status, all, members, bossTaken, gate, Clock.Now(), DateTime.Now);
+            if (!wasRecording && recorder.Recording) Trace.WriteLine($"[records] fight started ({gate ?? "gate unread"}, 전분 {status.Clock.Fight})");
+            if (ended is { } fight)
             {
+                Trace.WriteLine($"[records] fight ended ({fight.Gate ?? "?"}, {fight.Duration:0}s, {(fight.Cleared switch { true => "클리어", false => "실패", _ => "결과 모름" })}, "
+                    + $"{fight.Events.Count} events, {fight.Samples.Count} samples){(recorder.Restarted ? ": new 전분 record" : "")}");
                 var saving = SaveRecord(fight);
                 toSettle = recorder.Restarted ? (fight, saving, StoreNow(), status.Clock.Fight) : null;
             }
@@ -482,8 +526,12 @@ public partial class App
 
         // Written once, off the UI thread, when a fight ends (spec § D Cost budget).
         // The class played, for the file name and the list; a 테스트 모드 fight is [Test] until 편집 gives it one (user, 2026-11-05).
-        FightRecord Named(FightRecord fight, bool test) =>
-            homework.Name(fight with { MyClassName = test ? RecordCharacter.TestClass : characters.Active?.Class });
+        // With the character's 전투력 and item level from the API (lostark-api.plan.md phase 5); a [Test] fight's class isn't played.
+        FightRecord Named(FightRecord fight, bool test)
+        {
+            var named = homework.Name(fight with { MyClassName = test ? RecordCharacter.TestClass : characters.Active?.Class });
+            return test ? named : RecordPower.Stamp(named, settings.CombatPower, api.Levels);
+        }
 
         // The dungeon panel last read gives the difficulty (and the name, when no known gate was seen); guardian raids are daily
         // content and aren't kept.
@@ -495,6 +543,38 @@ public partial class App
             if (RaidData.ByHp(HpGates(), max) is var (g, level)) return With(g.Bosses.FirstOrDefault() ?? RaidData.Label(g), level);
             if (max is { } hp && settings.BossBook.TryGetValue(hp, out var learned)) return With(learned.Name, learned.Difficulty);
             return RaidData.Find(raidGates, _raidSeen) is { } seen ? With(seen.Bosses.FirstOrDefault() ?? RaidData.Label(seen), latest?.Dungeon?.Difficulty) : null;
+        }
+
+        // The live fight's gate and difficulty as SaveRecord will name it: by its max HP, else the boss book and the dungeon panel.
+        (string? Gate, string? Difficulty) LiveRaid(long? max) =>
+            RaidData.ByHp(HpGates(), max) is var (g, level) ? (RaidData.Label(g), level)
+            : BossBook.Resolve(settings.BossBook, max, latest?.Dungeon, RaidData.Find(raidGates, _raidSeen) is { } seen ? RaidData.Label(seen) : null);
+
+        // 비교 (lostark-api.plan.md phase 6): the saved fight of this raid and character, read off the UI thread when the
+        // character, the raid, the pick or the record folder change (a deleted or edited fight drops at once); not per frame.
+        MeterGhost? CompareGhost(long? max)
+        {
+            var (gate, difficulty) = LiveRaid(max);
+            string? who = homework.Current;
+            string? chosen = who is not null && gate is not null ? settings.MeterCompare.GetValueOrDefault(MeterCompare.Key(who, gate, difficulty)) : null;
+            var store = StoreNow();
+            string key = $"{who}|{gate}|{difficulty}|{chosen}|{store == testRecords}|{store.Changed}";
+            if (key == compareKey) return compareGhost;
+            (compareKey, compareGhost) = (key, null);
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var ghost = MeterCompare.Pick(store.List(), who, gate, difficulty, chosen) is { } pick ? new MeterGhost(MeterCompare.Ghost(pick.Record), pick.How) : null;
+                    Dispatcher.BeginInvoke(() => { if (compareKey == key) compareGhost = ghost; });
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Trace.WriteLine($"[meter] 비교 not read: {ex.Message}");
+                    Dispatcher.BeginInvoke(() => { if (compareKey == key) compareKey = null; });   // the next step tries again
+                }
+            });
+            return null;
         }
 
         // Returns the saved file's name once written (null: not saved).
@@ -522,20 +602,46 @@ public partial class App
             fight = TakeSkills(fight);   // the slots' skills, read during the fight
             var saving = Task.Run(() =>
             {
+                string? file = null;
                 try
                 {
-                    string file;
                     var named = Named(fight, store == testRecords);
-                    if (settings.RecordAutoSave) file = store.Save(named, settings.RecordKeep);
-                    else { store.Hold(named); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
+                    // The next part of the last saved fight's gate (2-2 after 2-1): that file becomes the whole gate, so 2-1 is
+                    // never a record of its own (user, 2026-11-10).
+                    // Its own character's last one: another character's fight in between doesn't break the gate.
+                    var last = store.List().FirstOrDefault(x => RecordStore.IsHeld(x.File) != settings.RecordAutoSave
+                        && x.Record is { } r && RecordCharacter.Of(r) == RecordCharacter.Of(named));
+                    var merged = last.Record is { } before ? FightRegions.Continued(before, named) : null;
+                    if (merged is not null) Trace.WriteLine($"[records] {last.File} goes on: saved as {merged.Gate}");
+                    if (settings.RecordAutoSave) file = merged is not null ? EditOrSave(store, last.File, merged, named) : store.Save(named, settings.RecordKeep);
+                    else { store.Hold(merged ?? named); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
                     if (store == records) homework.Saved(named);   // a clear counts even when the fight isn't kept
+                    Trace.WriteLine($"[records] saved {file}");
                     _settingsWindow.RefreshRecords();
                     return file;
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] save failed: {ex.Message}"); return null; }
+                // Any error: the task's result is all that is kept, so one not caught here would vanish with it.
+                catch (Exception ex)
+                {
+                    Trace.WriteLine(file is null ? $"[records] save failed ({fight.Gate ?? "?"}): {ex.GetType().Name}: {ex.Message}"
+                        : $"[records] saved {file}, then failed: {ex.GetType().Name}: {ex.Message}");
+                    return file;
+                }
             });
             lastSave = saving;
             return saving;
+        }
+
+        // The merge's 2-1 file gone meanwhile (deleted or renamed in 전투 기록 as the fight ended): this part saved on its own
+        // instead, never lost (csharp-reviewer, 2026-11-10).
+        string EditOrSave(RecordStore store, string file, FightRecord merged, FightRecord named)
+        {
+            try { return store.Edit(file, merged, settings.RecordKeep); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.WriteLine($"[records] {file} not editable before the merge ({ex.GetType().Name}): saved apart");
+                return store.Save(named, settings.RecordKeep);
+            }
         }
 
         // By the new boss's max HP only: the recognised gate name still holds the last boss until the new name is read.
@@ -578,13 +684,14 @@ public partial class App
         {
             _raidSeen = id;
             _tray.SetRaid(settings.Raids, raidGates, id);
-            _settingsWindow.SetRaidSeen(id);
+            _settingsWindow.SetRaidSeen(id, latest?.Dungeon?.Difficulty);
         });
         // HP 변경 감지: this raid's values; confirmed ones are kept (a video's fight changes nothing for the game).
         engine.FightHpChanged += list => Dispatcher.BeginInvoke(() =>
         {
+            var before = fightHp;   // what this raid had: a value new to the list is a raid that read it (HP 변경 감지's count)
             fightHp = list;
-            if (!GameWindow.TestMode && HpChange.Keep(raidGates, settings.Raids, list, DateTime.UtcNow))
+            if (!GameWindow.TestMode && HpChange.Keep(raidGates, settings.Raids, list, DateTime.UtcNow, before))
             {
                 Trace.WriteLine("[raid] HP change kept");
                 Configure();   // the engine's copy of the 레이드 settings, for after this raid
@@ -603,7 +710,7 @@ public partial class App
         });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
-            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 쿨 돈 상태에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
+            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 준비된 상태에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.");
         });
         engine.FitFinished += (vp, fit, message, detected, test, canRevert) => Dispatcher.BeginInvoke(() =>
         {
@@ -655,20 +762,25 @@ public partial class App
             {
                 string? last = characters.ActiveClass?.Name;
                 bool greyed = greyedSkills is not null;
-                // Off the UI thread: a full search and the 일반 slots' vote take a moment.
-                var (found, slots) = await Task.Run(() => Perf.RunCpu("클래스 인식", () =>
+                try
                 {
-                    var f = SkillClassFinder.Find(IconPrint.Framings(slot), SkillLibrary.Shipped, last, greyed);
-                    bool ask = !greyed && f.Class is not null && f.Class != last;   // the usual case, the same class, votes on nothing
-                    return (f, ask ? SkillClassFinder.Confirm(ordinary.Select(o => IconPrint.Framings(o)), SkillLibrary.Shipped, f.Class!) : SkillClassFinder.Verdict.Unsure);
-                }));
-                Trace.WriteLine($"[class] {found.Class ?? "?"}/{found.Subclass ?? "-"} {(found.Fast ? "fast" : "full")} {found.Score:0.000} lead {found.Lead:0.000} slots {slots}{(greyed ? " greyed" : "")} (was {last ?? "기본"})");
-                if (characters.OnClassFound(found, slots, greyed) is { } changed)
-                {
-                    _settingsWindow.Reload();
-                    _tray.Notify(changed);
+                    // Off the UI thread: a full search and the 일반 slots' vote take a moment.
+                    var (found, slots) = await Task.Run(() => Perf.RunCpu("클래스 인식", () =>
+                    {
+                        var f = SkillClassFinder.Find(IconPrint.Framings(slot), SkillLibrary.Shipped, last, greyed);
+                        bool ask = !greyed && f.Class is not null && f.Class != last;   // the usual case, the same class, votes on nothing
+                        return (f, ask ? SkillClassFinder.Confirm(ordinary.Select(o => IconPrint.Framings(o)), SkillLibrary.Shipped, f.Class!) : SkillClassFinder.Verdict.Unsure);
+                    }));
+                    Trace.WriteLine($"[class] {found.Class ?? "?"}/{found.Subclass ?? "-"} {(found.Fast ? "fast" : "full")} {found.Score:0.000} lead {found.Lead:0.000} slots {slots}{(greyed ? " greyed" : "")} (was {last ?? "기본"})");
+                    if (characters.OnClassFound(found, slots, greyed) is { } changed)
+                    {
+                        _settingsWindow.Reload();
+                        _tray.Notify(changed);
+                    }
+                    if (characters.Watching) _ = Task.Delay(ClassDetect.RetryAfter).ContinueWith(_ => Dispatcher.BeginInvoke(() => { if (characters.Watching) engine.RequestSubclass(); }));
                 }
-                if (characters.Watching) _ = Task.Delay(ClassDetect.RetryAfter).ContinueWith(_ => Dispatcher.BeginInvoke(() => { if (characters.Watching) engine.RequestSubclass(); }));
+                // The search is optional: the engine has already spent this capture, so a failure here must not lose the 직업각인 request below.
+                catch (Exception ex) when (ex is not OutOfMemoryException) { Trace.WriteLine($"[class] search failed: {ex}"); }
             }
             if (characters.OnSubclassSlot(slot, greyedSkills) is not { } note) { OnSettingsChanged(); return; }   // ClassMismatch or the history may have changed
             _settingsWindow.Reload();
@@ -805,7 +917,7 @@ public partial class App
         _settingsWindow.DiagnosticsShownChanged += Configure;   // the table's rows are sent only while it is on screen
         _settingsWindow.IsVisibleChanged += (_, _) => Configure();
         _tray.Refit += Refit;
-        // 직업각인 다시 감지 (tray, 설정, hotkey): the 초각스 is read again past the history (CharacterService.RedetectSubclass).
+        // 직업각인 다시 읽기 (tray, 설정, hotkey): the 초각스 is read again past the history (CharacterService.RedetectSubclass).
         void RedetectSubclass()
         {
             if (characters.RedetectSubclass() is { } why) { _tray.Notify(why); return; }
@@ -815,7 +927,7 @@ public partial class App
         }
         _tray.DetectSubclass += RedetectSubclass;
         _settingsWindow.SubclassRedetectRequested += RedetectSubclass;
-        // 직업각인 등록 (설정 → 캐릭터): the next ready 초각스 is saved as the 직업각인's icon (CharacterService.RegisterSubclass).
+        // 직업각인 등록 (설정 → 직업 인식): the next ready 초각스 is saved as the 직업각인's icon (CharacterService.RegisterSubclass).
         _settingsWindow.SubclassRegisterRequested += () =>
         {
             if (characters.RegisterSubclass() is { } why) { _tray.Notify(why); return; }
@@ -826,21 +938,39 @@ public partial class App
         engine.LoadingEnded += () => Dispatcher.BeginInvoke(() => homework.Loaded(Clock.Now()));   // a switch picked in the grid happens now
         // The ESC menu (Engine.Menu.cs): who is played, the grid's cards, and their 숙제 tags under them.
         string? menuLogged = null;
+        (MenuRead Read, Viewport Vp)? openMenu = null;   // the last open menu the tags were drawn for
         engine.MenuSeen += (read, vp, t) => Dispatcher.BeginInvoke(() =>
         {
             homework.Menu(read, t);
+            if (read.Open) api.Lookup(homework.Current, refresh: false);   // the first read of a run, then every 10 min
+            else (openMenu, _replayTags) = (null, null);   // a lookup landing later mustn't draw on a closed menu
             if (!read.Open && !_homeworkTags.IsVisible) return;
             var tagged = homework.GridTags(read);
             string seen = $"{read.Open} {read.Current} {read.Cards.Count} {tagged.Count}";
-            if (seen != menuLogged) Trace.WriteLine($"[menu] open {read.Open}, playing {read.Current ?? "-"}, picked {read.Picked ?? "-"}, cards: {string.Join(" / ", read.Cards.Select(c => c.Name))}{(read.PlayingCard is null ? "" : " + 접속 중")}; tags on {tagged.Count}");
+            if (seen != menuLogged) Trace.WriteLine($"[menu] open {read.Open}, playing {read.Current ?? "-"}, picked {read.Picked ?? "-"}, cards: {string.Join(" / ", read.Cards.Select(c => $"{c.Name} {c.ItemLevel?.ToString() ?? "?"}"))}{(read.PlayingCard is null ? "" : " + 접속 중")}; tags on {tagged.Count}");
             menuLogged = seen;
-            if (!read.Open) ShowTags([], vp);   // while open the tags follow the pixels (MenuRecalled): a read is old by the time it lands
+            if (!read.Open) ShowTags([], [], vp);   // while open the tags follow the pixels (MenuRecalled): a read is old by the time it lands
         });
         // Cards known by their pixels: the tags at once, while the OCR takes its time (Engine.Menu.cs).
-        engine.MenuRecalled += (read, vp, _) => Dispatcher.BeginInvoke(() => ShowTags(homework.GridTags(read), vp));
-        void ShowTags(IReadOnlyList<(MenuCard Card, IReadOnlyList<HomeworkTag> Tags)> tagged, Viewport vp) =>
+        // 전투력 beside the cards' and the portrait's item level (lostark-api.plan.md phase 4): its own switch, not 숙제 표시.
+        Role RoleOfSubclass(string key) => MenuPower.RoleIn(characters.Classes, key);
+        engine.MenuRecalled += (read, vp, _) => Dispatcher.BeginInvoke(() => ShowFor(read, vp));
+        // A lookup that lands while the menu is open: its 전투력 now, not at the next MenuRecalled (an unchanged menu may send none).
+        api.Updated += () => { if (openMenu is var (read, vp)) ShowFor(read, vp); };
+        void ShowFor(MenuRead read, Viewport vp)
+        {
+            var (tagged, power) = (homework.GridTags(read), homework.PowerTags(read, RoleOfSubclass));
+            openMenu = read.Open ? (read, vp) : null;
+            // Kept for a return to the game (an unchanged open menu sends no new MenuRecalled), worked out again then: values may have changed.
+            _replayTags = tagged.Count + power.Count > 0 ? () => ShowFor(read, vp) : null;
+            ShowTags(tagged, power, vp);
+        }
+        void ShowTags(IReadOnlyList<(MenuCard Card, IReadOnlyList<HomeworkTag> Tags)> tagged, IReadOnlyList<PowerTag> power, Viewport vp)
+        {
             _homeworkTags.Update(vp, [.. tagged.Select(x =>
-                (Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))), x.Tags))], allowed: true);
+                (Geometry.MenuArea(vp, new PixelRect((int)x.Card.X, (int)x.Card.Y, (int)x.Card.W, (int)(x.Card.Bottom - x.Card.Y))), x.Tags))],
+                [.. power.Select(t => t with { Line = Geometry.MenuArea(vp, t.Line) })], allowed: GameSeen);
+        }
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.DetectSubclass)) Dispatcher.BeginInvoke(RedetectSubclass); };
         _tray.RereadIcons += RereadIcons;
         _settingsWindow.IconRereadRequested += RereadIcons;
@@ -880,20 +1010,20 @@ public partial class App
             try { Clipboard.SetText(t); return true; }
             catch (System.Runtime.InteropServices.COMException) { return false; }
         }
-        void CopyTokenWithNotice() => _tray.Notify(party.Token is null ? "토큰은 호스트만 복사할 수 있습니다."
-            : CopyToken() ? "토큰을 복사했습니다." : "클립보드를 쓸 수 없습니다. 잠시 뒤 다시 눌러 주세요.");
+        void CopyTokenWithNotice() => _tray.Notify(party.Token is null ? "참가 코드는 호스트만 복사할 수 있습니다."
+            : CopyToken() ? "참가 코드를 복사했습니다." : "클립보드를 쓸 수 없습니다. 잠시 뒤 다시 눌러 주세요.");
         async void HostParty()
         {
             party.PublishLook(MyLook());
             if (!await party.Host(settings.Party.HostPort, PartyName())) return;
             if (party.Token is { } t) TokenDialog.ShowToken(t, settings.Party.HostPort, settings.Theme);
-            else _tray.Notify("파티를 열었습니다.");
+            else _tray.Notify("공유 방을 열었습니다.");
         }
         async void JoinParty(string? token)
         {
             if (token is null) return;
             party.PublishLook(MyLook());
-            if (await party.Join(token, PartyName())) _tray.Notify("파티에 참가했습니다.");
+            if (await party.Join(token, PartyName())) _tray.Notify("공유 방에 참가했습니다.");
         }
         _tray.HostParty += HostParty;
         _tray.JoinParty += () => JoinParty(JoinDialog.Ask(settings.Theme));
@@ -994,7 +1124,7 @@ public partial class App
                 _settingsWindow.Show();
                 _settingsWindow.Activate();
                 if (installed)
-                    MessageBox.Show(_settingsWindow, notes.Length > 0 ? $"{tag}(으)로 업데이트했습니다.\n\n{notes}" : $"{tag}(으)로 업데이트했습니다.",
+                    MessageBox.Show(_settingsWindow, notes.Length > 0 ? $"{Josa.By(tag)} 업데이트했습니다.\n\n{notes}" : $"{Josa.By(tag)} 업데이트했습니다.",
                         "GaugeOverlay 업데이트", MessageBoxButton.OK, MessageBoxImage.Information);
             }, DispatcherPriority.ApplicationIdle);
         }
@@ -1006,7 +1136,7 @@ public partial class App
                 if ((await updater.CheckAsync(settings.Updates.Channel)).Newer is not { } release) return;
                 _settingsWindow.SetUpdate(release);
                 if (UpdateCheck.IsDowngrade(release, Updater.CurrentTag)) return;   // going back waits for the button
-                _tray.Notify($"GaugeOverlay {release.Tag}(으)로 업데이트하는 중입니다. 끝나면 다시 켜집니다.");
+                _tray.Notify($"GaugeOverlay {Josa.By(release.Tag)} 업데이트하는 중입니다. 끝나면 다시 켜집니다.");
                 await Install(release);
             }
             catch (Exception ex) { Trace.WriteLine($"[update] check: {ex}"); }   // never shown: the app runs on as it is

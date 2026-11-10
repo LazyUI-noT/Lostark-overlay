@@ -48,6 +48,42 @@ public class JudgmentReaderTests
         Assert.Empty(wrong);
     }
 
+    // icon-gates step 3: the engine asks through IconGate, identifying a box only when its thumbnail moved. Same verdict
+    // as IsIcon on every frame of every row, and far fewer matches than frames × boxes.
+    [Fact]
+    public void Through_the_gate_every_frame_reads_as_IsIcon_with_fewer_matches()
+    {
+        var wrong = new List<string>();
+        int asked = 0, identified = 0;
+        foreach (var (name, vp, fit, buff) in Rows)
+        {
+            var f = Fixture.Load(name);
+            var gate = new IconGate<bool>(JudgmentReader.IsIcon);
+            for (int i = 0; i < f.Frames.Count; i++)
+                foreach (var (box, icon) in BoxesIn(f, vp, fit, buff))
+                {
+                    asked++;
+                    if (gate.Classify(f.Frames[i], box, icon) != JudgmentReader.IsIcon(f.Frames[i], icon))
+                        wrong.Add($"{name} {f.Pts[i].TotalSeconds:0.00} s box {box}");
+                }
+            identified += gate.Identifies;
+        }
+        Assert.Empty(wrong);
+        Assert.True(identified * 2 < asked, $"identified {identified} of {asked}");
+    }
+
+    /// <summary>A box swapping straight from a party buff or a look-alike to 심판 must move the thumbnail past the gate.</summary>
+    [Fact]
+    public void 심판_differs_from_every_buff_icon_and_its_look_alikes_by_more_than_the_threshold()
+    {
+        static float[] Thumb(string b64) => BuffReader.Thumb(Image.FromBytes(Convert.FromBase64String(b64))!);
+        var judgment = BuffReader.Thumb(JudgmentReader.Icon);
+
+        var changes = BuffTemplates.Icons.Concat(JudgmentTemplates.LookAlikes).Select(s => IconGate.Change(judgment, Thumb(s)));
+
+        Assert.All(changes, d => Assert.True(d > IconGate.Threshold, $"change {d:0.0}"));
+    }
+
     // Read as the engine reads it: the icon, and its timer under it ("5초", "4초" from 49.15 s, so 심판 began at 48.15 s).
     [Fact]
     public void Read_through_the_tracker_the_icon_and_its_timer_date_the_trigger()
@@ -87,6 +123,9 @@ public class JudgmentReaderTests
         sb.AppendLine("internal static class JudgmentTemplates");
         sb.AppendLine("{");
         sb.AppendLine($"    public const string Icon = \"{Cut("judg_row", 15, 0)}\";");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>단죄's icon, cut the same way from 단죄여려번.mp4 (4.0 s, box 0): drawn by the 단심 아이콘 while 심판 is ready.</summary>");
+        sb.AppendLine($"    public const string Conviction = \"{Cut("dz_row", 16, 0)}\";");
         sb.AppendLine();
         // The words over the character, as JudgmentText's grids: "심판" settled at 100% (48.6 s), "단죄" at 100% (46.69 s).
         string Text(string fixture, int frame) =>

@@ -33,6 +33,17 @@ public class JosaTests
     public void Object_particle_reads_port_numbers(string word, string expected) =>
         Assert.Equal(expected, Josa.Object(word));
 
+    [Theory]
+    [InlineData("v0.18.0", "v0.18.0으로")]     // 0 = 영
+    [InlineData("v0.17.2", "v0.17.2로")]       // 2 = 이
+    [InlineData("v0.17.1", "v0.17.1로")]       // 1 = 일, ㄹ takes 로
+    [InlineData("버서커", "버서커로")]
+    [InlineData("기본", "기본으로")]
+    [InlineData("블레이드 마스터 · 서울", "블레이드 마스터 · 서울로")]   // ㄹ 받침
+    [InlineData("ABC", "ABC으로(로)")]
+    public void By_particle_treats_rieul_like_a_vowel(string word, string expected) =>
+        Assert.Equal(expected, Josa.By(word));
+
     [Fact]
     public void A_word_it_cannot_read_keeps_both_forms() =>
         Assert.Equal("ABC을(를)", Josa.Object("ABC"));

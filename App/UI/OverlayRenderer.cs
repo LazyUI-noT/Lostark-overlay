@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -44,7 +45,6 @@ public sealed partial class OverlayRenderer : FrameworkElement
     public const double MinTimerFont = 6, TimerFontStep = 0.5;   // below this the timer is hidden (too small to read)
     const double TimerInset = 4;           // "88" must fit the box width minus this
     const double PeerNameShare = 0.55, MinNameFont = 8;   // names stay readable at small scales
-    const double FastFrameMs = 1000.0 / 60, SlowFrameMs = 1000.0 / 30;   // 60 fps for shine/tweens, 30 for sweeps only
     const int ChangedKey = (int)Part.변화;  // box key of 초각기 표시 (0–11 are SlotId)
     const int GaugeKey = (int)Part.게이지;  // the gauge, as a plate's member
     const double HiddenOpacity = 0.25;     // a box hidden on cooldown, where it is shown anyway (ShowHidden)
@@ -84,8 +84,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>The settings object the user edits; read on every frame.</summary>
     public Settings Settings { get; set; } = new();
 
-    bool _loop, _moving, _animating;   // loop attached; this frame had a moving sweep / a shine or tween
-    double _frameMs = SlowFrameMs;
+    bool _loop, _moving, _animating, _blinking;   // loop attached; this frame had a moving sweep / a shine or tween / only a slow fade
+    double _frameMs = 1000.0 / DrawSteps.Default;
     /// <summary>The shortest frame time; 설정 → 표시's small scene draws slower than a real overlay (0: no limit).</summary>
     internal double MinFrameMs { get; set; }
     Player? _player;
@@ -289,16 +289,17 @@ public sealed partial class OverlayRenderer : FrameworkElement
         double ms = Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
         long cpu0 = Services.Perf.ThreadCpu();
         bool reduced = !SystemParameters.ClientAreaAnimation;
-        _moving = _animating = false;
+        _moving = _animating = _blinking = false;
 
         if (DebuffsOnly) DrawDebuffs(dc, now, ms, reduced);
-        else if (JudgmentOnly) DrawJudgment(dc, now, reduced);
+        else if (JudgmentOnly) DrawJudgment(dc, now, ms, reduced);
         else if (AmsuOnly) DrawAmsu(dc, now, ms, reduced);
         else if (RaidOnly) DrawRaid(dc, ms, reduced);
         else if (MeterOnly) DrawMeter(dc);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
-        _frameMs = Math.Max(MinFrameMs, _animating ? FastFrameMs : SlowFrameMs);
-        SetLoop(_moving || _animating);
+        // 초당 그리기 횟수: one rate for every moving part; a slow fade alone at most 15 (DrawSteps).
+        _frameMs = Math.Max(MinFrameMs, DrawSteps.FrameMs(Settings.DrawsPerSecond, fadeOnly: !_animating && !_moving));
+        SetLoop(_moving || _animating || _blinking);
         Services.Perf.AddCpu(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
             : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창",
             Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
@@ -435,12 +436,12 @@ public sealed partial class OverlayRenderer : FrameworkElement
         if (shineT >= 1) a.ShineAt = -1; else _animating = true;
 
         // A seconds cooldown takes its colours from CooldownLook (a stack skill with a use left stays full colour, one
-        // with none left turns grey).
+        // with none left turns grey, its icon too).
         var look = CooldownLook.For(st, Settings.Overlay.CooldownStyle);
         bool seconds = st.Phase == SlotPhase.Cooldown && !ready;
         double level = seconds ? look.Base : !ready ? CooldownLevel
             : reduced && shineT < 1 ? CooldownLevel + (1 - CooldownLevel) * EaseOut(shineT) : 1;
-        if (icon is not null) DrawIcon(dc, BoxClip(r), r, icon, level);
+        if (icon is not null) DrawIcon(dc, BoxClip(r), r, seconds && look.Grey ? GreyIcon(icon) : icon, level);
         else
         {
             var baseColor = Shade(c, dim, level);
@@ -539,9 +540,6 @@ public sealed partial class OverlayRenderer : FrameworkElement
         }
     }
 
-    /// <summary>Time gone by, <paramref name="p"/> of the cooldown, as the 쿨타임 표시 setting draws it: a sweep or a fill
-    /// in the refill colour (slashed if the look says so), or only a white line at the progress edge (a stack skill with
-    /// a use left): the clock hand of the sweep, or the fill's edge.</summary>
     /// <summary>The icon filling <paramref name="r"/> (centred, cropped to the box's shape), inside <paramref name="shape"/>,
     /// darkened to <paramref name="level"/> as a colour box would be.</summary>
     static void DrawIcon(DrawingContext dc, Geometry shape, Rect r, ImageSource icon, double level)
@@ -558,6 +556,14 @@ public sealed partial class OverlayRenderer : FrameworkElement
         dc.Pop();
     }
 
+    /// <summary>A stack skill with no use left: its icon in greys, as the game shows it (made once per icon).</summary>
+    static ImageSource GreyIcon(ImageSource icon) =>
+        icon is BitmapSource b ? GreyIcons.GetValue(b, k => Frozen(new FormatConvertedBitmap(k, PixelFormats.Gray8, null, 0))) : icon;
+    static readonly ConditionalWeakTable<BitmapSource, BitmapSource> GreyIcons = new();
+
+    /// <summary>Time gone by, <paramref name="p"/> of the cooldown, as the 쿨타임 표시 setting draws it: a sweep or a fill
+    /// in the refill colour (slashed if the look says so), or only a white line at the progress edge (a stack skill with
+    /// a use left): the clock hand of the sweep, or the fill's edge.</summary>
     void DrawProgress(DrawingContext dc, Rect r, Color c, Color? dim, CooldownLook look, double p, double unit, ImageSource? icon)
     {
         var o = Settings.Overlay;

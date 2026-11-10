@@ -26,14 +26,14 @@ public partial class SettingsWindow
         var p = new CardStack();
         p.Children.Add(Heading("아덴 게이지", first: true, help: "아덴 게이지를 추적하는 직업각인이면 오버레이 위쪽에 막대로 표시됩니다."));
         if (!(_chars.ActiveClass is { } cls && _chars.Active is { } c && cls.Subclasses.GetValueOrDefault(c.Subclass) is not null))
-            p.Children.Add(Note("현재 직업각인은 아덴 게이지를 추적하지 않습니다 (나중에 추가 예정)."));
+            p.Children.Add(Note("현재 직업각인은 아덴 게이지를 읽지 않습니다."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
         p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));
         p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));
         p.Children.Add(SliderRow("불투명도", 0.2, 1, g.Opacity, 0.05, v => $"{v * 100:0}%", v => g.Opacity = v, Changed));
-        p.Children.Add(HelpRow("읽기 방식", "기본: 같은 값이 5번 연속 읽혀야 바뀝니다. 작은 상승: 조금 오른 값은 2번만 같아도 바뀝니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 배워서, 그만큼 오른 값은 2번만 같아도 바로 바뀝니다. 스킬마다 10번쯤 쓴 뒤부터 작동하고, 배운 값은 캐릭터(클래스·직업각인)마다 저장되어 앱을 다시 켜도 남습니다. 아덴스킬로 게이지를 쓰는 양은 배우지 않고 클래스 규칙대로 바로 바뀝니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요. 지우지 않아도 30번쯤 쓰면 새 값에 맞춰집니다.", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
+        p.Children.Add(HelpRow("읽기 방식", "기본: 같은 값이 5번 연속 읽혀야 바뀝니다. 작은 상승: 조금 오른 값은 2번만 같아도 바뀝니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 배워서, 그만큼 오른 값은 2번만 같아도 바로 바뀝니다. 스킬마다 10번쯤 쓰면 작동합니다. 아덴스킬로 쓰는 양은 클래스 규칙대로 바로 바뀝니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요(안 지워도 30번쯤 쓰면 맞춰집니다).", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
             (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], g.ReadMode, v => g.ReadMode = v)));
         // Shown for every reading: gains learned under 스킬별 예측 stay saved after switching to another reading, and are used again on
         // switching back.
@@ -131,11 +131,11 @@ public partial class SettingsWindow
         }
 
         var glow = Stack(
-            Row("발광 방식", EnumCombo([(GlowStyle.Pulse, "밝아졌다 어두워짐"), (GlowStyle.Shine, "빛이 지나감"), (GlowStyle.Outline, "테두리")],
+            Row("빛남 방식", EnumCombo([(GlowStyle.Pulse, "밝아졌다 어두워짐"), (GlowStyle.Shine, "빛이 지나감"), (GlowStyle.Outline, "테두리")],
                 set.GlowStyle, v => Edit().GlowStyle = v)),
-            SliderRow("발광 주기", 0.4, 3, set.GlowPeriod, 0.1, v => $"{v:0.0}초", v => Edit().GlowPeriod = v, Changed));
+            SliderRow("빛남 주기", 0.4, 3, set.GlowPeriod, 0.1, v => $"{v:0.0}초", v => Edit().GlowPeriod = v, Changed));
         glow.Visibility = Shown(set.GlowEnabled);
-        p.Children.Add(Check("완충 발광", set.GlowEnabled, v => { Edit().GlowEnabled = v; glow.Visibility = Shown(v); }, Changed));
+        p.Children.Add(Check("완충 빛남", set.GlowEnabled, v => { Edit().GlowEnabled = v; glow.Visibility = Shown(v); }, Changed));
         p.Children.Add(glow);
         var reset = new Button { Content = "기본값으로", IsEnabled = _s.GaugeBars.ContainsKey(key),
             ToolTip = "이 직업각인의 막대 설정을 지우고 기본값(classes.json)으로 되돌립니다." };

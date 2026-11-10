@@ -28,4 +28,12 @@ public static class FightClock
     /// <summary>A new record after another one: the next gate (no loading screen between gates, its record starts at 00:00)
     /// or a retry. The first record seen is not one.</summary>
     public static bool Restarted(FightClockState was, FightClockState now) => was.Fight > 0 && now.Fight != was.Fight;
+
+    /// <summary>A clock read this recently decides <see cref="Running"/>; an older one (the 전분 closed, the meter off) doesn't.</summary>
+    public static readonly TimeSpan FreshFor = TimeSpan.FromSeconds(3);
+
+    /// <summary>A fight is on: the 전분 timer read lately and not stopped, or without such a read a boss bar up. Used to hold the
+    /// game menu's OCR (perf-hotspots.plan.md step 2): the menu is opened in a dungeon once the 전분 stopped (user, 2026-11-08).</summary>
+    public static bool Running(FightClockState clock, TimeSpan now, bool bossUp) =>
+        clock.Timer is not null && now - clock.SeenAt <= FreshFor ? !clock.Frozen : bossUp;
 }

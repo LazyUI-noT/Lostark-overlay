@@ -32,7 +32,7 @@ public sealed partial class OverlayCanvas : Border
     readonly Canvas _world = new();
     readonly System.Windows.Controls.Image _shot = new() { Stretch = Stretch.Fill };   // placed by ShowPicture
     readonly OverlayRenderer _mine, _buffs, _debuffs, _judgment, _amsu, _raid;
-    readonly OverlayRenderer? _meter;   // the scene only (설정 → 표시): the 미터기 has its own page
+    readonly OverlayRenderer? _meter;   // the scene only (설정 → 기능 Map): the 미터기 has its own page
     readonly OverlayRenderer[] _peers;
     readonly bool _scene;
     const double SceneFrameMs = 1000.0 / 15;
@@ -60,7 +60,7 @@ public sealed partial class OverlayCanvas : Border
     /// <summary>The ▶ preview player over the canvas's own boxes.</summary>
     internal PreviewPlayer Play { get; }
 
-    /// <param name="scene">설정 → 표시's read-only scene (OverlayCanvas.Scene.cs): <paramref name="live"/> is then a copy.</param>
+    /// <param name="scene">설정 → 기능 Map's read-only scene (OverlayCanvas.Scene.cs): <paramref name="live"/> is then a copy.</param>
     public OverlayCanvas(Settings live, CharacterService chars, bool scene = false)
     {
         (_s, _chars, _scene) = (live, chars, scene);

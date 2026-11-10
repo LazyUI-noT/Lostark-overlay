@@ -64,6 +64,50 @@ public class AmsuReaderTests
 
     static AmsuReader.RowFind Find(Image strip, double scale, BossSlots slots) => AmsuReader.Locate(strip, scale, slots, LineOf(strip, scale, slots));
 
+    // icon-gates step 2: through the gate a slot is matched only when its icon moved; the same row as without it.
+    static AmsuReader.RowFind Located(string name, IconCache<(Bomb Kind, int Dx)?>? gate = null) =>
+        AmsuReader.LocateIn(DebuffReader.ToReference(Strip(name), Scale), Scale, WideSlots, ClipRowY, gate);
+
+    [Fact]
+    public void Through_the_gate_rows_read_as_without_it_and_a_repeated_frame_adds_no_match()
+    {
+        var gate = AmsuReader.Gate();
+
+        var first = Located("amsu_15", gate);
+        int once = gate.Identifies;
+        var again = Located("amsu_15", gate);
+        int repeat = gate.Identifies;
+        var other = Located("amsu_25", gate);   // another frame: its slots hold other icons
+
+        Assert.Equal(Located("amsu_15").Bombs, first.Bombs);
+        Assert.Equal(first.Bombs, again.Bombs);
+        Assert.Equal(Located("amsu_25").Bombs, other.Bombs);
+        Assert.True(once > 0);
+        Assert.Equal(once, repeat);
+        Assert.True(gate.Identifies > repeat, "the other frame was matched");
+    }
+
+    /// <summary>Every frame's other debuffs meet every bomb look remembered from the others: none is taken for a bomb, no
+    /// bomb is missed (the look-alike check, against real screen icons rather than the templates).</summary>
+    [Fact]
+    public void One_gate_across_every_clip_frame_reads_each_as_without_it()
+    {
+        var gate = AmsuReader.Gate();
+        string[] names = ["amsu_15", "amsu_25", "amsu_35", "amsu_45", "amsu_55"];
+
+        foreach (var name in names.Concat(names.Reverse()))
+            Assert.Equal(Located(name).Bombs, Located(name, gate).Bombs);
+    }
+
+    /// <summary>A slot swapping straight from 암수 to 빛암 must move the thumbnail past the gate.</summary>
+    [Fact]
+    public void 암수_and_빛암_differ_by_more_than_the_threshold()
+    {
+        var thumbs = new[] { Bomb.암수, Bomb.빛암 }.Select(b => BuffReader.Thumb(AmsuReader.IconOf(b)!)).ToArray();
+
+        Assert.True(IconGate.Change(thumbs[0], thumbs[1]) > IconGate.Threshold, $"change {IconGate.Change(thumbs[0], thumbs[1]):0.0}");
+    }
+
     [Theory]
     [InlineData("amsu_15", 15)]
     [InlineData("amsu_25", 5)]

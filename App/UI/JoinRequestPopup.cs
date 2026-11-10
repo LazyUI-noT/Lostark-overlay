@@ -30,7 +30,7 @@ sealed class JoinRequestPopup : Window
         var text = new TextBlock
         {
             // The name is the joiner's to choose; the device code tells a copied name apart (신뢰한 기기 shows the same code).
-            Text = $"{request.Name} (v{request.App}, 기기 {request.Device[..8]})님이 파티에 참가하려고 합니다.",
+            Text = $"{request.Name} (v{request.App}, 기기 {request.Device[..8]})님이 공유 방에 참가하려고 합니다.",
             Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
         };
         Button ButtonFor(string label, bool ok)

@@ -25,8 +25,8 @@ public partial class SettingsWindow
 
     /// <summary>Where a section panel's rows are found; null: rows not listed (복사, the box options of one box).</summary>
     Place? PlaceOf(Panel p) =>
-        p == _secCharacter ? new(AreaCharacter, "캐릭터", null)
-        : p == _secFit ? new(AreaFit, "스킬창", null)
+        p == _secCharacter ? new(AreaCharacter, AreaCharacter, null)
+        : p == _secFit ? new(AreaFit, SecFit, null)
         : p == _secDetect ? new(AreaFit, SecDetect, null)
         : p == _secDisplay ? new(AreaOverlay, "전체", null)
         : p == _secPlace ? new(AreaOverlay, "배치", null)
@@ -45,6 +45,8 @@ public partial class SettingsWindow
         : p == _secScreens ? new(AreaScreens, AreaScreens, null)
         : p == _secKeys ? new(AreaKeys, "게임 키", null)
         : p == _secHotkeys ? new(AreaKeys, "앱 단축키", null)
+        : p == _secApi ? new(AreaApi, AreaApi, null)
+        : p == _secWarnings ? new(AreaWarnings, AreaWarnings, null)
         : null;
 
     /// <summary>The rows built from now on belong to <paramref name="p"/> (null: to nothing). Only while BuildAll collects.</summary>

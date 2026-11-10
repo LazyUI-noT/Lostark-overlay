@@ -19,13 +19,13 @@ public sealed class HomeworkFallback(HomeworkService homework, Func<IReadOnlyLis
         lock (_lock) _read = new WatchRead(current, max);
     }
 
-    /// <summary>Once a second (UI thread).</summary>
-    public void Step(bool active, bool blocked, RaidGate? nameGate, TimeSpan now)
+    /// <summary>Once a second (UI thread). <paramref name="daenantu"/>: 대난투 is up (Snapshot.Daenantu).</summary>
+    public void Step(bool active, bool blocked, bool daenantu, bool daenantuKilled, RaidGate? nameGate, TimeSpan now)
     {
         WatchRead? read;
         lock (_lock) (read, _read) = (_read, null);
         if (!active) { _watch = HomeworkWatch.None; return; }
-        var (next, decision) = _watch.Step(read, new WatchContext(blocked, nameGate, now), gates(), homework.Raids);
+        var (next, decision) = _watch.Step(read, new WatchContext(blocked, nameGate, now, daenantu, daenantuKilled), gates(), homework.Raids);
         _watch = next;
         if (decision is not null) homework.Fallback(decision);
     }

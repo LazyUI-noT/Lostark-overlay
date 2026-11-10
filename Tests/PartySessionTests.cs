@@ -97,7 +97,7 @@ public sealed class PartySessionTests : IDisposable
         host.Leave();
         Deliver();
         Assert.True(a.Ended);
-        Assert.Contains("끝냈", a.TakeChanges().Notice);
+        Assert.Contains("닫았", a.TakeChanges().Notice);
     }
 
     [Fact]
@@ -190,6 +190,73 @@ public sealed class PartySessionTests : IDisposable
         Assert.Equal("참가 중 (3/8)", c.Status);
         Assert.Equal("민수,철수", Names(host));
         Assert.Equal(2, _delivered.Count(p => p.From.Equals(HostAt) && p.To.Address.Equals(At(66).Address)));
+    }
+
+    /// <summary>The meter's 스킬 사용 횟수 reads a slot the party isn't sent: its casts are nobody else's business, so they send nothing.</summary>
+    [Fact]
+    public void A_slot_of_a_group_not_sent_changing_sends_no_state()
+    {
+        var host = Host();
+        Join(host, "민수", At(2));
+        var send = new HashSet<SlotGroup> { SlotGroup.각성기 };
+        host.Publish(Snapshot.Empty(_now), "철수", send, sendGauge: false, _now);
+        Deliver();
+        Wait(Step);
+        int before = StatesTo(At(2));
+
+        host.Publish(Cooling(10), "철수", send, sendGauge: false, _now);
+        Deliver();
+
+        Assert.Equal(before, StatesTo(At(2)));
+    }
+
+    [Fact]
+    public void A_slot_of_a_group_sent_changing_sends_a_state()
+    {
+        var host = Host();
+        Join(host, "민수", At(2));
+        var send = new HashSet<SlotGroup> { SlotGroup.일반스킬 };
+        host.Publish(Snapshot.Empty(_now), "철수", send, sendGauge: false, _now);
+        Deliver();
+        Wait(Step);
+        int before = StatesTo(At(2));
+
+        host.Publish(Cooling(10), "철수", send, sendGauge: false, _now);
+        Deliver();
+
+        Assert.Equal(before + 1, StatesTo(At(2)));
+    }
+
+    /// <summary>States that reach member 민수 when the second snapshot follows the first, one sending step apart.</summary>
+    int StatesFor(Snapshot next, IReadOnlySet<SlotGroup> send, bool sendGauge)
+    {
+        var host = Host();
+        Join(host, "민수", At(2));
+        host.Publish(Snapshot.Empty(_now), "철수", send, sendGauge, _now);
+        Deliver();
+        Wait(Step);
+        int before = StatesTo(At(2));
+        host.Publish(next, "철수", send, sendGauge, _now);
+        Deliver();
+        return StatesTo(At(2)) - before;
+    }
+
+    [Fact]
+    public void The_gauge_changing_sends_a_state_only_while_it_is_sent()
+    {
+        var moved = Snapshot.Empty(_now) with { Gauge = 0.5 };
+
+        Assert.Equal(0, StatesFor(moved, All, sendGauge: false));
+        Assert.Equal(1, StatesFor(moved, All, sendGauge: true));
+    }
+
+    [Fact]
+    public void The_awakening_flag_changing_sends_a_state_only_while_각성기_is_sent()
+    {
+        var flagged = Snapshot.Empty(_now) with { AwakeningChanged = true };
+
+        Assert.Equal(0, StatesFor(flagged, new HashSet<SlotGroup> { SlotGroup.일반스킬 }, sendGauge: false));
+        Assert.Equal(1, StatesFor(flagged, new HashSet<SlotGroup> { SlotGroup.각성기 }, sendGauge: false));
     }
 
     /// <summary>A client sending States faster than 20 Hz isn't amplified: the host relays each member at most every

@@ -116,11 +116,11 @@ public class DetectionTests
     }
 
     [Fact]
-    public void Lights_run_only_while_a_certain_reader_keeps_finding()
+    public void Lights_run_from_the_check_mark_on_even_with_nothing_to_read_now()
     {
         var b = DetectBoard.Step(DetectBoard.Step(DetectBoard.Empty, In(buff: true), All, S(0)), In(buff: true), All, S(1));
-        Assert.True(DetectBoard.Flowing(b, "buff", S(2)));
-        Assert.False(DetectBoard.Flowing(b, "buff", S(10)));
-        Assert.False(DetectBoard.Flowing(b, "boss", S(2)));
+        b = DetectBoard.Step(b, In(), All, S(60));
+        Assert.True(DetectBoard.Flowing(b, "buff"));
+        Assert.False(DetectBoard.Flowing(b, "boss"));
     }
 }

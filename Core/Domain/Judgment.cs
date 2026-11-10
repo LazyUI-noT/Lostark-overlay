@@ -14,7 +14,7 @@ public sealed record JudgmentRead(bool Icon, bool Text, double? Seconds = null);
 /// running while the HUD is hidden; null = never seen (shown ready). The rest is JudgmentTracker's: whether the last poll
 /// saw the icon, since when the text has been read on every poll (<see cref="TextSince"/>) and whether that run was taken
 /// (<see cref="TextTaken"/>), and the icon's last timer, so only a new sighting is a trigger and a tick of the timer is seen.
-/// <see cref="Previous"/>: the start of the cycle that ran out, kept for the 준비 아이콘's flash after the tracker resets it.</summary>
+/// <see cref="Previous"/>: the start of the cycle that ran out, kept for the 아이콘's ready flash after the tracker resets it.</summary>
 public sealed record JudgmentState(TimeSpan? TriggeredAt, bool IconSeen = false, TimeSpan? TextSince = null, bool TextTaken = false, double? Timer = null,
     TimeSpan? Previous = null)
 {
@@ -42,20 +42,21 @@ public sealed record JudgmentState(TimeSpan? TriggeredAt, bool IconSeen = false,
         return e < Duration ? ((Duration - e) / Duration, 0) : (0, (Cycle - e) / (Cycle - Duration));
     }
 
-    public static readonly TimeSpan IconFlash = TimeSpan.FromSeconds(0.4), IconFade = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan IconFlash = TimeSpan.FromSeconds(0.4);
 
-    /// <summary>준비 아이콘 (user, 2026-10-13): the icon with 심판's seconds while it is on; through the cooldown nothing, or (with
-    /// <paramref name="showCooldown"/>) a dim icon with the seconds to ready; at ready a white flash for <see cref="IconFlash"/>,
-    /// a fade over <see cref="IconFade"/>, then nothing until the next 심판. Null: nothing to draw.</summary>
-    public JudgmentIcon? Icon(TimeSpan now, bool showCooldown)
+    /// <summary>아이콘 (user, 2026-11-10): 심판's icon with its seconds while it is on, grey with the seconds to ready through
+    /// the cooldown, and 단죄's icon while ready (what builds toward the next 심판), under a white flash for
+    /// <see cref="IconFlash"/> as it comes back.</summary>
+    public JudgmentIcon Icon(TimeSpan now)
     {
-        if ((TriggeredAt ?? Previous) is not { } t || now < t) return null;
-        var e = now - t;
-        if (e < Duration) return new(1, false, false, LabelSeconds(now));
-        if (e < Cycle) return showCooldown ? new(1, true, false, LabelSeconds(now)) : null;
-        var ready = e - Cycle;
-        if (ready < IconFlash) return new(1, false, true, null);
-        return ready < IconFlash + IconFade ? new(1 - (ready - IconFlash) / IconFade, false, false, null) : null;
+        if ((TriggeredAt ?? Previous) is { } t && now >= t)
+        {
+            var e = now - t;
+            if (e < Duration) return new(false, false, false, LabelSeconds(now));
+            if (e < Cycle) return new(false, true, false, LabelSeconds(now));
+            if (e - Cycle < IconFlash) return new(true, false, true, null);
+        }
+        return new(true, false, false, null);
     }
 
     /// <summary>Whole seconds (rounded down, as the buff bars): 심판's while it is on, then those to ready; null when ready.</summary>
@@ -63,6 +64,6 @@ public sealed record JudgmentState(TimeSpan? TriggeredAt, bool IconSeen = false,
         : (int)(e < Duration ? Duration - e : Cycle - e).TotalSeconds;
 }
 
-/// <summary>How the 준비 아이콘 is drawn now: its opacity, greyed (the cooldown), under a white flash (just ready), and the
-/// seconds on it.</summary>
-public readonly record struct JudgmentIcon(double Opacity, bool Dim, bool Flash, int? Seconds);
+/// <summary>How the 아이콘 is drawn now: 단죄's icon (ready) or 심판's, grey (the cooldown), under a white flash (just
+/// ready), and the seconds on it.</summary>
+public readonly record struct JudgmentIcon(bool Conviction, bool Dim, bool Flash, int? Seconds);

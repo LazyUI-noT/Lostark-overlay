@@ -64,9 +64,10 @@ public sealed partial class Engine
     // The dungeon panel and the boss name share the one OCR engine: one recognition at a time.
     static readonly SemaphoreSlim OcrGate = new(1, 1);
 
-    static async Task<IReadOnlyList<string>> RecognizeLines(SoftwareBitmap bmp)
+    static async Task<IReadOnlyList<string>> RecognizeLines(SoftwareBitmap bmp, string kind)
     {
         await OcrGate.WaitAsync();
+        Perf.Count(kind);
         try { return [.. (await Ocr.Value!.RecognizeAsync(bmp)).Lines.Select(l => l.Text)]; }
         catch
         {
@@ -84,7 +85,7 @@ public sealed partial class Engine
             var big = ImageOps.Resample(img, new PixelRect(0, 0, img.Width, img.Height), 2);   // OCR reads small Hangul far better at 2×
             using var bmp = SoftwareBitmap.CreateCopyFromBuffer(big.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, big.Width, big.Height, BitmapAlphaMode.Premultiplied);
             var was = _dungeon;
-            var lines = await RecognizeLines(bmp);
+            var lines = await RecognizeLines(bmp, "OCR 던전");
             if (gen != Volatile.Read(ref _dungeonGen)) return;   // captured before a loading screen: maybe the last gate's panel
             if (DungeonPanel.Parse(lines) is { } d)
             {

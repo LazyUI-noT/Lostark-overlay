@@ -18,6 +18,10 @@ public sealed partial class OverlayRenderer
     const double AmsuText = 0.55, AmsuUnseen = 0.55, AmsuGap = 2;
     const double AmsuUprightWidth = 0.6;   // 세로막대's width × the icon size (크기); its height is 막대 길이
     const double BlinkHz = 2, BlinkLow = 0.6;
+
+    /// <summary>The opacity of a blinking part now (암수's warning, 단심's ready bar); steady under reduced motion.</summary>
+    static double Blink(double ms, bool reduced, double hz = BlinkHz, double low = BlinkLow) =>
+        reduced ? 1 : low + (1 - low) * (0.5 + 0.5 * Math.Cos(2 * Math.PI * hz * ms / 1000));
     static readonly ImageSource?[] BombIcons = [.. Enum.GetValues<Bomb>().Select(b => BombImage(AmsuReader.IconOf(b)))];
 
     static ImageSource? BombImage(Core.Domain.Image? icon)
@@ -71,7 +75,7 @@ public sealed partial class OverlayRenderer
         if (_player?.Snapshot.Amsu is not { } state || Amsu.View(state, now) is not ({ } kind, var left, var seen)) return;
         var a = Settings.Amsu;
         bool timed = AmsuTimed, warn = timed && a.WarnSeconds > 0 && left < a.WarnSeconds;
-        double blink = warn && !reduced ? BlinkLow + (1 - BlinkLow) * (0.5 + 0.5 * Math.Cos(2 * Math.PI * BlinkHz * ms / 1000)) : 1;
+        double blink = warn ? Blink(ms, reduced) : 1;
         var colour = Parse(warn ? a.WarnColor : a.Color);
         double share = Math.Clamp(left / Amsu.Duration(kind), 0, 1);
         var (icon, side) = AmsuCells();

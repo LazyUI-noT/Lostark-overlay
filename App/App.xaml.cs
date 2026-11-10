@@ -206,7 +206,7 @@ public partial class App : Application
         if (failed != _failedHotkeys && failed != "")
         {
             Trace.WriteLine($"[app] hotkey not registered: {failed}");
-            _tray.Notify($"단축키를 쓸 수 없습니다 (겹치거나, 다른 프로그램이 쓰거나, 지원하지 않는 조합. 마우스 옆 버튼은 더 이상 지원하지 않습니다): {failed}");
+            _tray.Notify($"단축키를 쓸 수 없습니다: 다른 키와 겹치거나, 다른 프로그램이 쓰거나, 지원하지 않는 조합입니다. 마우스 옆 버튼은 쓸 수 없습니다. ({failed})");
         }
         _failedHotkeys = failed;
         _tray.SetHotkeys(_settings.Hotkeys);
@@ -221,7 +221,7 @@ public partial class App : Application
     /// <summary>오버레이 프로필 (hotkey, tray): the windows go to that profile's spots and sizes, and it is saved.</summary>
     void SwitchProfile(int profile)
     {
-        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 Test 프로필을 씁니다. 끄면 전에 쓰던 프로필로 돌아갑니다."); return; }
+        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 배치를 씁니다. 끄면 전에 쓰던 배치로 돌아갑니다."); return; }
         // mid-drag, the drop would land in the other profile's spots
         if (profile == _settings.ActiveProfile || _overlay.Dragging || Others.Any(w => w.Dragging)) return;
         _settings.SwitchProfile(profile);
@@ -231,7 +231,7 @@ public partial class App : Application
         StackParty();
         _settingsWindow.Reload();
         _changed();
-        _tray.Notify($"오버레이 프로필 {profile + 1}");
+        _tray.Notify($"오버레이 배치 {profile + 1}");
     }
 
     string _failedHotkeys = "";   // told once, not on every change
@@ -310,6 +310,12 @@ public partial class App : Application
         StackParty();
     }
 
+    /// <summary>The game is on screen to read: in front, or behind another app with Alt+Tab 중에도 항상 표시 on.</summary>
+    bool GameSeen => _gameForeground || _gameBehind;
+
+    /// <summary>Shows the last 숙제 tags again (null when none are up): set by ShowTags, run when the game is seen again.</summary>
+    Action? _replayTags;
+
     void UpdateVisibility()
     {
         var o = _settings.Overlay;
@@ -327,6 +333,10 @@ public partial class App : Application
         _meter.Visibility = ClassProfiles.MeterShown(_settings) && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
+        // 숙제 tags: only over the game (in front, or seen behind with Alt+Tab 중에도 항상 표시); an Alt+Tab hides them at once,
+        // since no menu read comes while the game is behind to do it (user, 2026-11-08).
+        if (!GameSeen && _homeworkTags is { IsVisible: true } tags) tags.Hide();
+        else if (GameSeen && _homeworkTags is { IsVisible: false }) _replayTags?.Invoke();
         if (show) { _overlay.BringToFront(); foreach (var w in Others) w.BringToFront(); }
         else if (_meter.Visibility == Visibility.Visible) _meter.BringToFront();
         // No snapshot comes with the game gone or away: the labels over the game must not stay behind.
@@ -387,7 +397,7 @@ public partial class App : Application
     // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스),
     // --saved-icons (the icons saved for the active 직업각인, from the real icons folder),
     // --saved-icons (the icons saved for the active 직업각인, from the real icons folder),
-    // --unseen=<클래스> (설정 → 캐릭터 shows that class as newly added),
+    // --unseen=<클래스> (설정 → 직업 인식 shows that class as newly added),
     // --cores (코어 빌드 applied to 워로드 · 고독한기사: 해 3, 버스트 캐넌 in 일반3),
     // --edit-as=<클래스 · 직업각인> (설정 → 편집 중 picks that 직업각인, so the overlay shows its sample; with --settings),
     // --duelist (the debuff window shows the 결투자 from each loop's start; implies --debuffs), --reduced (the debuff window drawn as under 애니메이션 끔),

@@ -39,7 +39,7 @@ public partial class SettingsWindow
     void FillDetect()
     {
         const string lead = "게임 화면에서 기능마다 읽는 자리입니다. 테두리 색은 기능 맵과 같습니다. ✓ 감지됨, ? 아직 찾는 중, ! 읽어야 하는데 못 읽음. "
-            + "✓와 !는 표시가 바뀐 순간의 화면을 보여 줍니다. 칸을 누르면 아래에서 Live로 지금 화면을 보거나 확대하고, 그 칸이 읽은 값을 볼 수 있습니다. 스킬창, 버프, 디버프 줄, 암수 칸은 자리 옮기기로 옮길 수 있습니다. 화면 찍기는 지금 화면 전체를 뒤에 깔아 주고, 저장하지는 않습니다.";
+            + "✓와 !는 표시가 바뀐 순간의 화면을 보여 줍니다. 칸을 누르면 아래에서 Live로 지금 화면을 보거나 확대하고, 그 칸이 읽은 값을 볼 수 있습니다. 스킬창, 버프, 디버프 줄, 암수, 전분 칸은 눌러서 바로 끌어 옮길 수 있습니다. 화면 찍기는 지금 화면 전체를 뒤에 깔아 주고, 저장하지는 않습니다.";
         var p = Refill(_secDetect, SecDetect, lead);
         if (!_detectHooked)
         {
@@ -105,7 +105,7 @@ public partial class SettingsWindow
         if (screen.Width <= 0 || screen.Height <= 0)
         {
             (_detectScreen.Width, _detectScreen.Height) = (640, 360);
-            _detectScreen.Children.Add(new TextBlock { Text = "게임 화면을 아직 찾지 못했어요.", Margin = new(16) });
+            _detectScreen.Children.Add(new TextBlock { Text = "게임 화면을 아직 찾지 못했습니다.", Margin = new(16) });
             DrawTools();
             return;
         }
@@ -126,7 +126,7 @@ public partial class SettingsWindow
             var frame = new Rectangle
             {
                 Width = Math.Max(4, area.Width), Height = Math.Max(4, area.Height), Stroke = new SolidColorBrush(colour), StrokeThickness = id == _detectPicked ? stroke * 2 : stroke,
-                Fill = Green(id) == true ? GreenFill : Brushes.Transparent, Cursor = movable ? Cursors.SizeAll : Cursors.Hand,
+                Fill = Green(id) == true ? GreenFill : Brushes.Transparent, Cursor = DetectPlace.PartOf(id) is not null ? Cursors.SizeAll : Cursors.Hand,
                 StrokeDashArray = d is null or { Mark: DetectMark.Waiting } && id != DetectPlace.DebuffRow ? [3, 2] : null,
                 Tag = id, Opacity = _place is not null && !movable ? 0.45 : 1,   // placing: what can't be moved steps back
             };
@@ -164,14 +164,15 @@ public partial class SettingsWindow
             RefreshGreen();
         });
         Tool(_detectZoom ? "전체" : "확대", () => _detectZoom = !_detectZoom);
-        PlaceTools(id);
+        PlaceTools();
     }
 
-    void Tool(string text, Action act, bool enabled = true)
+    Button Tool(string text, Action act, bool enabled = true)
     {
         var b = new Button { Content = text, Padding = new(10, 3, 10, 3), Margin = new(0, 0, 6, 0), IsEnabled = enabled };
         b.Click += (_, _) => { act(); DrawDetect(); };
         _detectTools.Children.Add(b);
+        return b;
     }
 
     /// <summary>A picture at its screen place on the shown screen.</summary>
@@ -195,7 +196,7 @@ public partial class SettingsWindow
         if (_detectPicked is not { } id || LookOf(id) is not { } box) return "칸을 누르면 그 기능의 결과가 여기 나옵니다.";
         var where = ShownAreas().TryGetValue(id, out var a) ? $"{a.Width}×{a.Height} @ ({a.X}, {a.Y})" : "자리 없음";
         if (id == DetectPlace.DebuffRow) return $"{box.Title}: 내 디버프가 뜨는 줄입니다. 읽는 자리 {where}.";
-        if (_detect.GetValueOrDefault(id) is not { } d) return $"{box.Title}: 꺼져 있어요. 읽는 자리 {where}.";
+        if (_detect.GetValueOrDefault(id) is not { } d) return $"{box.Title}: 꺼져 있습니다. 읽는 위치 {where}.";
         string what = d.Mark switch { DetectMark.Concrete => "감지됨", DetectMark.Failed => "읽어야 하는데 못 읽음", _ => "아직 찾는 중" };
         return $"{box.Title}: {what} ({FeatureMapView.Ago(_detectAt - d.At)}부터). 읽는 자리 {where}." + (d.Why is { } why ? $" {why}" : "");
     }

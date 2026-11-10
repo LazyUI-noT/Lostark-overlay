@@ -14,6 +14,16 @@ public static class Josa
     /// <summary>과/와: "일반1과", "각성기와".</summary>
     public static string With(string word) => word + Pick(word, "과", "와");
 
+    /// <summary>으로/로: "v0.18.0으로", "v0.17.2로", "버서커로"; ㄹ takes 로 too ("일", "칠", "팔", "블레이드 마스터 → 마스터로").</summary>
+    public static string By(string word) => word + (EndsInRieul(word) ? "로" : Pick(word, "으로", "로"));
+
+    static bool EndsInRieul(string word) => word.Length > 0 && word[^1] switch
+    {
+        >= '가' and <= '힣' and var c => (c - '가') % 28 == 8,   // 받침 slot 8 = ㄹ
+        '1' or '7' or '8' => true,                             // 일 칠 팔
+        _ => false,
+    };
+
     static string Pick(string word, string afterConsonant, string afterVowel) => EndsInConsonant(word) switch
     {
         true => afterConsonant,

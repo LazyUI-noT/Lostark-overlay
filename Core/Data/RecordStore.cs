@@ -6,10 +6,18 @@ namespace GaugeOverlay.Core.Data;
 
 /// <summary>Saved fights (spec § D Keeping): one gzip JSON file per record in <paramref name="dir"/>, named by its start, gate and
 /// class ("yyyyMMdd-HHmmss_gate_class subclass", "-n" when taken; the date first keeps the names in time order). Saving prunes
-/// to the last N automatic records (the user's choice, <see cref="MinKeep"/>–<see cref="MaxKeep"/>); 보관 ones stay until
-/// deleted. Files that can't be read (cut short, hand-edited, too big) are left alone and skipped.</summary>
-public sealed class RecordStore(string dir)
+/// each character to its last N records (the user's choice, <see cref="MinKeep"/>–<see cref="MaxKeep"/>), 보관 ones counted;
+/// a 보관 one past them stays until deleted. Files that can't be read (cut short, hand-edited, too big) are left alone and skipped.
+/// 휴지통 (user, 2026-11-10): nothing is deleted outright. A pruned, un-kept past N or deleted fight moves to <see cref="Bin"/>
+/// (the <see cref="BinDir"/> folder, which older versions don't list), whose own 삭제 and weekly emptying erase it.</summary>
+public sealed class RecordStore(string dir, bool isBin = false)
 {
+    public const string BinDir = "bin";
+    readonly RecordStore? _bin = isBin ? null : new(Path.Combine(dir, BinDir), isBin: true);   // made up front: one gate however threads first reach it
+
+    /// <summary>The fights moved out of this store, each file written at the time it entered (<see cref="EmptyBin"/>).</summary>
+    public RecordStore Bin => _bin ?? throw new InvalidOperationException("no bin in the bin");
+
     public const int Keep = 50, MinKeep = 1, MaxKeep = 50;
     const string Ext = ".json.gz";
     const long MaxBytes = 64L << 20;   // a 10-minute 8-player fight is ~300 KB unpacked
@@ -21,6 +29,13 @@ public sealed class RecordStore(string dir)
 
     public static string DefaultDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GaugeOverlay", "records");
+
+    long _edits;   // bumped by every write and delete here: the folder's write time can stay put across two quick edits
+
+    /// <summary>Moves on every save, hold, 보관, edit and delete, so a reader that keys on it sees the fights change without
+    /// being told: the folder's write time (also catches files changed from outside) plus this store's own edit count; both
+    /// only grow. 0 before the folder exists and nothing was written.</summary>
+    public long Changed => (Directory.Exists(dir) ? Directory.GetLastWriteTimeUtc(dir).Ticks : 0) + Interlocked.Read(ref _edits);
 
     /// <summary>Writes the record and prunes to the last <paramref name="keep"/> automatic ones; returns its file name.</summary>
     public string Save(FightRecord r, int keep = Keep)
@@ -55,19 +70,126 @@ public sealed class RecordStore(string dir)
 
     string SaveLocked(FightRecord r, int keep, string? replacing = null)
     {
+        string name = WriteLocked(r, replacing);
+        Prune(RecordCharacter.Of(r), keep);
+        return name;
+    }
+
+    string WriteLocked(FightRecord r, string? replacing)
+    {
         Directory.CreateDirectory(dir);
         foreach (var tmp in Directory.EnumerateFiles(dir, "*" + Ext + ".tmp")) File.Delete(tmp);   // left by a crash mid-write
         string stem = Stem(r), name = stem + Ext;
         for (int n = 2; name != replacing && File.Exists(Path.Combine(dir, name)); n++) name = $"{stem}-{n}{Ext}";
         Write(name, r);
         if (replacing is not null && replacing != name) File.Delete(Path.Combine(dir, replacing));   // only once the new one is written
-        string mine = RecordCharacter.Of(r);   // per character: another character's fights never push these out
-        // The one just written stays, even when older than the rest (moved here by an edit): the others make room.
-        foreach (var (file, _) in List().Where(x => x.File != name && !x.Record.Kept && !IsHeld(x.File) && RecordCharacter.Of(x.Record) == mine)
-                     .Skip(r.Kept ? keep : keep - 1))
-            File.Delete(Path.Combine(dir, file));
         return name;
     }
+
+    /// <summary>The character's newest <paramref name="keep"/> saved fights stay, 보관 ones among them taking a place (user,
+    /// 2026-11-10); past them only 보관 ones stay, the rest go to the bin, an edited fight moved there too. Per character:
+    /// another character's fights never push these out.</summary>
+    void Prune(string character, int keep)
+    {
+        var mine = List().Where(x => !IsHeld(x.File) && RecordCharacter.Of(x.Record) == character).ToList();
+        foreach (var (file, _) in Overflow(mine, _ => false, x => x.Record.Kept, keep)) ToBin(file);
+    }
+
+    /// <summary>최근 기록 남기기 lowered: every character's fights past the new number go to the bin at once.</summary>
+    public void PruneAll(int keep)
+    {
+        lock (_gate)
+            foreach (var character in List().Select(x => RecordCharacter.Of(x.Record)).Distinct().ToList()) Prune(character, Clamped(keep));
+    }
+
+    /// <summary>How many fights <see cref="PruneAll"/> with <paramref name="keep"/> would move: asked before, to warn.</summary>
+    public int OverflowCount(int keep) =>
+        List().Where(x => !IsHeld(x.File)).GroupBy(x => RecordCharacter.Of(x.Record))
+            .Sum(g => Overflow(g.ToList(), _ => false, x => x.Record.Kept, keep).Count);
+
+    /// <summary>Whether 보관 off on <paramref name="file"/> sends it to the bin (past the newest <paramref name="keep"/>).</summary>
+    public bool UnkeepWouldBin(string file, int keep)
+    {
+        var all = List();
+        if (IsHeld(file) || all.FirstOrDefault(x => x.File == file).Record is not { } me) return false;
+        var mine = all.Where(x => !IsHeld(x.File) && RecordCharacter.Of(x.Record) == RecordCharacter.Of(me)).ToList();
+        return Overflow(mine, _ => false, x => x.File != file && x.Record.Kept, keep).Any(x => x.File == file);
+    }
+
+    /// <summary>Whether <see cref="Edit"/> with these would push a fight (the edited one too) to the bin: asked before, to warn.</summary>
+    public bool WouldBin(string file, FightRecord edited, int keep)
+    {
+        if (IsHeld(file)) return false;
+        string character = RecordCharacter.Of(edited), name = Stem(edited) + Ext;
+        var after = List().Where(x => !IsHeld(x.File) && x.File != file && RecordCharacter.Of(x.Record) == character)
+            .Select(x => (x.File, x.Record.Kept)).Append((File: name, edited.Kept)).OrderByDescending(x => x.File, StringComparer.Ordinal).ToList();
+        return Overflow(after, _ => false, x => x.Kept, keep).Count > 0;
+    }
+
+    /// <summary>Moves a file to the bin under a free name, written now (when it entered); in the bin itself, erases it.</summary>
+    void ToBin(string file)
+    {
+        Interlocked.Increment(ref _edits);
+        if (isBin) { File.Delete(Path.Combine(dir, file)); return; }
+        string binDir = Path.Combine(dir, BinDir), stem = file[..^Ext.Length], name = file, from = Path.Combine(dir, file);
+        lock (Bin._gate)   // store gate, then bin gate: the order everywhere. An emptying never sees it half moved.
+        {
+            Directory.CreateDirectory(binDir);
+            for (int n = 2; File.Exists(Path.Combine(binDir, name)); n++) name = $"{stem}-{n}{Ext}";
+            File.SetLastWriteTimeUtc(from, DateTime.UtcNow);   // stamped before the move: never in the bin with its old time
+            File.Move(from, Path.Combine(binDir, name));
+            Interlocked.Increment(ref Bin._edits);
+        }
+    }
+
+    /// <summary>휴지통's 보관: the fight comes back to this store as 보관, its start time as recorded; returns its file name.</summary>
+    public string Restore(string binFile, int keep = Keep)
+    {
+        lock (_gate)
+        {
+            var bin = Bin;
+            if (bin.Read(Checked(binFile)) is not { } r) throw new FileNotFoundException("the record is gone", binFile);
+            var restored = r with { Kept = true };
+            string name = WriteLocked(restored, null);
+            bin.Erase(binFile);   // before the prune: a prune that fails never leaves the fight in both places
+            Prune(RecordCharacter.Of(restored), Clamped(keep));
+            return name;
+        }
+    }
+
+    /// <summary>Erases every bin file that entered before <paramref name="cutoffUtc"/> (the last emptying time); returns how many.</summary>
+    public int EmptyBin(DateTime cutoffUtc)
+    {
+        var bin = Bin;
+        string binDir = Path.Combine(dir, BinDir);
+        if (!Directory.Exists(binDir)) return 0;
+        lock (bin._gate)
+        {
+            var old = Directory.EnumerateFiles(binDir, "*" + Ext).Where(f => File.GetLastWriteTimeUtc(f) < cutoffUtc).ToList();
+            foreach (var f in old) File.Delete(f);
+            if (old.Count > 0) Interlocked.Increment(ref bin._edits);
+            return old.Count;
+        }
+    }
+
+    // The tabs and the ! mark (user, 2026-11-10). newestFirst: one character's fights as List gives them; held: the 자동 저장 off
+    // fight (never counted or pruned); keep: the user's N.
+
+    /// <summary>최근: the held fight, then the newest <paramref name="keep"/> saved ones, 보관 or not.</summary>
+    public static IReadOnlyList<T> Recent<T>(IReadOnlyList<T> newestFirst, Func<T, bool> held, int keep) =>
+        [.. newestFirst.Where(held), .. Saved(newestFirst, held).Take(Clamped(keep))];
+
+    /// <summary>The unkept fights past the newest <paramref name="keep"/>: what <see cref="Prune"/> moves to the bin.</summary>
+    public static IReadOnlyList<T> Overflow<T>(IReadOnlyList<T> newestFirst, Func<T, bool> held, Func<T, bool> kept, int keep) =>
+        [.. Saved(newestFirst, held).Where((x, i) => !kept(x) && i >= Clamped(keep))];
+
+    /// <summary>The fights the next save moves to the bin (the new one takes a place), marked ! so none goes by surprise: an
+    /// unkept <paramref name="keep"/>th.</summary>
+    public static IReadOnlyList<T> GoesNext<T>(IReadOnlyList<T> newestFirst, Func<T, bool> held, Func<T, bool> kept, int keep) =>
+        [.. Saved(newestFirst, held).Where((x, i) => !kept(x) && i >= Clamped(keep) - 1)];
+
+    static IEnumerable<T> Saved<T>(IEnumerable<T> newestFirst, Func<T, bool> held) => newestFirst.Where(x => !held(x));
+    static int Clamped(int keep) => Math.Clamp(keep, MinKeep, MaxKeep);
 
     /// <summary>전투 기록 편집: the record rewritten as edited, under the name its new gate, difficulty and class give (the held
     /// fight stays held). Moved to another character, that one's oldest automatic records make room (<paramref name="keep"/>).
@@ -95,15 +217,20 @@ public sealed class RecordStore(string dir)
         }
     }
 
-    public void SetKept(string file, bool kept)
+    /// <summary>보관 on or off. Off on a fight past the newest <paramref name="keep"/>, it goes to the bin at once.</summary>
+    public void SetKept(string file, bool kept, int keep = Keep)
     {
         lock (_gate)
         {
             if (Read(Checked(file)) is not { } r) return;
-            if (!IsHeld(file)) Write(file, r with { Kept = kept });
+            if (!IsHeld(file))
+            {
+                Write(file, r with { Kept = kept });
+                if (!kept) Prune(RecordCharacter.Of(r), Clamped(keep));
+            }
             else if (kept)
             {
-                SaveLocked(r with { Kept = true }, MaxKeep);   // the held fight becomes a saved one
+                SaveLocked(r with { Kept = true }, Clamped(keep));   // the held fight becomes a saved one
                 File.Delete(Path.Combine(dir, Held));
             }
         }
@@ -122,9 +249,21 @@ public sealed class RecordStore(string dir)
         }
     }
 
+    /// <summary>삭제: to the bin (in the bin: for good). Gone already: nothing happens.</summary>
     public void Delete(string file)
     {
-        lock (_gate) File.Delete(Path.Combine(dir, Checked(file)));
+        lock (_gate)
+            if (File.Exists(Path.Combine(dir, Checked(file)))) ToBin(file);
+    }
+
+    /// <summary>For good, past the bin: a fight that moved to another store, or one written by mistake.</summary>
+    public void Erase(string file)
+    {
+        lock (_gate)
+        {
+            File.Delete(Path.Combine(dir, Checked(file)));
+            Interlocked.Increment(ref _edits);
+        }
     }
 
     /// <summary>A record read from a file (ours, or an imported one) has all its parts, finite times and events of things the
@@ -173,6 +312,7 @@ public sealed class RecordStore(string dir)
 
     void Write(string file, FightRecord r)
     {
+        Interlocked.Increment(ref _edits);
         string path = Path.Combine(dir, file), tmp = path + ".tmp";
         using (var gz = new GZipStream(File.Create(tmp), CompressionLevel.Optimal))
             JsonSerializer.Serialize(gz, r, SettingsStore.Json);

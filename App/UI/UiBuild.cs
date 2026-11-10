@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using GaugeOverlay.App.Platform;
 
 namespace GaugeOverlay.App.UI;
@@ -129,6 +130,63 @@ internal static class UiBuild
     internal static TextBlock Described(string label, string description) => HelpLabel(label, description);
 
     internal static ComboBox Combo() => new() { MinWidth = 200 };
+
+    /// <summary>The accent when the window has no theme (위치 조정's layer, which doesn't set ThemeMode).</summary>
+    static readonly Color FallbackAccent = Color.FromRgb(0x00, 0x67, 0xC0);
+
+    /// <summary>The Fluent keys a button's template swaps in on mouse-over and press; set on the button itself they win over the theme's.</summary>
+    static readonly string[] HoverKeys =
+        ["ButtonBackgroundPointerOver", "ButtonBorderBrushPointerOver", "ButtonForegroundPointerOver",
+         "ButtonBackgroundPressed", "ButtonBorderBrushPressed", "ButtonForegroundPressed"];
+
+    /// <summary>A button in its own colour that keeps it under the mouse: a little lighter on mouse-over, a little darker
+    /// pressed, instead of the theme's grey (user, 2026-11-10). <paramref name="border"/> defaults to the fill.</summary>
+    internal static void Fill(Button b, Color back, Brush ink, Brush? border = null)
+    {
+        (b.Background, b.BorderBrush, b.Foreground) = (new SolidColorBrush(back), border ?? new SolidColorBrush(back), ink);
+        var over = new SolidColorBrush(Shade(back, 0.15));
+        var pressed = new SolidColorBrush(Shade(back, -0.15));
+        b.Resources["ButtonBackgroundPointerOver"] = over;
+        b.Resources["ButtonBorderBrushPointerOver"] = border ?? over;
+        b.Resources["ButtonBackgroundPressed"] = pressed;
+        b.Resources["ButtonBorderBrushPressed"] = border ?? pressed;
+        b.Resources["ButtonForegroundPointerOver"] = b.Resources["ButtonForegroundPressed"] = ink;
+    }
+
+    /// <summary>Undoes <see cref="Fill"/>: the theme's colours again.</summary>
+    internal static void Unfill(Button b)
+    {
+        b.ClearValue(Control.BackgroundProperty);
+        b.ClearValue(Control.ForegroundProperty);
+        b.ClearValue(Control.BorderBrushProperty);
+        foreach (var key in HoverKeys) b.Resources.Remove(key);
+    }
+
+    /// <summary><paramref name="c"/> toward white (amount &gt; 0) or black (&lt; 0).</summary>
+    static Color Shade(Color c, double amount)
+    {
+        byte To(byte v) => (byte)Math.Round(amount > 0 ? v + (255 - v) * amount : v * (1 + amount));
+        return Color.FromArgb(c.A, To(c.R), To(c.G), To(c.B));
+    }
+
+    /// <summary>An 적용 button while its screen has a change not applied yet: the theme's accent fill, its text on accent and a soft glow in
+    /// that accent. Plain again when nothing is left to apply (after 적용, 되돌리기, 그만두기). Shared by 위치 조정, 감지 위치 and 전투 기록 편집.
+    /// The colours are set here, not by AccentButtonStyle: that style exists only in a window with a ThemeMode.</summary>
+    internal static void MarkUnapplied(Button apply, bool unapplied)
+    {
+        if (unapplied == (apply.Effect is not null)) return;   // as it is: 위치 조정 calls this on every read (~5 a second)
+        if (!unapplied)
+        {
+            Unfill(apply);
+            apply.Effect = null;
+            return;
+        }
+        // The accent as it is now: a theme change recolours a lit button when it is lit again, like its glow.
+        var accent = (apply.TryFindResource("AccentFillColorDefaultBrush") as SolidColorBrush)?.Color ?? FallbackAccent;
+        var text = apply.TryFindResource("TextOnAccentFillColorPrimaryBrush") as Brush ?? Brushes.White;
+        Fill(apply, accent, text);
+        apply.Effect = new DropShadowEffect { Color = accent, BlurRadius = 14, ShadowDepth = 0, Opacity = 0.9 };
+    }
 
     /// <summary>A row that only applies to some choices is hidden, not greyed, for the others.</summary>
     internal static Visibility Shown(bool applies) => applies ? Visibility.Visible : Visibility.Collapsed;

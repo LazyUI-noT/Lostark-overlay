@@ -34,32 +34,104 @@ public class ShadowHpTests
     }
 
     [Fact]
-    public void A_jump_of_over_a_quarter_of_the_hp_counts_only_when_the_next_read_agrees()
+    public void A_jump_of_over_a_quarter_of_the_hp_counts_only_when_four_reads_agree()
     {
         var s = ShadowHp.Step(null, Bar, 1000 * Eok);
-        var once = ShadowHp.Step(s, Bar, 3000 * Eok);   // +2,000억 of 4,696억: a misread digit until seen twice
+        var once = ShadowHp.Step(s, Bar, 3000 * Eok);   // +2,000억 of 4,696억: a misread digit until it holds 0.6 s
         Assert.Equal(1000 * Eok, once!.Dealt);
         Assert.Equal((1050 * Eok, (long?)null), ShadowHp.Step(once, Bar, 1050 * Eok) is { } back ? (back.Dealt, back.Pending) : default);   // it was a misread
-        Assert.Equal(3010 * Eok, ShadowHp.Step(once, Bar, 3010 * Eok)!.Dealt);   // it was real: two reads agree
+
+        var thrice = ShadowHp.Step(ShadowHp.Step(once, Bar, 3005 * Eok), Bar, 3008 * Eok);
+        Assert.Equal(1000 * Eok, thrice!.Dealt);
+        Assert.Equal(3010 * Eok, ShadowHp.Step(thrice, Bar, 3010 * Eok)!.Dealt);   // it was real
+    }
+
+    [Fact]
+    public void A_misread_past_the_hp_that_held_is_undone_when_four_lower_reads_agree()
+    {
+        // 세르카 2관 2026-11-09: the number read past the HP left for 0.8 s stuck the boss at 1 HP for 23 s of 대난투.
+        var s = ShadowHp.Step(null, Bar, 1000 * Eok);
+        foreach (long n in new long[] { 5000, 5001, 5002, 5003 }) s = ShadowHp.Step(s, Bar, n * Eok);
+        Assert.Equal(5003 * Eok, s!.Dealt);
+
+        foreach (long n in new long[] { 1100, 1110, 1120 }) s = ShadowHp.Step(s, Bar, n * Eok);
+        Assert.Equal(5003 * Eok, s!.Dealt);   // a lower stretch shorter than 0.6 s takes nothing back
+        s = ShadowHp.Step(s, Bar, 1130 * Eok);
+
+        Assert.Equal(1130 * Eok, s!.Dealt);
+        Assert.False(s.Dead);
+    }
+
+    [Fact]
+    public void A_misread_between_agreeing_reads_starts_the_count_again()
+    {
+        var s = ShadowHp.Step(null, Bar, 1000 * Eok);
+        s = ShadowHp.Step(ShadowHp.Step(ShadowHp.Step(s, Bar, 3000 * Eok), Bar, 3005 * Eok), Bar, 1100 * Eok);
+        s = ShadowHp.Step(ShadowHp.Step(s, Bar, 3010 * Eok), Bar, 3015 * Eok);
+
+        Assert.Equal(1100 * Eok, s!.Dealt);
+    }
+
+    [Fact]
+    public void After_a_gap_a_jump_from_the_count_before_it_still_needs_four_reads()
+    {
+        var before = ShadowHp.Step(null, Bar, 1000 * Eok);
+        var after = ShadowHp.Resume(before, Bar, 3000 * Eok);
+        Assert.Equal(1000 * Eok, after!.Dealt);   // without the count before, 3,000억 would be taken as is
+        Assert.Equal(1050 * Eok, ShadowHp.Resume(before, Bar, 1050 * Eok)!.Dealt);
+    }
+
+    [Fact]
+    public void After_a_gap_a_skipped_read_starts_nothing()
+    {
+        var before = ShadowHp.Step(null, Bar, 1000 * Eok);
+        Assert.Null(ShadowHp.Resume(before, Bar, 99_999 * Eok));   // the old count doesn't come back on a misread
+        Assert.Null(ShadowHp.Resume(before, null, 1000 * Eok));
+    }
+
+    [Fact]
+    public void After_a_gap_reads_agreeing_before_it_count_again_from_one()
+    {
+        var s = ShadowHp.Step(null, Bar, 1000 * Eok);
+        foreach (long n in new long[] { 3000, 3005, 3008 }) s = ShadowHp.Step(s, Bar, n * Eok);
+        Assert.Equal(1000 * Eok, ShadowHp.Resume(s, Bar, 3010 * Eok)!.Dealt);   // 4 in a row, not 3 then 1 after 3 s unread
+    }
+
+    [Fact]
+    public void After_a_gap_a_dead_count_is_not_carried()
+    {
+        var s = ShadowHp.Step(null, Bar, 4500 * Eok);
+        foreach (long n in new long[] { 4700, 4710, 4720, 4730 }) s = ShadowHp.Step(s, Bar, n * Eok);
+        var after = ShadowHp.Resume(s, Bar, 2000 * Eok);
+        Assert.False(after!.Dead);   // a false kill from misreads must not stick for the rest of 대난투
+        Assert.Equal(2000 * Eok, after.Dealt);
+    }
+
+    [Fact]
+    public void Agreeing_reads_must_be_close_both_ways()
+    {
+        var s = ShadowHp.Step(null, Bar, 1000 * Eok);
+        s = ShadowHp.Step(ShadowHp.Step(ShadowHp.Step(s, Bar, 3000 * Eok), Bar, 3600 * Eok), Bar, 4200 * Eok);
+        Assert.Equal(1000 * Eok, ShadowHp.Step(s, Bar, 4300 * Eok)!.Dealt);   // each 20% over the last: not one number held
     }
 
     [Fact]
     public void Dead_stays_dead()
     {
         var s = ShadowHp.Step(null, Bar, 4500 * Eok);
-        s = ShadowHp.Step(ShadowHp.Step(s, Bar, 4700 * Eok), Bar, 4710 * Eok);
+        foreach (long n in new long[] { 4700, 4710, 4720, 4730 }) s = ShadowHp.Step(s, Bar, n * Eok);
         Assert.True(s!.Dead);
         Assert.True(ShadowHp.Step(s, Bar, 4000 * Eok)!.Dead);   // a lower read after: a misread, not the boss back
     }
 
     [Fact]
-    public void The_boss_is_dead_after_two_reads_at_or_past_its_hp()
+    public void The_boss_is_dead_after_four_reads_at_or_past_its_hp()
     {
         var s = ShadowHp.Step(null, Bar, 4600 * Eok);
-        s = ShadowHp.Step(s, Bar, 4700 * Eok);
-        Assert.False(s!.Dead);   // one read past it could be a misread
+        foreach (long n in new long[] { 4700, 4710, 4720 }) s = ShadowHp.Step(s, Bar, n * Eok);
+        Assert.False(s!.Dead);   // under 0.6 s past it could be a misread
         Assert.Equal(0, s.Remaining);
-        s = ShadowHp.Step(s, Bar, 4710 * Eok);
+        s = ShadowHp.Step(s, Bar, 4730 * Eok);
         Assert.True(s!.Dead);
     }
 }

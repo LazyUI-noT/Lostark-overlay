@@ -11,6 +11,7 @@ public sealed partial class Engine
     JudgmentState _judgment = JudgmentState.Ready;
     bool _judgmentOn;
     string? _judgmentFor;   // whose cycle _judgment is
+    readonly IconGate<bool> _judgmentIcon = new(JudgmentReader.IsIcon);   // 심판 boxes identified on change (icon-gates 3)
 
     /// <summary>What to capture for 단심 this step: the buff row (icon) and the band round the character (text), as
     /// <paramref name="plan"/>'s 감지 방식 asks; neither while it is off, between polls or through the cooldown.</summary>
@@ -45,9 +46,9 @@ public sealed partial class Engine
         {
             var origin = Geometry.BuffArea(_vp, _fit!, plan.BuffSize, Geometry.JudgmentBoxCount);
             PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
-            foreach (var box in Geometry.BuffBoxes(_vp, _fit!, plan.BuffSize, Geometry.JudgmentBoxCount))
+            foreach (var (box, i) in Geometry.BuffBoxes(_vp, _fit!, plan.BuffSize, Geometry.JudgmentBoxCount).Select((b, i) => (b, i)))
             {
-                if (!JudgmentReader.IsIcon(row, Local(box.Icon))) continue;
+                if (!_judgmentIcon.Classify(row, i, Local(box.Icon))) continue;
                 (icon, seconds) = (true, new BuffReader(Geometry.BuffScale(_vp, plan.BuffSize)).ReadTimer(row, Local(box.Timer)));
                 BoxDebug("심판 아이콘", row, Local(box.Icon), Local(box.Timer), "심판", seconds);
                 break;

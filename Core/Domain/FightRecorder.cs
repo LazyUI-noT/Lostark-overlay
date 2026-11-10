@@ -47,7 +47,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
 
     /// <summary>암흑수류탄 is read (its switch): only then are the bombs recorded, as one window "a bomb is up" with the bomb shown.</summary>
     public bool AmsuOn { get; set; }
-    /// <summary>The 그림자 gimmick (대난투) is up (Snapshot.Shadow): its start and end are recorded on the fight's clock.</summary>
+    /// <summary>The 그림자 gimmick (대난투) is up (Snapshot.Daenantu, whatever its display switch): its start and end are recorded on the fight's clock.</summary>
     public bool ShadowOn { get; set; }
     bool _shadowLogged;
     double _shadowLastOn;
@@ -61,6 +61,9 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     SlotPhase[]? _slots;   // my slots as last seen
     readonly bool[] _buffs = new bool[Enum.GetValues<BuffKind>().Length];   // as last seen
     readonly bool[] _committed = new bool[Enum.GetValues<BuffKind>().Length];   // as the record has them
+    readonly double[] _lastBuffT = NoEvents();   // each window's last event in the record
+    double _lastBombT = -1;
+    static double[] NoEvents() => [.. Enumerable.Repeat(-1.0, Enum.GetValues<BuffKind>().Length)];
     int? _bomb, _bombCommitted;   // the bomb shown (Vision.Bomb), as last seen and as the record has it
     readonly List<(TimeSpan At, RecordEvent Event)> _pending = [];
     FightClockState _clock = FightClockState.None;
@@ -105,7 +108,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         var phases = snap.Slots.Select(s => s.Phase).ToArray();
         if (_slots is { } was && was.Length == phases.Length)
             for (int i = 0; i < phases.Length; i++)
-                if (was[i] == SlotPhase.Ready && phases[i] is SlotPhase.Cooldown or SlotPhase.LongCooldown)
+                if (CastLog.IsCast(was[i], phases[i]))
                     Hold(now, Me, RecordEventKind.사용, i);
         _slots = phases;
     }
@@ -155,16 +158,23 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             // A buff window is a state: a change no event carries (made while nothing was held: stopped, not started, or the
             // timer hidden by a cutscene or the inventory) goes at the last second known; changes still waiting for their
             // second count as made.
+            // It goes after the window's last event (committed or still waiting): an edge dropped by Hold a moment after one
+            // that was held (the timer read late) is otherwise put before it, and the sorted window reads the wrong way.
             var expected = (bool[])_committed.Clone();
-            foreach (var (_, e) in _pending.Where(p => IsBuff(p.Event.Kind))) expected[e.What] = e.Kind == RecordEventKind.버프시작;
+            var last = (double[])_lastBuffT.Clone();
+            foreach (var (_, e) in _pending.Where(p => IsBuff(p.Event.Kind)))
+                (expected[e.What], last[e.What]) = (e.Kind == RecordEventKind.버프시작, Math.Max(last[e.What], e.T));
             foreach (var kind in Windows.Where(k => _buffs[(int)k] != expected[(int)k]))
-                Commit(new RecordEvent(before, Me, _buffs[(int)kind] ? RecordEventKind.버프시작 : RecordEventKind.버프끝, (int)kind));
+                Commit(new RecordEvent(After(before, last[(int)kind]), Me, _buffs[(int)kind] ? RecordEventKind.버프시작 : RecordEventKind.버프끝, (int)kind));
             int? bombExpected = _bombCommitted;
-            foreach (var (_, e) in _pending.Where(p => IsBomb(p.Event.Kind))) bombExpected = e.Kind == RecordEventKind.암수시작 ? e.What : null;
+            double lastBomb = _lastBombT;
+            foreach (var (_, e) in _pending.Where(p => IsBomb(p.Event.Kind)))
+                (bombExpected, lastBomb) = (e.Kind == RecordEventKind.암수시작 ? e.What : null, Math.Max(lastBomb, e.T));
             if (_bomb != bombExpected)   // the bomb window too is a state
             {
-                if (bombExpected is { } ended) Commit(new RecordEvent(before, Me, RecordEventKind.암수끝, ended));
-                if (_bomb is { } started) Commit(new RecordEvent(before, Me, RecordEventKind.암수시작, started));
+                double at = After(before, lastBomb);
+                if (bombExpected is { } ended) Commit(new RecordEvent(at, Me, RecordEventKind.암수끝, ended));
+                if (_bomb is { } started) Commit(new RecordEvent(Math.Round(at + (bombExpected is null ? 0 : CatchUpStep), 2), Me, RecordEventKind.암수시작, started));
             }
             _gate ??= gate;
             foreach (var m in members) _members[m.Name] = m;
@@ -174,7 +184,9 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
                 _samples.Add(new RecordSample(t, s.Name, s.Damage, s.Dps));
             }
             _boss.Add(new RecordBoss(t, bossTaken, status.Boss.Last, status.Boss.Max, status.Boss.LastShield > 0 ? status.Boss.LastShield : null));
-            if (now - status.HpAt <= HpFresh) _hpSeen = t;
+            // 대난투 shows no boss HP, only the damage dealt (user, 2026-11-08): its seconds, a few unread ones too (until
+            // ShadowEndAfter ends it), are no bar gone, so a fight ending in it isn't the bar-gone clear.
+            if (now - status.HpAt <= HpFresh || _shadowLogged) _hpSeen = t;
             return _events.Count + _samples.Count >= maxEntries ? Finish() : null;
         }
         if (c.Frozen && !_stopped) { _stopped = true; _pending.Clear(); }
@@ -185,9 +197,15 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     void Commit(RecordEvent e)
     {
         _events.Add(e);
-        if (IsBuff(e.Kind)) _committed[e.What] = e.Kind == RecordEventKind.버프시작;
-        else if (IsBomb(e.Kind)) _bombCommitted = e.Kind == RecordEventKind.암수시작 ? e.What : null;
+        if (IsBuff(e.Kind)) (_committed[e.What], _lastBuffT[e.What]) = (e.Kind == RecordEventKind.버프시작, Math.Max(_lastBuffT[e.What], e.T));
+        else if (IsBomb(e.Kind)) (_bombCommitted, _lastBombT) = (e.Kind == RecordEventKind.암수시작 ? e.What : null, Math.Max(_lastBombT, e.T));
     }
+
+    /// <summary>How far after a window's last event a caught-up change goes, so it sorts after it.</summary>
+    const double CatchUpStep = 0.01;
+
+    /// <summary>A caught-up change's second: the last one known, or just after the window's last event when that is later.</summary>
+    static double After(double before, double last) => last >= before ? Math.Round(last + CatchUpStep, 2) : before;
 
     /// <summary>Ends the fight being recorded (the meter turned off, the app closing); null when none was running. Events not
     /// yet confirmed by the timer are dropped.</summary>
@@ -199,6 +217,8 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         if (!_started) return null;
         _started = false;
         Array.Clear(_committed);
+        Array.Fill(_lastBuffT, -1);
+        _lastBombT = -1;
         // Gone before the debounce ran out (the kill right after it): it ended when last seen, not at the fight's end.
         if (_shadowLogged && !ShadowOn) _events.Add(new RecordEvent(_shadowLastOn, Me, RecordEventKind.대난투종료, 0));
         _shadowLogged = false;

@@ -6,7 +6,9 @@ namespace GaugeOverlay.Core.Cooldown;
 public static class BuffTracker
 {
     static readonly TimeSpan Second = TimeSpan.FromSeconds(1);
-    const int MissesToAbsent = 2;
+    // Absent once unseen this long since the first read without it: two reads at a 100 ms poll, three at 50 ms, so the
+    // icon's shine (up to 83 ms, icon-gates.plan.md Latency) never drops it; 90, not 100, so a read a little early counts.
+    static readonly TimeSpan MissedFor = TimeSpan.FromMilliseconds(90);
     // An icon back this soon after going absent (the glare hid it) carries on where it was, keeping its Total.
     static readonly TimeSpan ResumeWindow = TimeSpan.FromSeconds(1);
     // Every buff lasts 20 s or less, so a tens digit the reader missed (BuffReader.MinTens) is 1 or 2.
@@ -35,15 +37,15 @@ public static class BuffTracker
     public static BuffState Update(BuffState prev, IReadOnlyList<BuffReading> readings, TimeSpan now, bool hudVisible)
     {
         // A hidden HUD shows nothing: freeze, and let the count start over when it's back.
-        if (!hudVisible) return prev.Active ? prev with { Estimated = true, Misses = 0 } : prev;
+        if (!hudVisible) return prev.Active ? prev with { Estimated = true, MissedAt = null } : prev;
 
         var mine = readings.Where(r => r.Kind == prev.Kind).Select(r => r with { Seconds = PointLost(r.Kind, r.Seconds) }).ToList();
         if (mine.Count == 0)
             return !prev.Active ? prev
-                : prev.Misses + 1 >= MissesToAbsent ? prev with { Active = false, Estimated = false, ChangedAt = now, Misses = 0, Pending = null }
-                : prev with { Misses = prev.Misses + 1, Estimated = true };
+                : now - (prev.MissedAt ?? now) >= MissedFor ? prev with { Active = false, Estimated = false, ChangedAt = now, MissedAt = null, Pending = null }
+                : prev with { MissedAt = prev.MissedAt ?? now, Estimated = true };
 
-        var seen = prev.Active ? prev with { Misses = 0 }
+        var seen = prev.Active ? prev with { MissedAt = null }
             : prev.EndsAt is not null && now - prev.ChangedAt <= ResumeWindow ? prev with { Active = true }
             : new BuffState(prev.Kind, true, null, null, false, now);
         double? longest = mine.Max(r => r.Seconds);

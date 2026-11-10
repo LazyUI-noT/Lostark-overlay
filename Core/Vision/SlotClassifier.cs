@@ -203,14 +203,18 @@ public static class SlotClassifier
     static double Luma(byte[] bgra, int i) => (29 * bgra[i] + 150 * bgra[i + 1] + 77 * bgra[i + 2]) / 256.0;
 
     /// <summary>Mean chroma, and hue spread (circular std) and circular mean hue in degrees over pixels with chroma ≥ 24.</summary>
-    internal static (double Chroma, double HueSpread, double MeanHue) ColourStats(Image img)
+    internal static (double Chroma, double HueSpread, double MeanHue) ColourStats(Image img) =>
+        ColourStats(img, new PixelRect(0, 0, img.Width, img.Height));
+
+    /// <summary><see cref="ColourStats(Image)"/> of <paramref name="area"/> inside <paramref name="img"/>, without cutting it out.</summary>
+    internal static (double Chroma, double HueSpread, double MeanHue) ColourStats(Image img, PixelRect area)
     {
         long chroma = 0;
         double sx = 0, sy = 0;
         int coloured = 0;
         var px = img.Bgra;
-        for (int y = 0; y < img.Height; y += 2)   // every other pixel: these are averages
-            for (int i = y * img.Stride, e = i + img.Width * 4; i < e; i += 8)
+        for (int y = 0; y < area.Height; y += 2)   // every other pixel: these are averages
+            for (int i = (area.Y + y) * img.Stride + area.X * 4, e = i + area.Width * 4; i < e; i += 8)
             {
                 int b = px[i], g = px[i + 1], r = px[i + 2];
                 int max = Math.Max(r, Math.Max(g, b)), c = max - Math.Min(r, Math.Min(g, b));
@@ -227,7 +231,7 @@ public static class SlotClassifier
             double len = Math.Sqrt(sx * sx + sy * sy) / coloured;
             spread = Math.Sqrt(-2 * Math.Log(Math.Max(len, 1e-9))) * 180 / Math.PI;
         }
-        return (chroma / (double)(((img.Width + 1) / 2) * ((img.Height + 1) / 2)), spread, hue);
+        return (chroma / (double)(((area.Width + 1) / 2) * ((area.Height + 1) / 2)), spread, hue);
     }
 
     /// <summary>Share of near-white pixels in the text area (centre 60% × 45%).</summary>

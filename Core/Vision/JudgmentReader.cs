@@ -13,8 +13,11 @@ public static class JudgmentReader
         [.. JudgmentTemplates.LookAlikes.Select(s => (0, BuffReader.Thumb(Image.FromBytes(Convert.FromBase64String(s))!)))];
     internal const double MinIcon = 0.85;
 
-    /// <summary>The icon as the game draws it, frame left out (25×25 at 1080p, buff 120%): the 준비 아이콘.</summary>
+    /// <summary>The icon as the game draws it, frame left out (25×25 at 1080p, buff 120%): drawn by the 단심 아이콘 while 심판 is on and, grey, through its cooldown.</summary>
     public static Image Icon => Template;
+
+    /// <summary>단죄's icon, cut the same way: drawn while 심판 is ready. Never read.</summary>
+    public static Image ConvictionIcon { get; } = Image.FromBytes(Convert.FromBase64String(JudgmentTemplates.Conviction))!;
 
     /// <summary>Structure score against 심판, hue distance (degrees) and the best look-alike's score.</summary>
     internal static (double Structure, double Hue, double LookAlike) Scores(Image area, PixelRect icon)

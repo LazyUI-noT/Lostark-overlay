@@ -256,6 +256,108 @@ public sealed class JeonbunSweep
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 
+    /// <summary>GAUGE_BUFF_CHANGE: perf-hotspots 3b's measurement. Every box's icon identified every frame (today) is the
+    /// reference; then "identify only when the thumbnail moved more than T from the one last identified" is simulated for
+    /// each T, with and without the re-check (0.2 s for the 6 right-most boxes, 0.5 s for the rest), and every frame whose
+    /// kind differs from the reference is counted. Also: the thumbnail change frame to frame where the kind stayed (noise,
+    /// glare) against where it changed, and the hue drift of an unchanged icon. Settings as GAUGE_BUFF, plus GAUGE_BUFF_VP
+    /// ("x,y,w,h", default 0,0,1920,1080) and GAUGE_BUFF_FPS (default 10).</summary>
+    [Fact]
+    public void Buff_identify_on_change_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_BUFF_CHANGE") is not { } video) return;
+        var v = (Environment.GetEnvironmentVariable("GAUGE_BUFF_VP") ?? "0,0,1920,1080").Split(',').Select(int.Parse).ToArray();
+        var vp = new Viewport(v[0], v[1], v[2], v[3]);
+        var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_HUD") ?? "100"));
+        int size = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_SIZE") ?? "100");
+        int count = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_COUNT") ?? "7");
+        int fps = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_FPS") ?? "10");
+        var area = Geometry.BuffArea(vp, fit, size, count);
+        var icons = Geometry.BuffBoxes(vp, fit, size, count).Select(b => b.Icon with { X = b.Icon.X - area.X, Y = b.Icon.Y - area.Y }).ToArray();
+        IdentifyOnChange<BuffKind?>(video, area, icons, BuffReader.Classify, fps, i => i >= icons.Length - 6 ? 0.2 : 0.5);
+    }
+
+    /// <summary>GAUGE_DEBUFF_CHANGE: <see cref="Buff_identify_on_change_when_requested"/> for your debuff row (icon-gates step 2),
+    /// the re-check 0.5 s as today's <c>RowCadence.ClassifyEvery</c>. GAUGE_BUFF_VP / _HUD / _SIZE / _FPS as there.</summary>
+    [Fact]
+    public void Debuff_identify_on_change_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_DEBUFF_CHANGE") is not { } video) return;
+        var v = (Environment.GetEnvironmentVariable("GAUGE_BUFF_VP") ?? "0,0,1920,1080").Split(',').Select(int.Parse).ToArray();
+        var vp = new Viewport(v[0], v[1], v[2], v[3]);
+        var fit = new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_HUD") ?? "100"));
+        int size = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_SIZE") ?? "100");
+        int fps = int.Parse(Environment.GetEnvironmentVariable("GAUGE_BUFF_FPS") ?? "10");
+        var area = Geometry.DebuffArea(vp, fit, size);
+        var icons = Geometry.DebuffBoxes(vp, fit, size).Select(b => b.Icon with { X = b.Icon.X - area.X, Y = b.Icon.Y - area.Y }).ToArray();
+        IdentifyOnChange<DebuffKind?>(video, area, icons, DebuffReader.Classify, fps, _ => 0.5);
+    }
+
+    /// <summary>The identify-on-change simulation over one row's <paramref name="icons"/> (relative to <paramref name="area"/>):
+    /// the reference is <paramref name="classify"/> on every box every frame.</summary>
+    static void IdentifyOnChange<T>(string video, PixelRect area, PixelRect[] icons, Func<Image, PixelRect, T> classify, int fps, Func<int, double> recheckEvery)
+    {
+        var inner = icons.Select(BuffReader.Interior).ToArray();
+        int n = icons.Length;
+        var eq = EqualityComparer<T>.Default;
+
+        // One pass over the video: per frame and box the reference kind, the thumbnail and the mean hue.
+        var refKind = new List<T[]>();
+        var thumbs = new List<float[][]>();
+        var hues = new List<double[]>();
+        foreach (var (_, img) in Frames(video, area.X, area.Y, area.Width, area.Height, fps))
+        {
+            refKind.Add([.. icons.Select(r => classify(img, r))]);
+            thumbs.Add([.. inner.Select(r => BuffReader.Thumb(img.Crop(r)))]);
+            hues.Add([.. inner.Select(r => SlotClassifier.ColourStats(img, r).MeanHue)]);
+        }
+        static double Mad(float[] a, float[] b) { double s = 0; for (int i = 0; i < a.Length; i++) s += Math.Abs(a[i] - b[i]); return s / a.Length; }
+        static string Pct(List<double> xs, double p) => xs.Count == 0 ? "-" : $"{xs.Order().ElementAt((int)Math.Min(xs.Count - 1, p * xs.Count)):0.0}";
+
+        var lines = new List<string> { $"{video}: {refKind.Count} frames at {fps}/s, {n} boxes, area {area.Width}x{area.Height}" };
+
+        // Frame to frame: kind kept (a buff) against kind changed.
+        var same = new List<double>(); var changed = new List<double>(); var drift = new List<double>();
+        for (int f = 1; f < refKind.Count; f++)
+            for (int i = 0; i < n; i++)
+            {
+                double d = Mad(thumbs[f][i], thumbs[f - 1][i]);
+                if (!eq.Equals(refKind[f][i], refKind[f - 1][i])) changed.Add(d);
+                else if (refKind[f][i] is not null) { same.Add(d); drift.Add(BuffReader.HueDistance(hues[f][i], hues[f - 1][i])); }
+            }
+        lines.Add($"kind kept ({same.Count}): change p50 {Pct(same, .5)} p90 {Pct(same, .9)} p99 {Pct(same, .99)} max {Pct(same, 1)}; hue drift p50 {Pct(drift, .5)} p99 {Pct(drift, .99)} max {Pct(drift, 1)}");
+        lines.Add($"kind changed ({changed.Count}): change min {Pct(changed, 0)} p10 {Pct(changed, .1)} p50 {Pct(changed, .5)}; lowest {string.Join(" ", changed.Order().Take(12).Select(x => $"{x:0.0}"))}");
+
+        // The simulation: identify when moved past T from the last identified thumbnail, or (re-check on) when due.
+        foreach (bool recheck in new[] { false, true })
+            foreach (double threshold in new[] { 2.0, 4, 6, 8, 12, 16, 24 })
+            {
+                var kind = new T[n]; var last = new float[n][]; var at = new double[n]; var run = new int[n];
+                int wrong = 0, identifies = 0, fixedByRecheck = 0, longest = 0;
+                var wrongAt = new List<string>();
+                for (int f = 0; f < refKind.Count; f++)
+                {
+                    double t = f / (double)fps;
+                    for (int i = 0; i < n; i++)
+                    {
+                        bool moved = last[i] is null || Mad(thumbs[f][i], last[i]) > threshold;
+                        bool due = recheck && t - at[i] >= recheckEvery(i) - 1e-9;
+                        if (moved || due)
+                        {
+                            identifies++;
+                            if (!moved && !eq.Equals(kind[i], refKind[f][i])) fixedByRecheck++;
+                            (kind[i], last[i], at[i]) = (refKind[f][i], thumbs[f][i], t);
+                        }
+                        if (eq.Equals(kind[i], refKind[f][i])) { run[i] = 0; continue; }
+                        wrong++; longest = Math.Max(longest, ++run[i]);
+                        if (wrongAt.Count < 8) wrongAt.Add($"{t:0.0}s#{i + 1} {kind[i]?.ToString() ?? "-"}≠{refKind[f][i]?.ToString() ?? "-"}");
+                    }
+                }
+                lines.Add($"T {threshold,4} re-check {(recheck ? "on " : "off")}: identifies {100.0 * identifies / (refKind.Count * n),5:0.0}%, wrong frames {wrong}, longest {longest}, re-check fixed {fixedByRecheck}{(wrongAt.Count > 0 ? "  " + string.Join(", ", wrongAt) : "")}");
+            }
+        File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
+    }
+
     /// <summary>The rectangle of every half second of the video (FFMPEG decodes it), with its video second.</summary>
     internal static IEnumerable<(double T, Image Image)> Frames(string video, int x, int y, int w, int h, int fps = 2)
     {

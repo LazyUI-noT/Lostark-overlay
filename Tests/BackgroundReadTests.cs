@@ -72,9 +72,9 @@ public class BackgroundReadTests
     [Fact]
     public void The_status_line_names_what_covers_the_game()
     {
-        Assert.Equal("읽고 있어요", new BehindStatus(true, GameView.Clear, null).Text);
-        Assert.Equal("Discord 창이 게임을 덮고 있어 멈췄어요", new BehindStatus(false, GameView.Covered, "Discord").Text);
-        Assert.Equal("게임이 최소화되어 멈췄어요", new BehindStatus(false, GameView.Minimized, null).Text);
+        Assert.Equal("읽고 있습니다", new BehindStatus(true, GameView.Clear, null).Text);
+        Assert.Equal("Discord 창이 게임을 덮고 있어 멈췄습니다", new BehindStatus(false, GameView.Covered, "Discord").Text);
+        Assert.Equal("게임이 최소화되어 멈췄습니다", new BehindStatus(false, GameView.Minimized, null).Text);
     }
 
     [Fact]

@@ -20,6 +20,22 @@ public class JudgmentSettingsTests
     }
 
     [Fact]
+    public void A_file_with_the_removed_대기_중_흐리게_option_still_loads()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"judg-{Guid.NewGuid():N}.json");
+        try
+        {
+            var s = new Settings();
+            s.Judgment.Display = JudgmentDisplay.ReadyIcon;
+            new SettingsStore(path).Save(s);
+            File.WriteAllText(path, File.ReadAllText(path).Replace("\"Display\"", "\"IconCooldown\": true, \"Display\""));
+            Assert.Contains("IconCooldown", File.ReadAllText(path));
+            Assert.Equal(JudgmentDisplay.ReadyIcon, new SettingsStore(path).Load(out _).Judgment.Display);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void Its_settings_survive_a_restart_and_an_old_file_loads_with_it_off()
     {
         var path = Path.Combine(Path.GetTempPath(), $"judg-{Guid.NewGuid():N}.json");
@@ -31,13 +47,13 @@ public class JudgmentSettingsTests
             s.Judgment.FontSize = 150;
             s.Judgment.Display = JudgmentDisplay.ReadyIcon;
             s.Judgment.OneColor = true;
-            (s.Judgment.Side, s.Judgment.HideWhenEmpty, s.Judgment.IconCooldown) = (true, true, true);
+            (s.Judgment.Side, s.Judgment.HideWhenEmpty) = (true, true);
             (s.Buffs.HideWhenEmpty, s.Debuffs.HideWhenEmpty) = (true, true);
             new SettingsStore(path).Save(s);
             var back = new SettingsStore(path).Load(out _).Judgment;
             Assert.True(back.On("워로드 · 고독한 기사"));
             Assert.Equal((JudgmentSource.Icon, 150, JudgmentDisplay.ReadyIcon, true), (back.Source, back.FontSize, back.Display, back.OneColor));
-            Assert.Equal((true, true, true), (back.Side, back.HideWhenEmpty, back.IconCooldown));
+            Assert.Equal((true, true), (back.Side, back.HideWhenEmpty));
             var all = new SettingsStore(path).Load(out _);
             Assert.Equal((true, true), (all.Buffs.HideWhenEmpty, all.Debuffs.HideWhenEmpty));
 
@@ -48,18 +64,5 @@ public class JudgmentSettingsTests
             Assert.False(old.On("워로드 · 고독한 기사"));
         }
         finally { File.Delete(path); }
-    }
-
-    [Fact]
-    public void A_reset_keeps_where_it_is_on_the_game_size_and_the_window()
-    {
-        var s = new Settings();
-        s.Judgment.Set("워로드 · 고독한 기사", true);
-        (s.Judgment.FontSize, s.Judgment.Left, s.Judgment.Width) = (200, 50, 1.5);
-        (s.Judgment.Source, s.Judgment.Display, s.Judgment.Color, s.Judgment.Opacity) = (JudgmentSource.Text, JudgmentDisplay.ReadyIcon, "#FF0000", 0.5);
-        SettingsResets.Judgment(s);
-        var j = s.Judgment;
-        Assert.Equal((true, 200, 50.0, 1.5), (j.On("워로드 · 고독한 기사"), j.FontSize, j.Left, j.Width));
-        Assert.Equal((JudgmentSource.Both, JudgmentDisplay.Bar, new JudgmentSettings().Color, 1.0), (j.Source, j.Display, j.Color, j.Opacity));
     }
 }

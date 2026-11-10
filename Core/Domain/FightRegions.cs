@@ -149,6 +149,38 @@ public static partial class FightRegions
         return joined;
     }
 
+    /// <summary>The fight to save in place of <paramref name="previous"/> when <paramref name="next"/> is its gate's next part (the
+    /// game starts a new 전분 record at 2-2): one fight named for the whole gate, "종막: 최후의 날 · 2관문" (user, 2026-11-10: 2-1 isn't
+    /// saved apart). Null when they aren't one run, or <paramref name="previous"/> isn't a part ("1관문", a retry).</summary>
+    public static FightRecord? Continued(FightRecord previous, FightRecord next)
+    {
+        if (previous.Gate is not { } gate || gate.LastIndexOf(" · ", StringComparison.Ordinal) is var at && at < 0) return null;
+        if (WholeGate().Match(gate[(at + 3)..]) is not { Success: true } m) return null;
+        string n = m.Groups["n"].Value;
+        bool isPart = m.Groups["part"].Success
+            || next.Gate is { } ng && ng.LastIndexOf(" · ", StringComparison.Ordinal) is var nat && nat >= 0
+               && WholeGate().Match(ng[(nat + 3)..]) is { Success: true } nm
+               && nm.Groups["part"].Success && nm.Groups["n"].Value == n;   // a whole gate already, and this is its next part
+        if (!isPart || previous.Me != next.Me || previous.Character != next.Character || !GoesOn(previous, next)) return null;
+        return Join([previous, next]) with
+        {
+            Gate = $"{gate[..at]} · {m.Groups["ex"].Value}{n}관문",
+            Difficulty = previous.Difficulty ?? next.Difficulty,
+            Kept = previous.Kept || next.Kept,
+            // What only one part read (Join keeps the first's): the skills, class and power from whichever has them.
+            Skills = previous.Skills ?? next.Skills,
+            Unsure = previous.Skills is null ? next.Unsure : previous.Unsure,
+            CombatPower = previous.CombatPower ?? next.CombatPower,
+            ItemLevel = previous.ItemLevel ?? next.ItemLevel,
+            MyClassName = previous.MyClassName ?? next.MyClassName,
+            MySubclass = previous.MyClassName is null ? next.MySubclass : previous.MySubclass,
+        };
+    }
+
+    /// <summary>"EX 2-1관문", "2-2관문 (하드)", "EX 2관문", "1관문": the EX, the gate number and its part, if any.</summary>
+    [GeneratedRegex(@"^(?<ex>EX )?(?<n>\d+)(?<part>-\d+)?관문")]
+    private static partial Regex WholeGate();
+
     /// <summary>"종막 · EX 2-1관문" and "종막 · EX 2-2관문" → "종막 · EX 2-1관문 ~ EX 2-2관문".</summary>
     static string? JoinedName(string? first, string? last)
     {

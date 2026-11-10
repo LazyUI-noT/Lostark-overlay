@@ -8,13 +8,19 @@ public static class PictureReads
 {
     /// <summary>Whether <paramref name="part"/> reads at <paramref name="fit"/> in <paramref name="picture"/> (taken at screen rect
     /// <paramref name="at"/>): true it read; false nothing seen (drawn plain, not wrong); null the picture doesn't hold the part's area.</summary>
-    public static bool? Of(AdjustPart part, Image picture, PixelRect at, Viewport vp, Fit fit, int buffSize, int buffCount, int bossSize) => part switch
+    /// <param name="panel">The 전분 box, which no fit places.</param>
+    public static bool? Of(AdjustPart part, Image picture, PixelRect at, Viewport vp, Fit fit, int buffSize, int buffCount, int bossSize, PixelRect? panel = null) => part switch
     {
         AdjustPart.스킬창 => Holds(at, FitSolver.CueArea(vp, fit)) ? FitSolver.ReadsWell(FitSolver.Score(picture, at, vp, fit)) : null,
         AdjustPart.버프 => Row(picture, at, Geometry.BuffArea(vp, fit, buffSize, buffCount), Geometry.BuffBoxes(vp, fit, buffSize, buffCount), (row, icon) => BuffReader.Classify(row, icon) is not null),
         AdjustPart.디버프 => Row(picture, at, Geometry.DebuffArea(vp, fit, buffSize), Geometry.DebuffBoxes(vp, fit, buffSize), (row, icon) => DebuffReader.Classify(row, icon) is not null),
+        AdjustPart.전분 => panel is { } r && Holds(at, r) ? Panel(picture.Crop(r with { X = r.X - at.X, Y = r.Y - at.Y })) : null,
         _ => Boss(picture, at, vp, fit, bossSize),
     };
+
+    /// <summary>Whether <paramref name="crop"/>, the 전분 box's pixels, holds the panel: it reads, or its green cell is there before the
+    /// first hit. The scale comes from the box's width, as the reader's.</summary>
+    public static bool Panel(Image crop) => JeonbunReader.Read(crop) is not null || JeonbunFinder.Present(crop, crop.Width / JeonbunReader.RefW);
 
     static bool Holds(PixelRect at, PixelRect area) => area.Width > 0 && area.Height > 0 && at.Intersect(area) == area;
 

@@ -51,7 +51,7 @@ public partial class SettingsWindow
 
     readonly TextBlock _canvasNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(8, 0, 0, 0) };
 
-    void ShowCanvasNote() => _canvasNote.Text = "칸을 누르면 오른쪽에 설정이 나옵니다 · 끌어서 옮기기, 모서리로 크기 · 화살표 키로 1px (Shift 10px) · 휠로 확대";
+    void ShowCanvasNote() => _canvasNote.Text = "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 화살표 키로 1px (Shift 10px) · 휠로 확대";
 
     static CheckBox ToolCheck(string text, bool value, Action<bool> set, string? help)
     {
@@ -116,14 +116,12 @@ public partial class SettingsWindow
         InspectorFoot.Child = foot;
     }
 
-    /// <summary>The panel's 기본값 (two clicks: the button asks once), the same reset its section had at the bottom.</summary>
+    /// <summary>The panel's 기본값 (two clicks: the button asks once), the same reset its section had at the bottom. Gone where
+    /// every row has its own ↺ (버프 막대, 디버프, 단심: decisions.md, "Row rule").</summary>
     Button? FooterReset(CanvasBox? box) => box?.Kind switch
     {
-        null or "Plate" or "Skills" => ResetButton("기본값", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 판 색은 남습니다.", () => SettingsResets.Display(_s)),
-        "BuffBar" => ResetButton("기본값", "버프 막대 설정을 되돌립니다. 분리 창의 위치와 크기는 남습니다.", () => SettingsResets.Buffs(_s)),
-        "Debuff" => ResetButton("기본값", "디버프 칸 크기를 되돌립니다. 고른 레이드와 창의 위치와 크기는 남습니다.", () => SettingsResets.Debuffs(_s)),
-        "Gauge" => ResetButton("기본값", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 발광)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(_s)),
-        "Judgment" => ResetButton("기본값", "단심 표시 설정을 되돌립니다. 켠 직업각인, 데미지 폰트 크기, 창 위치와 크기는 남습니다.", () => SettingsResets.Judgment(_s)),
+        null or "Plate" or "Skills" => ResetButton("기본값", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 배경판 색은 남습니다.", () => SettingsResets.Display(_s)),
+        "Gauge" => ResetButton("기본값", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(_s)),
         _ => null,
     };
 
@@ -156,7 +154,7 @@ public partial class SettingsWindow
             case { Kind: "Debuff", Debuff: { } d }:
                 // Same as the buff bars: the section already holds this box's size rows.
                 ScrollToDebuff(d);
-                return ("디버프", "보스 디버프 칸입니다.", [_secBuffs]);
+                return ("디버프", "디버프 칸입니다. MP 바 위의 내 디버프와 보스 체력바 아래 빨강·파랑 숫자를 보여 줍니다.", [_secBuffs]);
             case { Kind: "Raid" }:
                 return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 설정은 왼쪽의 레이드에서 바꿉니다.", []);
             case { Kind: "Judgment" }:

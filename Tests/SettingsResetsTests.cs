@@ -35,39 +35,6 @@ public class SettingsResetsTests
     }
 
     [Fact]
-    public void The_buff_reset_keeps_the_buff_window_and_leaves_the_overlay_and_the_debuffs()
-    {
-        var s = new Settings();
-        (s.Buffs.Left, s.Buffs.Top, s.Buffs.Width, s.Buffs.Size) = (5, 6, 1.2, 80);
-        s.Buffs.Edit(BuffKind.공증).Visible = false;
-        s.Debuffs.Box(1).Width = 2;   // 디버프 has its own reset
-        s.Overlay.Opacity = 0.5;
-
-        SettingsResets.Buffs(s);
-
-        Assert.Equal((5.0, 6.0, 1.2), (s.Buffs.Left, s.Buffs.Top, s.Buffs.Width));
-        Assert.Equal(120, s.Buffs.Size);   // the default
-        Assert.Empty(s.Buffs.Indicators);
-        Assert.Equal(2, s.Debuffs.Box(1).Width);
-        Assert.Equal(0.5, s.Overlay.Opacity);
-    }
-
-    [Fact]
-    public void The_debuff_reset_clears_the_box_sizes_and_keeps_the_window_and_the_raid()
-    {
-        var s = new Settings();
-        (s.Debuffs.Left, s.Debuffs.Top, s.Debuffs.Width, s.Debuffs.Raid) = (7, 8, 1.4, Raid.모르둠);
-        s.Debuffs.Box(2).Height = 2;
-        s.Buffs.Size = 80;
-
-        SettingsResets.Debuffs(s);
-
-        Assert.Empty(s.Debuffs.Boxes);
-        Assert.Equal((7.0, 8.0, 1.4, Raid.모르둠), (s.Debuffs.Left, s.Debuffs.Top, s.Debuffs.Width, s.Debuffs.Raid));
-        Assert.Equal(80, s.Buffs.Size);
-    }
-
-    [Fact]
     public void The_party_reset_keeps_the_party_windows_and_the_display_name()
     {
         var s = new Settings();
@@ -127,5 +94,25 @@ public class SettingsResetsTests
         Assert.Equal(new Settings().Keys[SlotId.일반1], s.Keys[SlotId.일반1]);
         Assert.Equal(new HotkeySettings().EditMode, s.Hotkeys.EditMode);
         Assert.Equal(77, s.Profiles[2].Overlay.Left);
+    }
+
+    [Fact]
+    public void Resetting_everything_keeps_the_buff_debuff_and_단심_windows_and_what_단심_is_on_for()
+    {
+        var s = new Settings();
+        (s.Buffs.Left, s.Buffs.Top, s.Buffs.Width, s.Buffs.Size) = (5, 6, 1.2, 80);
+        s.Buffs.Edit(BuffKind.공증).Visible = false;
+        (s.Debuffs.Left, s.Debuffs.Width, s.Debuffs.Raid) = (7, 1.4, Raid.모르둠);
+        s.Debuffs.Box(2).Height = 2;
+        s.Judgment.Set("워로드 · 고독한 기사", true);
+        (s.Judgment.FontSize, s.Judgment.Left, s.Judgment.Opacity) = (200, 50, 0.5);
+
+        SettingsResets.All(s);
+
+        Assert.Equal((5.0, 6.0, 1.2, 120), (s.Buffs.Left, s.Buffs.Top, s.Buffs.Width, s.Buffs.Size));
+        Assert.Empty(s.Buffs.Indicators);
+        Assert.Equal((7.0, 1.4, Raid.모르둠), (s.Debuffs.Left, s.Debuffs.Width, s.Debuffs.Raid));
+        Assert.Empty(s.Debuffs.Boxes);
+        Assert.Equal((true, 200, 50.0, 1.0), (s.Judgment.On("워로드 · 고독한 기사"), s.Judgment.FontSize, s.Judgment.Left, s.Judgment.Opacity));
     }
 }

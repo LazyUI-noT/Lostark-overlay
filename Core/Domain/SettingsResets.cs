@@ -16,7 +16,7 @@ public static class SettingsResets
     }
 
     /// <summary>내 오버레이 → 버프/디버프 → 버프: the buff bars; the buff window's place and size stay.</summary>
-    public static void Buffs(Settings s)
+    static void Buffs(Settings s)
     {
         var b = s.Buffs;
         s.Buffs = new() { Left = b.Left, Top = b.Top, Width = b.Width, Height = b.Height };
@@ -24,14 +24,14 @@ public static class SettingsResets
 
     /// <summary>내 오버레이 → 기타 → 단심: how it is read and shown; the 직업각인 it is on for, the game's 데미지 폰트 크기 and
     /// the window's place and size stay.</summary>
-    public static void Judgment(Settings s)
+    static void Judgment(Settings s)
     {
         var j = s.Judgment;
         s.Judgment = new() { Characters = j.Characters, FontSize = j.FontSize, Left = j.Left, Top = j.Top, Width = j.Width, Height = j.Height };
     }
 
     /// <summary>내 오버레이 → 버프/디버프 → 디버프: the 디버프 칸 크기; the raid chosen and the window's place and size stay.</summary>
-    public static void Debuffs(Settings s) => s.Debuffs.Boxes.Clear();
+    static void Debuffs(Settings s) => s.Debuffs.Boxes.Clear();
 
     /// <summary>내 오버레이 → 아덴 게이지: the gauge style and every 클래스·직업각인's bar.</summary>
     public static void Gauge(Settings s)

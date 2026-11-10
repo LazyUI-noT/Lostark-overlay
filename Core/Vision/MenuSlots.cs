@@ -66,7 +66,7 @@ public static class MenuSlots
         for (int i = 0; i < strips.Length; i++)
         {
             if (memory.Recall(strips[i]) is not { } known) continue;
-            var placed = known.Card with { X = Xs[i % Columns], Y = Ys[i / Columns], Bottom = Ys[i / Columns] + CardHeight };
+            var placed = Placed(known.Card, i);
             if (known.Playing) playing = placed;
             else cards.Add(placed);
         }
@@ -130,7 +130,12 @@ public static class MenuSlots
         return false;
     }
 
-    static int? SlotOf(MenuCard card)
+    /// <summary><paramref name="card"/> moved to <paramref name="slot"/>.</summary>
+    public static MenuCard Placed(MenuCard card, int slot) =>
+        card with { X = Xs[slot % Columns], Y = Ys[slot / Columns], Bottom = Ys[slot / Columns] + CardHeight };
+
+    /// <summary>The slot a card is in (left to right, top to bottom), or null off the grid's places.</summary>
+    public static int? SlotOf(MenuCard card)
     {
         int col = Array.FindIndex(Xs, x => Math.Abs(x - card.X) < SlotSnap), row = Array.FindIndex(Ys, y => Math.Abs(y - card.Y) < SlotSnap);
         return col < 0 || row < 0 ? null : row * Columns + col;

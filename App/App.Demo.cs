@@ -63,7 +63,7 @@ public partial class App
         if (int.TryParse(Flag("support"), out int support)) (settings.Party.SupportFixed, settings.Party.SupportNumber) = (true, support);
         if (int.TryParse(Flag("my-number"), out int number)) settings.Party.MyNumber = number;
         if (int.TryParse(Flag("name-length"), out int nameLength)) settings.Party.NameLength = nameLength;
-        if (Flag("unseen") is { } unseen)   // 설정 → 캐릭터 as after an update that added this class: NEW on its rows
+        if (Flag("unseen") is { } unseen)   // 설정 → 직업 인식 as after an update that added this class: NEW on its rows
             settings.SeenSupport = [.. ClassSupport.Keys(new CharacterService(settings, CharacterService.DefaultProfilesDir).Support(s => s.ToString()))
                 .Where(k => !k.StartsWith(unseen + "/", StringComparison.Ordinal))];
         if (Enum.TryParse(Flag("theme"), out UiTheme theme)) settings.Theme = theme;
@@ -76,6 +76,16 @@ public partial class App
         }
         if (args.Contains("--meter")) (settings.Meter.On, settings.Meter.Scope) = (true, MeterScope.파티별);
         if (Enum.TryParse<MeterLook>(Flag("meter-look"), out var look)) (settings.Meter.Look, settings.Meter.Graph) = (look, true);
+        if (Enum.TryParse<MeterRange>(Flag("meter-range"), out var range)) settings.Meter.Range = range;
+        if (Flag("meter-skill") is { } skill)
+        {
+            DemoSnapshots.MeterSkillShown = new(skill, skill == "none" ? null : 3.2);
+            foreach (string? key in new[] { null, "워로드 · 고독한기사", RecordCharacter.ClassOf(DemoSnapshots.DemoRecords()[0]) })   // 기본, the demo's 편집 중, its fights
+            {
+                var w = ClassProfiles.EditWindows(settings, key);
+                (w.MeterSkill, w.MeterSkillName) = (SlotId.일반1, skill);
+            }
+        }
         if (args.Contains("--raid")) (settings.Raids.Gate(RaidSettings.MordumGate).CountWindow, settings.Raids.Gate(RaidSettings.MordumGate).CountAuto) = (true, false);
         OverlayRenderer.DemoReducedMotion = args.Contains("--reduced");
         if (args.Contains("--bound-party")) settings.Party.Together = true;
@@ -102,12 +112,18 @@ public partial class App
         if (args.Any(a => a == "--amsu" || a.StartsWith("--amsu="))) { settings.Amsu.On = true; (settings.Amsu.Left, settings.Amsu.Top) = (828, 500); }
         if (Enum.TryParse(Flag("amsu-look"), out AmsuLook amsuLook)) settings.Amsu.Look = amsuLook;
         if (args.Contains("--judgment")) { settings.Judgment.Set("워로드 · 고독한기사", true); (settings.Judgment.Left, settings.Judgment.Top) = (828, 588); }   // above the demo overlay
+        if (args.Contains("--judgment-icon")) { settings.Judgment.Set("워로드 · 고독한기사", true); settings.Judgment.Display = JudgmentDisplay.ReadyIcon; }
         if (args.Contains("--cores")) settings.SetCore("워로드 · 고독한기사", new CoreChoice { Apply = true, Sun = 3 }.WithSlot("버스트 캐넌", SlotId.일반3));
         if (Flag("cores") == "전투태세")   // 전투태세 active, 해 2 with 방패 돌진 on R (일반4)
         {
             settings.Characters["워로드 · 전투태세"] = new CharacterSettings { ClassFamily = "워리어", Class = "워로드", Subclass = "전투태세" };
             settings.ActiveCharacter = "워로드 · 전투태세";
             settings.SetCore("워로드 · 전투태세", new CoreChoice { Apply = true, Sun = 2 }.WithSlot("방패 돌진", SlotId.일반4));
+        }
+        if (Enum.TryParse(Flag("only-part"), out OverlayPart only))   // one window alone, for tools/make-map-gifs.ps1 (with --render-to)
+        {
+            foreach (var part in Enum.GetValues<OverlayPart>()) TrayToggles.Show(settings, part, part == only);
+            foreach (var kind in Enum.GetValues<BuffKind>()) settings.Buffs.Edit(kind).Visible = only == OverlayPart.Buffs;   // the demo draws another key's bars
         }
         if (args.Contains("--bar"))
         {
@@ -128,9 +144,10 @@ public partial class App
             foreach (var r in DemoSnapshots.DemoRecords()) store.Save(r);
             if (Flag("records-from") is { } extra)   // copies of saved fights beside them, to look at a real one
                 foreach (var file in Directory.GetFiles(extra, "*.json.gz")) File.Copy(file, Path.Combine(dir, Path.GetFileName(file)));
+            if (args.Contains("--records-bin"))   // every fight to the 휴지통: its chip is the only one, so it opens picked
+                foreach (var (file, _) in store.List()) store.Delete(file);
             _settingsWindow.Records = store;
-            _settingsWindow.RefreshRecords();
-        }
+            _settingsWindow.RefreshRecords();        }
         _tray.SetParty("호스트 중 (3/4)");
         var demoFit = FitText(new Viewport(0, 0, 1920, 1080), new Fit(100), "");
         _settingsWindow.RefitRequested += () => _settingsWindow.SetFitResult(demoFit);
@@ -169,11 +186,14 @@ public partial class App
         foreach (var w in Others) w.Show();
         (_meterInUse, _countInUse) = (true, true);   // the demo's figures are always "read": --meter and --raid show their windows
         UpdateVisibility();
-        if (args.Contains("--grid-tags"))   // 숙제 tags as under the grid's cards, at goal.png's spots
-            _homeworkTags.Update(new Viewport(0, 0, 1920, 1080), [(new PixelRect(846, 426, 245, 19), [new HomeworkTag("세나메", HomeworkColor.Purple, false, 0), new HomeworkTag("종하↓", HomeworkColor.Orange, true, 0)])], allowed: true);
+        if (args.Contains("--grid-tags"))   // 숙제 tags as under the grid's cards and 전투력 beside the levels, at goal.png's spots
+            _homeworkTags.Update(new Viewport(0, 0, 1920, 1080), [(new PixelRect(846, 426, 245, 19), [new HomeworkTag("세나메", HomeworkColor.Purple, false, 0), new HomeworkTag("종하↓", HomeworkColor.Orange, true, 0)])],
+                [new PowerTag(new PixelRect(972, 426, 0, 12), "2,345", Role.딜러), new PowerTag(new PixelRect(440, 704, 0, 11), "5,004", Role.서포터)], allowed: true);
         if (args.Contains("--homework-demo")) DemoHomework(settings);
         if (args.Contains("--settings")) _settingsWindow.Show();
-        if (Flag("map-open") is not null || Flag("map-pin") is not null || Flag("map-fail") is not null) _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"));
+        if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut" }.Any(f => Flag(f) is not null))
+            _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"));
+        if (Flag("hp-table") is { } hpScroll) _settingsWindow.DemoHpTable(hpScroll);
         if (args.Contains("--resources")) _settingsWindow.DemoResources();
         if (args.Contains("--map-hover-test")) _settingsWindow.DemoHoverTest();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
@@ -187,7 +207,7 @@ public partial class App
         {
             _layer.Capturable = true;
             _layer.Open(1, new Viewport(0, 0, (int)SystemParameters.PrimaryScreenWidth, (int)SystemParameters.PrimaryScreenHeight), new Fit(100), 120, false,
-                settings.Buffs.Count, settings.Debuffs.BossIconSize);
+                settings.Buffs.Count, settings.Debuffs.BossIconSize, null);
         }
         if (args.Contains("--edit")) SetEditMode(true);
         if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.ShowBox(picked, plate: false);
@@ -207,6 +227,7 @@ public partial class App
         int frames = int.TryParse(flag("render-frames"), out var f) ? f : 1;
         double every = double.TryParse(flag("render-every"), out var e) ? e : 100, at = double.TryParse(flag("render-at"), out var a) ? a : 4.5;
         string? hide = flag("render-hide");
+        var windows = Enum.TryParse(flag("only-part"), out OverlayPart only) ? WindowsOf(only) : [.. Others.Prepend(_overlay)];
         // --render-region=x,y,w,h: only that part of the screen (faster, so more frames a second); the whole screen otherwise.
         var region = flag("render-region")?.Split(',').Select(double.Parse).ToArray() is [var rx, var ry, var rw, var rh]
             ? new Rect(rx, ry, rw, rh) : new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
@@ -220,7 +241,7 @@ public partial class App
             timer.Interval = TimeSpan.FromMilliseconds(every);
             var screen = new System.Windows.Media.DrawingVisual();
             using (var dc = screen.RenderOpen())
-                foreach (Window w in Others.Prepend(_overlay).Where(w => w.IsVisible && (hide is null || !w.Title.Contains(hide))))
+                foreach (Window w in windows.Where(w => w.IsVisible && (hide is null || !w.Title.Contains(hide))))
                 {
                     var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(w.ActualWidth), (int)Math.Ceiling(w.ActualHeight), 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
                     bmp.Render(w);
@@ -239,18 +260,33 @@ public partial class App
         };
         timer.Start();
     }
+    /// <summary>The windows that draw <paramref name="part"/> (skills, gauge and undetached buffs share the main one).</summary>
+    OverlayWindow[] WindowsOf(OverlayPart part) => part switch
+    {
+        OverlayPart.Debuffs => [_debuffs], OverlayPart.Judgment => [_judgment], OverlayPart.Amsu => [_amsu],
+        OverlayPart.BarCount => [_raid], OverlayPart.Meter => [_meter], OverlayPart.Party => [.. _peers],
+        _ => [_overlay, _buffs],
+    };
+
     /// <summary>--homework-demo: 설정 → 숙제 with a character, three picks and a week's clears (one of them 확인필요), in a temp file.</summary>
     void DemoHomework(Settings settings)
     {
         var gates = RaidData.Load(CharacterService.DefaultProfilesDir);
         var shipped = HomeworkData.Load(CharacterService.DefaultProfilesDir);
-        var pick = (HomeworkRaid r) => new HomeworkPick(r.Id, r.Levels[^1].Difficulty);
-        settings.Homework.Characters = [new HomeworkCharacter { Name = "데모", ClassName = "워로드", ItemLevel = 1700, Picks = [.. shipped.Take(3).Select(pick)] }];
+        var picks = Homework.Allocate(1700, shipped);
+        settings.Homework.Characters =
+        [
+            new HomeworkCharacter { Name = "데모", ClassName = "워로드", ItemLevel = 1700, Picks = [.. picks] },
+            new HomeworkCharacter { Name = "밝기리", ClassName = "발키리", ItemLevel = 1660, FromCard = true, Picks = [.. Homework.Allocate(1660, shipped)] },   // read off its card
+        ];
         var store = new HomeworkStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-homework.json"));
         File.Delete(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-homework.json"));
         var now = DateTime.Now;
-        store.Add(new HomeworkClear("데모", shipped[0].Id, shipped[0].Levels[^1].Difficulty, now), now);
-        store.Add(new HomeworkClear("데모", shipped[1].Id, shipped[1].Levels[^1].Difficulty, now, Unsure: true), now);
+        if (picks.Count >= 2)
+        {
+            store.Add(new HomeworkClear("데모", picks[0].Raid, picks[0].Difficulty, now), now);
+            store.Add(new HomeworkClear("데모", picks[1].Raid, picks[1].Difficulty, now, Unsure: true), now);
+        }
         _settingsWindow.Homework = new HomeworkService(settings, gates, shipped, [], store, new RecordStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-records")), Dispatcher, () => { }, () => { });
     }
 }

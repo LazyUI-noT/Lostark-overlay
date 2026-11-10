@@ -12,11 +12,11 @@ namespace GaugeOverlay.App.UI;
 /// week's tags, characters added by hand or hidden, and the tags' names.</summary>
 public partial class SettingsWindow
 {
-    const string AreaHomework = "숙제";
+    const string AreaHomework = "레이드 숙제";
     const int MaxCustomLevels = 3;
     static readonly SolidColorBrush ClearedBrush = new(Color.FromRgb(0x2E, 0xA0, 0x43)), UnsureBrush = new(Color.FromRgb(0xE0, 0x31, 0x31)), UndoneBrush = new(Color.FromRgb(0xE4, 0xE6, 0xE8));
     const string HomeworkLead = "캐릭터마다 이번 주(수요일 오전 6시부터) 클리어한 레이드를 보여 줍니다. 캐릭터는 ESC 게임 메뉴와 '다른 캐릭터 바로 접속' 창에서 읽습니다. " +
-        "전투 기록이 마지막 관문을 클리어로 저장하면 그 레이드가 지워집니다. 전투 기록이나 DPS 미터기가 꺼져 있으면 보스 체력 바를 보고 대신 판단하는데, 틀릴 수 있어 확실하지 않으면 확인필요(! 표시)로 두니 맞는지 눌러서 고치세요. 같은 레이드는 난이도와 상관없이 한 주에 한 번뿐이라, 고른 것보다 낮은 난이도로 깨면 ↓를 붙이고, 높은 난이도로 깨면 ↑를 붙여 고른 난이도를 올립니다. 앱 없이 깼다면 레이드 줄의 [클리어]를 누르세요.";
+        "전투 기록이 마지막 관문을 클리어로 저장하면 그 레이드가 지워집니다. 전투 기록이나 DPS 미터기가 꺼져 있으면 보스 체력바로 판단하고, 확실하지 않으면 !(확인필요)로 두니 눌러서 고치세요. 고른 것보다 낮은 난이도로 깨면 ↓, 높은 난이도로 깨면 ↑가 붙고 고른 난이도가 올라갑니다. 앱 없이 깼다면 레이드 줄의 [클리어]를 누르세요.";
     readonly CardStack _secHomework = new();
 
     /// <summary>Who is played, the character list and the clears (null: none yet, the page says so).</summary>
@@ -32,42 +32,137 @@ public partial class SettingsWindow
     void FillHomework()
     {
         var p = Refill(_secHomework, AreaHomework, HomeworkLead);
-        if (Homework is not { } hw) { p.Children.Add(Note("숙제는 게임과 함께 켜졌을 때 씁니다.")); return; }
+        if (Homework is not { } hw) { p.Children.Add(Note("숙제는 게임과 함께 켜졌을 때 씁니다.")); p.Children.Add(CapsulePalette()); return; }
         p.Children.Add(Note(hw.Current is { } now ? $"지금 캐릭터: {now}" : "지금 캐릭터: 캐릭터 불명 (ESC를 눌러 게임 메뉴를 열면 읽습니다)"));
         p.Children.Add(Note(Core.Domain.Homework.SourceOf(_s.Meter.On, _s.Meter.Record, _s.Raids.BossHpRead) switch
         {
-            HomeworkSource.RecordedFight => "클리어는 전투 기록이 판단합니다. 게임의 전투 분석기를 닫아 두면 기록이 없어 보스 체력 바를 보고 판단하니, 그때는 ! 표시(확인필요)를 직접 확인하세요.",
-            HomeworkSource.BossBar => "전투 기록이나 DPS 미터기가 꺼져 있어 보스 체력 바를 보고 판단합니다. 전투 기록보다 틀리기 쉬우니 ! 표시(확인필요)는 직접 확인하세요.",
+            HomeworkSource.RecordedFight => "클리어는 전투 기록이 판단합니다. 게임의 전투 분석기를 닫아 두면 기록이 없어 보스 체력바를 보고 판단하니, 그때는 ! 표시(확인필요)를 직접 확인하세요.",
+            HomeworkSource.BossBar => "전투 기록이나 DPS 미터기가 꺼져 있어 보스 체력바를 보고 판단합니다. 전투 기록보다 틀리기 쉬우니 ! 표시(확인필요)는 직접 확인하세요.",
             _ => "보스 체력 읽기가 꺼져 있어 클리어를 자동으로 표시하지 못합니다. 아래 [클리어]를 직접 누르거나 보스 체력 읽기를 켜세요.",
         }));
         p.Children.Add(Row("", Check("다른 캐릭터 접속 창에 숙제 표시", _s.Homework.ShowOnGrid, v => _s.Homework.ShowOnGrid = v, Changed,
             "다른 캐릭터 바로 접속 창의 캐릭터 칸 아래에 고른 레이드를 작게 보여 줍니다. 클리어한 것은 줄을 긋습니다.")));
         p.Children.Add(Row("", Check("아이템 레벨이 바뀌면 레이드 자동으로 다시 고르기 (모든 캐릭터)", _s.Homework.FollowLevel, v => _s.Homework.FollowLevel = v, Changed,
             "켜면 캐릭터의 아이템 레벨이 바뀔 때 들어갈 수 있는 레이드 중 입장 레벨이 높은 3개로 다시 고릅니다. 직접 고친 것도 바뀝니다. 끄면 그대로 둡니다. 새 캐릭터는 레벨을 처음 읽을 때 항상 3개를 골라 줍니다.")));
+        p.Children.Add(Row("", Check("게임 순서 따르기", _s.Homework.FollowGameOrder, v => _s.Homework.FollowGameOrder = v, () => { Changed(); FillHomework(); },
+            "켜면 아래 캐릭터를 다른 캐릭터 바로 접속 창의 순서대로 보여 줍니다. 게임에서 순서를 바꾸면 따라갑니다. ≡를 끌어 순서를 바꾸면 꺼지고, 끈 동안은 직접 정한 순서를 지킵니다.")));
         var clears = hw.Clears();
-        var shown = _s.Homework.Characters.Where(c => !c.Hidden).ToList();
+        var shown = CardOrder.TabOrder(_s.Homework.Characters, _s.Homework.Order, _s.Homework.FollowGameOrder).Where(c => !c.Hidden).ToList();
         p.Children.Add(Note(shown.Count == 0
-            ? "아직 읽은 캐릭터가 없습니다. 게임에서 ESC → 다른 캐릭터 바로 접속을 열고 캐릭터 칸을 하나씩 누르세요. 오른쪽 위에 큰 글씨로 뜬 이름을 읽습니다. 아래에서 직접 추가해도 됩니다."
-            : "목록에 없는 캐릭터는 다른 캐릭터 바로 접속 창에서 그 칸을 한 번 누르면 추가됩니다. 칸의 작은 글씨는 잘못 읽힐 때가 많아 오른쪽 위 큰 글씨 이름을 씁니다."));
+            ? "아직 읽은 캐릭터가 없습니다. 게임에서 ESC → 다른 캐릭터 바로 접속을 열면 칸의 캐릭터를 모두 읽습니다. 아래에서 직접 추가해도 됩니다."
+            : "다른 캐릭터 바로 접속 창을 열면 목록에 없는 캐릭터를 추가합니다. 칸의 작은 글씨는 잘못 읽힐 수 있습니다: 이름을 고치거나, 그 칸을 누르면 큰 글씨 이름으로 바뀝니다."));
         foreach (var c in shown) p.Children.Add(CharacterCard(hw, c, clears));
         p.Children.Add(AddCharacterRow(hw));
         if (_s.Homework.Characters.Where(c => c.Hidden).ToList() is { Count: > 0 } hidden) p.Children.Add(HiddenRow(hidden));
         p.Children.Add(CustomRaids(hw));
         p.Children.Add(TagNames(hw));
+        p.Children.Add(CapsulePalette());
     }
+
+    static readonly string[] CapsuleSwatches = ["#5E8FD6", "#4CB08A", "#F07C2C", "#8F4FD6", "#D6594C", "#D6B34C", "#C85FA8", "#3FB6C4", "#8C8C8C"];
+
+    /// <summary>레이드 난이도 색 (user, 2026-11-09): one palette for every capsule in 설정 (숙제, 전투 기록, 레이드's HP 변경 감지), saved
+    /// in <see cref="Settings.RaidCapsules"/>. Per difficulty: its capsule, a few swatches, the colour dialog and 기본값.</summary>
+    UIElement CapsulePalette()
+    {
+        var panel = new StackPanel { Margin = new(0, 12, 0, 0) };
+        panel.Children.Add(CapsulePaletteHeader());
+        if (!_capsulePaletteOpen) return panel;
+        var colors = _s.RaidCapsules;
+        foreach (var tier in RaidCapsuleColors.Editable)
+        {
+            void Set(string hex) { colors.Set(tier, hex); Changed(); FillHomework(); }
+            var parts = new List<UIElement> { RaidBadgeView.Of(null, TierName(tier)) };
+            foreach (var hex in CapsuleSwatches)
+            {
+                var chosen = colors.HexOf(tier) == hex;
+                var dot = new Button
+                {
+                    Width = 20, Height = 20, Padding = new(0), ToolTip = hex, Cursor = System.Windows.Input.Cursors.Hand,
+                    BorderThickness = new(chosen ? 2 : 1),
+                };
+                Fill(dot, UiColor.Parse(hex, Colors.Gray), Brushes.White, border: chosen ? Brushes.White : Brushes.Gray);
+                System.Windows.Automation.AutomationProperties.SetName(dot, $"{TierName(tier)} {hex}");
+                dot.Click += (_, _) => Set(hex);
+                parts.Add(dot);
+            }
+            var pick = new Button { Content = "색 선택…" };
+            pick.Click += (_, _) => { if (UiColor.Pick(colors.HexOf(tier)) is { } picked) Set(picked); };
+            var reset = new Button { Content = "기본값", IsEnabled = !colors.IsDefault(tier) };
+            reset.Click += (_, _) => { colors.Reset(tier); Changed(); FillHomework(); };
+            parts.AddRange([pick, reset]);
+            panel.Children.Add(Row(TierName(tier), [.. parts]));
+        }
+        panel.Children.Add(Note("전투 기록, 레이드의 HP 변경 감지 등 난이도를 색으로 보여 주는 곳 모두에 쓰입니다. 이 컴퓨터에서만 바뀌고 파티원에게는 보이지 않습니다."));
+        return panel;
+    }
+
+    /// <summary>난이도 색 starts folded (user, 2026-11-10): open or closed lasts while the window is open, through refills.</summary>
+    bool _capsulePaletteOpen;
+
+    /// <summary>The fold button: ▸/▾, the title and, folded, every capsule as it looks now.</summary>
+    Button CapsulePaletteHeader()
+    {
+        var face = new StackPanel { Orientation = Orientation.Horizontal };
+        face.Children.Add(new TextBlock { Text = _capsulePaletteOpen ? "▾" : "▸", Width = 14, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+        face.Children.Add(new TextBlock { Text = "난이도 색", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
+        if (!_capsulePaletteOpen)
+            foreach (var tier in RaidCapsuleColors.Editable)
+                face.Children.Add(new ContentControl { Content = RaidBadgeView.Of(null, TierName(tier), 11), Margin = new(0, 0, 4, 0), Focusable = false });
+        var header = new Button
+        {
+            Content = face, HorizontalAlignment = HorizontalAlignment.Left, Padding = new(2), Margin = new(0, 0, 0, 4),
+            Background = Brushes.Transparent, BorderThickness = new(0), Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = _capsulePaletteOpen ? "접습니다." : "펼쳐서 난이도마다 색을 바꿉니다.",
+        };
+        System.Windows.Automation.AutomationProperties.SetName(header, "난이도 색");
+        System.Windows.Automation.AutomationProperties.SetItemStatus(header, _capsulePaletteOpen ? "펼침" : "접힘");
+        header.Click += (_, _) => { _capsulePaletteOpen = !_capsulePaletteOpen; FillHomework(); };
+        return header;
+    }
+
+    static string TierName(DifficultyTier tier) => tier switch
+    {
+        DifficultyTier.Normal => "노말", DifficultyTier.Hard => "하드", DifficultyTier.Nightmare => "나이트메어", DifficultyTier.Single => "싱글",
+        DifficultyTier.Matching => "매칭", DifficultyTier.Step1 => "1단계", DifficultyTier.Step2 => "2단계", _ => "3단계",
+    };
 
     UIElement CharacterCard(HomeworkService hw, HomeworkCharacter c, IReadOnlyList<HomeworkClear> clears)
     {
-        var card = new StackPanel { Margin = new(0, 6, 0, 10) };
+        var card = new StackPanel { Margin = new(0, 6, 0, 10), Background = Brushes.Transparent, AllowDrop = true };   // a background: drops hit the gaps too
         var head = new WrapPanel();
-        head.Children.Add(new TextBlock { Text = c.Name, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 8, 0) });
+        head.Children.Add(DragHandle(card, c));
+        var name = new TextBox { Text = c.Name, MinWidth = 90, FontWeight = FontWeights.SemiBold, VerticalContentAlignment = VerticalAlignment.Center, Margin = new(0, 0, 8, 0),
+            ToolTip = "캐릭터 이름. 잘못 읽혔으면 고칩니다. 이번 주 클리어와 전투 기록도 새 이름으로 옮깁니다. 이미 있는 이름으로 고치면 둘을 합칩니다." };
+        bool done = false;   // the page is rebuilt after a rename, and the old box still gets its LostFocus
+        void RenameTo()
+        {
+            if (done) return;
+            var cleaned = CharacterName.Clean(name.Text);
+            if (cleaned == c.Name) { name.Text = c.Name; return; }
+            done = true;
+            if (cleaned is null || !hw.Rename(c, cleaned))
+            {
+                name.Text = c.Name;
+                done = false;
+                MessageBox.Show(this, cleaned is null ? "이름을 확인해 주세요(글자·숫자 2~16자)." : "이름을 바꾸지 못했습니다. 잠시 뒤 다시 해 주세요.", AreaHomework);
+                return;
+            }
+            FillHomework();
+        }
+        name.LostFocus += (_, _) => RenameTo();
+        name.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) RenameTo(); };
+        head.Children.Add(name);
+        if (c.FromCard)
+            head.Children.Add(new TextBlock { Text = "· 카드에서 읽음", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0),
+                ToolTip = "칸의 작은 글씨에서 읽은 이름입니다. 칸을 눌러 큰 글씨가 읽히면 그 이름으로 바뀝니다." });
         if (c.ClassName is not null)
             head.Children.Add(new TextBlock { Text = RecordCharacter.Label(c.ClassName, c.Subclass), Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0) });
         if (c.Name == hw.Current) head.Children.Add(new TextBlock { Text = "· 지금 플레이 중", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0) });
         var level = new TextBox { Width = 56, Text = c.ItemLevel?.ToString() ?? "", VerticalContentAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0), ToolTip = "아이템 레벨. 카드에서 읽으며, 잘못 읽었으면 고칩니다." };
         level.LostFocus += (_, _) =>
         {
-            if (int.TryParse(level.Text.Trim(), out int typed) && typed is >= 1000 and <= 2000) hw.TypedLevel(c, typed);
+            if (Core.Domain.Homework.TypedLevel(level.Text) is { } typed) hw.TypedLevel(c, typed);
             else if (level.Text.Trim().Length == 0) hw.TypedLevel(c, null);
             else level.Text = c.ItemLevel?.ToString() ?? "";
         };
@@ -94,7 +189,42 @@ public partial class SettingsWindow
         return card;
     }
 
-    /// <summary>A pick: its raid and difficulty, 빼기 and 클리어.</summary>
+    const string CharacterDrag = "GaugeOverlay.HomeworkCharacter";   // not text: the name and level boxes won't take it
+
+    /// <summary>≡: drag a character onto another to take its place (card-order.plan.md); a drag turns 게임 순서 따르기 off, keeping the
+    /// tab's order as it was shown.</summary>
+    UIElement DragHandle(StackPanel card, HomeworkCharacter c)
+    {
+        var handle = new TextBlock { Text = "≡", FontSize = 16, Cursor = System.Windows.Input.Cursors.SizeNS, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new(0, 0, 8, 0), Opacity = 0.6, ToolTip = "끌어서 순서 바꾸기" };
+        Point? down = null;   // a drag starts once the mouse moves: a click on ≡ changes nothing
+        handle.MouseLeftButtonDown += (_, e) => { down = e.GetPosition(handle); handle.CaptureMouse(); };
+        handle.MouseLeftButtonUp += (_, _) => { down = null; handle.ReleaseMouseCapture(); };
+        handle.MouseMove += (_, e) =>
+        {
+            if (down is not { } from || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+            var moved = e.GetPosition(handle) - from;
+            if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            down = null;
+            handle.ReleaseMouseCapture();
+            DragDrop.DoDragDrop(handle, new DataObject(CharacterDrag, c.Name), DragDropEffects.Move);
+        };
+        card.PreviewDragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(CharacterDrag) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+        card.PreviewDrop += (_, e) =>
+        {
+            if (e.Data.GetData(CharacterDrag) is not string name) return;
+            e.Handled = true;
+            if (name == c.Name) return;   // dropped back on itself
+            var hw = _s.Homework;
+            hw.Characters = CardOrder.Move(CardOrder.TabOrder(hw.Characters, hw.Order, hw.FollowGameOrder), name, c.Name);
+            hw.FollowGameOrder = false;
+            Changed();
+            Dispatcher.BeginInvoke(FillHomework);   // after the drag ends: the page is rebuilt under it
+        };
+        return handle;
+    }
+
+    /// <summary>A pick: its raid and difficulty, 클리어, then 빼기 (✕).</summary>
     UIElement PickRow(HomeworkService hw, HomeworkCharacter c, int index, IReadOnlyList<HomeworkClear> clears)
     {
         var pick = c.Picks[index];
@@ -103,23 +233,53 @@ public partial class SettingsWindow
         var all = hw.Raids;
         raids.ItemsSource = all.Select(r => r.Name).ToList();
         raids.SelectedIndex = all.ToList().FindIndex(r => r.Id == pick.Raid);
-        var levels = Combo();
-        levels.ItemsSource = raid?.Levels.Select(l => l.Difficulty).ToList() ?? [];
-        levels.SelectedItem = pick.Difficulty;
+        raids.Width = PickRaidWidth;
         void Set(HomeworkPick next) { c.Picks = [.. c.Picks.Select((x, i) => i == index ? next : x)]; Changed(); FillHomework(); }
         raids.SelectionChanged += (_, _) =>
         {
             if (raids.SelectedIndex < 0 || all[raids.SelectedIndex] is not { } r || r.Id == pick.Raid) return;
             Set(new HomeworkPick(r.Id, r.Levels.Any(l => l.Difficulty == pick.Difficulty) ? pick.Difficulty : r.Levels[^1].Difficulty));
         };
-        levels.SelectionChanged += (_, _) => { if (levels.SelectedItem is string d && d != pick.Difficulty) Set(pick with { Difficulty = d }); };
-        var remove = new Button { Content = "빼기", Margin = new(8, 0, 0, 0) };
+        // an X at the row's end, after 확인필요 (user, 2026-11-10); its name still says 빼기
+        var remove = new Button { Content = "✕", Margin = new(8, 0, 0, 0), ToolTip = "빼기" };
+        System.Windows.Automation.AutomationProperties.SetName(remove, "빼기");
         remove.Click += (_, _) => { c.Picks = [.. c.Picks.Where((_, i) => i != index)]; Changed(); FillHomework(); };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(16, 2, 0, 2) };
-        foreach (var e in new UIElement[] { raids, levels, remove }) row.Children.Add(e);
+        // logo, raid, difficulty (user, 2026-11-09); a fixed slot for the logo so a raid without one still lines up
+        var logo = new ContentControl { Content = RaidBadgeView.Of(raid?.Name, null), Width = PickLogoWidth, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var e in new UIElement[] { logo, raids, LevelPicker(raid, pick.Difficulty, d => Set(pick with { Difficulty = d })) }) row.Children.Add(e);
         if (hw.TagOf(c, pick, clears) is { } tag) row.Children.Add(StateButtons(hw, c, pick, tag));
-        levels.Margin = new(8, 0, 0, 0);
+        row.Children.Add(remove);
         return row;
+    }
+
+    const double PickLogoWidth = 28, PickBadgeWidth = 110, PickRaidWidth = 200;   // fixed columns: every pick's 클리어 and ✕ line up (user, 2026-11-09)
+
+    /// <summary>The raid's logo and difficulty capsule; a click lists its difficulties as capsules to swap to (user, 2026-11-09:
+    /// it replaces the 난이도 box, which said the same).</summary>
+    FrameworkElement LevelPicker(HomeworkRaid? raid, string difficulty, Action<string> pick)
+    {
+        // The theme's button frame and a ▾: it reads as a box to open, not a plain tag (user, 2026-11-10).
+        var face = new DockPanel { LastChildFill = false };
+        var arrow = new TextBlock { Text = "▾", Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+        DockPanel.SetDock(arrow, Dock.Right);
+        face.Children.Add(arrow);
+        face.Children.Add(RaidBadgeView.Of(null, difficulty));
+        var button = new Button
+        {
+            Content = face, Width = PickBadgeWidth, Margin = new(8, 0, 0, 0), Padding = new(6, 2, 6, 2),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "눌러서 난이도를 바꿉니다.",
+        };
+        var menu = new ContextMenu { PlacementTarget = button, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var level in raid?.Levels ?? [])
+        {
+            var item = new MenuItem { Header = RaidBadgeView.Of(null, level.Difficulty), IsChecked = level.Difficulty == difficulty };
+            item.Click += (_, _) => { if (level.Difficulty != difficulty) pick(level.Difficulty); };
+            menu.Items.Add(item);
+        }
+        button.Click += (_, _) => menu.IsOpen = menu.Items.Count > 0;
+        return button;
     }
 
     /// <summary>[미완 | 클리어 | 확인필요] for a raid, the part for this week lit: 클리어 by a saved fight, by hand or by the fallback;
@@ -141,7 +301,7 @@ public partial class SettingsWindow
                     _ => "클리어한 것 같지만 앱이 확신하지 못한 상태입니다. 맞으면 클리어를, 아니면 미완을 누르세요.",
                 },
             };
-            if (part == lit) (button.Background, button.Foreground, button.FontWeight) = (back, ink, FontWeights.Bold);
+            if (part == lit) { Fill(button, back.Color, ink); button.FontWeight = FontWeights.Bold; }
             else button.Opacity = 0.75;
             button.Click += (_, _) => hw.SetState(c, pick, part);
             row.Children.Add(button);
@@ -194,7 +354,7 @@ public partial class SettingsWindow
             var remove = new Button { Content = "삭제", Margin = new(8, 0, 0, 0) };
             remove.Click += (_, _) =>
             {
-                if (MessageBox.Show(this, $"{raid.Name}을(를) 지우고 모든 캐릭터에서 뺄까요?", AreaHomework, MessageBoxButton.YesNo) == MessageBoxResult.Yes) hw.RemoveRaid(raid.Id);
+                if (MessageBox.Show(this, $"{Josa.Object(raid.Name)} 지우고 모든 캐릭터에서 뺄까요?", AreaHomework, MessageBoxButton.YesNo) == MessageBoxResult.Yes) hw.RemoveRaid(raid.Id);
             };
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(new TextBlock { Text = $"{string.Join(", ", raid.Levels.Select(l => l.Tag))} · {(raid.Auto ? "자동" : "수동")}", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });

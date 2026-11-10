@@ -32,6 +32,17 @@ public sealed class RecordStoreTests : IDisposable
     }
 
     [Fact]
+    public void Changed_moves_on_save_and_delete()
+    {
+        long empty = Store.Changed;
+        var file = Store.Save(R(0));
+        long saved = Store.Changed;
+        Store.Delete(file);
+        Assert.NotEqual(empty, saved);
+        Assert.NotEqual(saved, Store.Changed);
+    }
+
+    [Fact]
     public void The_file_name_says_when_where_and_with_what_class()
     {
         Assert.Equal("20261030-200000_3막 · 3관문_워로드 고독한기사.json.gz", Store.Save(R(0) with { Gate = "3막 · 3관문", MyClassName = "워로드" }));
@@ -72,6 +83,150 @@ public sealed class RecordStoreTests : IDisposable
         Assert.Equal(R(50).StartedAt, list[0].Record.StartedAt);   // newest first
         Assert.DoesNotContain(list, x => x.Record.StartedAt == R(0).StartedAt);
         Assert.Contains(list, x => x.Record.Kept);
+    }
+
+    [Fact]
+    public void A_kept_record_among_the_newest_takes_one_of_the_places()
+    {
+        Store.Save(R(0), 3);
+        var kept = Store.Save(R(1), 3);
+        Store.SetKept(kept, true);
+        Store.Save(R(2), 3);
+        Store.Save(R(3), 3);   // the newest three: R3, R2 and the kept R1, so R0 goes
+        var list = Store.List();
+        Assert.DoesNotContain(list, x => x.Record.StartedAt == R(0).StartedAt);
+        Assert.Equal(3, list.Count);
+        Store.Save(R(4), 3);   // R1 falls out of the newest three: it stays, only under 보관
+        Assert.Contains(Store.List(), x => x.File == kept && x.Record.Kept);
+        Store.SetKept(kept, false, 3);   // 보관 off out there: to the bin at once
+        Assert.DoesNotContain(Store.List(), x => x.File == kept);
+        Assert.Contains(Store.Bin.List(), x => x.Record.StartedAt == R(1).StartedAt && !x.Record.Kept);
+    }
+
+    [Fact]
+    public void Only_the_characters_own_save_pushes_its_fights_to_the_bin()
+    {
+        Store.Save(R(0) with { Character = "가" }, 1);
+        Store.Save(R(1) with { Character = "나" }, 1);   // another character's fight touches nothing of 가's
+        Assert.Empty(Store.Bin.List());
+        Store.Save(R(2) with { Character = "가" }, 1);
+        Assert.Equal(R(0).StartedAt, Assert.Single(Store.Bin.List()).Record.StartedAt);
+    }
+
+    [Fact]
+    public void Deleting_moves_to_the_bin_and_deleting_there_is_for_good()
+    {
+        Store.Delete(Store.Save(R(0)));
+        Assert.Empty(Store.List());
+        var (binned, _) = Assert.Single(Store.Bin.List());
+        Store.Bin.Delete(binned);
+        Assert.Empty(Store.Bin.List());
+        Assert.False(Directory.Exists(Path.Combine(_dir, RecordStore.BinDir, RecordStore.BinDir)));   // no bin in the bin
+    }
+
+    [Fact]
+    public void Erase_skips_the_bin()
+    {
+        Store.Erase(Store.Save(R(0)));
+        Assert.Empty(Store.List());
+        Assert.Empty(Store.Bin.List());
+    }
+
+    [Fact]
+    public void Restoring_returns_the_fight_kept_with_its_own_time()
+    {
+        Store.Delete(Store.Save(R(0)));
+        Store.Delete(Store.Save(R(0)));   // the same name twice in the bin
+        Assert.Equal(2, Store.Bin.List().Count);
+        var back = Store.Restore(Store.Bin.List()[0].File, 3);
+        var (file, r) = Assert.Single(Store.List());
+        Assert.Equal(back, file);
+        Assert.True(r.Kept);
+        Assert.Equal(R(0).StartedAt, r.StartedAt);
+        Assert.Single(Store.Bin.List());
+    }
+
+    [Fact]
+    public void Restoring_leaves_no_bin_copy_when_the_prune_after_it_fails()
+    {
+        if (!OperatingSystem.IsWindows()) return;   // relies on Windows' share lock to make the move fail
+        Store.Delete(Store.Save(R(1)));
+        string older = Store.Save(R(0));   // past N=1 once R(1) is back, so the prune moves it
+        using (File.Open(Path.Combine(_dir, older), FileMode.Open, FileAccess.Read, FileShare.Read))   // listed, but not movable
+            Assert.ThrowsAny<IOException>(() => Store.Restore(Store.Bin.List()[0].File, 1));
+        Assert.Empty(Store.Bin.List());
+        Assert.Equal(2, Store.List().Count);
+    }
+
+    [Fact]
+    public void Emptying_erases_what_entered_before_the_cutoff()
+    {
+        Store.Delete(Store.Save(R(0)));
+        Assert.Equal(0, Store.EmptyBin(DateTime.UtcNow.AddMinutes(-1)));
+        Assert.Equal(1, Store.EmptyBin(DateTime.UtcNow.AddMinutes(1)));
+        Assert.Empty(Store.Bin.List());
+        Assert.Equal(0, new RecordStore(Path.Combine(_dir, "none")).EmptyBin(DateTime.UtcNow));   // no folder yet
+    }
+
+    [Fact]
+    public void Lowering_the_number_moves_the_extra_fights_of_every_character()
+    {
+        foreach (var c in new[] { "가", "나" })
+            for (int i = 0; i < 3; i++) Store.Save(R(i) with { Character = c }, 3);
+        Assert.Equal(4, Store.OverflowCount(1));
+        Assert.Equal(0, Store.OverflowCount(3));
+        Store.PruneAll(1);
+        Assert.Equal(2, Store.List().Count);
+        Assert.Equal(4, Store.Bin.List().Count);
+    }
+
+    [Fact]
+    public void Unkeeping_says_whether_the_fight_would_go_to_the_bin()
+    {
+        var old = Store.Save(R(0, kept: true), 2);
+        var mid = Store.Save(R(1, kept: true), 2);
+        Store.Save(R(2), 2);
+        Assert.True(Store.UnkeepWouldBin(old, 2));   // third of two
+        Assert.False(Store.UnkeepWouldBin(mid, 2));   // second of two
+        Assert.False(Store.UnkeepWouldBin("gone.json.gz", 2));
+    }
+
+    [Fact]
+    public void An_edit_says_whether_it_would_push_a_fight_to_the_bin()
+    {
+        foreach (var i in new[] { 10, 11, 12 }) Store.Save(R(i) with { Character = "가" }, 3);
+        var other = Store.Save(R(1) with { Character = "나" }, 3);
+        Assert.True(Store.WouldBin(other, R(1) with { Character = "가" }, 3));   // older than 가's three
+        Assert.False(Store.WouldBin(other, R(20) with { Character = "가" }, 4));   // room left
+        Assert.False(Store.WouldBin(other, R(1) with { Character = "나", Gate = "x" }, 3));   // stays 나's only fight
+    }
+
+    static readonly string[] Tabs = ["last", "e", "d-kept", "c", "b-kept", "a"];   // "a": 보관 just turned off, past the newest three
+    static bool Held(string f) => f == "last";
+    static bool IsKept(string f) => f.EndsWith("-kept");
+
+    [Fact]
+    public void Recent_is_the_held_fight_and_the_newest_saved_ones_kept_or_not()
+    {
+        Assert.Equal(["last", "e", "d-kept", "c"], RecordStore.Recent(Tabs, Held, 3));
+        Assert.Equal(["e"], RecordStore.Recent(Tabs.Skip(1).ToList(), Held, 0));   // at least one
+    }
+
+    [Fact]
+    public void Marked_are_the_fights_the_next_save_deletes()
+    {
+        Assert.Equal(["c", "a"], RecordStore.GoesNext(Tabs, Held, IsKept, 3));   // c: third of three, the next save pushes it out
+        Assert.Equal(["a"], RecordStore.GoesNext(Tabs, Held, IsKept, 4));
+        Assert.Empty(RecordStore.GoesNext(["b", "a"], Held, IsKept, 3));   // room left
+    }
+
+    [Fact]
+    public void An_edited_fight_moved_past_the_newest_goes_to_the_bin()
+    {
+        foreach (var i in new[] { 10, 11, 12 }) Store.Save(R(i) with { Character = "가" }, 3);
+        Store.Edit(Store.Save(R(1) with { Character = "나" }, 3), R(1) with { Character = "가" }, 3);
+        Assert.DoesNotContain(Store.List(), x => x.Record.StartedAt == R(1).StartedAt);
+        Assert.Contains(Store.Bin.List(), x => x.Record.StartedAt == R(1).StartedAt && x.Record.Character == "가");
     }
 
     [Fact]
@@ -223,7 +378,7 @@ public sealed class RecordStoreTests : IDisposable
     }
 
     [Fact]
-    public void A_record_moved_to_a_full_character_drops_that_characters_oldest_automatic_one_never_itself()
+    public void A_record_moved_to_a_full_character_as_its_oldest_goes_to_the_bin()
     {
         var store = Store;
         string moved = store.Save(R(0) with { Character = "바드짱", MyClassName = "바드", MySubclass = "절실한구원" }, keep: 2);
@@ -234,11 +389,12 @@ public sealed class RecordStoreTests : IDisposable
         var now = store.Edit(moved, R(0) with { Character = "살살", MyClassName = "워로드" }, keep: 2);
 
         var files = store.List().Select(x => x.File).ToList();
-        Assert.Contains(now, files);   // the moved one is the group's oldest, but it is the one the user just put there
+        Assert.DoesNotContain(now, files);   // the group's oldest past 2 (warned before, 휴지통 2026-11-10): to the bin
         Assert.Contains(kept, files);
         Assert.Contains(newer, files);
-        Assert.DoesNotContain(oldest, files);
+        Assert.DoesNotContain(oldest, files);   // went at newer's save: third of two
         Assert.DoesNotContain(moved, files);
+        Assert.Equal(2, store.Bin.List().Count);
     }
 
     [Fact]

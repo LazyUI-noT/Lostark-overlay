@@ -72,7 +72,7 @@ public class PreviewSimTests
     public void 단심_flashes_when_ready()
     {
         var s = new PreviewSim(Sample(), T0).At(At(32.1)).Judgment!;
-        Assert.True(s.Icon(At(32.1), showCooldown: false)?.Flash);
+        Assert.True(s.Icon(At(32.1)).Flash);
     }
 
     [Fact]

@@ -124,6 +124,57 @@ public class FightRegionsTests
     }
 
     [Fact]
+    public void A_gate_part_and_the_part_after_it_save_as_the_whole_gate()
+    {
+        var part2 = Part2 with { Gate = "최후의 날", Difficulty = null };   // 2-2 has no HP in raids.json: named from the panel
+
+        var merged = FightRegions.Continued(Part1, part2);
+
+        Assert.NotNull(merged);
+        Assert.Equal("종막: 최후의 날 · EX 2관문", merged.Gate);
+        Assert.Equal("EX 하드", merged.Difficulty);
+        Assert.Equal(Part1.StartedAt, merged.StartedAt);
+        Assert.Equal(Part2.Duration, merged.Duration);
+        Assert.False(merged.Cleared);   // the last part's result
+        Assert.Equal(Part1.Samples.Count + Part2.Samples.Count, merged.Samples.Count);
+    }
+
+    [Fact]
+    public void What_only_the_next_part_read_is_kept_in_the_merge()
+    {
+        var part2 = Part2 with { CombatPower = 4321, ItemLevel = 1720, MyClassName = "워로드", MySubclass = "고독한 기사" };
+
+        var merged = FightRegions.Continued(Part1, part2)!;
+
+        Assert.Equal((4321d, 1720d, "워로드", "고독한 기사"), (merged.CombatPower, merged.ItemLevel, merged.MyClassName, merged.MySubclass));
+    }
+
+    [Fact]
+    public void A_whole_gate_takes_its_next_part_too()
+    {
+        var whole = FightRegions.Continued(Part1, Part2)!;
+        var part3 = Fight([.. Reads(980, 1100, null)], [Me(980, 900), Me(1100, 1000)], 1100, Start.AddSeconds(1000), "종막: 최후의 날 · EX 2-3관문");
+
+        Assert.Equal("종막: 최후의 날 · EX 2관문", FightRegions.Continued(whole, part3)?.Gate);
+    }
+
+    [Theory]
+    [InlineData("종막: 최후의 날 · 1관문")]   // a gate with no parts
+    [InlineData(null)]
+    public void A_gate_without_parts_is_not_merged(string? gate)
+    {
+        Assert.Null(FightRegions.Continued(Part1 with { Gate = gate }, Part2));
+    }
+
+    [Fact]
+    public void A_retry_of_a_part_is_not_merged()
+    {
+        var retry = Fight([.. Reads(4, 100, Hp21)], [Me(4, 0), Me(100, 50)], 100, Start.AddSeconds(600));
+
+        Assert.Null(FightRegions.Continued(Part1, retry));
+    }
+
+    [Fact]
     public void A_fight_hours_later_on_the_same_numbers_does_not_join()
     {
         Assert.Single(FightRegions.Chain(Part1, [Part1, Part2 with { StartedAt = Start.AddHours(3) }]));

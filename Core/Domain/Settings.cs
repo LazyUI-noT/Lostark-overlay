@@ -31,6 +31,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public AmsuSettings Amsu { get; set; } = new();
     /// <summary>초당 읽기 횟수 (ReadSteps): the read loop's steps a second, 5–30.</summary>
     public int ReadsPerSecond { get; set; } = ReadSteps.Default;
+    /// <summary>초당 그리기 횟수 (DrawSteps): the overlays' redraws a second while something moves, 10–60.</summary>
+    public int DrawsPerSecond { get; set; } = DrawSteps.Default;
     public UpdateSettings Updates { get; set; } = new();
     /// <summary>설정 → 레이드: the 줄 수 창, boss recognition and each gate's switches (project B).</summary>
     public RaidSettings Raids { get; set; } = new();
@@ -42,6 +44,15 @@ public sealed partial class Settings : IJsonOnDeserializing
     public bool RecordKeepMigrated { get; set; } = true;
     /// <summary>전투 기록's 자동 저장: off, only the last fight is held (unsaved) until the next one, and 보관 saves it.</summary>
     public bool RecordAutoSave { get; set; } = true;
+    /// <summary>전투 기록's rows: 날짜순 (newest first) or 레이드순 (Timeline.ByRaid) (user, 2026-11-10).</summary>
+    public bool RecordSortByRaid { get; set; }
+    /// <summary>휴지통 비우기 (user, 2026-11-10): the day and hour (0–23, PC clock) the bin empties every week.</summary>
+    public DayOfWeek BinEmptyDay { get; set; } = BinSchedule.DefaultDay;
+    public int BinEmptyHour { get; set; } = BinSchedule.DefaultHour;
+    /// <summary>The last emptying run, or when the day or hour was changed (<see cref="BinSchedule.Due"/>).</summary>
+    public DateTime BinEmptiedAt { get; set; }
+    /// <summary>설정 → 경고: the warnings the user turned off (다시 보지 않기, or the page's switch).</summary>
+    public HashSet<WarningKind> MutedWarnings { get; set; } = [];
     /// <summary>전투 기록: how long the 전분 timer may stay stopped (a wipe) or hidden (a cutscene) before the fight ends.</summary>
     public int RecordPauseSeconds { get; set; } = 120;
     public const int MinRecordPause = 10, MaxRecordPause = 600;
@@ -52,6 +63,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public Dictionary<long, BossBookEntry> BossBook { get; set; } = [];
     /// <summary>설정 → 숙제: the characters known, their picks and renamed tags (the clears are in homework.json).</summary>
     public HomeworkSettings Homework { get; set; } = new();
+    /// <summary>The difficulty capsules' colours (RaidBadge), one palette for every page that shows them; local display only.</summary>
+    public RaidCapsuleColors RaidCapsules { get; set; } = new();
     /// <summary>설정's colour theme (the window only; the overlay's colours are its own). New installs start on 로스트아크;
     /// a file without one was saved while 딥 틸 was the default (<see cref="OnDeserializing"/>).</summary>
     [JsonIgnore] public UiTheme Theme { get; set; } = UiTheme.LostArk;
@@ -84,6 +97,22 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// 프로필 and apart from the active character. Read through <see cref="CoreOf"/>, set through <see cref="SetCore"/>.</summary>
     public Dictionary<string, CoreChoice> Cores { get; set; } = [];
 
+    /// <summary>The best 전투력 per character × 직업각인 from the Lost Ark API (<see cref="CombatPowerBook"/>): character → 직업각인
+    /// without spaces ("" = none) → value. No key or secret here: the API key lives in Windows Credential Manager only.</summary>
+    public Dictionary<string, Dictionary<string, double>> CombatPower { get; set; } = [];
+
+    /// <summary>설정 → 로아 API's 대표 캐릭터: the exact name the 원정대 lookup starts from (<see cref="ApiRoster.Root"/>); null = the
+    /// character read off the 게임 메뉴.</summary>
+    public string? ApiMainCharacter { get; set; }
+
+    /// <summary>설정 → 로아 API: each character's best 전투력 on the 게임 메뉴 (<see cref="MenuPower"/>). Apart from
+    /// <see cref="HomeworkSettings.ShowOnGrid"/>: hiding the 숙제 tags keeps these.</summary>
+    public bool ApiShowCombatPower { get; set; } = true;
+
+    /// <summary>The meter's 비교 fight picked with 「미터기 비교」 (<see cref="Domain.MeterCompare"/>): "character|gate|difficulty" →
+    /// the record's file name. A raid not here, or whose file is gone, compares with its most recent fight (자동).</summary>
+    public Dictionary<string, string> MeterCompare { get; set; } = [];
+
     /// <summary>표시 안 함 per "클래스 · 직업각인" ("" = 기본) for the windows shown per character (user, 2026-11-05): buff bars and
     /// the DPS 미터기. Read through <see cref="ClassProfiles.WindowsOf"/>.</summary>
     public Dictionary<string, CharacterWindows> CharacterWindows { get; set; } = [];
@@ -100,7 +129,7 @@ public sealed partial class Settings : IJsonOnDeserializing
     public List<string> FavoriteSettings { get; set; } = [];
 
     /// <summary>The 직업각인 last played per class (picked by hand or read off the bar): a class detected with one takes it
-    /// and its 직업각인 isn't read again until asked (직업각인 다시 감지).</summary>
+    /// and its 직업각인 isn't read again until asked (직업각인 다시 읽기).</summary>
     public Dictionary<string, string> SubclassHistory { get; set; } = [];
 
     /// <summary>The old 로딩 뒤 직업각인 자동 감지: on migrates once to <see cref="ClassDetect"/> 자동 (user, 2026-11-05; SettingsStore.Normalize).</summary>
@@ -112,6 +141,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>설정 → 캐릭터's supported 직업각인 and features the user has seen (Core.Data.ClassSupport keys): anything shipped
     /// later shows NEW until the tab is opened. Null: never recorded (set at start-up, so a first run marks nothing).</summary>
     public List<string>? SeenSupport { get; set; }
+
+    /// <summary>The rail's orbs (<see cref="RailNews"/>): per tab, the keys seen when it was last opened. Null: never recorded
+    /// (set when 설정 is built, so a first run lights nothing).</summary>
+    public Dictionary<string, List<string>>? RailSeen { get; set; }
 
     /// <summary>Skill-bar fit per viewport size, keyed "W×H" (Geometry.ViewportKey).</summary>
     public Dictionary<string, Fit> Fits { get; set; } = [];

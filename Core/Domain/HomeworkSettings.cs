@@ -11,6 +11,12 @@ public sealed class HomeworkSettings
     public bool ShowOnGrid { get; set; } = true;
     /// <summary>레벨 따라 자동 (one switch for all characters): a character's picks are redone when its item level changes.</summary>
     public bool FollowLevel { get; set; } = true;
+    /// <summary>The 다른 캐릭터 접속 grid's card order, names by place ("" not learned yet; <see cref="CardOrder"/>). A new list on
+    /// every change: the save thread reads it.</summary>
+    public List<string> Order { get; set; } = [];
+    /// <summary>게임 순서 따르기: the 숙제 tab follows <see cref="Order"/>, a learned order putting it back in the game's order; off,
+    /// the tab keeps the order the user dragged (card-order.plan.md).</summary>
+    public bool FollowGameOrder { get; set; } = true;
     /// <summary>Raids the user added (a new list on every change: the save thread reads it).</summary>
     public List<HomeworkCustomRaid> CustomRaids { get; set; } = [];
 
@@ -30,5 +36,8 @@ public sealed class HomeworkCharacter
     public int? ItemLevel { get; set; }
     /// <summary>Left off the 숙제 page and the grid (it stays known, so its name still snaps reads).</summary>
     public bool Hidden { get; set; }
+    /// <summary>Its name came from its grid card's small text, which can misread the same way every time (밝기리 for 밟키리): the
+    /// first big name near it renames it (<see cref="Homework.ConfirmedBy"/>), and so does the user. False in older files.</summary>
+    public bool FromCard { get; set; }
     public List<HomeworkPick> Picks { get; set; } = [];
 }

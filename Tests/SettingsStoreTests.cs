@@ -41,6 +41,74 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void An_unknown_capsule_colour_key_is_ignored_and_the_rest_of_the_file_loads()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"FirstRunDone":true,"ActiveCharacter":"x","RaidCapsules":{"Colors":{"Bogus":"#FFFFFF","Hard":"#112233"}}}""");
+
+        var s = new SettingsStore(FilePath).Load(out bool reset);
+
+        Assert.False(reset);
+        Assert.Equal("x", s.ActiveCharacter);
+        Assert.Equal("#112233", s.RaidCapsules.HexOf(DifficultyTier.Hard));
+        Assert.Single(s.RaidCapsules.Colors);
+    }
+
+    [Fact]
+    public void A_null_RailSeen_list_loads_as_empty_and_RailNews_copes()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RailSeen":{"x":null,"y":["a"]}}""");
+
+        var s = new SettingsStore(FilePath).Load(out bool reset);
+
+        Assert.False(reset);
+        Assert.Empty(s.RailSeen!["x"]);
+        Assert.Equal(["a"], s.RailSeen["y"]);
+    }
+
+    [Fact]
+    public void An_old_file_without_RaidCapsules_RailSeen_or_ShadowHp_loads_on_defaults()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"FirstRunDone":true,"Raids":{"ShadowHpOff":["x"]}}""");
+
+        var s = new SettingsStore(FilePath).Load(out bool reset);
+
+        Assert.False(reset);
+        Assert.Empty(s.RaidCapsules.Colors);
+        Assert.Null(s.RailSeen);
+        Assert.Null(s.Raids.ShadowHp);
+        Assert.Equal(["x"], s.Raids.ShadowHpOff);
+    }
+
+    [Fact]
+    public void A_null_capsule_Colors_loads_as_empty()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RaidCapsules":{"Colors":null}}""");
+
+        var s = new SettingsStore(FilePath).Load(out bool reset);
+
+        Assert.False(reset);
+        Assert.Empty(s.RaidCapsules.Colors);
+    }
+
+    [Fact]
+    public void A_saved_ShadowHp_round_trips_with_ShadowHpOff_in_step()
+    {
+        var gate = new RaidGate("g", "Raid", "1", [], [], Raid.없음, Tab: "그림자 레이드");
+        var s = new Settings();
+        s.Raids.SetShadowHp(false, [gate]);
+        new SettingsStore(FilePath).Save(s);
+
+        var back = new SettingsStore(FilePath).Load(out _);
+
+        Assert.False(back.Raids.ShadowHp);
+        Assert.Equal(["Raid"], back.Raids.ShadowHpOff);
+    }
+
+    [Fact]
     public void Null_class_entries_and_null_profiles_in_a_hand_edited_file_load_as_defaults_and_survive_EnsureOwn()
     {
         Directory.CreateDirectory(_dir);

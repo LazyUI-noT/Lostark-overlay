@@ -1,6 +1,6 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>A 표시 map box: <paramref name="Column"/> 0 게임 설정, 1 읽는 것, 2 오버레이, 3 그 위 기능; <paramref name="Inside"/> the
+/// <summary>A 기능 Map box: <paramref name="Column"/> 0 게임 설정, 1 읽는 것, 2 오버레이, 3 그 위 기능; <paramref name="Inside"/> the
 /// large box it sits in (게임 설정, DPS 미터기, 타임라인); <paramref name="Choices"/> each switch part's choices, left to right.</summary>
 public sealed record MapBox(string Id, string Title, string Color, int Column, string? Inside = null, params string[][] Choices)
 {
@@ -16,12 +16,51 @@ public sealed record MapEdge(string From, string To, bool Party = false, string?
 /// <summary>What a box's switches add up to: off, read but not shown, shown.</summary>
 public enum BoxState { Off, Hidden, On }
 
-/// <summary>The 표시 map's boxes and arrows, as the user settled them in mockup v59 (pyosi-map.plan.md).</summary>
+/// <summary>How a party line is drawn (<see cref="FeatureMap.LookOf"/>).</summary>
+public enum PartyLineLook { Pink, Grey, GreySlashed }
+
+/// <summary>The 기능 Map's boxes and arrows, as the user settled them in mockup v59 (pyosi-map.plan.md).</summary>
 public static partial class FeatureMap
 {
+    const string PartyBox = "party";
+
     /// <summary>A reader marked ! sends lights back along its lines from the game settings (column 0): look there first (user, 2026-11-05).</summary>
     public static bool FlowsBack(MapEdge edge, IReadOnlyDictionary<string, Detection> board) =>
         !edge.Party && board.GetValueOrDefault(edge.To)?.Mark == DetectMark.Failed && Boxes.First(b => b.Id == edge.From).Column == 0;
+
+    /// <summary>The window a box shows, for its hover GIF; null for a box with none.</summary>
+    public static OverlayPart? WindowOf(string id) => id switch
+    {
+        "skillview" => OverlayPart.Skills, "aden" => OverlayPart.Gauge, "buff" => OverlayPart.Buffs, "debuff" => OverlayPart.Debuffs, "judg" => OverlayPart.Judgment,
+        "amsu" => OverlayPart.Amsu, "meter" => OverlayPart.Meter, "count" => OverlayPart.BarCount, "peers" => OverlayPart.Party,
+        _ => null,
+    };
+
+    /// <summary>A box's lines carry lights: its reader is ✓, or, for a box with no reader of its own (DPS 미터기, 스킬창 표시, …), a reader feeding it is.</summary>
+    static bool Flows(string id, IReadOnlyDictionary<string, Detection> board) => board.ContainsKey(id) ? DetectBoard.Flowing(board, id)
+        : Edges.Any(e => e.To == id && !e.Party && !e.Optional && DetectBoard.Flowing(board, e.From));
+
+    /// <summary>The line runs lights: its source flows, or it comes from a game setting (no reader there) into a reader that is ✓.</summary>
+    public static bool Lit(MapEdge edge, IReadOnlyDictionary<string, Detection> board) =>
+        !edge.Party && (Flows(edge.From, board) || Boxes.First(b => b.Id == edge.From).Column == 0 && DetectBoard.Flowing(board, edge.To));
+
+    /// <summary>Touches the 파티 block, so a click on it cuts: the one party line that doesn't (DPS 미터기 → 타임라인) follows 파티 → DPS 미터기.</summary>
+    public static bool Cuttable(MapEdge e) => e.Party && (e.From == PartyBox || e.To == PartyBox);
+
+    /// <summary>Drawn as two ends (user, 2026-11-06): a short arrow to a small square at the far box, a square and the clickable
+    /// line at the 파티 block, the long line between them only in focus (<see cref="LinkShown"/>). 파티원 창 stands beside 파티: one line.</summary>
+    public static bool UsesPorts(MapEdge e) => Cuttable(e) && e.To != "peers";
+
+    /// <summary>The long line and the text show with a box at either end in focus, or while the line itself is hovered.</summary>
+    public static bool LinkShown(MapEdge e, string? focus, MapEdge? hovered) => e == hovered || focus == e.From || focus == e.To;
+
+    /// <summary>A party line shows what a click would make it: hovered, a connected one goes grey with a red slash, a cut one pink.</summary>
+    public static PartyLineLook LookOf(bool cut, bool hovered) => (cut, hovered) switch
+    {
+        (false, true) => PartyLineLook.GreySlashed,
+        (true, false) => PartyLineLook.Grey,
+        _ => PartyLineLook.Pink,
+    };
 
     /// <summary>Each line's offset from the middle of a box's side, in order: <paramref name="step"/> apart within a group,
     /// <paramref name="gap"/> between groups, all drawn closer when they wouldn't fit in <paramref name="room"/>.</summary>
@@ -44,29 +83,30 @@ public static partial class FeatureMap
         new("g-debuff", "타겟 UI 버프 크기 (보스)", Game, 0, "game"),
         new("g-font", "데미지 폰트 크기", Game, 0, "game"),
         new("skill", "스킬창 읽기", Skill, 1, null, OffRead),
-        new("cls", "클래스 인식", Skill, 1, null, ["끄기", "수동", "자동"]),
+        new("cls", "직업 인식", Skill, 1, null, ["끄기", "수동", "자동"]),
         new("aden", "아덴 게이지", Skill, 1, null, OffRead, Show),
         new("judg", "단심", Skill, 1, null, OffRead, Show),
         new("buff", "버프", Buff, 1, null, OffRead, Show),
         new("g-jeonbun", "인게임 전분", Record, 1, null, OffRead),
         new("boss", "보스 체력", Raid, 1, null, OffRead, Show),
-        new("dungeon", "던전 인식", Raid, 1, null, OffOn),
+        new("dungeon", "콘텐츠 인식", Raid, 1, null, OffOn),
         new("amsu", "암수", Raid, 1, null, OffRead, Show),
-        new("char", "캐릭터 인식", Homework, 1, null, OffOn),
+        new("char", "캐릭터 이름 인식", Homework, 1, null, OffOn),
         new("party", "파티", Party, 1),
         new("meter", "DPS 미터기", Record, 2, null, Three),
         new("cover", "버프 적용률", Buff, 2, "meter", Three),
         new("skillview", "스킬창 표시", Skill, 2, null, Show),
         new("count", "줄 수 창", Raid, 2, null, OffOn),
         new("debuff", "디버프 창 자동", Raid, 2, null, OffOn),
-        new("shadow", "그림자 기믹 체력", Raid, 2, null, OffRead, Show),
+        // Its switch hides the display only: the number is read whenever the boss HP is (user, 2026-11-09).
+        new("shadow", "대난투 체력", Raid, 2, null, Show) { Note = "끄면 표시만 숨김, 기록 · 숙제는 계속 씀" },
         new("peers", "파티원 창", Party, 3, null, Show),
         new("rec", "타임라인", Record, 3, null, OffOn),
         new("icons", "스킬 아이콘", Skill, 3, "rec", OffOn),
         new("buffrows", "버프 줄 · 적용률", Buff, 3, "rec", OffOn),
         new("amsuline", "암수 줄", Record, 3, "rec"),
         new("zone", "대난투 구간", Record, 3, "rec"),
-        new("hw", "숙제", Homework, 3, null, OffOn) { Note = "타임라인 없이도 되지만 틀릴 수 있음" },
+        new("hw", "레이드 숙제", Homework, 3, null, OffOn) { Note = "타임라인 없이도 되지만 틀릴 수 있음" },
     ];
 
     public static IReadOnlyList<MapEdge> Edges { get; } =
@@ -77,8 +117,10 @@ public static partial class FeatureMap
         new("meter", "rec", Party: true, Label: "파티원 전분"), new("dungeon", "rec"), new("buff", "cover"), new("cover", "buffrows"),
         new("boss", "count"), new("boss", "debuff"), new("boss", "hw"), new("dungeon", "hw"), new("char", "hw"),
         new("rec", "hw", Label: "있으면 더 정확", Optional: true), new("amsu", "amsuline"), new("shadow", "zone"),
+        new("shadow", "hw", Label: "대난투 중 보류"),
         new("skill", "party", true, "스킬쿨"), new("aden", "party", true, "아덴"), new("meter", "party", true, "내 전분"),
-        new("party", "peers", true), new("party", "meter", true, "파티원 전분"),
+        new("party", "peers", true, "파티원 창"), new("party", "meter", true, "파티원 전분"),
+        new("skill", "meter", Label: "스킬 횟수", Optional: true),
     ];
 
     /// <summary>The box's state from the settings behind its switches; null for a box with none yet (a frame, or a part
@@ -116,7 +158,8 @@ public static partial class FeatureMap
     };
 
     /// <summary>끊기 on the map: a click on a party line cuts or reconnects it through the switch behind it (the 파티 menu holds the
-    /// same ones). Reconnecting 파티원 전분 also sends 내 전분, as only someone who shares receives.</summary>
+    /// same ones). 내 전분 is the one that binds: cut, 파티원 전분 goes with it (<see cref="MeterSettings.TakesParty"/>), reconnected, it comes
+    /// back. Reconnecting 파티원 전분 also sends 내 전분, as only someone who shares receives; cutting it leaves mine going out.</summary>
     public static void SetCut(Settings s, MapEdge e, bool cut)
     {
         switch (e.From, e.To)
@@ -126,7 +169,10 @@ public static partial class FeatureMap
                 if (!cut) s.Overlay.SkillRead = true;
                 break;
             case ("aden", "party"): s.Party.SendGauge = !cut; break;
-            case ("meter", "party"): s.Meter.Send = !cut; break;
+            case ("meter", "party"):
+                s.Meter.Send = !cut;
+                if (!cut) s.Meter.Receive = true;
+                break;
             case ("party", "meter") or ("meter", "rec"):
                 s.Meter.Receive = !cut;
                 if (!cut) s.Meter.Send = true;

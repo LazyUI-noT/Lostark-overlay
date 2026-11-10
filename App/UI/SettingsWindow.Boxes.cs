@@ -35,6 +35,7 @@ public partial class SettingsWindow
     void FillBox()
     {
         var p = BoxTab;
+        ForgetRowMarks(p);
         p.Children.Clear();
         if (_debuffBox is { } d)   // one debuff window for every class: no class heading, never greyed
         {
@@ -49,7 +50,7 @@ public partial class SettingsWindow
         p.Children.Add(rows);
 
         if (_plate) PlateRows(rows);
-        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과를, 칸 사이의 판을 누르면 창 전체의 옵션을 바꿀 수 있습니다."));
+        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과를, 칸 사이의 배경판을 누르면 창 전체의 옵션을 바꿀 수 있습니다."));
         else if (BoxOptions.Of(part, BoxAdenSlots) is var (slot, g)) SlotRows(rows, cls, slot, g);
         else if (part >= FreeLayout.FirstBuff) BuffBarRows(rows, (BuffKind)(part - FreeLayout.FirstBuff));
         else if (part == Part.변화)
@@ -90,7 +91,7 @@ public partial class SettingsWindow
         var aden = BoxAdenSlots;
         // Rows that do nothing in the current state collapse, and come back the moment their parent is ticked.
         var glowLabel = Label("");
-        void LabelGlow() => glowLabel.Text = BoxOptions.OwnGlow(Fx(), g, only) ? "발광 색 (이 칸만)" : $"발광 색 ({g} 전체)";
+        void LabelGlow() => glowLabel.Text = BoxOptions.OwnGlow(Fx(), g, only) ? "빛 색 (이 칸만)" : $"빛 색 ({g} 전체)";
         LabelGlow();
         // 이 칸만 gives the skill its own colour, and with it its own glow colour: the label follows.
         var colour = ColorRow(Label("색"), ClassProfiles.Mine(_s, cls).ColorOf(slot, g), v => { BoxOptions.SetColor(Fx(), slot, g, v, only); LabelGlow(); }, swatch: true, warnGold: true);
@@ -102,8 +103,8 @@ public partial class SettingsWindow
         // 계속 빛남, then how and in what colour it glows: shown while any box of the group glows (both are the group's
         // unless this skill has its own colour).
         var glow = new StackPanel();
-        p.Children.Add(Check("쿨 돈 동안 발광", fx.Pulses(slot, g), v => { BoxOptions.SetPulse(Fx(), slot, g, v, only, aden); glow.Visibility = Shown(AnyPulses(Fx(), g, aden)); }, Changed));
-        glow.Children.Add(Row($"발광 방식 ({g} 전체)", EnumCombo([(ReadyGlowStyle.Diagonal, "사선 띠"), (ReadyGlowStyle.Horizontal, "가로 띠"),
+        p.Children.Add(Check("쿨 돈 동안 빛남", fx.Pulses(slot, g), v => { BoxOptions.SetPulse(Fx(), slot, g, v, only, aden); glow.Visibility = Shown(AnyPulses(Fx(), g, aden)); }, Changed));
+        glow.Children.Add(Row($"빛남 방식 ({g} 전체)", EnumCombo([(ReadyGlowStyle.Diagonal, "사선 띠"), (ReadyGlowStyle.Horizontal, "가로 띠"),
             (ReadyGlowStyle.Breathe, "숨쉬기"), (ReadyGlowStyle.Outline, "테두리")], fx.PulseStyleOf(g), v => Fx().PulseStyle[g] = v)));
         glow.Children.Add(ColorRow(glowLabel, ClassProfiles.Mine(_s, cls).GlowOf(slot, g),
             v => { BoxOptions.SetGlowColor(Fx(), slot, g, v, only); Dispatcher.BeginInvoke(FillClassSections); }, swatch: false));   // '나' shows the way back to white
@@ -193,7 +194,7 @@ public partial class SettingsWindow
     {
         string who = key ?? "기본";
         var c = Check($"{who}에서 숨기기", hidden, set, Changed, $"이 캐릭터({who})에서만 창을 숨깁니다. 게임은 계속 읽고, 다른 캐릭터에서는 그대로 보입니다.");
-        c.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0xA8, 0x00));
+        c.SetResourceReference(ForegroundProperty, CautionBrushKey);   // the page's one yellow, as a colour's warning
         return c;
     }
 

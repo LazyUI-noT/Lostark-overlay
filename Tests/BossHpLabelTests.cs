@@ -42,8 +42,9 @@ public class BossHpLabelTests
         var (vp, fit) = (new Viewport(0, 0, 1920, 1080), new Fit(110));
         Assert.True(Geometry.BossHpLabel(vp, fit).X >= 1025);   // "광신의 인도자, 아르세노스" ends near 1013
         Assert.True(Geometry.ShadowDealt(vp, fit).X >= 1115);   // "10,000,000,000,000" popped 1.5× ends near 1104
-        var (number, dealt) = (Geometry.ShadowNumber(vp, fit), Geometry.ShadowDealt(vp, fit));
-        Assert.InRange(dealt.Y + dealt.Height / 2 - (number.Y + number.Height / 2), -1, 1);   // on the number's line
+        // On the number's line: its glyphs at y 62–82 (the read area reaches higher, for the pop).
+        var dealt = Geometry.ShadowDealt(vp, fit);
+        Assert.InRange(dealt.Y + dealt.Height / 2, 71, 73);
     }
 
     [Fact]

@@ -17,6 +17,10 @@ static class Emblems
 
     public static ImageSource? For(int classId) => ById.GetValueOrDefault(classId);
 
+    /// <summary>The emblem of the class named <paramref name="className"/> (a fight record keeps the name), or null.</summary>
+    public static ImageSource? For(string? className) =>
+        Classes.Values.FirstOrDefault(c => c.Name == className) is { } c ? For(c.Id) : null;
+
     /// <summary>The class numbered <paramref name="classId"/>, or null (0 = not set, or a number this version doesn't know).</summary>
     public static ClassInfo? Class(int classId) => Classes.GetValueOrDefault(classId);
 

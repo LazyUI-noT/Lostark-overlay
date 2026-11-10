@@ -207,8 +207,10 @@ public sealed partial class PartySession : IDisposable
     public void Publish(Snapshot mine, string name, IReadOnlySet<SlotGroup> send, bool sendGauge, TimeSpan now)
     {
         var last = _mine;
-        _stateDirty |= last is null || last.AwakeningChanged != mine.AwakeningChanged || last.Gauge != mine.Gauge || last.ClassId != mine.ClassId
-            || !last.Slots.SequenceEqual(mine.Slots) || !last.Groups.SetEquals(mine.Groups)
+        // Only what a State carries: a change the party doesn't get sends nothing, not even that something changed.
+        _stateDirty |= last is null || Protocol.SentAwakening(last, send) != Protocol.SentAwakening(mine, send)
+            || sendGauge && last.Gauge != mine.Gauge || last.ClassId != mine.ClassId
+            || !Protocol.SentSlots(last, send).SequenceEqual(Protocol.SentSlots(mine, send)) || !last.Groups.SetEquals(mine.Groups)
             || !last.AdenSlots.Order().SequenceEqual(mine.AdenSlots.Order())
             || !_sendGroups.SetEquals(send) || _sendGauge != sendGauge;
         (_mine, _myName, _sendGroups, _sendGauge) = (mine, name, send, sendGauge);
@@ -228,7 +230,7 @@ public sealed partial class PartySession : IDisposable
     }
 
     /// <summary>The notice a kicked member sees.</summary>
-    public const string Kicked = "호스트가 파티에서 내보냈습니다.";
+    public const string Kicked = "호스트가 공유 방에서 내보냈습니다.";
 
     /// <summary>Host: 내보내기. Tells the member named <paramref name="name"/> and drops it; the others get the roster
     /// without it (which also ends the member's session if the notice is lost). Its device can't join again this session
@@ -262,7 +264,7 @@ public sealed partial class PartySession : IDisposable
             if (_pendingSince is { } asked ? now - asked > ApprovalWait : now - _joinStarted > (_rejoin ? RejoinFor : JoinTimeout))
                 End(_pendingSince is not null ? "호스트가 응답하지 않았습니다."
                     : _rejoin ? HostLost
-                    : "호스트에 연결하지 못했습니다. 토큰이 맞는지, 호스트가 포트를 열었는지, 같은 버전인지 확인해 주세요.");
+                    : "호스트에 연결하지 못했습니다. 참가 코드가 맞는지, 호스트가 포트를 열었는지, 같은 버전인지 확인해 주세요.");
             else if (now - _lastHello >= HelloEvery) SendHello(now);
             return;
         }
@@ -392,7 +394,7 @@ public sealed partial class PartySession : IDisposable
                     (m.Name, m.Party) = (name, party);
                     _members.Add(m);
                 }
-                if (!_members.Any(m => m.Id == Id) || !_members.Contains(host)) { End("파티에서 빠졌습니다."); return; }
+                if (!_members.Any(m => m.Id == Id) || !_members.Contains(host)) { End("공유 방에서 나왔습니다."); return; }
                 _statusDirty = _peersDirty = true;
                 break;
             case MessageType.State when Protocol.TryReadState(body, now, _rttHalf, out var origin, out var snap):
@@ -418,7 +420,7 @@ public sealed partial class PartySession : IDisposable
                 End(Protocol.ReadRefuse(body));
                 break;
             case MessageType.Bye:
-                End("호스트가 파티를 끝냈습니다.");
+                End("호스트가 공유 방을 닫았습니다.");
                 break;
         }
     }
@@ -448,7 +450,7 @@ public sealed partial class PartySession : IDisposable
         if (m.Ask == Approval.Asking) _withdrawn.Add(m.Id);
         if (!m.Confirmed) return;   // nobody was told about it
         _statusDirty = _peersDirty = true;
-        if (!replaced && _hadPeer && _members.Count(x => x.Confirmed) == 1) { End("파티원이 모두 나가서 파티를 끝냈습니다."); return; }
+        if (!replaced && _hadPeer && _members.Count(x => x.Confirmed) == 1) { End("파티원이 모두 나가서 공유 방을 닫았습니다."); return; }
         Broadcast(MessageType.Roster, RosterBody());
     }
 

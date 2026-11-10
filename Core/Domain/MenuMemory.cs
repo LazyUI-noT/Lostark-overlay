@@ -7,6 +7,11 @@ public sealed class MenuMemory
 {
     /// <summary>Mean grey difference per pixel: the same strip ≤ 2.1, another ≥ 6.7 (goal.png, a live 1080p capture, homework_tracker.mp4).</summary>
     public const double SameStrip = 4;
+    /// <summary>A pixel this much greyer or lighter changed for real: between frames of the same strip none do (homework_minor.mp4).</summary>
+    const int Changed = 40;
+    /// <summary>At most this share of a strip's pixels changed, or it is another strip. Names a letter apart (너무아파요살살,
+    /// 너무아파용살살: 94 of 4180, mean 3.1) pass <see cref="SameStrip"/>, and one card stood for both (user, 2026-11-08).</summary>
+    const double MaxChangedShare = 0.005;
     /// <summary>The title open ≤ 3.2, closed or covered ≥ 25 (the same).</summary>
     public const double SameTitle = 8;
     /// <summary>Plenty for a roster and its hover looks; a character's strips come back on the next read.</summary>
@@ -40,7 +45,7 @@ public sealed class MenuMemory
     {
         lock (_gate)
         {
-            _strips.RemoveAll(s => Difference(s.Strip, strip) <= SameStrip);
+            _strips.RemoveAll(s => SameAs(s.Strip, strip));
             if (_strips.Count >= MaxStrips) _strips.RemoveAt(0);
             _strips.Add((strip, card, playing));
         }
@@ -51,9 +56,18 @@ public sealed class MenuMemory
         lock (_gate)
         {
             foreach (var s in _strips)
-                if (Difference(s.Strip, strip) <= SameStrip) return (s.Card, s.Playing);
+                if (SameAs(s.Strip, strip)) return (s.Card, s.Playing);
             return null;
         }
+    }
+
+    static bool SameAs(byte[] a, byte[] b)
+    {
+        if (Difference(a, b) > SameStrip) return false;
+        int changed = 0;
+        for (int i = 0; i < a.Length; i++)
+            if (Math.Abs(a[i] - b[i]) > Changed) changed++;
+        return changed <= a.Length * MaxChangedShare;
     }
 
     static double Difference(byte[] a, byte[] b)

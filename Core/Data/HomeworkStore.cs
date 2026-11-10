@@ -78,6 +78,17 @@ public sealed class HomeworkStore(string path)
         }
     }
 
+    /// <summary>A character renamed on 설정 → 숙제 or confirmed by its big name: its clears are the new name's.</summary>
+    public void Rename(string from, string to)
+    {
+        lock (_gate)
+        {
+            var all = Read();
+            if (all.All(c => c.Character != from)) return;
+            Write([.. Homework.RenameClears(all, from, to)]);
+        }
+    }
+
     List<HomeworkClear> Read()
     {
         try

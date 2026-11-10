@@ -1,0 +1,19 @@
+{
+  "source": "Lost Ark 2026.11.03 - 21.46.27.02.mp4 from 530 s: the normal boss bar before 대난투, its name and HP text, taller than shadow_bossbar to cover the whole ShadowNumber area",
+  "slot": "shadow",
+  "hud": 110,
+  "rect": [
+    760,
+    36,
+    400,
+    60
+  ],
+  "width": 400,
+  "height": 60,
+  "pts": [
+    530.0,
+    532.0,
+    534.0,
+    536.0
+  ]
+}

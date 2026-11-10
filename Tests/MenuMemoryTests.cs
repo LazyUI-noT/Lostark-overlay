@@ -78,6 +78,28 @@ public class MenuMemoryTests
         Assert.Null(memory.Recall(Strip(60)));
     }
 
+    /// <summary>A strip with one letter's worth of pixels changed: 너무아파요살살 vs 너무아파용살살 on the user's grid (2026-11-08)
+    /// differ in 94 of 4180 pixels by more than 40, a mean of only 3.1; the same strip between frames, in none.</summary>
+    static byte[] OneLetterOff(byte[] strip)
+    {
+        var s = (byte[])strip.Clone();
+        for (int y = 4; y < 18; y++)
+            for (int x = 100; x < 107; x++) s[y * MenuSlots.StripWidth + x] = 200;   // 98 pixels, a letter's ㅇ
+        return s;
+    }
+
+    [Fact]
+    public void Two_names_a_letter_apart_are_two_cards_though_their_strips_differ_little_on_average()
+    {
+        var memory = new MenuMemory();
+        var yo = Strip(40);
+        memory.Learn(yo, Card("너무아파요살살"), playing: false);
+        memory.Learn(OneLetterOff(yo), Card("너무아파용살살"), playing: false);
+
+        Assert.Equal("너무아파요살살", memory.Recall(yo)?.Card.Name);
+        Assert.Equal("너무아파용살살", memory.Recall(OneLetterOff(yo))?.Card.Name);
+    }
+
     [Fact]
     public void A_new_read_of_the_same_strip_replaces_the_old_one()
     {

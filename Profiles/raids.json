@@ -40,9 +40,24 @@
   ],
   "_homework": "숙제 (설정 → 숙제, homework.plan.md): one entry per weekly raid. gates = its gate ids above; levels = its difficulties, lowest first (a clear above the pick raises it), each with its default tag, colour (white / orange / purple, the game's), the gate(s) whose 클리어 finishes the raid on it, and its entry item level (the raids a character gets by level; a raid without one is picked by hand only).",
   "homework": [
+    { "id": "kamen", "name": "카멘", "levels": [
+      { "difficulty": "노말", "tag": "카노", "color": "white", "entry": 1610 },
+      { "difficulty": "하드", "tag": "카하", "color": "orange", "entry": 1630 } ] },
+    { "id": "echidna", "name": "서막 에키드나", "levels": [
+      { "difficulty": "노말", "tag": "에노", "color": "white", "entry": 1620 },
+      { "difficulty": "하드", "tag": "에하", "color": "orange", "entry": 1640 } ] },
+    { "id": "behemoth", "name": "베히모스", "levels": [
+      { "difficulty": "노말", "tag": "베히", "color": "white", "entry": 1640 } ] },
+    { "id": "act1", "name": "1막", "levels": [
+      { "difficulty": "노말", "tag": "1노", "color": "white", "entry": 1660 },
+      { "difficulty": "하드", "tag": "1하", "color": "orange", "entry": 1680 } ] },
+    { "id": "act2", "name": "2막", "levels": [
+      { "difficulty": "싱글", "tag": "2싱", "color": "white", "entry": 1670 },
+      { "difficulty": "노말", "tag": "2노", "color": "white", "entry": 1670 },
+      { "difficulty": "하드", "tag": "2하", "color": "orange", "entry": 1690 } ] },
     { "id": "act3", "name": "3막", "gates": ["act3-g3"], "levels": [
-      { "difficulty": "노말", "tag": "3노", "color": "white", "last": ["act3-g3"] },
-      { "difficulty": "하드", "tag": "3하", "color": "orange", "last": ["act3-g3"] } ] },
+      { "difficulty": "노말", "tag": "3노", "color": "white", "last": ["act3-g3"], "entry": 1680 },
+      { "difficulty": "하드", "tag": "3하", "color": "orange", "last": ["act3-g3"], "entry": 1700 } ] },
     { "id": "act4", "name": "4막", "gates": ["act4-g1", "act4-g2"], "levels": [
       { "difficulty": "싱글", "tag": "4싱", "color": "white", "last": ["act4-g2"], "entry": 1700 },
       { "difficulty": "노말", "tag": "4노", "color": "white", "last": ["act4-g2"], "entry": 1700 },

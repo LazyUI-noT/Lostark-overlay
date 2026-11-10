@@ -24,6 +24,17 @@ public class RaidRecognitionTests
     }
 
     [Fact]
+    public void Daenantu_hides_the_boss_s_name_without_losing_the_gate()
+    {
+        // 대난투 shows no boss name (user, 2026-11-09): its 60 s of misses keep the gate, then the usual 10 s.
+        var s = Run(("act3-g3", 0), ("act3-g3", 0.5));
+        for (int t = 1; t <= 60; t++) s = RaidRecognition.Update(s, null, S(t), daenantu: true);
+        Assert.Equal("act3-g3", s.Gate);
+        Assert.Equal("act3-g3", RaidRecognition.Update(s, null, S(70)).Gate);
+        Assert.Null(RaidRecognition.Update(s, null, S(70.5)).Gate);
+    }
+
+    [Fact]
     public void Misses_keep_the_gate_for_ten_seconds()
     {
         Assert.Equal("act3-g3", Run(("act3-g3", 0), ("act3-g3", 0.5), (null, 10.4)).Gate);

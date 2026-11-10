@@ -106,6 +106,7 @@ public sealed class SettingsStore(string path)
         s.Amsu ??= new();
         s.Amsu.Clamp();
         s.ReadsPerSecond = ReadSteps.Clamp(s.ReadsPerSecond);
+        s.DrawsPerSecond = DrawSteps.Clamp(s.DrawsPerSecond);
         s.Judgment ??= new();
         s.Judgment.Characters ??= [];
         if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
@@ -123,10 +124,15 @@ public sealed class SettingsStore(string path)
         s.Meter ??= new();
         s.Meter.Normalize();
         s.BossBook ??= [];
+        if (s.RailSeen is not null) s.RailSeen = s.RailSeen.ToDictionary(kv => kv.Key, kv => kv.Value ?? []);   // a hand edit: a null list
+        s.Homework ??= new();
+        s.RaidCapsules ??= new();
+        s.RaidCapsules.Colors ??= [];
+        s.Homework.Order = [.. (s.Homework.Order ?? []).Select(n => n ?? "")];   // a hand edit or an odd save: CardOrder reads every name
         foreach (var (hp, e) in s.BossBook.ToList())   // a hand edit: no name, or a null entry
             if (e is null || string.IsNullOrWhiteSpace(e.Name)) s.BossBook.Remove(hp);
         s.FavoriteClasses = Distinct(s.FavoriteClasses);
-        s.FavoriteSettings = Distinct(s.FavoriteSettings);
+        s.FavoriteSettings = Distinct([.. (s.FavoriteSettings ?? []).Select(id => FeatureMap.MigrateSettingId(id ?? ""))]);   // 2026-11-08 renames
         return s;
     }
 

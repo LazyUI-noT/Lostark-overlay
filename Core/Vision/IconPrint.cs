@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Core.Vision;
 
-/// <summary>A skill icon's fingerprint (skill-icon library, HANDOFF §2.1): the icon averaged into a 16×16 grid of luminance and
+/// <summary>A skill icon's fingerprint (skill-icons.plan.md): the icon averaged into a 16×16 grid of luminance and
 /// two colour differences, each channel normalised (so dimming, greying-out brightness and scale don't matter), without the
 /// cells the game draws over a skill-bar icon and a reference picture lacks: the frame ring, the key-letter strip
 /// (<see cref="SlotCalibration"/>'s band) and the badges in the top corners. 768 bytes. Pure.</summary>

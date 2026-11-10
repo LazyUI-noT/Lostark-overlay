@@ -7,7 +7,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>The scene of 설정 → 표시: the canvas read-only, every window drawn (the DPS 미터기 too) on a copy of the settings,
+/// <summary>The scene of 설정 → 기능 Map: the canvas read-only, every window drawn (the DPS 미터기 too) on a copy of the settings,
 /// a window that's off in the real settings faint with a dashed outline and its name. A click names the window
 /// (<see cref="ScenePicked"/>); nothing drags, pans, zooms or nudges.</summary>
 public sealed partial class OverlayCanvas
@@ -24,6 +24,9 @@ public sealed partial class OverlayCanvas
     void FitScene(IReadOnlyCollection<OverlayRenderer> all)
     {
         var shown = all.Where(r => r.Visibility == Visibility.Visible && r.DesiredSize.Width > 0).ToList();
+        // A page's preview fits round the windows that are on: 레이드's 줄 수 창 (top) and an off 디버프 창 (bottom) zoomed out to specks.
+        if (Only is not null && IsOn is { } isOn && shown.Where(r => isOn(WindowPart(r)) || r == _mine && isOn(OverlayPart.Gauge)).ToList() is { Count: > 0 } on)
+            shown = on;
         if (shown.Count == 0 || ActualWidth <= 0 || ActualHeight <= 0) return;
         double l = shown.Min(Canvas.GetLeft), t = shown.Min(Canvas.GetTop);
         double r = shown.Max(w => Canvas.GetLeft(w) + w.DesiredSize.Width), b = shown.Max(w => Canvas.GetTop(w) + w.DesiredSize.Height);
@@ -32,9 +35,16 @@ public sealed partial class OverlayCanvas
     }
 
     /// <summary>The game screen's edge, so the scene shows where each window stands on it.</summary>
+    /// <summary>Behind the windows when no game shot is saved: a dim game-like scene (muted sky into darker ground), mid-tone
+    /// so a window's dark tracks and its white text both read as they do over the game (user, 2026-11-09: near-black hid them).</summary>
+    static readonly LinearGradientBrush GameBackdrop = Frozen(new LinearGradientBrush(
+        [new(Color.FromRgb(0x6A, 0x6C, 0x6E), 0), new(Color.FromRgb(0x58, 0x55, 0x4E), 0.55), new(Color.FromRgb(0x3C, 0x36, 0x2E), 1)], 90));
+
+    static T Frozen<T>(T brush) where T : Freezable { brush.Freeze(); return brush; }
+
     Rectangle ScreenFrame() => new()
     {
-        Width = _screen.Width, Height = _screen.Height, Fill = new SolidColorBrush(Color.FromRgb(0x10, 0x11, 0x14)),
+        Width = _screen.Width, Height = _screen.Height, Fill = GameBackdrop,
         Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x4C, 0x55)), StrokeThickness = FrameStroke, IsHitTestVisible = false,
     };
 
@@ -76,10 +86,18 @@ public sealed partial class OverlayCanvas
         SceneHover?.Invoke(r is null ? null : ScenePart(r, e.GetPosition(r)));
     }
 
+    /// <summary>Only these windows drawn (a 설정 page's preview, <see cref="SettingsPreview.PartsOf"/>); null: every window.</summary>
+    public IReadOnlyCollection<OverlayPart>? Only { get; set; }
+
+    /// <summary>My window holds the skills, the gauge and the buff bars while they aren't detached.</summary>
+    bool InScene(OverlayRenderer r) => Only is not { } only || (r == _mine
+        ? only.Contains(OverlayPart.Skills) || only.Contains(OverlayPart.Gauge) || only.Contains(OverlayPart.Buffs) && !_s.Buffs.Detached
+        : only.Contains(WindowPart(r)));
+
     /// <summary>Every window shown (the buffs' own window only while detached), before they are measured.</summary>
     void SceneVisibility(IEnumerable<OverlayRenderer> all)
     {
-        foreach (var r in all) r.Visibility = r == _buffs ? Shown(_s.Buffs.Detached) : Visibility.Visible;
+        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && InScene(r));
     }
 
     /// <summary>Windows off in the real settings: faint, outlined, named. Party windows: one name on the first.</summary>

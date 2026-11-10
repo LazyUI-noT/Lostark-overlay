@@ -68,6 +68,22 @@ public static class RaidData
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return []; }
     }
 
+    /// <summary>A fingerprint of the shipped raids.json (16 hex digits of its SHA-256), "" when there is no file. A new or changed
+    /// gate changes it, which lights 레이드 once (<see cref="RailNews"/>).</summary>
+    public static string Fingerprint(string profilesDir)
+    {
+        try
+        {
+            var path = Path.Combine(profilesDir, FileName);
+            return File.Exists(path) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)))[..16] : "";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[raids] fingerprint {profilesDir}: {e.Message}");
+            return "";
+        }
+    }
+
     public static RaidGate? Find(IReadOnlyList<RaidGate> gates, string? id) => gates.FirstOrDefault(g => g.Id == id);
 
     /// <summary>The gate and difficulty whose boss max HP is <paramref name="max"/>, or null.</summary>

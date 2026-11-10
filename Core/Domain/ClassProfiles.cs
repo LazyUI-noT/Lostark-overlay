@@ -262,7 +262,7 @@ public static class ClassProfiles
 
     /// <summary>What the engine reads: with 스킬창 읽기 on, a slot is skipped when it is neither shown (its group on, the slot
     /// not hidden), sent to the party nor recorded for the timeline (사용 기록), the 초각기 표시 label likewise with its 각성기
-    /// group; off, no slot. The gauge is read while shown or sent, and the buff row only while an indicator is on.</summary>
+    /// group; off, no slot. The meter's 스킬 사용 횟수 slot is read however its window stands. The gauge is read while shown or sent, and the buff row only while an indicator is on.</summary>
     // ponytail: a hidden window recorded for the timeline is read in full; the light read (ready slots, one read after a
     // cast) comes when its CPU shows in [perf].
     public static ReadPlan Reads(Settings s, IReadOnlyCollection<SlotId> adenSlots)
@@ -271,7 +271,8 @@ public static class ClassProfiles
         var sent = SentGroups(s);
         bool recorded = s.Overlay.SkillRead && s.Meter.On && s.Meter.Record;
         bool Kept(SlotGroup g) => s.Overlay.SkillRead && (mine.Groups.GetValueOrDefault(g, true) || sent.Contains(g) || recorded);
-        bool Skipped(SlotId id, SlotGroup g) => !Kept(g) || !sent.Contains(g) && !recorded && mine.Hidden.Contains(id);
+        SlotId? counted = s.Overlay.SkillRead && s.Meter.On ? WindowsOf(s, ActiveKey(s)).MeterSkill : null;
+        bool Skipped(SlotId id, SlotGroup g) => id != counted && (!Kept(g) || !sent.Contains(g) && !recorded && mine.Hidden.Contains(id));
         bool classless = ActiveClass(s) is null;   // 기본 with no class: no 아덴 slots or gauge, not even for the party
         var skip = SlotInfo.All.Where(id => Skipped(id, SlotInfo.GroupOf(id, adenSlots)) || classless && id is SlotId.아덴1 or SlotId.아덴2);
         bool buffs = Enum.GetValues<BuffKind>().Any(k => s.Buffs.Of(k).Visible);

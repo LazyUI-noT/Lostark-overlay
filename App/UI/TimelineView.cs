@@ -81,6 +81,17 @@ sealed class TimelineView : FrameworkElement
         (kind, Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, c.R, c.G, c.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }),
          Frozen(new Pen(Frozen(new SolidColorBrush(c)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }));
     bool _useIcons = true;
+    SlotId? _ringSlot;
+    static readonly Pen GoldRing = Frozen(new Pen(new SolidColorBrush(Color.FromRgb(0xF0, 0xA8, 0x00)), 2));
+
+    static Pen Frozen(Pen pen) { pen.Freeze(); return pen; }
+
+    /// <summary>The skill picked to average: its casts wear a gold ring, drawn over the others.</summary>
+    public SlotId? RingSlot
+    {
+        get => _ringSlot;
+        set { _ringSlot = value; InvalidateVisual(); }
+    }
     IReadOnlyDictionary<SlotId, string> _keys = new Dictionary<SlotId, string>();
     internal static readonly (BuffKind Kind, string Name, Color Color)[] Buffs =
     [
@@ -205,8 +216,13 @@ sealed class TimelineView : FrameworkElement
         var seen = new TimeWindow(_window.From + offset, _window.To + offset);   // the seconds shown, on this record's clock
         bool zoomed = _window.From > 0 || _window.To < r.Duration - offset;
         double bottom = y + Block;
-        string level = string.IsNullOrEmpty(r.Difficulty) ? "" : $" [{r.Difficulty}]";
-        Text(dc, $"{r.StartedAt:MM-dd HH:mm} · {r.Gate ?? "알 수 없음"}{level} · {Clock(r.Duration)}", new(0, y + 2), 12, fg, bold: true, width: ActualWidth);
+        // date · [logo] raid [difficulty] · length (user, 2026-11-10; RaidBadgeView)
+        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        double x = Text(dc, $"{r.StartedAt:MM-dd HH:mm} · ", new(0, y + 2), 12, fg, bold: true, width: ActualWidth);
+        x += RaidBadgeView.Draw(dc, new(x, y + 1), r.Gate, null, 11 * _font, HeadH - 2, dpi);
+        x += Text(dc, $"{r.Gate ?? "알 수 없음"} ", new(x, y + 2), 12, fg, bold: true, width: Math.Max(1, ActualWidth - x));
+        x += RaidBadgeView.Draw(dc, new(x, y + 1), null, r.Difficulty, 11 * _font, HeadH - 2, dpi);
+        Text(dc, $" · {Clock(r.Duration)}", new(x, y + 2), 12, fg, bold: true, width: Math.Max(1, ActualWidth - x));
         y += HeadH;
         dc.PushClip(new RectangleGeometry(new(LabelW, y, PlotW, bottom - y)));
         foreach (double p in r.Phases.Where(p => !_gimmicks.Any(m => Math.Abs(m.T - p) <= SamePhase))) { double px = X(p, offset); dc.DrawLine(PhasePen, new(px, y), new(px, bottom)); }
@@ -458,6 +474,11 @@ sealed class TimelineView : FrameworkElement
         {
             var at = new Rect(lefts[i], y + 2 + places[i].Top, size, size);
             var slot = (SlotId)casts[i].What;
+            Face(at, slot);
+            if (slot == _ringSlot) dc.DrawRoundedRectangle(null, GoldRing, at, 3, 3);
+        }
+        void Face(Rect at, SlotId slot)
+        {
             var face = _useIcons ? icons.GetValueOrDefault(slot) : null;
             if (face?.Image is { } img) { dc.DrawImage(img, at); return; }
             if (face?.Skill is { } skill)   // a name chip, coloured by kind (user, 2026-11-05)
@@ -469,8 +490,8 @@ sealed class TimelineView : FrameworkElement
             dc.DrawRoundedRectangle(chip, null, at, 3, 3);
             Text(dc, SlotKey(slot), new(at.X + 1, at.Y + 1), 9, fg, bold: true, width: Math.Max(1, size - 2));
         }
-        for (int i = 0; i < casts.Count; i++)
-            if (!hovered.Contains(i) && casts[i].T >= seen.From - Timeline.IconSeconds - 1 && casts[i].T <= seen.To + 1) Draw(i);
+        var shown = Enumerable.Range(0, casts.Count).Where(i => !hovered.Contains(i) && casts[i].T >= seen.From - Timeline.IconSeconds - 1 && casts[i].T <= seen.To + 1);
+        foreach (int i in shown.OrderBy(i => casts[i].What == (int?)_ringSlot)) Draw(i);   // stable: time order, the ringed ones on top
         foreach (int i in hovered) Draw(i);
         dc.Pop();
     }
@@ -561,7 +582,7 @@ sealed class TimelineView : FrameworkElement
             string count = _hpPerLine(max) is { } size ? $" · {BossHpGraph.LinesLeft(left, size)}줄" : "";
             double at = CurveY(hp.Hp / _bossTop);
             tags.Add(new(at, $"보스 HP {BossHpGraph.AmountText(left)}{count} ({hp.Hp * 100:0.0}%)", TipText, TagLine.Solid, at));
-            if (hp.Shield > 0) tags.Add(new(at, $"보스 실드 +{hp.Shield * 100:0.0}%", BossBadInk));
+            if (hp.Shield > 0) tags.Add(new(at, $"보스 보호막 +{hp.Shield * 100:0.0}%", BossBadInk));
             foreach (var heal in _bossHp.SelectMany(b => b.Heals).Where(h => h.From <= t && t <= h.To))
                 tags.Add(new(at, $"보스 회복 +{heal.Gain * 100:0.0}%", BossBadInk));
         }

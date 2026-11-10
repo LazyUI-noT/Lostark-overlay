@@ -11,9 +11,11 @@ public sealed record WatchDecision(string Raid, string? Difficulty, WatchOutcome
 /// <summary>The boss bar's text this step: HP now and max HP.</summary>
 public sealed record WatchRead(long Current, long Max);
 
-/// <summary><paramref name="Blocked"/>: the game shows nothing to judge by (HUD hidden, another app in front, 대난투); nothing is
-/// decided and the bar-gone clock waits. <paramref name="NameGate"/>: the gate 자동 인식 recognises by name.</summary>
-public sealed record WatchContext(bool Blocked, RaidGate? NameGate, TimeSpan Now);
+/// <summary><paramref name="Blocked"/>: the game shows nothing to judge by (HUD hidden, another app in front); nothing is
+/// decided and the bar-gone clock waits. <paramref name="NameGate"/>: the gate 자동 인식 recognises by name.
+/// <paramref name="Daenantu"/>: 대난투 is up (its number read): no bar, and no bar gone, until <see cref="FightRecorder.ShadowEndAfter"/> after it.
+/// <paramref name="DaenantuKilled"/>: the boss died in 대난투 (its number reached the boss HP): the bar that went with it was a kill, not the last read.</summary>
+public sealed record WatchContext(bool Blocked, RaidGate? NameGate, TimeSpan Now, bool Daenantu = false, bool DaenantuKilled = false);
 
 /// <summary>A boss bar being followed: its gate (by max HP, else by name once the bar has run a while) and difficulty (by max HP only).</summary>
 public sealed record WatchFight(RaidGate? Gate, string? Difficulty, long Max, long Current, TimeSpan Since, TimeSpan Seen, int HiddenReads = 0);
@@ -24,8 +26,11 @@ public sealed record WatchEnded(WatchFight Fight, TimeSpan At, WatchDecision? De
 /// <summary>숙제's fallback (pyosi-map.plan.md): with the meter or 전투 기록 off there is no recorded fight, so a raid's clear is worked
 /// out from the boss bar alone, by the thresholds and the next-boss rule of <see cref="FightRecorder"/> and <see cref="FightVerdict"/>.
 /// Raid gates of raids.json only. Pure; stepped about once a second.</summary>
-public sealed record HomeworkWatch(WatchFight? Now, WatchEnded? Last)
+/// <paramref name="DaenantuAt"/>: when 대난투 was last up. <paramref name="Killed"/>: the followed boss died in 대난투 (a real bar read takes it back).
+public sealed record HomeworkWatch(WatchFight? Now, WatchEnded? Last, TimeSpan? DaenantuAt = null, bool Killed = false)
 {
+    static readonly TimeSpan DaenantuHold = TimeSpan.FromSeconds(FightRecorder.ShadowEndAfter);
+
     public static readonly HomeworkWatch None = new(null, null);
 
     /// <summary>The same boss after a decision, this soon, is a retry: the wipe took the clear back.</summary>
@@ -39,7 +44,11 @@ public sealed record HomeworkWatch(WatchFight? Now, WatchEnded? Last)
 
     public (HomeworkWatch State, WatchDecision? Decision) Step(WatchRead? read, WatchContext ctx, IReadOnlyList<RaidGate> gates, IReadOnlyList<HomeworkRaid> raids)
     {
-        if (ctx.Blocked) return (this with { Now = Now is { } held ? held with { Seen = ctx.Now } : null }, null);
+        if (ctx.DaenantuKilled && read is null && Now is not null && !Killed) return (this with { Killed = true }).Step(read, ctx, gates, raids);
+        var at = ctx.Daenantu ? ctx.Now : DaenantuAt;
+        bool daenantu = at is { } on && ctx.Now - on < DaenantuHold;   // 대난투 shows no boss HP (user, 2026-11-08)
+        if (ctx.Blocked || daenantu && read is null)
+            return (this with { Now = Now is { } held ? held with { Seen = ctx.Now } : null, DaenantuAt = at }, null);
         if (read is null)
             return Now is { } f && ctx.Now - f.Seen >= TimeSpan.FromSeconds(FightRecorder.BarGoneFor) ? BarGone(f, ctx, raids) : (this, null);
         return FightRegions.IsHidden(read.Max) ? HiddenBar(ctx, raids) : Bar(read, ctx, gates, raids);
@@ -48,8 +57,12 @@ public sealed record HomeworkWatch(WatchFight? Now, WatchEnded? Last)
     /// <summary>One read of a tiny max is a misread ("1/2" at 1 HP), not the ??? phase.</summary>
     static bool WentHidden(WatchFight f) => f.HiddenReads >= HiddenReadsNeeded;
 
+    /// <summary>A boss killed in 대난투 shows no last bar: its HP counts as 0.</summary>
+    WatchFight Judged(WatchFight f) => Killed ? f with { Current = 0 } : f;
+
     (HomeworkWatch, WatchDecision?) BarGone(WatchFight f, WatchContext ctx, IReadOnlyList<HomeworkRaid> raids)
     {
+        f = Judged(f);
         var decision = WentHidden(f) ? null : Finishing(f, OutcomeAt(f, null), raids);   // a raid that went on to ??? was judged there
         return (new HomeworkWatch(null, new WatchEnded(f, ctx.Now, decision)), decision);
     }
@@ -65,11 +78,11 @@ public sealed record HomeworkWatch(WatchFight? Now, WatchEnded? Last)
     (HomeworkWatch, WatchDecision?) Bar(WatchRead read, WatchContext ctx, IReadOnlyList<RaidGate> gates, IReadOnlyList<HomeworkRaid> raids)
     {
         if (Now is { } f && !FightVerdict.ByMaxes([f.Max], read.Max))
-            return (this with { Now = Follow(f, read, ctx, gates) }, null);
+            return (this with { Now = Follow(f, read, ctx, gates), Killed = false }, null);
         // The same bar back still low is the fight going on (at 1 HP it can drop out for seconds); a retry starts near full.
         if (Now is null && Last is { } back && !FightVerdict.ByMaxes([back.Fight.Max], read.Max) && read.Current < read.Max * MidShare)
             return (new HomeworkWatch(Follow(back.Fight, read, ctx, gates), null), null);
-        var ended = Now is { } n ? new WatchEnded(n, n.Seen, null) : Last;   // a bar that never went away, or one that did
+        var ended = Now is { } n ? new WatchEnded(Judged(n), n.Seen, null) : Last;   // a bar that never went away, or one that did
         var decision = ended is null ? null : Judge(ended, read.Max, gates, raids, ctx.Now);
         var start = new WatchFight(null, null, read.Max, read.Current, ctx.Now, ctx.Now);
         return (new HomeworkWatch(Follow(start, read, ctx, gates), null), decision);

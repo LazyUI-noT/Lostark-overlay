@@ -17,6 +17,7 @@ public sealed partial class AdjustLayer
     [
         (AdjustPart.스킬창, "스킬창", Color.FromRgb(0xFF, 0xD2, 0x4A)), (AdjustPart.버프, "버프 줄", Color.FromRgb(0x1B, 0xA8, 0xE0)),
         (AdjustPart.디버프, "디버프 줄", Color.FromRgb(0xE8, 0x26, 0x2B)), (AdjustPart.보스, "보스 줄", Color.FromRgb(0xA0, 0x4F, 0xB0)),
+        (AdjustPart.전분, "전분", Color.FromRgb(0xF0, 0x8A, 0x3C)),
     ];
     static readonly Color Good = Color.FromRgb(0x3B, 0xD1, 0x6F);
     const string Keys = "끌기: 옮기기 · 모서리 네모: 크기 · ←↑→↓ 1px (Shift 10px) · Alt+↑↓ 또는 + − 크기 (Shift 10) · Tab 다음 상자 · Ctrl+Z 처음으로 · Enter 적용 · Esc 닫기";
@@ -26,6 +27,7 @@ public sealed partial class AdjustLayer
     readonly TextBlock _result = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, Opacity = 0.85, MaxWidth = 560 };
     readonly TranslateTransform _toolbarAt = new();
     Point? _toolbarDrag;
+    Button? _apply;   // lit while the edit differs from the saved fit (FitAdjust.Changed)
 
     /// <summary>The toolbar at the top centre of the area; dragged by its background out of the way.</summary>
     FrameworkElement BuildToolbar()
@@ -38,7 +40,8 @@ public sealed partial class AdjustLayer
         }
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 6, 0, 0) };
         buttons.Children.Add(B("되돌리기", () => { if (_adj is { } a) Changed(a.Reverted()); }));
-        buttons.Children.Add(B("적용", Apply));
+        _apply = B("적용", Apply);
+        buttons.Children.Add(_apply);
         buttons.Children.Add(B("닫기", Dismiss));
         var panel = new StackPanel();
         panel.Children.Add(_part);
@@ -67,6 +70,7 @@ public sealed partial class AdjustLayer
 
     void Redraw()
     {
+        if (_apply is { } apply) UiBuild.MarkUnapplied(apply, _adj?.Changed == true);
         _boxes.Children.Clear();
         if (_adj is not { } a) return;
         foreach (var (part, name, color) in Parts)
@@ -100,13 +104,7 @@ public sealed partial class AdjustLayer
     /// <summary>After 적용 the game is brought to the front for the ready slots, so the keys go to it until the layer is clicked.</summary>
     void ShowFocus() => _focus.Visibility = IsActive ? Visibility.Collapsed : Visibility.Visible;
 
-    bool ReadsWell(AdjustPart part) => _reads is { } r && (part switch
-    {
-        AdjustPart.스킬창 => r.Bar,
-        AdjustPart.버프 => r.Buff == true,
-        AdjustPart.디버프 => r.Debuff == true,
-        _ => r.Boss == true,
-    });
+    bool ReadsWell(AdjustPart part) => _reads?.Of(part) == true;
 
     /// <summary>The toolbar's first line: the picked part and its values.</summary>
     static string Describe(FitAdjust a, AdjustPart part)
@@ -118,6 +116,7 @@ public sealed partial class AdjustLayer
             AdjustPart.스킬창 => $"스킬창 · HUD {TestFits.Offsets(a.Current, Geometry.Scale(a.Vp, a.Current))}",
             AdjustPart.버프 => $"버프 줄 · 버프 크기 {a.BuffSize}% (디버프 줄과 같이) · {Px(x)}, {Px(y)} px",
             AdjustPart.디버프 => $"디버프 줄 · 버프 크기 {a.BuffSize}% (버프 줄과 같이) · {Px(x)}, {Px(y)} px",
+            AdjustPart.전분 => $"전분 · {a.Panel.Width}×{a.Panel.Height} · {Px(x)}, {Px(y)} px",
             _ => $"보스 줄 · {a.BossPercent}% · {Px(x)}, {Px(y)} px",
         };
     }

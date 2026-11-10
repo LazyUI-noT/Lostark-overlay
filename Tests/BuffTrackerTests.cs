@@ -105,6 +105,21 @@ public class BuffTrackerTests
     public void A_new_buff_takes_the_tens_that_fits_a_known_duration(BuffKind k, double shown, double seconds) =>
         Assert.Equal(T(seconds), Run(k, (0, [shown])).EndsAt);
 
+    // The icon's shine (50–83 ms every 0.75 s, icon-gates.plan.md Latency) hides it for up to two reads at a 50 ms poll:
+    // the buff stays. Gone for 100 ms (two reads at 100 ms, three at 50 ms) it is absent, at either poll.
+    [Theory]
+    [InlineData(0.05, 2, true)]
+    [InlineData(0.05, 3, false)]
+    [InlineData(0.1, 1, true)]
+    [InlineData(0.1, 2, false)]
+    public void A_buff_stays_through_misses_shorter_than_100_ms_at_any_poll(double every, int misses, bool active)
+    {
+        var steps = new List<(double, double?[])> { (0, [16]) };
+        for (int i = 1; i <= misses; i++) steps.Add((i * every, []));
+
+        Assert.Equal(active, Run(BuffKind.아덴피증, [.. steps]).Active);
+    }
+
     [Fact]
     public void A_buff_hidden_by_the_glare_resumes_with_its_total()
     {
