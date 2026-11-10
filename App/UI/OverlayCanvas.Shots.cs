@@ -16,6 +16,15 @@ public sealed partial class OverlayCanvas
     /// <summary>The sample screen, over the whole screen.</summary>
     public void ShowSampleScreen() => ShowPicture(new BitmapImage(SampleScreen), null);
 
+    /// <summary>One colour under the overlays, no picture (설정 → 미리보기 배경화면).</summary>
+    public void ShowColour(Color colour)
+    {
+        _shot.Source = null;
+        var brush = new SolidColorBrush(colour);
+        Background = brush;
+        if (_frame is not null) _frame.Fill = brush;   // the scene's game backdrop lies over the canvas background
+    }
+
     /// <summary>Over the screen area it shows (physical pixels → DIP), or over the whole screen.</summary>
     public void ShowPicture(BitmapSource picture, PixelRect? area)
     {

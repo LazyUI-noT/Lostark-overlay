@@ -15,7 +15,7 @@ public sealed record DetectInputs(bool Seen, bool HasFit, bool? HudVisible, bool
 
 /// <summary>A picture of a reader's area plus a margin (<see cref="DetectBoard.Around"/>): kept from the moment its mark
 /// turned (✓ or !), or Live. Shown once on the 감지 page, never compared as a reference (detection.md).</summary>
-public sealed record DetectPicture(Image Picture, PixelRect Area, TimeSpan At);
+public sealed record DetectPicture(Image Picture, PixelRect Area, TimeSpan At, string? Id = null);   // Id: the box it was taken for
 
 /// <summary>Every reader's 감지 중, keyed by its 표시 map box (<see cref="FeatureMap.Boxes"/>). Pure: the engine steps it with
 /// <see cref="DetectInputs"/> and puts it in the snapshot.</summary>

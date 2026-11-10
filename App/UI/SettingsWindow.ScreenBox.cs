@@ -14,16 +14,24 @@ public partial class SettingsWindow
     readonly Border _screenBox = new()
     {
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new(10),
-        Padding = new(10, 6, 10, 8), CornerRadius = new(6), BorderThickness = new(1), Opacity = 0.94,
+        Padding = new(10, 6, 10, 8), CornerRadius = new(6), BorderThickness = new(1),
     };
 
-    /// <summary>The canvas with the box over its top left corner.</summary>
+    /// <summary>The canvas with the box over its top left corner. The Fluent themes leave the nav brush unset, so an
+    /// opaque Fluent base sits under it: the map art never shows through the box (user, 2026-11-10).</summary>
     Grid WithScreenBox(UIElement canvas)
     {
         _screenBox.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         _screenBox.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        var solid = new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = _screenBox.Margin,
+            CornerRadius = _screenBox.CornerRadius, Child = _screenBox,
+        };
+        _screenBox.Margin = default;
+        solid.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
         FillScreenBox();
-        return new Grid { Children = { canvas, _screenBox } };
+        return new Grid { Children = { canvas, solid } };
     }
 
     /// <summary>Refilled with 스킬창 맞추기's page (FillFit): a fit, 직접 입력, 버프 크기 or the game window changed.</summary>

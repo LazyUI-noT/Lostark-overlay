@@ -20,17 +20,17 @@ public class PreviewSimTests
     public void Auto_play_uses_skills_and_buffs_in_turn_without_clicks()
     {
         var sim = new PreviewSim(Sample(), T0);
-        sim.Auto(At(0), sections: 3);
-        sim.Auto(At(0), sections: 3);   // the same moment twice: one step
+        sim.Auto(At(0), GaugePlay.Plain);
+        sim.Auto(At(0), GaugePlay.Plain);   // the same moment twice: one step
         var first = sim.At(At(0.1));
         Assert.Equal(SlotPhase.Cooldown, first.Slots.Single(x => x.Slot == SlotId.일반1).Phase);
         Assert.DoesNotContain(first.Buffs, b => b.Active);
-        sim.Auto(At(1), sections: 3);   // the next step: a buff
+        sim.Auto(At(1), GaugePlay.Plain);   // the next step: a buff
         var next = sim.At(At(1.1));
         Assert.True(next.Buffs.Single(b => b.Kind == BuffKind.공증).Active);
         Assert.Equal(SlotPhase.Ready, next.Slots.Single(x => x.Slot == SlotId.일반2).Phase);
         // A long gap (the page was hidden) doesn't replay every missed step at once.
-        sim.Auto(At(600), sections: 3);
+        sim.Auto(At(600), GaugePlay.Plain);
         Assert.True(sim.At(At(600.1)).Slots.Count(x => x.Phase == SlotPhase.Cooldown) <= 1);
     }
 
@@ -61,18 +61,29 @@ public class PreviewSimTests
     [InlineData(1, JudgmentPhase.Ready)]
     [InlineData(4, JudgmentPhase.Active)]
     [InlineData(20, JudgmentPhase.Cooldown)]
-    [InlineData(33, JudgmentPhase.Ready)]
+    [InlineData(35, JudgmentPhase.Ready)]
     [InlineData(40, JudgmentPhase.Active)]   // the next loop
     public void 단심_plays_its_cycle(double at, JudgmentPhase phase)
     {
         Assert.Equal(phase, new PreviewSim(Sample(), T0).At(At(at)).Judgment!.Phase(At(at)));
     }
 
+    [Theory]
+    [InlineData(0.5, null)]
+    [InlineData(1, 3.0)]      // 단죄 at 1 s: its 3 s
+    [InlineData(2.5, 1.5)]
+    [InlineData(4.5, null)]   // 심판 from 4 s
+    public void 단죄_plays_3_s_before_심판(double at, double? left)
+    {
+        var s = new PreviewSim(Sample(), T0).At(At(at)).Judgment!;
+        Assert.Equal(left, s.ConvictionLeft(At(at)) is { } l ? Math.Round(l, 3) : null);
+    }
+
     [Fact]
     public void 단심_flashes_when_ready()
     {
-        var s = new PreviewSim(Sample(), T0).At(At(32.1)).Judgment!;
-        Assert.True(s.Icon(At(32.1)).Flash);
+        var s = new PreviewSim(Sample(), T0).At(At(34.1)).Judgment!;
+        Assert.True(s.Icon(At(34.1))?.Flash);
     }
 
     [Fact]
@@ -98,4 +109,84 @@ public class PreviewSimTests
     [Fact]
     public void 암수_stays_off_when_not_in_the_sample() =>
         Assert.Null(new PreviewSim(Sample(amsu: false), T0).At(At(5)).Amsu);
+
+    static double? AmsuLeft(PreviewSim sim, double at)
+    {
+        var (shown, left, _) = Amsu.View(sim.At(At(at)).Amsu!, At(at));
+        return shown is null ? null : Math.Round(left, 3);
+    }
+
+    [Fact]
+    public void A_click_on_the_amsu_window_throws_it_then_leaves_5_s_then_ends_it_then_throws_again()
+    {
+        var sim = new PreviewSim(Sample(), T0);
+        Assert.Null(AmsuLeft(sim, 0));
+        sim.Skip(OverlayPart.Amsu, At(0));
+        Assert.Equal(20, AmsuLeft(sim, 0));   // full at once, not after the loop's 1 s
+        sim.Skip(OverlayPart.Amsu, At(0));
+        Assert.Equal(5, AmsuLeft(sim, 0));    // 5 s left, then it drains
+        Assert.Equal(3, AmsuLeft(sim, 2));
+        sim.Skip(OverlayPart.Amsu, At(2));
+        Assert.Null(AmsuLeft(sim, 2));        // gone
+        sim.Skip(OverlayPart.Amsu, At(2));
+        Assert.Equal(20, AmsuLeft(sim, 2));   // thrown again, no empty click between
+    }
+
+    [Fact]
+    public void A_click_on_a_box_with_under_1_s_left_ends_it_instead_of_replaying_the_last_second()
+    {
+        var sim = new PreviewSim(Sample(), T0);
+        sim.Click(Part.일반1, At(0));                        // ready → 5 s cooldown
+        sim.Click(Part.일반1, At(1));                        // → 1 s left
+        sim.Click(Part.일반1, At(1.5));                      // 0.5 s left: ready now
+        var slot = sim.At(At(1.5)).Slots.Single(x => x.Slot == SlotId.일반1);
+        Assert.Equal(SlotPhase.Ready, slot.Phase);
+        Assert.Equal(At(1.5), slot.ChangedAt);              // its ready shine starts now
+        sim.Click(Part.일반1, At(1.6));                      // and the next click starts it again
+        Assert.Equal(SlotPhase.Cooldown, sim.At(At(1.6)).Slots.Single(x => x.Slot == SlotId.일반1).Phase);
+    }
+
+    [Fact]
+    public void A_click_on_a_buff_with_under_1_s_left_ends_it()
+    {
+        var sim = new PreviewSim(Sample(), T0);
+        var bar = FreeLayout.FirstBuff + (int)BuffKind.공증;
+        sim.Click(bar, At(0));
+        sim.Click(bar, At(1));                               // → 1 s left
+        sim.Click(bar, At(1.5));                             // 0.5 s left: off now
+        Assert.False(sim.At(At(1.5)).Buffs.Single(b => b.Kind == BuffKind.공증).Active);
+    }
+
+    [Fact]
+    public void A_click_on_a_loop_under_1_s_before_its_next_change_goes_past_it()
+    {
+        var sim = new PreviewSim(Sample(), T0);
+        var now = At(33.5);
+        Assert.Equal(JudgmentPhase.Cooldown, sim.At(now).Judgment!.Phase(now));
+        sim.Skip(OverlayPart.Judgment, now);                 // 0.5 s to ready: past it, to the loop's start
+        Assert.Equal(JudgmentPhase.Ready, sim.At(now).Judgment!.Phase(now));
+        Assert.Null(sim.At(now).Judgment!.ConvictionLeft(now));
+        sim.Skip(OverlayPart.Judgment, now);                 // the next click: 단죄, its full 3 s
+        Assert.Equal(3, sim.At(now).Judgment!.ConvictionLeft(now));
+        sim.Skip(OverlayPart.Judgment, now);                 // then 심판
+        Assert.Equal(JudgmentPhase.Active, sim.At(now).Judgment!.Phase(now));
+    }
+
+    [Fact]
+    public void A_click_on_the_judgment_window_triggers_it_and_leaves_the_others_alone()
+    {
+        var sim = new PreviewSim(Sample(), T0);
+        var debuffsBefore = sim.At(At(0)).Debuffs;
+        sim.Skip(OverlayPart.Judgment, At(0));
+        Assert.NotEqual(JudgmentState.Ready, sim.At(At(0)).Judgment);
+        Assert.Equal(debuffsBefore, sim.At(At(0)).Debuffs);
+        sim.Skip(OverlayPart.Skills, At(0));   // not a loop: nothing
+    }
+
+    [Theory]
+    [InlineData(0, 1)]      // to the first phase
+    [InlineData(1, 20)]     // on a phase: to the next one
+    [InlineData(22, 2)]     // past the last: to the loop's start
+    public void To_next_phase_counts_to_the_next_change(double t, double expected) =>
+        Assert.Equal(expected, PreviewSim.ToNextPhase(t, [1, 21], 24), 6);
 }

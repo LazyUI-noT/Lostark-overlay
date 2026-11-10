@@ -319,11 +319,14 @@ public partial class SettingsWindow : Window
     {
         FillScreenBox();   // the canvas box shows the same values
         var p = Refill(_secFit, "스킬창 맞추기", "스킬을 쓸 수 있는 곳에서 모든 스킬의 쿨타임이 끝난 상태로 가만히 서서 누르세요 (수련장에서는 쿨초). 해상도나 게임의 HUD 크기를 바꾼 뒤에도 다시 맞추세요. 맞추면서 클래스도 다시 확인하고, 직업각인은 기억한 값이 있으면 그대로 씁니다.");
-        if (_s.Fits.Count == 0) p.Children.Add(Label("아직 맞춘 적이 없습니다.", 0.7));
-        foreach (var (size, fit) in _s.Fits)
-            p.Children.Add(Row(size, Label($"HUD {fit.Hud:0.#}%" + (_s.Adjusts.TryGetValue(size, out var adj) ? $" · 수동 조정 HUD {adj.Hud:0.#}%" : ""))));
-        foreach (var (size, adj) in _s.Adjusts.Where(a => !_s.Fits.ContainsKey(a.Key)))
-            p.Children.Add(Row(size, Label($"수동 조정 HUD {adj.Hud:0.#}%")));
+        // ponytail: read when the page fills (open, game found/lost, a fit); a test fit found later shows on the next refill
+        bool test = GameWindow.TestMode;
+        foreach (var row in FitList.Rows(_s, GameArea?.Invoke(), test, test ? FitHud?.Invoke() : null))
+        {
+            var name = Label(row.Label, row.InUse ? 1 : 0.6);
+            if (row.InUse) name.FontWeight = FontWeights.SemiBold;
+            p.Children.Add(Row(name, Label(row.Value + (row.InUse ? "  · 사용 중" : ""), row.InUse ? 1 : 0.6)));
+        }
 
         // 스킬창 위치: 자동 / 직접 입력 / 수동 조정 (the last only once one was applied in the debug window).
         var mode = _s.FitMode;

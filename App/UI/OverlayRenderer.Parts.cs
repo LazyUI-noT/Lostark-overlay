@@ -73,7 +73,7 @@ public sealed partial class OverlayRenderer
     /// direction <see cref="EndFlashSweeps"/> times, the last one ending at 0 (steady under reduced motion).
     void DrawBuff(DrawingContext dc, Rect r, Color c, BuffState? st, bool label, bool flash, TimeSpan now, bool reduced)
     {
-        dc.DrawRoundedRectangle(Solid(Level(c, ChangedOffLevel)), null, r, BoxRadius, BoxRadius);
+        dc.DrawRoundedRectangle(Solid(Level(c, BuffTrackLevel)), null, r, BoxRadius, BoxRadius);
         if (st is not { Active: true }) return;
         dc.PushClip(BoxClip(r));
         bool upright = r.Height > r.Width;

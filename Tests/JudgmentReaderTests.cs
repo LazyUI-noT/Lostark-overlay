@@ -48,6 +48,29 @@ public class JudgmentReaderTests
         Assert.Empty(wrong);
     }
 
+    // 단죄 (user, 2026-11-10): in box 0 of judg_row until 심판 replaces it (48.15 s), and on and off in box 0 of dz_row
+    // (단죄여려번.mp4). Never in another box or another row, never once 심판 is there.
+    [Fact]
+    public void 단죄_is_found_in_box_0_and_nothing_else_ever_is()
+    {
+        var wrong = new List<string>();
+        int dz = 0;
+        foreach (var (name, vp, fit, buff) in Rows)
+        {
+            var f = Fixture.Load(name);
+            for (int i = 0; i < f.Frames.Count; i++)
+                foreach (var (box, icon) in BoxesIn(f, vp, fit, buff))
+                {
+                    bool got = JudgmentReader.IsConviction(f.Frames[i], icon);
+                    if (name == "dz_row" && box == 0) { dz += got ? 1 : 0; continue; }
+                    bool want = name == "judg_row" && box == 0 && f.Pts[i].TotalSeconds < 48.15;
+                    if (got != want) wrong.Add($"{name} {f.Pts[i].TotalSeconds:0.00} s box {box}");
+                }
+        }
+        Assert.Empty(wrong);
+        Assert.True(dz > 0, "단죄 never found in dz_row");
+    }
+
     // icon-gates step 3: the engine asks through IconGate, identifying a box only when its thumbnail moved. Same verdict
     // as IsIcon on every frame of every row, and far fewer matches than frames × boxes.
     [Fact]

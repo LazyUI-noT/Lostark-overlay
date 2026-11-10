@@ -25,7 +25,7 @@ public partial class SettingsWindow
     void BuildCanvasPage()
     {
         var canvas = _canvas = new OverlayCanvas(_s, _chars);
-        canvas.Play.Auto = () => PreviewPlayer.Sections(_s, _chars, PreviewTarget);   // ▶ plays a fight on its own; a click still uses a box
+        canvas.Play.Auto = () => PreviewPlayer.Gauge(_s, _chars, PreviewTarget);   // ▶ plays a fight on its own; a click still uses a box
         canvas.Selected += ShowInspector;
         canvas.GestureStarted += RecordStep;
         canvas.Changed += () => { ResetBaseline(); SettingsChanged?.Invoke(); LayoutChanged?.Invoke(); };

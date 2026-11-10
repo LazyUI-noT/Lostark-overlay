@@ -78,9 +78,10 @@ public partial class SettingsWindow
     void DetectAreasChanged(Snapshot mine)
     {
         (_detectAreas, _detectView, _detectPictures) = (mine.DetectAreas, mine.DetectView, mine.DetectPictures);
-        if (!_detectPaused) _detectLive = mine.DetectLive;   // paused: the last picture stays
+        if (!_detectPaused) _detectLive = mine.DetectLive is { } picture && picture.Id == _detectLiveId ? picture : null;   // paused: the last picture stays; a late one of another box never shows
         foreach (var gone in _detectBitmaps.Keys.Where(k => k != _detectLive?.Picture && !_detectPictures.Values.Any(p => p.Picture == k)).ToList()) _detectBitmaps.Remove(gone);
         if (_secDetect.IsVisible && DetectSignature() != _detectDrawn) { RefreshGreen(); DrawDetect(); }
+        if (_mapLivePicture is { } shown && _detectLive is { } live) shown.Source = BitmapOf(live);   // 표시 map: the chip's card follows Live
     }
 
     string DetectSignature() => string.Join(";", _detectAreas.Select(a => $"{a.Key}{a.Value}{_detect.GetValueOrDefault(a.Key)?.Mark}{_detectPictures.GetValueOrDefault(a.Key)?.At}"))

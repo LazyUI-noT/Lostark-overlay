@@ -39,10 +39,12 @@ public sealed class EditorView(double scale, double offsetX, double offsetY)
 
     /// <summary>설정 → 표시 (user, 2026-11-01): the world rect (<paramref name="x"/>, <paramref name="y"/>, <paramref name="w"/>,
     /// <paramref name="h"/>) round the windows plus <paramref name="margin"/>, fitted and centred; never larger than the game's own size.</summary>
-    public static EditorView Around(double viewW, double viewH, double x, double y, double w, double h, double margin)
+    /// <param name="maxScale">How far it may zoom in: 1 (100%) for the 기능 맵 scene; a page's preview goes further so a small
+    /// window reads (user, 2026-11-10).</param>
+    public static EditorView Around(double viewW, double viewH, double x, double y, double w, double h, double margin, double maxScale = 1)
     {
         double ww = w + 2 * margin, wh = h + 2 * margin;
-        double scale = Math.Clamp(Math.Min(viewW / ww, viewH / wh), MinScale, 1);
+        double scale = Math.Clamp(Math.Min(viewW / ww, viewH / wh), MinScale, Math.Clamp(maxScale, MinScale, MaxScale));
         return new(scale, viewW / 2 - (x + w / 2) * scale, viewH / 2 - (y + h / 2) * scale);
     }
 

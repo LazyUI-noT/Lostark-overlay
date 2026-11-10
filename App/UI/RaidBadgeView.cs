@@ -72,7 +72,7 @@ public static class RaidBadgeView
             {
                 Background = Fill(RaidBadge.Tier(difficulty)), CornerRadius = new(size * CornerPerSize), Padding = new(size * 0.7, 1, size * 0.7, 1.5),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock { Text = difficulty, FontSize = size, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White },
+                Child = new TextBlock { Text = RaidBadge.Label(difficulty), FontSize = size, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White },
             });
         return row;
     }
@@ -90,7 +90,7 @@ public static class RaidBadgeView
         if (string.IsNullOrWhiteSpace(difficulty)) return x - at.X;
         var key = (difficulty, size, pixelsPerDip);   // TimelineView redraws on every mouse move: measure each capsule once
         if (!Texts.TryGetValue(key, out var text))
-            Texts[key] = text = new FormattedText(difficulty, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, size, Brushes.White, pixelsPerDip);
+            Texts[key] = text = new FormattedText(RaidBadge.Label(difficulty), CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, size, Brushes.White, pixelsPerDip);
         double pad = size * 0.7, h = Math.Min(height, text.Height + 2);
         var box = new Rect(x, at.Y + (height - h) / 2, text.Width + pad * 2, h);
         dc.DrawRoundedRectangle(Fill(RaidBadge.Tier(difficulty)), null, box, size * CornerPerSize, size * CornerPerSize);

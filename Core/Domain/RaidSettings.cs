@@ -2,9 +2,6 @@ using GaugeOverlay.Core.Data;
 
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>How the 줄 수 창 shows the count: a copy of the game's pixels, or the number read, drawn as text.</summary>
-public enum BarCountLook { 화면그대로, 숫자 }
-
 /// <summary>How long an alert glows: <see cref="RaidSettings.GlowSeconds"/> seconds, or until the count is
 /// <see cref="RaidSettings.GlowBars"/> bars past it.</summary>
 public enum GlowUntil { Seconds, Bars }
@@ -99,7 +96,6 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;
     public int GlowBars { get; set; } = 5;
-    public BarCountLook Look { get; set; } = BarCountLook.숫자;
     /// <summary>A ??? gate's estimate: a support's 조력 피해량 as a share of its party's damage (%), and the other party's damage as a
     /// multiple of the known one when only one party's figures arrive.</summary>
     public double AssistShare { get; set; } = 43.5;

@@ -12,6 +12,7 @@ public sealed partial class Engine
     bool _judgmentOn;
     string? _judgmentFor;   // whose cycle _judgment is
     readonly IconGate<bool> _judgmentIcon = new(JudgmentReader.IsIcon);   // 심판 boxes identified on change (icon-gates 3)
+    readonly IconGate<bool> _convictionIcon = new(JudgmentReader.IsConviction);   // 단죄 boxes, the same way
 
     /// <summary>What to capture for 단심 this step: the buff row (icon) and the band round the character (text), as
     /// <paramref name="plan"/>'s 감지 방식 asks; neither while it is off, between polls or through the cooldown.</summary>
@@ -37,28 +38,35 @@ public sealed partial class Engine
     }
 
     /// <summary>Reads 심판's icon (and its timer) in <paramref name="row"/> and its text in <paramref name="band"/>, either
-    /// may be null (not captured), and moves the cycle. Returns true if its start moved.</summary>
+    /// may be null (not captured), and 단죄's icon and timer in the row; moves the cycle. Returns true if 심판's or 단죄's
+    /// start moved. A 단죄 seen never stops the search for 심판 (user, 2026-11-10: it may start a frame later).</summary>
     bool ReadJudgment(JudgmentPlan plan, Image? row, Image? band, TimeSpan t)
     {
-        bool icon = false, text = false;
-        double? seconds = null;
+        bool icon = false, text = false, conviction = false;
+        double? seconds = null, convictionSeconds = null;
         if (row is not null)
         {
             var origin = Geometry.BuffArea(_vp, _fit!, plan.BuffSize, Geometry.JudgmentBoxCount);
             PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
+            var timers = new BuffReader(Geometry.BuffScale(_vp, plan.BuffSize));
             foreach (var (box, i) in Geometry.BuffBoxes(_vp, _fit!, plan.BuffSize, Geometry.JudgmentBoxCount).Select((b, i) => (b, i)))
             {
-                if (!_judgmentIcon.Classify(row, i, Local(box.Icon))) continue;
-                (icon, seconds) = (true, new BuffReader(Geometry.BuffScale(_vp, plan.BuffSize)).ReadTimer(row, Local(box.Timer)));
-                BoxDebug("심판 아이콘", row, Local(box.Icon), Local(box.Timer), "심판", seconds);
-                break;
+                if (_judgmentIcon.Classify(row, i, Local(box.Icon)))
+                {
+                    (icon, seconds) = (true, timers.ReadTimer(row, Local(box.Timer)));
+                    BoxDebug("심판 아이콘", row, Local(box.Icon), Local(box.Timer), "심판", seconds);
+                    break;
+                }
+                if (conviction || !_convictionIcon.Classify(row, i, Local(box.Icon))) continue;
+                (conviction, convictionSeconds) = (true, timers.ReadTimer(row, Local(box.Timer)));
+                BoxDebug("단죄 아이콘", row, Local(box.Icon), Local(box.Timer), "단죄", convictionSeconds);
             }
         }
         if (band is not null && !icon && _hud.Visible == true) text = JudgmentText.Find(band, _vp.Height / Geometry.ReferenceHeight, plan.FontSize);
-        var next = JudgmentTracker.Update(_judgment, new(icon, text, seconds), t, _hud.Visible == true);
+        var next = JudgmentTracker.Update(_judgment, new(icon, text, seconds, conviction, convictionSeconds), t, _hud.Visible == true);
         if (_config.Debug && band is not null)
             ExtraDebug?.Invoke(new("심판 글자", band.Copy(), text ? "심판" : "없음", next.Phase(t).ToString()));
-        bool moved = next.TriggeredAt != _judgment.TriggeredAt;
+        bool moved = next.TriggeredAt != _judgment.TriggeredAt || next.ConvictionAt != _judgment.ConvictionAt;
         _judgment = next;
         return moved;
     }

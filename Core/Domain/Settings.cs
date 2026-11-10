@@ -149,6 +149,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// (set when 설정 is built, so a first run lights nothing).</summary>
     public Dictionary<string, List<string>>? RailSeen { get; set; }
 
+    /// <summary>설정 pages' 미리보기 배경화면: null = the 배치's saved game screen (else the sample screen), "#RRGGBB" = one
+    /// colour, anything else = a picture file the user picked (user, 2026-11-10).</summary>
+    public string? PreviewBack { get; set; }
+
     /// <summary>Skill-bar fit per viewport size, keyed "W×H" (Geometry.ViewportKey).</summary>
     public Dictionary<string, Fit> Fits { get; set; } = [];
 

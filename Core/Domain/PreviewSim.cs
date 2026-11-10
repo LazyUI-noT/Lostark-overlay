@@ -1,9 +1,53 @@
+using GaugeOverlay.Core.Data;
+
 namespace GaugeOverlay.Core.Domain;
+
+/// <summary>How the preview's gauge moves for one class: a click fills to the next of <paramref name="Splits"/> (or the
+/// end), up to <see cref="Top"/>; once there, each click spends as the class does in game (<see cref="GaugeRule.AfterSpend"/>
+/// with its first spend slot) while a spend is possible. A class with a spend rule stops at <see cref="RuleTop"/>, so the
+/// leftover shows (user, 2026-11-10: 전태 a section, 해방자 its 80 %, 바드 every full section); one without fills to full,
+/// then empties.</summary>
+public sealed record GaugePlay(IReadOnlyList<double> Splits, GaugeRule? Rule = null)
+{
+    public const double RuleTop = 0.85;
+    const double Eps = 1e-9;
+    public static readonly GaugePlay Plain = new([]);
+
+    SlotId? SpendSlot => Rule?.Spend.FirstOrDefault()?.Slots.FirstOrDefault();
+    /// <summary><see cref="RuleTop"/> when a spend fires there; else full (the user's splits may leave no full section by
+    /// 85 %), so the gauge never sticks.</summary>
+    double Top => SpendSlot is { } slot && ClassSpend(slot, RuleTop) is not null ? RuleTop : 1;
+
+    /// <summary>One fill click: up to the next section's end, no further than <see cref="Top"/>.</summary>
+    public double Filled(double gauge) => Math.Min(Top, Splits.Append(1).FirstOrDefault(e => e > gauge + Eps, 1));
+
+    public bool AtTop(double gauge) => gauge >= Top - Eps;
+
+    /// <summary>What one spend leaves of <paramref name="gauge"/>; null: nothing to spend.</summary>
+    public double? AfterSpend(double gauge) =>
+        (SpendSlot is { } slot ? ClassSpend(slot, gauge) : null) ?? (gauge >= 1 - Eps ? 0 : null);
+
+    double? ClassSpend(SlotId slot, double gauge) => (Rule! with { Splits = Splits }).AfterSpend(slot, gauge);
+
+    /// <summary>The 표시 map's 아덴 GIF (user, 2026-11-10): a <see cref="LoopSeconds"/> loop that fills to <see cref="Top"/> in
+    /// <see cref="FillSeconds"/>, then spends as the class does, one spend every <see cref="SpendEvery"/> from
+    /// <see cref="FirstSpend"/> while one is possible, the leftover held to the loop's end.</summary>
+    public double Looped(double seconds)
+    {
+        double t = seconds % LoopSeconds;
+        if (t < FillSeconds) return Top * t / FillSeconds;
+        double gauge = Top;
+        for (double at = FirstSpend; at <= t + Eps && AfterSpend(gauge) is { } next && next < gauge - Eps; at += SpendEvery) gauge = next;
+        return gauge;
+    }
+
+    public const double LoopSeconds = 4, FillSeconds = 0.5, FirstSpend = 1.25, SpendEvery = 0.75;
+}
 
 /// <summary>레이아웃 편집기의 ▶ 실행해 보기: a clicked box acts as if used, so its animations can be watched while its
 /// options change. A ready box starts a <see cref="SkillLength"/> cooldown; a cooling one jumps to <see cref="NearEnd"/>
 /// left (end flash, then the ready shine); a buff bar turns on for <see cref="BuffLength"/>, then jumps likewise; the
-/// gauge fills a section per click and empties when full; 변화 toggles. The debuff and 단심 windows, when the sample has
+/// gauge fills a section per click, then is spent as the class does (<see cref="GaugePlay"/>); 변화 toggles. The debuff and 단심 windows, when the sample has
 /// them, play on loops (user, 2026-10-13). Everything else comes from the sample.</summary>
 public sealed class PreviewSim(Snapshot sample, TimeSpan now)
 {
@@ -18,24 +62,36 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
     readonly Dictionary<BuffKind, TimeSpan> _buffOff = [];
     TimeSpan _start = now - LongAgo;
     double _gauge;
+    bool _spending;
     bool _changed;
 
-    public void Click(Part part, TimeSpan at, int sections = 1)
+    public void Click(Part part, TimeSpan at, GaugePlay? gauge = null)
     {
         Settle(at);
-        if (part == Part.게이지) _gauge = _gauge >= 1 ? 0 : Math.Min(1, (Math.Floor(_gauge * sections + 1e-9) + 1) / sections);
+        if (part == Part.게이지) StepGauge(gauge ?? GaugePlay.Plain);
         else if (part == Part.변화) _changed = !_changed;
         else if (part >= FreeLayout.FirstBuff)
         {
             var kind = (BuffKind)(part - FreeLayout.FirstBuff);
-            _buffEnds[kind] = _buffEnds.ContainsKey(kind) ? at + NearEnd : at + BuffLength;
+            _buffEnds[kind] = _buffEnds.TryGetValue(kind, out var end) ? Sooner(end, at) : at + BuffLength;
         }
         else
         {
             var slot = (SlotId)part;
-            _cooling[slot] = _cooling.TryGetValue(slot, out var c) ? (at + NearEnd, c.Total) : (at + SkillLength, SkillLength);
+            _cooling[slot] = _cooling.TryGetValue(slot, out var c) ? (Sooner(c.Ends, at), c.Total) : (at + SkillLength, SkillLength);
         }
+        Settle(at);   // one ended by this click: ready (or off) from now
     }
+
+    void StepGauge(GaugePlay g)
+    {
+        _gauge = _spending ? g.AfterSpend(_gauge) ?? _gauge : g.Filled(_gauge);
+        _spending = _spending ? g.AfterSpend(_gauge) is not null : g.AtTop(_gauge);
+    }
+
+    /// <summary>A running box clicked: on to its last <see cref="NearEnd"/>; already in it, to its end (user, 2026-11-10: not
+    /// the last second again).</summary>
+    static TimeSpan Sooner(TimeSpan ends, TimeSpan at) => ends - at > NearEnd ? at + NearEnd : at;
 
     /// <summary>The order 자동 uses the boxes in: skills between buffs and gauge fills, one step each <see cref="AutoEvery"/>.</summary>
     static readonly Part[] AutoOrder =
@@ -50,7 +106,7 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
 
     /// <summary>자동 (설정 → 표시, ▶ 시뮬레이션): the boxes are used in turn as if clicked, a box still cooling or a buff still on
     /// skipped. After a gap (the page hidden) it goes on from now instead of replaying the missed steps.</summary>
-    public void Auto(TimeSpan at, int sections)
+    public void Auto(TimeSpan at, GaugePlay gauge)
     {
         if (_autoAt is not { } next || at - next > AutoCatchUp) next = at;
         for (; next <= at; next += AutoEvery)
@@ -59,14 +115,15 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
             Settle(next);
             bool busy = part >= FreeLayout.FirstBuff ? _buffEnds.ContainsKey((BuffKind)(part - FreeLayout.FirstBuff))
                 : part != Part.게이지 && _cooling.ContainsKey((SlotId)part);
-            if (!busy) Click(part, next, sections);
+            if (!busy) Click(part, next, gauge);
         }
         _autoAt = next;
     }
 
     public void Reset(TimeSpan at)
     {
-        (_start, _gauge, _changed, _autoAt, _autoNext) = (at - LongAgo, 0, false, null, 0);
+        (_start, _gauge, _spending, _changed, _autoAt, _autoNext) = (at - LongAgo, 0, false, false, null, 0);
+        _ahead.Clear();
         _cooling.Clear(); _buffEnds.Clear(); _readySince.Clear(); _buffOff.Clear();
     }
 
@@ -84,14 +141,50 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
             Amsu = sample.Amsu is null ? null : Amsu(at) };
     }
 
-    static readonly TimeSpan DebuffLoop = TimeSpan.FromSeconds(30), JudgmentLoop = TimeSpan.FromSeconds(34),
+    static readonly TimeSpan DebuffLoop = TimeSpan.FromSeconds(30), JudgmentLoop = TimeSpan.FromSeconds(36),
         AmsuLoop = TimeSpan.FromSeconds(24), AmsuThrow = TimeSpan.FromSeconds(1);
+    /// <summary>Where each loop's look changes (seconds in), so a click can jump to the next one.</summary>
+    static readonly double[] DebuffPhases = [5, 11, 12, 15, 16, 28], JudgmentPhases = [1, 4, 10, 34], AmsuPhases = AmsuSteps();
+    const double AmsuLastSeconds = 5;
 
-    /// <summary>Seconds into a loop of <paramref name="length"/> run from the start (or the last 처음으로), and when that
-    /// loop began.</summary>
+    /// <summary>암수 by clicks (user, 2026-11-10): thrown (full), its last 5 s, gone, then thrown again: past the loop's end
+    /// straight to the next throw, with no empty click between.</summary>
+    static double[] AmsuSteps()
+    {
+        double thrown = AmsuThrow.TotalSeconds, length = Domain.Amsu.Duration(Vision.Bomb.암수);
+        return [thrown, thrown + length - AmsuLastSeconds, thrown + length, AmsuLoop.TotalSeconds + thrown];
+    }
+    /// <summary>How far each loop was jumped ahead by clicks (<see cref="Skip"/>).</summary>
+    readonly Dictionary<TimeSpan, TimeSpan> _ahead = [];
+
+    /// <summary>A click on a looping window (디버프, 단심, 암수): it jumps to its next phase, wrapping to the loop's start.
+    /// Other windows: nothing (their boxes take <see cref="Click"/>).</summary>
+    public void Skip(OverlayPart window, TimeSpan at)
+    {
+        (TimeSpan length, double[] phases)? loop = window switch
+        {
+            OverlayPart.Debuffs => (DebuffLoop, DebuffPhases),
+            OverlayPart.Judgment => (JudgmentLoop, JudgmentPhases),
+            OverlayPart.Amsu => (AmsuLoop, AmsuPhases),
+            _ => null,
+        };
+        if (loop is not var (length, phases)) return;
+        var (t, _) = Loop(at, length);
+        double step = ToNextPhase(t, phases, length.TotalSeconds);
+        // Under a second to the next change: past it to the one after, so the click shows something new.
+        if (step < NearEnd.TotalSeconds) step += ToNextPhase((t + step) % length.TotalSeconds, phases, length.TotalSeconds);
+        _ahead[length] = _ahead.GetValueOrDefault(length) + TimeSpan.FromSeconds(step);
+    }
+
+    /// <summary>Seconds from <paramref name="t"/> to the first phase after it, or to the loop's end (its start again).</summary>
+    public static double ToNextPhase(double t, IReadOnlyList<double> phases, double length) =>
+        (phases.FirstOrDefault(p => p > t + 1e-6, length)) - t;
+
+    /// <summary>Seconds into a loop of <paramref name="length"/> run from the start (or the last 처음으로), plus any jumps,
+    /// and when that loop began.</summary>
     (double T, TimeSpan From) Loop(TimeSpan at, TimeSpan length)
     {
-        var into = TimeSpan.FromTicks(Math.Max(0, (at - (_start + LongAgo)).Ticks) % length.Ticks);
+        var into = TimeSpan.FromTicks(Math.Max(0, (at + _ahead.GetValueOrDefault(length) - (_start + LongAgo)).Ticks) % length.Ticks);
         return (into.TotalSeconds, at - into);
     }
 
@@ -107,12 +200,14 @@ public sealed class PreviewSim(Snapshot sample, TimeSpan now)
             s, t is >= 16 and < 28 ? new DuelMark(Sec(16)) : null);
     }
 
-    /// <summary>A 34 s loop: ready, 심판 at 2 s (its 6 s, the 24 s cooldown), ready again at 32 s with the flash.</summary>
+    /// <summary>A 36 s loop: ready, 단죄 at 1 s (its 3 s), 심판 at 4 s (its 6 s, the 24 s cooldown), ready again at 34 s
+    /// with the flash.</summary>
     JudgmentState Judgment(TimeSpan at)
     {
         var (t, s) = Loop(at, JudgmentLoop);
-        var trigger = s + TimeSpan.FromSeconds(2);
-        return t < 2 ? JudgmentState.Ready : t < 32 ? new JudgmentState(trigger) : JudgmentState.Ready with { Previous = trigger };
+        var trigger = s + TimeSpan.FromSeconds(4);
+        return t < 4 ? JudgmentState.Ready with { ConvictionAt = s + TimeSpan.FromSeconds(1) }
+            : t < 34 ? new JudgmentState(trigger) : JudgmentState.Ready with { Previous = trigger };
     }
 
     /// <summary>A 24 s loop: none, 암수 thrown at 1 s (its 20 s, seen throughout), none again from 21 s.</summary>

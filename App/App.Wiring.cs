@@ -198,6 +198,7 @@ public partial class App
                 !gameUp || !_hudVisible || foreground.IsOtherForeground, latest?.Daenantu == true, latest?.DaenantuKilled == true, RaidData.Find(raidGates, _raidSeen), Clock.Now()), Dispatcher).Start();
         _settingsWindow.RefreshRecords();
         _settingsWindow.GameArea = () => engine.GameAreaKey;
+        _settingsWindow.FitHud = () => engine.FitHud;
         _settingsWindow.PartyMove = (id, p) =>
         {
             bool done = party.SetParty(id, p);
@@ -493,7 +494,7 @@ public partial class App
             bool glow = r.Glow && BarAlert.Glowing(hiddenBar, r.GlowUntil, r.GlowSeconds, r.GlowBars, now);
             string left = est.Left >= 1_000_000_000_000 ? $"{est.Left / 1e12:0.00}조" : $"{est.Left / 1e8:0}억";
             string gimmick = est.Phase is GimmickPhase.Waiting or GimmickPhase.Paused ? " · 25% 대기" : "";   // at 25%: waiting for the 10% jump
-            hiddenStatus = new RaidStatus(est.Gate, null, glow, null, est.Base is null ? "≈?" : $"≈{est.Percent:0}% {left}{gimmick}");
+            hiddenStatus = new RaidStatus(est.Gate, null, glow, est.Base is null ? "≈?" : $"≈{est.Percent:0}% {left}{gimmick}");
         }
 
         // 전투 기록's second: everyone's figures (mine from this PC, as the meter shows them) and who is in the fight.

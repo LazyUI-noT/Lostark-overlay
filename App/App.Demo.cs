@@ -77,6 +77,8 @@ public partial class App
         if (args.Contains("--meter")) (settings.Meter.On, settings.Meter.Scope) = (true, MeterScope.파티별);
         if (Enum.TryParse<MeterLook>(Flag("meter-look"), out var look)) (settings.Meter.Look, settings.Meter.Graph) = (look, true);
         if (Enum.TryParse<MeterRange>(Flag("meter-range"), out var range)) settings.Meter.Range = range;
+        if (args.Contains("--meter-solo"))   // my DPS only, no buff rows (the map's GIFs: user, 2026-11-10)
+            (settings.Meter.Scope, settings.Meter.BuffBars, settings.Meter.BuffShareOff, settings.Meter.Other) = (MeterScope.나, false, true, false);
         if (Flag("meter-skill") is { } skill)
         {
             DemoSnapshots.MeterSkillShown = new(skill, skill == "none" ? null : 3.2);
@@ -109,6 +111,11 @@ public partial class App
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",
         };
         settings.ActiveCharacter = "워로드 · 고독한기사";
+        if (Flag("as")?.Split(':') is [var asClass, var asSub, var asFamily])   // --as=바드:절실한구원:마법사: another 직업각인 (its gauge's splits)
+        {
+            settings.Characters[$"{asClass} · {asSub}"] = new CharacterSettings { ClassFamily = asFamily, Class = asClass, Subclass = asSub };
+            settings.ActiveCharacter = $"{asClass} · {asSub}";
+        }
         if (args.Any(a => a == "--amsu" || a.StartsWith("--amsu="))) { settings.Amsu.On = true; (settings.Amsu.Left, settings.Amsu.Top) = (828, 500); }
         if (Enum.TryParse(Flag("amsu-look"), out AmsuLook amsuLook)) settings.Amsu.Look = amsuLook;
         if (args.Contains("--judgment")) { settings.Judgment.Set("워로드 · 고독한기사", true); (settings.Judgment.Left, settings.Judgment.Top) = (828, 588); }   // above the demo overlay
@@ -179,7 +186,7 @@ public partial class App
             }
         }
         Push();
-        new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Normal, (_, _) => Push(), Dispatcher).Start();
+        if (Flag("render-sim") is null) new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Normal, (_, _) => Push(), Dispatcher).Start();
 
         ApplyUi();
         _overlay.Show();
@@ -219,14 +226,18 @@ public partial class App
         // transparency (no screen capture), then the demo exits. For README/post pictures and GIFs laid over a game frame.
         // --render-frames=N (1) every --render-every=ms (100) from --render-at=s (4.5); --render-hide=<text>: leave out windows
         // whose title has it (e.g. 디버프). frames.txt lists each frame's time in seconds.
-        if (Flag("render-to") is { } renderDir) RenderFrames(renderDir, Flag);
+        if (Flag("render-to") is { } renderDir) RenderFrames(renderDir, Flag, Flag("render-sim") is null ? null : PreviewPlayer.SampleFor(demoCharacters), settings.Meter.Scope, PreviewPlayer.Gauge(settings, demoCharacters));
     }
 
-    void RenderFrames(string dir, Func<string, string?> flag)
+    /// <param name="sim">--render-sim=on: frames from the 설정 previews' script (<see cref="PreviewSim"/>, 자동), each drawn as at
+    /// its exact time (start + n × every), not the wall clock: runs for each style of a window give the same moments, so the
+    /// map's GIF rows play in sync (user, 2026-11-10).</param>
+    void RenderFrames(string dir, Func<string, string?> flag, Player? sim = null, MeterScope meterScope = MeterScope.공대, GaugePlay? gauge = null)
     {
         int frames = int.TryParse(flag("render-frames"), out var f) ? f : 1;
         double every = double.TryParse(flag("render-every"), out var e) ? e : 100, at = double.TryParse(flag("render-at"), out var a) ? a : 4.5;
         string? hide = flag("render-hide");
+        bool gaugeLoop = flag("gauge-loop") is not null;   // --gauge-loop=on: the gauge on GaugePlay.Looped, not 자동's clicks
         var windows = Enum.TryParse(flag("only-part"), out OverlayPart only) ? WindowsOf(only) : [.. Others.Prepend(_overlay)];
         // --render-region=x,y,w,h: only that part of the screen (faster, so more frames a second); the whole screen otherwise.
         var region = flag("render-region")?.Split(',').Select(double.Parse).ToArray() is [var rx, var ry, var rw, var rh]
@@ -236,9 +247,21 @@ public partial class App
         var clock = Stopwatch.StartNew();
         int n = 0;
         var timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher) { Interval = TimeSpan.FromSeconds(at) };
+        var start = Clock.Now();
+        var script = sim is null ? null : new PreviewSim(sim.Snapshot, start);
         timer.Tick += (_, _) =>
         {
             timer.Interval = TimeSpan.FromMilliseconds(every);
+            if (script is not null)
+            {
+                var t = start + TimeSpan.FromMilliseconds(every * n);
+                script.Auto(t, gauge ?? GaugePlay.Plain);
+                var shot = script.At(t) with { MeterView = DemoSnapshots.DemoMeter(SimMeterFrom + (int)(every * n / 1000), meterScope) };
+                if (gaugeLoop && shot.Gauge is not null) shot = shot with { Gauge = (gauge ?? GaugePlay.Plain).Looped(every * n / 1000) };   // the map's 아덴 GIF
+                var p = new Player("", shot);
+                foreach (var w in windows) w.Renderer.Update(p, t);
+                foreach (var w in windows) w.UpdateLayout();
+            }
             var screen = new System.Windows.Media.DrawingVisual();
             using (var dc = screen.RenderOpen())
                 foreach (Window w in windows.Where(w => w.IsVisible && (hide is null || !w.Title.Contains(hide))))
@@ -260,6 +283,9 @@ public partial class App
         };
         timer.Start();
     }
+    /// <summary>--render-sim: the 전분 second the meter starts at.</summary>
+    const int SimMeterFrom = 60;
+
     /// <summary>The windows that draw <paramref name="part"/> (skills, gauge and undetached buffs share the main one).</summary>
     OverlayWindow[] WindowsOf(OverlayPart part) => part switch
     {

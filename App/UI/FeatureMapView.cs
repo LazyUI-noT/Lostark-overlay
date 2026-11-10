@@ -69,6 +69,10 @@ internal sealed class FeatureMapView : Canvas
     public Func<string, UIElement?>? Body { get; init; }
     /// <summary>A box's hover card (its window's GIF, the reader's capture); null for a box with neither.</summary>
     public Func<string, UIElement?>? Preview { get; init; }
+    /// <summary>The 감지 중 chip's hover card: the reader's area only, no GIF, folded or open (user, 2026-11-10).</summary>
+    public Func<string, UIElement?>? DetectPreview { get; init; }
+    /// <summary>The box whose chip card is showing (Live on for it), null when it closes.</summary>
+    public Action<string?>? DetectHover { get; init; }
     readonly Action<string?> _pinnedChanged;
     readonly HashSet<string> _open;
     readonly Dictionary<string, Rect> _at = [];
@@ -84,7 +88,8 @@ internal sealed class FeatureMapView : Canvas
     readonly Popup _preview = new() { AllowsTransparency = true, Placement = PlacementMode.Right, HorizontalOffset = 8, IsHitTestVisible = false };
     /// <summary>Crossing the map opens nothing: a card only for a box the mouse rests on.</summary>
     readonly DispatcherTimer _previewWait = new() { Interval = TimeSpan.FromMilliseconds(350) };
-    (string Id, UIElement Face)? _previewFor;
+    (string Id, UIElement Face, bool Detect)? _previewFor;
+    string? _liveFor;
     /// <summary>Each line's height where it meets a box side, spread so lines sharing a side don't meet in one point.</summary>
     readonly Dictionary<(MapEdge, bool AtStart), double> _ports = [];
     string? _pinned, _hover, _pressed;
@@ -216,9 +221,10 @@ internal sealed class FeatureMapView : Canvas
             DockPanel.SetDock(more, Dock.Right);
             head.Children.Add(more);
         }
+        UIElement? chip = null;
         if (_detect.GetValueOrDefault(box.Id) is { } seen)
         {
-            var chip = Chip(seen, box.Id);
+            chip = Chip(seen, box.Id, open);
             DockPanel.SetDock(chip, Dock.Right);
             head.Children.Add(chip);
         }
@@ -253,8 +259,19 @@ internal sealed class FeatureMapView : Canvas
             Pin(box.Id);
             Build();
         };
-        face.MouseEnter += (_, _) => { _hover = box.Id; Highlight(); WaitForPreview(box.Id, face); };
+        face.MouseEnter += (_, _) =>
+        {
+            _hover = box.Id;
+            Highlight();
+            bool onChip = chip is { IsMouseOver: true };   // came straight onto the chip: its card, whichever enter comes first
+            WaitForPreview(box.Id, onChip ? chip! : face, onChip);
+        };
         face.MouseLeave += (_, _) => { if (_hover == box.Id) _hover = null; Highlight(); HidePreview(); };
+        if (chip is not null)
+        {
+            chip.MouseEnter += (_, _) => WaitForPreview(box.Id, chip, true);
+            chip.MouseLeave += (_, _) => { if (face.IsMouseOver) WaitForPreview(box.Id, face, false); else HidePreview(); };   // back on the box: its own card
+        }
         return face;
     }
 
@@ -311,25 +328,25 @@ internal sealed class FeatureMapView : Canvas
     static readonly Brush KeyEdge = Vertical(Color.FromArgb(0x38, 255, 255, 255), Color.FromArgb(0x60, 0, 0, 0));
     static readonly Brush LitEdge = Vertical(Color.FromArgb(0x90, 255, 255, 255), Color.FromArgb(0x90, 0, 0, 0));
 
-    /// <summary>감지 중: ✓ green read for certain, ? yellow nothing yet, ! red should have read; the mark goes with the colour.</summary>
-    UIElement Chip(Detection d, string id)
+    /// <summary>감지 중: ✓ green read for certain, ? yellow nothing yet, ! red should have read; the mark goes with the colour.
+    /// On a folded box the chip is part of the box: a click there opens the box (user, 2026-11-10), only an open box's chip
+    /// leads to 감지.</summary>
+    UIElement Chip(Detection d, string id, bool open)
     {
-        var (mark, colour, what) = d.Mark switch
+        var (mark, colour) = d.Mark switch
         {
-            DetectMark.Concrete => ("✓", Green, "감지됨"),
-            DetectMark.Failed => ("!", Cut, "감지 안 됨"),
-            _ => ("?", Color.FromRgb(0xE0, 0xA8, 0x00), "아직 찾는 중"),
+            DetectMark.Concrete => ("✓", Green),
+            DetectMark.Failed => ("!", Cut),
+            _ => ("?", Color.FromRgb(0xE0, 0xA8, 0x00)),
         };
-        string since = Ago(_now - d.At);
-        var chip = new Border
+        var chip = new Border   // no tooltip: hovering shows the Live card (DetectPreview), which says the same
         {
             CornerRadius = new(4), Padding = new(4, 0, 4, 0), Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Background = new SolidColorBrush(colour), Tag = Segment,
+            Background = new SolidColorBrush(colour), Tag = open ? Segment : null,
             Child = new TextBlock { Text = $"감지 중 {mark}", FontSize = 11, Foreground = Brushes.White },
-            ToolTip = (d.Why is { } why ? $"{what} ({since})\n{why}" : $"{what} ({since})") + "\n누르면 감지 화면에서 읽는 자리를 봅니다.",
             Cursor = System.Windows.Input.Cursors.Hand,
         };
-        chip.MouseLeftButtonUp += (_, e) => { ShowDetect?.Invoke(id); e.Handled = true; };
+        if (open) chip.MouseLeftButtonUp += (_, e) => { ShowDetect?.Invoke(id); e.Handled = true; };
         return chip;
     }
 
@@ -554,19 +571,21 @@ internal sealed class FeatureMapView : Canvas
         Children.Add(hit);
     }
 
-    void WaitForPreview(string id, UIElement face)
+    void WaitForPreview(string id, UIElement face, bool detect)
     {
-        if (Preview is null) return;
-        _previewFor = (id, face);
-        _previewWait.Stop();
+        ClosePreview();   // box ↔ chip: the other card goes at once
+        if ((detect ? DetectPreview : Preview) is null) return;
+        _previewFor = (id, face, detect);
         _previewWait.Start();
     }
 
     void ShowPreview()
     {
         _previewWait.Stop();
-        if (_previewFor is not var (id, face) || Preview?.Invoke(id) is not { } card) return;
+        if (_previewFor is not var (id, face, detect) || (detect ? DetectPreview : Preview)?.Invoke(id) is not { } card) return;
         (_preview.Child, _preview.PlacementTarget, _preview.IsOpen) = (card, face, true);
+        string? live = detect ? id : null;
+        if (_liveFor != live) DetectHover?.Invoke(_liveFor = live);
     }
 
     /// <summary>The card is a window of its own: no MouseLeave comes when another app takes over.</summary>
@@ -620,6 +639,13 @@ internal sealed class FeatureMapView : Canvas
     }
 
     void HidePreview()
+    {
+        ClosePreview();
+        if (_liveFor is not null) DetectHover?.Invoke(_liveFor = null);
+    }
+
+    /// <summary>Closes the card but leaves Live running: box ↔ chip doesn't stop and restart the engine's capture.</summary>
+    void ClosePreview()
     {
         _previewWait.Stop();
         _previewFor = null;

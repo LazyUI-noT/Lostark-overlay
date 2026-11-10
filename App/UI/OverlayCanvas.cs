@@ -35,7 +35,6 @@ public sealed partial class OverlayCanvas : Border
     readonly OverlayRenderer? _meter;   // the scene only (설정 → 기능 Map): the 미터기 has its own page
     readonly OverlayRenderer[] _peers;
     readonly bool _scene;
-    const double SceneFrameMs = 1000.0 / 15;
     // ponytail: the primary screen stands for the game's; take the game window's monitor when a screenshot is linked (phase D)
     readonly Rect _screen = new(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
     readonly Rectangle _grip = new() { Fill = Brushes.White, Stroke = Brushes.Black, StrokeThickness = 1, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
@@ -83,15 +82,16 @@ public sealed partial class OverlayCanvas : Border
         {
             _meter = Renderer(-1, buffs: false);
             _meter.MeterOnly = true;
-            _world.Children.Insert(0, ScreenFrame());   // under the screenshot and the windows
+            _world.Children.Insert(0, _frame = ScreenFrame());   // under the screenshot and the windows
         }
         _world.Children.Add(_pick);
         _world.Children.Add(_grip);
         Play = _meter is null ? new PreviewPlayer(_mine, _buffs, _debuffs, _judgment, _amsu, _raid) : new PreviewPlayer(_mine, _buffs, _debuffs, _judgment, _amsu, _raid, _meter);
-        if (scene)   // small thumbnails: 15 fps reads the same and costs a fraction
+        if (scene)   // previews play at 초당 그리기 횟수, as the overlays do (user, 2026-11-10; was a fixed 15 fps)
         {
-            foreach (var r in _world.Children.OfType<OverlayRenderer>()) r.MinFrameMs = SceneFrameMs;
-            Play.Every = TimeSpan.FromMilliseconds(SceneFrameMs);
+            double frameMs = DrawSteps.FrameMs(live.DrawsPerSecond, fadeOnly: false);
+            foreach (var r in _world.Children.OfType<OverlayRenderer>()) r.MinFrameMs = frameMs;
+            Play.Every = TimeSpan.FromMilliseconds(frameMs);
         }
         Child = _world;
         ShowSample();
@@ -114,6 +114,7 @@ public sealed partial class OverlayCanvas : Border
         {
             MouseDown += OnSceneDown;
             MouseMove += OnSceneMove;
+            KeyDown += OnSceneKey;
             MouseLeave += (_, _) => SceneHover?.Invoke(null);
             return;
         }
@@ -270,6 +271,7 @@ public sealed partial class OverlayCanvas : Border
             case { Kind: "Judgment" } b: Pick(_judgment, b.Part); break;
             case { Kind: "Amsu" } b: Pick(_amsu, b.Part); break;
             case { Kind: "Raid" } b: Pick(_raid, b.Part); break;
+            case { Kind: "Party" } b when _peers.Length > 0: Pick(_peers[0], b.Part); break;
             case { Kind: "BuffBar" } b when _s.Buffs.Detached: Pick(_buffs, b.Part); break;
             case { Kind: not "Party" } b: Pick(_mine, b.Part); break;
         }

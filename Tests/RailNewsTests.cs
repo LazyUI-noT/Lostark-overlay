@@ -70,6 +70,61 @@ public class RailNewsTests
     }
 
     [Fact]
+    public void Unseen_lists_only_the_open_tabs_new_keys() =>
+        Assert.Equal(["b"], RailNews.Unseen(Tabs(("레이드", ["a", "b"]), ("파티", ["p"])), Tabs(("레이드", ["a"])), "레이드"));
+
+    [Fact]
+    public void Unseen_is_empty_before_the_first_recording() =>
+        Assert.Empty(RailNews.Unseen(Tabs(("레이드", ["a"])), seen: null, "레이드"));
+
+    [Fact]
+    public void Unseen_is_empty_for_a_tab_with_no_keys() =>
+        Assert.Empty(RailNews.Unseen(Tabs(("레이드", ["a"])), Tabs(("레이드", [])), "파티"));
+
+    [Theory]
+    [InlineData("파티 공유/연결/참가 요청 승인", true)]
+    [InlineData("hp:3막-3/하드", false)]
+    [InlineData("char:철수", false)]
+    [InlineData("place:0:철수", false)]
+    [InlineData("0123456789ABCDEF", false)]
+    public void A_row_key_is_told_from_the_other_news(string key, bool row) =>
+        Assert.Equal(row, RailNews.IsRow(key));
+
+    [Fact]
+    public void Other_news_is_said_in_words_and_rows_are_left_out()
+    {
+        var lines = RailNews.Describe(["레이드/레이드/줄 수", "0123456789ABCDEF", "hp:a/노말", "hp:b/하드", "char:철수", "char:영희", "place:0:철수"]);
+        Assert.Equal([
+            (RailNews.NewsKind.Patch, "레이드 정보가 업데이트로 바뀌었습니다."),
+            (RailNews.NewsKind.App, "보스 체력 표에 새로 읽은 HP가 2개 있습니다."),
+            (RailNews.NewsKind.App, "새 캐릭터: 철수, 영희"),
+            (RailNews.NewsKind.App, "캐릭터 순서가 바뀌었습니다."),
+        ], lines);
+    }
+
+    [Theory]
+    [InlineData("레이드/레이드/줄 수", RailNews.NewsKind.Patch)]
+    [InlineData("0123456789ABCDEF", RailNews.NewsKind.Patch)]
+    [InlineData("hp:a/노말", RailNews.NewsKind.App)]
+    [InlineData("char:철수", RailNews.NewsKind.App)]
+    [InlineData("place:0:철수", RailNews.NewsKind.App)]
+    public void Update_news_is_patch_and_what_the_app_found_is_app(string key, RailNews.NewsKind kind) =>
+        Assert.Equal(kind, RailNews.KindOf(key));
+
+    [Fact]
+    public void A_tab_with_both_kinds_lights_twice()
+    {
+        var lit = RailNews.LitKinds(Tabs(("레이드", ["a/b/c", "hp:x/노말"]), ("파티", ["p"])), Tabs(("레이드", []), ("파티", ["p"])));
+        Assert.Equal(2, lit.Count);
+        Assert.Contains(("레이드", RailNews.NewsKind.Patch), lit);
+        Assert.Contains(("레이드", RailNews.NewsKind.App), lit);
+    }
+
+    [Fact]
+    public void Rows_alone_need_no_words() =>
+        Assert.Empty(RailNews.Describe(["레이드/레이드/줄 수"]));
+
+    [Fact]
     public void An_undo_keeps_what_the_rail_has_seen()
     {
         var mine = new Settings { RailSeen = Tabs(("레이드", ["a"])) };

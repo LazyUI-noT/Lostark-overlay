@@ -1,0 +1,116 @@
+{
+  "Amsu": [
+    {
+      "Label": "막대",
+      "File": "Amsu-0.gif"
+    },
+    {
+      "Label": "원",
+      "File": "Amsu-1.gif"
+    },
+    {
+      "Label": "숫자",
+      "File": "Amsu-2.gif"
+    },
+    {
+      "Label": "세로 막대",
+      "File": "Amsu-3.gif"
+    }
+  ],
+  "Skills": [
+    {
+      "Label": "회전",
+      "File": "Skills-0.gif"
+    },
+    {
+      "Label": "채움",
+      "File": "Skills-1.gif"
+    },
+    {
+      "Label": "채움 + 빗금",
+      "File": "Skills-2.gif"
+    }
+  ],
+  "Gauge": [
+    {
+      "Label": "워로드 · 전투태세",
+      "File": "Gauge-0.gif"
+    },
+    {
+      "Label": "발키리 · 해방자",
+      "File": "Gauge-1.gif"
+    },
+    {
+      "Label": "바드 · 절실한구원",
+      "File": "Gauge-2.gif"
+    }
+  ],
+  "Buffs": [
+    {
+      "Label": "가로",
+      "File": "Buffs-0.gif"
+    },
+    {
+      "Label": "세로",
+      "File": "Buffs-1.gif"
+    }
+  ],
+  "Debuffs": [
+    {
+      "Label": "",
+      "File": "Debuffs-0.gif"
+    }
+  ],
+  "Judgment": [
+    {
+      "Label": "막대",
+      "File": "Judgment-0.gif"
+    },
+    {
+      "Label": "아이콘",
+      "File": "Judgment-1.gif"
+    }
+  ],
+  "Meter": [
+    {
+      "Label": "행",
+      "File": "Meter-0.gif"
+    },
+    {
+      "Label": "세로 막대",
+      "File": "Meter-1.gif"
+    },
+    {
+      "Label": "선 그래프",
+      "File": "Meter-2.gif"
+    },
+    {
+      "Label": "한 줄 막대",
+      "File": "Meter-3.gif"
+    }
+  ],
+  "BarCount": [
+    {
+      "Label": "",
+      "File": "BarCount-0.gif"
+    }
+  ],
+  "Party": [
+    {
+      "Label": "",
+      "File": "Party-0.gif"
+    }
+  ],
+  "Boss": [
+    {
+      "Label": "",
+      "File": "Boss-0.gif"
+    }
+  ],
+  "Shadow": [
+    {
+      "Label": "",
+      "File": "Shadow-0.gif"
+    }
+  ]
+}

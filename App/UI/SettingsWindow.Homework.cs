@@ -123,7 +123,7 @@ public partial class SettingsWindow
 
     static string TierName(DifficultyTier tier) => tier switch
     {
-        DifficultyTier.Normal => "노말", DifficultyTier.Hard => "하드", DifficultyTier.Nightmare => "나이트메어", DifficultyTier.Single => "싱글",
+        DifficultyTier.Normal => "노말", DifficultyTier.Hard => "하드", DifficultyTier.Nightmare => "나메", DifficultyTier.Single => "싱글",
         DifficultyTier.Matching => "매칭", DifficultyTier.Step1 => "1단계", DifficultyTier.Step2 => "2단계", _ => "3단계",
     };
 
@@ -260,11 +260,13 @@ public partial class SettingsWindow
     FrameworkElement LevelPicker(HomeworkRaid? raid, string difficulty, Action<string> pick)
     {
         // The theme's button frame and a ▾: it reads as a box to open, not a plain tag (user, 2026-11-10).
-        var face = new DockPanel { LastChildFill = false };
+        var face = new DockPanel();
         var arrow = new TextBlock { Text = "▾", Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
         DockPanel.SetDock(arrow, Dock.Right);
         face.Children.Add(arrow);
-        face.Children.Add(RaidBadgeView.Of(null, difficulty));
+        var badge = RaidBadgeView.Of(null, difficulty);
+        badge.HorizontalAlignment = HorizontalAlignment.Center;   // every pick's capsule on one centre line (user, 2026-11-10)
+        face.Children.Add(badge);
         var button = new Button
         {
             Content = face, Width = PickBadgeWidth, Margin = new(8, 0, 0, 0), Padding = new(6, 2, 6, 2),
@@ -278,9 +280,25 @@ public partial class SettingsWindow
             item.Click += (_, _) => { if (level.Difficulty != difficulty) pick(level.Difficulty); };
             menu.Items.Add(item);
         }
-        button.Click += (_, _) => menu.IsOpen = menu.Items.Count > 0;
+        // A click on the box while it is open folds it (user, 2026-11-10): the press closes the menu just before the box sees
+        // it, so a press that lands while the menu is open or within FoldWindowMs of its closing marks that click as the fold.
+        // Timed against the press, not the release, so a long hold folds too. Keyboard opens never press, so never fold.
+        bool fold = false;
+        long closedAt = long.MinValue / 2;
+        menu.Closed += (_, _) => closedAt = Environment.TickCount64;
+        button.PreviewMouseLeftButtonDown += (_, _) => fold = menu.IsOpen || Environment.TickCount64 - closedAt < FoldWindowMs;
+        button.MouseLeave += (_, _) => fold = false;   // released elsewhere: no click comes to clear it
+        button.LostMouseCapture += (_, _) => { if (!button.IsPressed) fold = false; };   // Alt-Tab mid-press, the same
+        button.Click += (_, _) =>
+        {
+            if (fold) { fold = false; return; }
+            menu.IsOpen = menu.Items.Count > 0;
+        };
         return button;
     }
+
+    /// <summary>A press this soon after the difficulty menu closed is the press that closed it.</summary>
+    const long FoldWindowMs = 150;
 
     /// <summary>[미완 | 클리어 | 확인필요] for a raid, the part for this week lit: 클리어 by a saved fight, by hand or by the fallback;
     /// 확인필요 where the fallback can't tell (a ! on the tag). A click sets it; the week's reset turns it off.</summary>
@@ -368,7 +386,7 @@ public partial class SettingsWindow
         {
             var (difficulty, tag, color) = (new TextBox { Width = 110, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "난이도 이름 (예: 하드)" },
                 new TextBox { Width = 70, Margin = new(6, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "태그 (예: EX하). 비우면 난이도 이름을 씁니다." }, Combo());
-            color.ItemsSource = new[] { "흰색 (노말)", "주황 (하드)", "보라 (나이트메어)" };
+            color.ItemsSource = new[] { "흰색 (노말)", "주황 (하드)", "보라 (나메)" };
             color.SelectedIndex = i - 1;
             rows.Add((difficulty, tag, color));
             panel.Children.Add(Row(i == 1 ? "난이도 · 태그 · 색 (낮은 것부터)" : "", new StackPanel { Orientation = Orientation.Horizontal, Children = { difficulty, tag, color } }));
@@ -423,14 +441,14 @@ public partial class SettingsWindow
             foreach (var level in raid.Levels)
             {
                 string key = Core.Domain.Homework.TagKey(raid.Id, level.Difficulty);
-                var box = new TextBox { Width = 70, Text = _s.Homework.Tags.GetValueOrDefault(key, ""), Margin = new(0, 0, 4, 0), ToolTip = $"{level.Difficulty} (기본: {level.Tag})" };
+                var box = new TextBox { Width = 70, Text = _s.Homework.Tags.GetValueOrDefault(key, ""), Margin = new(0, 0, 4, 0), ToolTip = $"{RaidBadge.Label(level.Difficulty)} (기본: {level.Tag})" };
                 box.LostFocus += (_, _) =>
                 {
                     string v = box.Text.Trim();
                     if (v.Length == 0) _s.Homework.Tags.Remove(key); else _s.Homework.Tags[key] = v;
                     Changed();
                 };
-                row.Children.Add(new TextBlock { Text = level.Difficulty, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 4, 0) });
+                row.Children.Add(new TextBlock { Text = RaidBadge.Label(level.Difficulty), Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 4, 0) });
                 row.Children.Add(box);
             }
             panel.Children.Add(Row(raid.Name, row));

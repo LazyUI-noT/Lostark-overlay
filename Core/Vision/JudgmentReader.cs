@@ -16,8 +16,19 @@ public static class JudgmentReader
     /// <summary>The icon as the game draws it, frame left out (25×25 at 1080p, buff 120%): drawn by the 단심 아이콘 while 심판 is on and, grey, through its cooldown.</summary>
     public static Image Icon => Template;
 
-    /// <summary>단죄's icon, cut the same way: drawn while 심판 is ready. Never read.</summary>
+    /// <summary>단죄's icon, cut the same way: drawn while 심판 is ready, and read (user, 2026-11-10).</summary>
     public static Image ConvictionIcon { get; } = Image.FromBytes(Convert.FromBase64String(JudgmentTemplates.Conviction))!;
+
+    // 단죄 scores 0.99+ on its own frames; nothing else in any row comes above 0.58 (measured 2026-11-10), so 심판's bar fits.
+    static readonly float[][] ConvictionThumbs = [BuffReader.Thumb(ConvictionIcon)];
+    static readonly double[] ConvictionHues = [SlotClassifier.ColourStats(ConvictionIcon).MeanHue];
+
+    /// <summary>The box at <paramref name="icon"/> (relative to <paramref name="area"/>) holds 단죄's icon.</summary>
+    public static bool IsConviction(Image area, PixelRect icon)
+    {
+        var (structure, hue, _) = BuffReader.Match(area, icon, ConvictionThumbs, ConvictionHues, []);
+        return structure[0] >= MinIcon && hue[0] <= BuffReader.MaxHueDistance;
+    }
 
     /// <summary>Structure score against 심판, hue distance (degrees) and the best look-alike's score.</summary>
     internal static (double Structure, double Hue, double LookAlike) Scores(Image area, PixelRect icon)

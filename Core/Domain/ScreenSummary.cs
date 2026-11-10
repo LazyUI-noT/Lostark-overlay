@@ -47,10 +47,14 @@ public static class ScreenSummary
             : $"{r:0.00}:1";
     }
 
+    /// <summary>The game-area key (Fits, Adjusts) of a full-screen game on <paramref name="screen"/>: the forced 21:9's bars taken off.</summary>
+    public static string AreaKey(ManualScreen screen) =>
+        Geometry.ViewportKey(Geometry.ManualViewport(new PixelRect(0, 0, screen.Width, screen.Height), screen));
+
     static string Hud(Settings s, ManualScreen? screen)
     {
         // As the engine picks (FitMode): 수동 조정 first, which keeps 직접 입력's values, then 직접 입력, then the fit found.
-        string? key = screen is null ? null : Geometry.ViewportKey(Geometry.ManualViewport(new PixelRect(0, 0, screen.Width, screen.Height), screen));
+        string? key = screen is null ? null : AreaKey(screen);
         if (s.UseAdjusts && key is not null && s.Adjusts.TryGetValue(key, out var adjusted)) return $"{adjusted.Hud:0.#}% (수동 조정)";
         if (s.ManualHud is { } typed) return $"{typed:0.#}% (직접)";
         if (key is null) return None;

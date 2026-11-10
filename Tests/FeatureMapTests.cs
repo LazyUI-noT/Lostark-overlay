@@ -16,13 +16,13 @@ public class FeatureMapTests
     }
 
     [Fact]
-    public void The_battle_overlay_group_holds_the_six_parts_in_order() =>
-        Assert.Equal(["직업 인식", "스킬창", "버프 줄", "단심", "암수", "DPS 미터기"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
+    public void The_battle_overlay_group_holds_the_five_parts_in_order() =>
+        Assert.Equal(["직업 인식", "스킬창", "버프 줄", "단심", "암수"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
 
     [Fact]
-    public void The_raid_is_a_group_of_one_between_the_overlay_and_the_records()
+    public void The_raid_group_holds_the_meter_between_the_overlay_and_the_records()
     {
-        Assert.Equal(["레이드"], FeatureMap.Rail[Group("레이드")].Areas);
+        Assert.Equal(["레이드", "DPS 미터기"], FeatureMap.Rail[Group("레이드")].Areas);
         Assert.Equal(Group("전투 오버레이") + 1, Group("레이드"));
         Assert.Equal(Group("레이드") + 1, Group("전투기록"));
     }

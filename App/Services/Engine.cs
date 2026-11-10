@@ -157,6 +157,9 @@ public sealed partial class Engine : IDisposable
 
     /// <summary>The game area's size key ("W×H", Settings.Fits / Adjusts), null before one is measured; any thread.</summary>
     public string? GameAreaKey => Volatile.Read(ref _areaKey);
+
+    /// <summary>The HUD of the fit the reads use now (테스트 모드: the video's, kept in memory only); null before one; any thread.</summary>
+    public double? FitHud => Volatile.Read(ref _fit)?.Hud;
     // Each 일반 slot's colour and crop at its last read (NaN, null until read): a greyed-out bar (a town) and its skills, sent with
     // the 초각스 crop; the ready ones for 스킬 등록.
     readonly double[] _skillColour = [.. Enumerable.Repeat(double.NaN, 8)];

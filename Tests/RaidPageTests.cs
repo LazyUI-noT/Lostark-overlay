@@ -86,4 +86,15 @@ public class RaidPageTests
     [InlineData("서막 에키드나", null)]
     [InlineData(null, null)]
     public void A_raid_has_its_logo(string? raid, string? logo) => Assert.Equal(logo, RaidBadge.Logo(raid));
+
+    // 나메 (user, 2026-11-10): 설정 shortens 나이트메어 so every capsule is about one length; the colour still follows it.
+    [Theory]
+    [InlineData("나이트메어", "나메")]
+    [InlineData("EX 나이트메어", "EX 나메")]
+    [InlineData("하드", "하드")]
+    public void Nightmare_shows_as_나메(string difficulty, string label)
+    {
+        Assert.Equal(label, RaidBadge.Label(difficulty));
+        Assert.Equal(RaidBadge.Tier(difficulty), RaidBadge.Tier(label == "나메" || label == "EX 나메" ? difficulty : label));
+    }
 }

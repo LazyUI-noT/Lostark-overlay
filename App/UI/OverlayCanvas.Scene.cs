@@ -18,7 +18,9 @@ public sealed partial class OverlayCanvas
     const double FaintFont = 13, FaintStroke = 1.7;
     // Screen px round the windows in the zoomed scene (user, 2026-11-01: the windows, not the whole screen).
     const double SceneMargin = 60;
+    const double PreviewMargin = 16, PreviewMaxScale = 3;   // a page's preview: close round its windows, up to 3×
     bool _sceneFitted;
+    Rectangle? _frame;   // the scene's screen: its fill is the backdrop (ShowColour paints it)
 
     /// <summary>Zooms the scene to the box round every window shown, plus <see cref="SceneMargin"/> (EditorView.Around).</summary>
     void FitScene(IReadOnlyCollection<OverlayRenderer> all)
@@ -30,7 +32,10 @@ public sealed partial class OverlayCanvas
         if (shown.Count == 0 || ActualWidth <= 0 || ActualHeight <= 0) return;
         double l = shown.Min(Canvas.GetLeft), t = shown.Min(Canvas.GetTop);
         double r = shown.Max(w => Canvas.GetLeft(w) + w.DesiredSize.Width), b = shown.Max(w => Canvas.GetTop(w) + w.DesiredSize.Height);
-        (_v, _sceneFitted) = (EditorView.Around(ActualWidth, ActualHeight, l, t, r - l, b - t, SceneMargin), true);
+        // A page's preview zooms in close on its windows (user, 2026-11-10); the 기능 맵 scene keeps its room and 100%.
+        var view = Only is null ? EditorView.Around(ActualWidth, ActualHeight, l, t, r - l, b - t, SceneMargin)
+            : EditorView.Around(ActualWidth, ActualHeight, l, t, r - l, b - t, PreviewMargin, PreviewMaxScale);
+        (_v, _sceneFitted) = (view, true);
         ShowView();
     }
 
@@ -72,17 +77,68 @@ public sealed partial class OverlayCanvas
         _ => OverlayPart.Skills,
     };
 
+    /// <summary>A 설정 page's preview: a click moves the animation on (<see cref="PlayClick"/>) instead of raising
+    /// <see cref="ScenePicked"/> (user, 2026-11-10; 위치 조정 is a button under it).</summary>
+    public bool ClickPlays { get => _clickPlays; set => (_clickPlays, Focusable) = (value, value); }
+    bool _clickPlays;
+
     void OnSceneDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton != MouseButton.Left || e.OriginalSource is not OverlayRenderer r) return;
-        ScenePicked?.Invoke(ScenePart(r, e.GetPosition(r)));
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (ClickPlays && e.OriginalSource is not OverlayRenderer)   // the backdrop: every window moves on, even one drawing nothing now (암수)
+        {
+            Focus();
+            StepAll();
+            e.Handled = true;
+            return;
+        }
+        if (e.OriginalSource is not OverlayRenderer r) return;
+        if (ClickPlays) { Focus(); PlayClick(r, e.GetPosition(r)); }
+        else ScenePicked?.Invoke(ScenePart(r, e.GetPosition(r)));
         e.Handled = true;
+    }
+
+    /// <summary>A box (skill, buff, gauge) acts as if used: ready starts its cooldown, cooling jumps to its end. A looping
+    /// window (디버프, 단심, 암수) jumps to its next phase.</summary>
+    void PlayClick(OverlayRenderer r, Point at)
+    {
+        if ((r == _mine || r == _buffs) && r.PartAt(at)?.Part is { } part) Play.Click(part, PreviewPlayer.Gauge(_s, _chars));
+        else Play.Skip(WindowPart(r));
+    }
+
+    /// <summary>What a click on <paramref name="r"/> does something to: my window and the buff window (their boxes) and the
+    /// looping ones. The 미터기, 줄 수 창 and 파티원 창 only show the sample.</summary>
+    bool PlaysOnClick(OverlayRenderer r) => r == _mine || r == _buffs || r == _debuffs || r == _judgment || r == _amsu;
+
+    /// <summary>Space or Enter on a focused preview: each of its windows moves on, as a click would (the first skill box, the
+    /// gauge, the first buff bar, a loop's next phase).</summary>
+    void OnSceneKey(object sender, KeyEventArgs e)
+    {
+        if (!ClickPlays || e.Key is not (Key.Space or Key.Enter)) return;
+        StepAll();
+        e.Handled = true;
+    }
+
+    /// <summary>Space, Enter or a click on the backdrop: every window of the preview moves on.</summary>
+    void StepAll()
+    {
+        var gauge = PreviewPlayer.Gauge(_s, _chars);
+        foreach (var part in Only ?? [])
+        {
+            switch (part)
+            {
+                case OverlayPart.Skills: Play.Click(Part.일반1, gauge); break;
+                case OverlayPart.Gauge: Play.Click(Part.게이지, gauge); break;
+                case OverlayPart.Buffs: Play.Click(FreeLayout.FirstBuff, gauge); break;
+                default: Play.Skip(part); break;
+            }
+        }
     }
 
     void OnSceneMove(object sender, MouseEventArgs e)
     {
         var r = e.OriginalSource as OverlayRenderer;
-        Cursor = r is null ? null : Cursors.Hand;
+        Cursor = ClickPlays ? (r is null || PlaysOnClick(r) ? Cursors.Hand : null) : r is null ? null : Cursors.Hand;
         SceneHover?.Invoke(r is null ? null : ScenePart(r, e.GetPosition(r)));
     }
 

@@ -44,7 +44,7 @@ public sealed partial class OverlayCanvas
         else Pick(r, r.PartAt(at)?.Part);
         if (Play.Running)   // ▶: a click uses the box instead of moving it
         {
-            if (_picked is ({ Peer: < 0 }, { } used)) Play.Click(used, PreviewPlayer.Sections(_s, _chars));
+            if (_picked is ({ Peer: < 0 }, { } used)) Play.Click(used, PreviewPlayer.Gauge(_s, _chars));
             e.Handled = true;
             return;
         }

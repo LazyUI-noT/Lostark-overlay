@@ -275,9 +275,47 @@ public class LayoutEditorDataTests
     [Fact]
     public void Clicking_the_gauge_fills_a_section_at_a_time_then_empties()
     {
+        Assert.Equal([0.333333, 0.666667, 1.0, 0.0], GaugeLevels(new GaugePlay([1 / 3.0, 2 / 3.0]), 4));
+    }
+
+    double[] GaugeLevels(GaugePlay play, int clicks)
+    {
         var sim = Sim();
-        var levels = Enumerable.Range(0, 4).Select(_ => { sim.Click(Part.게이지, T0, sections: 3); return sim.At(T0).Gauge; }).ToList();
-        Assert.Equal([0.333333, 0.666667, 1.0, 0.0], levels.Select(g => Math.Round(g!.Value, 6)));
+        return [.. Enumerable.Range(0, clicks).Select(_ => { sim.Click(Part.게이지, T0, play); return Math.Round(sim.At(T0).Gauge!.Value, 6); })];
+    }
+
+    static GaugePlay Play(double[] splits, GaugeSpend spend) =>
+        new(splits, new GaugeRule(splits, null, Spend: [spend]));
+
+    /// <summary>Each class fills section by section (to its own splits) up to 85 % and spends as in game, the leftover
+    /// staying (user, 2026-11-10): 전태 a section, 해방자 its 80 %, 바드 every full section (max 3).</summary>
+    [Fact]
+    public void The_gauge_is_spent_by_the_class_rule()
+    {
+        Assert.Equal([0.5, 0.85, 0.35, 0.5, 0.85], GaugeLevels(Play([0.5], new GaugeSpend([SlotId.아덴2], 0, Amount: 0.5)), 5));
+        Assert.Equal([0.8, 0.85, 0.05, 0.8], GaugeLevels(Play([0.8], new GaugeSpend([SlotId.아덴1], 0, Amount: 0.8)), 4));
+        Assert.Equal([0.25, 0.5, 0.75, 0.85, 0.1, 0.25], GaugeLevels(Play([0.25, 0.5, 0.75], new GaugeSpend([SlotId.아덴1], 3)), 6));
+    }
+
+    /// <summary>Splits the user removed leave no full section at 85 %: the gauge fills to full and empties instead of
+    /// sticking.</summary>
+    [Fact]
+    public void A_gauge_that_cannot_spend_at_85_fills_to_full()
+    {
+        var play = new GaugePlay([], new GaugeRule([0.25, 0.5, 0.75], null, Spend: [new GaugeSpend([SlotId.아덴1], 3)]));
+        Assert.Equal([1.0, 0.0, 1.0], GaugeLevels(play, 3));
+    }
+
+    /// <summary>The map's 아덴 GIF (user, 2026-11-10): a 4 s loop that fills to 85 % in 0.5 s, then spends as the class
+    /// does, the leftover held until the loop starts again.</summary>
+    [Fact]
+    public void The_gauge_loop_fills_to_85_in_half_a_second_then_spends_by_class()
+    {
+        var 전태 = Play([0.5], new GaugeSpend([SlotId.아덴2], 0, Amount: 0.5));
+        double[] At(GaugePlay p, params double[] s) => [.. s.Select(t => Math.Round(p.Looped(t), 6))];
+        Assert.Equal([0, 0.425, 0.85, 0.85, 0.35, 0.35, 0], At(전태, 0, 0.25, 0.5, 1.2, 1.25, 3.9, 4));
+        Assert.Equal([0.85, 0.1, 0.1], At(Play([0.25, 0.5, 0.75], new GaugeSpend([SlotId.아덴1], 3)), 0.5, 1.25, 3.5));
+        Assert.Equal([1.0, 0.0, 0.0], At(GaugePlay.Plain, 0.5, 1.25, 3.5));
     }
 
     [Fact]

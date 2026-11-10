@@ -53,7 +53,7 @@ public sealed partial class Engine
         {
             var img = images[at + i];
             for (int b = 3; b < img.Bgra.Length; b += 4) img.Bgra[b] = 255;   // the desktop's alpha is undefined
-            var p = new DetectPicture(img, wanted[i].Area, t);
+            var p = new DetectPicture(img, wanted[i].Area, t, wanted[i].Id);
             if (wanted[i].Live) _detectLivePicture = _detectLiveId == wanted[i].Id ? p : null;
             else
             {

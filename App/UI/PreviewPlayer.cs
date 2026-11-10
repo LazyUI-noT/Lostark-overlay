@@ -55,23 +55,31 @@ sealed class PreviewPlayer
         if (_sim is not null) Push();
     }
 
-    /// <summary>While running: <paramref name="part"/> acts as if used (the gauge fills one of <paramref name="sections"/>).</summary>
-    public void Click(Part part, int sections)
+    /// <summary>While running: <paramref name="part"/> acts as if used (the gauge as <paramref name="gauge"/> says).</summary>
+    public void Click(Part part, GaugePlay gauge)
     {
         if (_sim is null) return;
-        _sim.Click(part, Clock.Now(), sections);
+        _sim.Click(part, Clock.Now(), gauge);
+        Push();
+    }
+
+    /// <summary>While running: a looping window (디버프, 단심, 암수) jumps to its next phase (<see cref="PreviewSim.Skip"/>).</summary>
+    public void Skip(OverlayPart window)
+    {
+        if (_sim is null) return;
+        _sim.Skip(window, Clock.Now());
         Push();
     }
 
     /// <summary>자동: the boxes are used in turn without clicks (<see cref="PreviewSim.Auto"/>); the value gives the gauge's
     /// section count. Null: only clicks use them.</summary>
-    public Func<int>? Auto { get; set; }
+    public Func<GaugePlay>? Auto { get; set; }
 
     void Push()
     {
         if (_sim is null) return;
         var now = Clock.Now();
-        if (Auto is { } sections) _sim.Auto(now, sections());
+        if (Auto is { } gauge) _sim.Auto(now, gauge());
         var p = new Player("", _sim.At(now));
         foreach (var t in _targets) t.Update(p);
     }
@@ -90,10 +98,12 @@ sealed class PreviewPlayer
         return new Player(self.Name, self.Snapshot with { ClassId = target?.ClassId ?? c.ClassId });
     }
 
-    /// <summary>How many sections the active class's (or <paramref name="target"/>'s) gauge has: a click fills one.</summary>
-    public static int Sections(Settings s, CharacterService c, PreviewTarget? target = null)
+    /// <summary>How the active class's (or <paramref name="target"/>'s) gauge fills and is spent: a click fills one section.</summary>
+    public static GaugePlay Gauge(Settings s, CharacterService c, PreviewTarget? target = null)
     {
         var (cls, sub) = target is not null ? (c.Classes.FirstOrDefault(k => k.Name == target.Class), target.Subclass) : (c.ActiveClass, c.Active?.Subclass);
-        return cls is not null && sub is not null ? GaugeBar.Resolve(s, cls.Name, sub, cls.Subclasses.GetValueOrDefault(sub)).Splits.Count + 1 : 1;
+        if (cls is null || sub is null) return GaugePlay.Plain;
+        var rule = cls.Subclasses.GetValueOrDefault(sub);
+        return new(GaugeBar.Resolve(s, cls.Name, sub, rule).Splits, rule);
     }
 }

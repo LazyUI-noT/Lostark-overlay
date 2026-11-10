@@ -151,8 +151,6 @@ public partial class SettingsWindow
         }
 
         p.Children.Add(SubHeading("줄 수 창 모양"));
-        p.Children.Add(Defaulted(Row("표시", EnumCombo([(BarCountLook.숫자, "숫자"), (BarCountLook.화면그대로, "화면 그대로")], r.Look, v => r.Look = v)),
-            s => s.Raids.Look, (s, v) => s.Raids.Look = v));
         p.Children.Add(Defaulted(ColorRow(Label("배경 색"), r.Background, v => r.Background = v, swatch: false), s => s.Raids.Background, (s, v) => s.Raids.Background = v));
         p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, r.Opacity, 0.05, v => $"{v * 100:0}%", v => r.Opacity = v, Changed), s => s.Raids.Opacity, (s, v) => s.Raids.Opacity = v));
         p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, r.Width, 0.05, v => $"{v * 100:0}%", v => (r.Width, r.Height) = (v, v), Changed),

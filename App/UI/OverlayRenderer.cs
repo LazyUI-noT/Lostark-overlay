@@ -29,6 +29,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     const double LineWidth = 2;            // white progress line of a stack skill with a use left
     const double MaxCooldownSweep = 0.99;  // sweep holds here until Ready arrives
     const double ChangedOffLevel = 0.20;   // 초각기 표시 off
+    const double BuffTrackLevel = 0.40;    // a buff bar's empty track: its colour still tells which buff (user, 2026-11-10: 0.20 was too dim; 0.55 was tried, but the dim part was the filled 자동 bars, not this)
     const double SideBuffWidth = 6;       // an upright buff bar's width at box size 1.0 (버프 막대 위치 왼쪽 바깥)
     const double KeyShare = 0.45;   // the key letter on a 아덴 block: its top-left corner, this share of each side
     const double PulsePeriod = 1.2;   // 쿨 돈 동안 계속 빛남: seconds per pulse, the gauge glow's default

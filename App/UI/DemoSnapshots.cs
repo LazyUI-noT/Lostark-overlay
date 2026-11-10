@@ -45,7 +45,7 @@ public sealed class DemoSnapshots
 
     /// <summary>A 공대 of eight sharing (two parties of three dealers and a support), <paramref name="timer"/> seconds into the
     /// record, with the minute and a half before it as history; "나" is id 1.</summary>
-    static MeterView DemoMeter(int timer)
+    internal static MeterView DemoMeter(int timer, MeterScope scope = MeterScope.공대)
     {
         (string Name, int Class, MeterRole Role, int Party, double Share)[] who =
         [
@@ -61,12 +61,12 @@ public sealed class DemoSnapshots
         })];
         var history = new MeterHistory();
         for (int t = Math.Max(1, timer - 90); t < timer; t++)
-            history.Add(Sec(t), 1, MeterMath.Rows(At(t), 1, 1, MeterScope.공대, null));
-        var rows = MeterMath.Rows(At(timer), 1, 1, MeterScope.공대, history.SharesAt(Sec(timer - 10)));
+            history.Add(Sec(t), 1, MeterMath.Rows(At(t), 1, 1, scope, null));
+        var rows = MeterMath.Rows(At(timer), 1, 1, scope, history.SharesAt(Sec(timer - 10)));
         history.Add(Sec(timer), 1, rows);
         // 버프 분배 as a support would see it (the dealers only; "나" is a dealer here, so it is only for the look)
         IReadOnlyList<(ulong, string, double)> Split(params double[] s) => [(2, "민수", s[0]), (3, "지현", s[1]), (5, "철수", s[2])];
-        return new(rows, MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
+        return new(rows, scope == MeterScope.나 ? null : MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
             BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)], Skill: MeterSkillShown,
             BossName: "고통의 마녀, 세르카 [나이트메어]",   // a long name: the header shortens it before the 비교 label
             Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동));   // 비교: an earlier fight, a little behind
@@ -161,7 +161,7 @@ public sealed class DemoSnapshots
         SlotState Lit(SlotId id) => State(id) with { Gold = id is SlotId.일반3 or SlotId.일반4 && t is >= 12 and < 18 };   // gold frame
         return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist),
             Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)),   // 심판 at 1 s: its 6 s, then the 24 s cooldown
-            Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12, null), MeterView = DemoMeter(60 + (int)t) };   // the 줄 수 창 glows at 755 for 7 s
+            Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12), MeterView = DemoMeter(60 + (int)t) };   // the 줄 수 창 glows at 755 for 7 s
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap
@@ -219,7 +219,7 @@ public sealed class DemoSnapshots
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
         var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
-            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true, null), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
+            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),

@@ -45,6 +45,13 @@ public class EditorViewTests
         Assert.Equal(1, EditorView.Around(800, 400, x: 600, y: 500, w: 40, h: 20, margin: 10).Scale, 6);   // one small window: 100%, not 8×
 
     [Fact]
+    public void A_preview_may_zoom_past_the_game_size_up_to_its_limit()
+    {
+        Assert.Equal(3, EditorView.Around(800, 400, x: 600, y: 500, w: 40, h: 20, margin: 10, maxScale: 3).Scale, 6);   // 10× would fit
+        Assert.Equal(EditorView.MaxScale, EditorView.Around(8000, 4000, 0, 0, 40, 20, 10, maxScale: 99).Scale, 6);   // never past MaxScale
+    }
+
+    [Fact]
     public void Zoom_stays_within_its_limits()
     {
         var v = new EditorView(1, 0, 0);

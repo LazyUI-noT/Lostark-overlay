@@ -28,11 +28,17 @@ public class RaidSettingsTests
         var s = new Settings();
         var g = s.Raids.Gate("act3-g3");
         (g.CountWindow, g.Alerts, g.Offset) = (true, [700, 200], 3);
-        s.Raids.Look = BarCountLook.화면그대로;
         var back = RoundTrip(s).Raids;
         Assert.True(back.Gate("act3-g3").CountWindow);
         Assert.Equal([700, 200], back.Gate("act3-g3").Alerts!);
-        Assert.Equal(BarCountLook.화면그대로, back.Look);
+    }
+
+    /// <summary>화면 그대로 was removed (user, 2026-11-10): a file that still has its "Look" opens, the count shown as a number.</summary>
+    [Fact]
+    public void A_file_with_the_removed_화면_그대로_look_still_loads()
+    {
+        var s = JsonSerializer.Deserialize<Settings>("""{"Raids":{"Look":"화면그대로","Offset":2}}""", SettingsStore.Json)!;
+        Assert.Equal(2, s.Raids.Offset);
     }
 
     [Fact]
@@ -138,10 +144,10 @@ public class RaidSettingsTests
     [Fact]
     public void A_clone_is_equal_and_apart()
     {
-        var r = new RaidSettings { Offset = 4, Look = BarCountLook.화면그대로 };
+        var r = new RaidSettings { Offset = 4, Glow = false };
         r.Gate("act3-g3").Alerts = [700];
         var c = r.Clone();
-        Assert.Equal((4, BarCountLook.화면그대로), (c.Offset, c.Look));
+        Assert.Equal((4, false), (c.Offset, c.Glow));
         Assert.Equal([700], c.Gate("act3-g3").Alerts!);
         r.Gate("act3-g3").Alerts!.Add(1);
         r.Gate("x").CountWindow = true;

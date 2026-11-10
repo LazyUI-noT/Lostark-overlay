@@ -36,6 +36,10 @@ sealed class SettingsRegistry
 
     public SettingEntry? Find(string id) => _byId.GetValueOrDefault(id)?.Entry;
 
+    /// <summary>The rows on screen whose key (<see cref="RailNews.RowKey"/>) is one of <paramref name="keys"/>: the new ones to mark.</summary>
+    public IEnumerable<UIElement> ElementsOf(IReadOnlySet<string> keys) =>
+        _rows.Where(r => keys.Contains(RailNews.RowKey(r.Entry.Id))).Select(r => r.Element);
+
     /// <summary>A working copy of the row (a check box or slider), for 즐겨찾기; null for rows built only in place.</summary>
     public UIElement? Build(string id) => _byId.GetValueOrDefault(id)?.Build?.Invoke();
 

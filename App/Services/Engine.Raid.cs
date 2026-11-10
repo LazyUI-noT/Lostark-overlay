@@ -114,21 +114,17 @@ public sealed partial class Engine
         if (plan is { ReadCount: true, Gate: { } gate })
         {
             if (gate.Id != _barGate) (_barGate, _bar) = (gate.Id, BarCountState.None);   // another gate: its own count
-            Image? countPixels = null;   // "X n" alone, for 화면 그대로
             if (count is not null)
             {
                 var bar = BossBar(count, hp: false);
                 if (bar.Count is not null) Saw(meter: false, boss: true, t);   // "X n" read: the boss bar is up
-                if (bar.CountArea is { } at) countPixels = count.Crop(at);
                 _bar = BarAlert.Update(_bar, ShadowRead.BarLines(bar.Count, _shadow), t, BarAlert.Thresholds(s.AlertsOf(gate), s.OffsetOf(gate.Id)));
                 if (config.Debug) ExtraDebug?.Invoke(new("줄 수", count.Copy(), bar.Count?.ToString() ?? "?", _bar.Shown?.ToString() ?? "?"));
             }
             bool glow = s.Glow && BarAlert.Glowing(_bar, s.GlowUntil, s.GlowSeconds, s.GlowBars, t);
-            // 화면 그대로 only while a count is read: no boss bar (town), no copy of whatever is there.
-            var crop = s.Look != BarCountLook.화면그대로 || _bar.Shown is null ? null : countPixels is null ? _raid?.CountCrop : Same(_raid?.CountCrop, countPixels);
-            next = new(gate, _bar.Shown, glow, crop);
+            next = new(gate, _bar.Shown, glow);
         }
-        bool changed = next != _raid;   // CountCrop compares by reference: Same keeps it while the pixels don't change
+        bool changed = next != _raid;
         _raid = next;
         return changed;
     }
@@ -196,8 +192,4 @@ public sealed partial class Engine
         catch (Exception ex) { Trace.WriteLine($"[raid] name OCR failed: {ex.Message}"); }
         finally { Volatile.Write(ref _nameOcrBusy, 0); Perf.Add("보스 이름 (Windows OCR)", Stopwatch.GetTimestamp() - t0); }
     }
-
-    /// <summary><paramref name="prev"/> when <paramref name="img"/> (a reused capture buffer) holds the same pixels, else a copy.</summary>
-    static Image Same(Image? prev, Image img) =>
-        prev is not null && prev.Width == img.Width && prev.Height == img.Height && prev.Bgra.AsSpan().SequenceEqual(img.Bgra) ? prev : img.Copy();
 }

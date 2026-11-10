@@ -90,7 +90,10 @@ public partial class SettingsWindow
     void ApiBookRows(Panel p)
     {
         if (_s.CombatPower.Count == 0) return;
-        p.Children.Add(Note("저장된 전투력 (직업각인마다 가장 높은 값을 둡니다. 잘못 남은 값은 삭제하세요)"));
+        p.Children.Add(Note("저장된 전투력\n"
+            + "· 직업각인마다 지금까지 받은 가장 높은 전투력을 기록합니다.\n"
+            + "· 다른 캐릭터 바로 접속 메뉴를 열 때(10분에 한 번)와 새로고침 때 다시 받아, 더 높으면 저절로 바뀝니다.\n"
+            + "· 잘못된 값이나 더 쓰지 않는 직업각인은 삭제하세요."));
         foreach (var (name, subs) in _s.CombatPower.OrderBy(c => c.Key))
             foreach (var (sub, value) in subs.OrderByDescending(s => s.Value))
             {

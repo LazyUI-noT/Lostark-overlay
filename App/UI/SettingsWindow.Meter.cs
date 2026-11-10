@@ -20,6 +20,9 @@ public partial class SettingsWindow
     /// <summary>The game-area size key ("W×H") the 전분 spot is saved for; null before a fit.</summary>
     public Func<string?>? GameArea { get; set; }
 
+    /// <summary>The HUD of the fit in use (Engine.FitHud): 스킬창 맞추기's 테스트 row.</summary>
+    public Func<double?>? FitHud { get; set; }
+
     /// <summary>The host puts a member in 1파티 or 2파티 (id, party); false: refused (that party is full).</summary>
     public Func<ulong, int, bool>? PartyMove { get; set; }
 

@@ -158,8 +158,7 @@ public partial class SettingsWindow
                 b.Padding = new(8, 3, 8, 3);
                 b.Style = RailRow(b.Style);   // the rail is a list: only the picked row is filled
                 // Full width with the group's bar: the areas read as one list, not as buttons of different widths.
-                var label = AreaLabel(b, name, color);
-                label.Children.Add(_railOrbs[name] = RailOrb());   // lit when something under this tab is new (RefreshRailOrbs)
+                var label = AreaLabel(b, name, color, RailOrbsFor(name));   // the dots light when something under it is new (RefreshRailOrbs)
                 (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (name, label, HorizontalAlignment.Left, HorizontalAlignment.Stretch);
                 System.Windows.Automation.AutomationProperties.SetName(b, name);   // read as the area, not the icon glyph
                 b.Checked += (_, _) => { if (_area != area) Go(name); };
@@ -204,7 +203,7 @@ public partial class SettingsWindow
         // Opened on the 캐릭터 section: it is seen now (ShowBody only marks it while the window is up).
         IsVisibleChanged += (_, _) =>
         {
-            if (!IsVisible) return;
+            if (!IsVisible) { ForgetNews(); return; }   // the marks last while the tab shows, not into the next opening
             FindClassNews();   // once per opening; 직업 인식 shown below records what it lists
             if (_area.Name == AreaCharacter) MarkSupportSeen();
             RefreshRailOrbs();
@@ -243,8 +242,9 @@ public partial class SettingsWindow
         [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA",
     };
 
-    /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name.</summary>
-    static StackPanel AreaLabel(RadioButton row, string name, Brush? color)
+    /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name with
+    /// <paramref name="marks"/> right after it (on the name's line, so a two-line tab doesn't push them off the rail).</summary>
+    static StackPanel AreaLabel(RadioButton row, string name, Brush? color, IEnumerable<UIElement> marks)
     {
         var bar = new Border { Width = 3, Height = 16, CornerRadius = new(1.5), Margin = new(0, 0, 8, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
         var icon = new TextBlock
@@ -255,7 +255,9 @@ public partial class SettingsWindow
         var text = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center };
         // A tab with a second line (settings-reorg order 6): its name over it, smaller.
         var subtitle = FeatureMap.RailSubtitles.TryGetValue(name, out var line) ? new TextBlock { Text = line, FontSize = 10.5 } : null;
-        UIElement caption = subtitle is null ? text : new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { text, subtitle } };
+        var title = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { text } };
+        foreach (var mark in marks) title.Children.Add(mark);
+        UIElement caption = subtitle is null ? title : new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { title, subtitle } };
         // Own TextBlocks skip the toggle's text colour, which left white on the sand fill (2.3:1). The theme's keys, not a binding
         // to the toggle's presenter: on a real start that drew every row black, and --demo hid it.
         void Paint()

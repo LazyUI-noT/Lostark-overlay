@@ -67,7 +67,7 @@ Ask the user these before adding a class or 직업각인. The answers decide the
    - 바드 (both): each section glows once it is full (`"when": "sections"`).
    - 도화가 (both): each orb glows once it is full (`"when": "sections"`).
    - 전투태세: the whole fill glows while C is lit and the gauge is at least 50% (`slotReady`, 아덴2, 0.5).
-   - 해방자: the whole fill glows from 80% while Z is ready (`slotReady`, 아덴1, 0.8). 빛의기사: at a full gauge while C is ready (`slotReady`, 아덴2, 1).
+   - 해방자: a line at 80% (`splits` [0.8], the point Z can spend from; user, 2026-11-10); the whole fill glows from 80% while Z is ready (`slotReady`, 아덴1, 0.8). 빛의기사: at a full gauge while C is ready (`slotReady`, 아덴2, 1).
    - 고독한기사: no glow.
    Also ask whether the glow needs the skill ready or only the gauge value; a rule the two existing kinds can't express needs a new `glow.when`.
 5. **Does the fill deepen as sections fill?** (`"ramp"` in `adenGauge`: the colour level, 1 weak · 2 medium · 3 strong, for 1, 2, … full sections; past the list the last level holds; below one full section the normal colour.) Known answers so far:

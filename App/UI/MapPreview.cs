@@ -2,29 +2,32 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using GaugeOverlay.Core.Domain;
 using Picture = System.Windows.Controls.Image;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>The card a 표시 map box shows on hover: a recorded GIF of its window on the sample screen (Assets/map, made by
-/// tools/make-map-gifs.ps1), and the reader's stored capture with its mark. A box shows whichever it has.</summary>
+/// <summary>The card a 표시 map box shows on hover: its window in each display style, side by side, labeled and in sync
+/// (user, 2026-11-10), recorded on the sample screen (Assets/map, made by tools/make-map-gifs.ps1, listed in map.json), and the
+/// reader's stored capture with its mark. A box shows whichever it has.</summary>
 internal static class MapPreview
 {
-    const double CardWidth = 400, CaptureHeight = 130;
+    /// <summary>A row wider than this wraps (four 막대-sized tiles fit; the meter's four go two by two).</summary>
+    const double RowWidth = 880, CaptureHeight = 130, TileGap = 10;
     /// <summary>tools/make-map-gifs.ps1 records 10 frames a second.</summary>
     static readonly TimeSpan FrameTime = TimeSpan.FromMilliseconds(100);
-    /// <summary>The last GIF decoded: about 20 MB of frames each, so not all nine are kept.</summary>
-    static (OverlayPart Part, BitmapSource[] Frames)? _decoded;
+    /// <summary>The last window's tiles decoded (each keeps its frames' changes, about 1–4 MB), so a second hover is instant.</summary>
+    static (string Key, (string Label, GifTile Tile)[] Tiles)? _decoded;
+    static Dictionary<string, (string Label, string File)[]>? _manifest;
 
-    /// <returns>Null for a box with no window and no reader.</returns>
-    public static UIElement? Card(string title, OverlayPart? window, Detection? mark, ImageSource? capture, TimeSpan now)
+    /// <returns>Null for a box with no GIF and no reader.</returns>
+    /// <param name="gifs">map.json's key: the window's part, or Boss / Shadow for the labels over the game's own bar (recorded
+    /// over footage, user 2026-11-10).</param>
+    public static UIElement? Card(string title, string? gifs, Detection? mark, ImageSource? capture, TimeSpan now)
     {
-        var gif = window is { } part ? Gif(part) : null;
+        UIElement? gif = gifs is { } key ? Row(key) : null;
         if (gif is null && mark is null) return null;
-        var body = new StackPanel { Width = CardWidth };
+        var body = new StackPanel { MaxWidth = RowWidth };
         body.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
         if (gif is not null) body.Children.Add(gif);
         if (mark is { } d)
@@ -32,6 +35,25 @@ internal static class MapPreview
             if (capture is not null) body.Children.Add(new Picture { Source = capture, MaxHeight = CaptureHeight, Margin = new(0, gif is null ? 0 : 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left });
             body.Children.Add(new TextBlock { Text = Caption(d, capture is not null, now), FontSize = 12, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) });
         }
+        return Frame(body);
+    }
+
+    /// <summary>The 감지 중 chip's card (user, 2026-11-10): no GIF, only the reader's area as the screen shows it now.
+    /// <paramref name="picture"/> starts on the stored moment (if any) and the caller swaps in each Live frame.</summary>
+    public static UIElement LiveCard(string title, Detection? mark, Picture picture, TimeSpan now)
+    {
+        var body = new StackPanel { MaxWidth = RowWidth };
+        body.Children.Add(new TextBlock { Text = $"{title} · 읽는 자리", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
+        (picture.MaxHeight, picture.HorizontalAlignment, picture.Stretch) = (CaptureHeight, HorizontalAlignment.Left, Stretch.Uniform);
+        body.Children.Add(picture);
+        string state = mark is { Mark: DetectMark.Waiting } ? "아직 찾는 중" : mark is { } d ? Caption(d, true, now) : "";
+        body.Children.Add(new TextBlock { Text = "Live: 지금 화면 (1초에 2번)" + (state.Length > 0 ? $"\n{state}" : "")
+            + "\n누르면 접힌 상자는 펼쳐지고, 펼친 상자는 감지 화면으로 갑니다.", FontSize = 12, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) });
+        return Frame(body);
+    }
+
+    static Border Frame(UIElement body)
+    {
         var card = new Border { Child = body, Padding = new(10), CornerRadius = new(8), BorderThickness = new(1) };
         card.SetResourceReference(Border.BackgroundProperty, Themes.BackgroundBrushKey);
         card.SetResourceReference(Border.BorderBrushProperty, Themes.StrokeBrushKey);
@@ -45,58 +67,70 @@ internal static class MapPreview
         _ => "아직 찾는 중입니다. 찾으면 그 순간의 화면이 여기 나옵니다.",
     };
 
-    /// <summary>The window's GIF playing (Windows' animations off: its first frame); null if the file can't be read.</summary>
-    static Picture? Gif(OverlayPart part)
+    /// <summary>The window's styles side by side, each labeled (a window with one style: no label), all moved to the same
+    /// frame by one clock so they play in sync (Windows' animations off: their first frames). A tile that can't be read is
+    /// left out; null when none can.</summary>
+    static UIElement? Row(string key)
     {
-        BitmapSource[] frames;
-        try
+        var tiles = Tiles(key);
+        if (tiles.Length == 0) return null;
+        var row = new WrapPanel { MaxWidth = RowWidth };
+        foreach (var (label, tile) in tiles)
         {
-            if (_decoded is { } kept && kept.Part == part) frames = kept.Frames;
-            else
-            {
-                using var stream = Application.GetResourceStream(new Uri($"pack://application:,,,/Assets/map/{part}.gif")).Stream;
-                frames = Frames(stream);
-                _decoded = (part, frames);
-            }
+            var cell = new StackPanel { Margin = new(0, 0, TileGap, TileGap) };
+            cell.Children.Add(new Picture { Source = tile.Picture, Width = tile.Picture.PixelWidth, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left });
+            if (label.Length > 0) cell.Children.Add(new TextBlock { Text = label, FontSize = 12, Opacity = 0.8, HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 4, 0, 0) });
+            row.Children.Add(cell);
         }
-        catch (Exception ex) when (ex is IOException or FileFormatException or NotSupportedException or ArgumentException)   // a card without it beats a crash on hover
+        foreach (var (_, tile) in tiles) tile.Show(0);
+        if (!SystemParameters.ClientAreaAnimation) return row;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = FrameTime };
+        timer.Tick += (_, _) =>
         {
-            System.Diagnostics.Trace.WriteLine($"[map] no GIF for {part}: {ex.Message}");
-            return null;
-        }
-        var image = new Picture { Source = frames[0], Width = CardWidth };
-        if (!SystemParameters.ClientAreaAnimation) return image;
-        var play = new ObjectAnimationUsingKeyFrames { Duration = FrameTime * frames.Length, RepeatBehavior = RepeatBehavior.Forever };
-        for (int i = 0; i < frames.Length; i++) play.KeyFrames.Add(new DiscreteObjectKeyFrame(frames[i], KeyTime.FromTimeSpan(FrameTime * i)));
-        image.BeginAnimation(Picture.SourceProperty, play);
-        image.Unloaded += (_, _) => image.BeginAnimation(Picture.SourceProperty, null);
-        return image;
+            int frame = (int)(clock.Elapsed / FrameTime);
+            foreach (var (_, tile) in tiles) tile.Show(frame);
+        };
+        row.Loaded += (_, _) => { clock.Restart(); timer.Start(); };
+        row.Unloaded += (_, _) => timer.Stop();
+        return row;
     }
 
-    /// <summary>WPF plays no GIF: each frame holds only what changed, at its offset, so they are laid over each other here.</summary>
-    static BitmapSource[] Frames(Stream gif)
+    static (string Label, GifTile Tile)[] Tiles(string key)
     {
-        var decoder = new GifBitmapDecoder(gif, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        int width = decoder.Frames[0].PixelWidth, height = decoder.Frames[0].PixelHeight, stride = width * 4;
-        var screen = new byte[stride * height];
-        var frames = new BitmapSource[decoder.Frames.Count];
-        for (int f = 0; f < frames.Length; f++)
-        {
-            var frame = decoder.Frames[f];
-            var meta = (BitmapMetadata)frame.Metadata;
-            int left = Convert.ToInt32(meta.GetQuery("/imgdesc/Left")), top = Convert.ToInt32(meta.GetQuery("/imgdesc/Top"));
-            int w = frame.PixelWidth, h = frame.PixelHeight;
-            var pixels = new byte[w * h * 4];
-            new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0).CopyPixels(pixels, w * 4, 0);
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++)
-                {
-                    int from = (y * w + x) * 4, to = (top + y) * stride + (left + x) * 4;
-                    if (pixels[from + 3] != 0) Array.Copy(pixels, from, screen, to, 4);
-                }
-            frames[f] = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, screen, stride);
-            frames[f].Freeze();
-        }
-        return frames;
+        if (_decoded is { } kept && kept.Key == key) return kept.Tiles;
+        var tiles = new List<(string, GifTile)>();
+        foreach (var (label, file) in Manifest().GetValueOrDefault(key, []))
+            try
+            {
+                using var stream = Application.GetResourceStream(new Uri($"pack://application:,,,/Assets/map/{file}")).Stream;
+                tiles.Add((label, new GifTile(stream)));
+            }
+            catch (Exception ex) when (ex is IOException or FileFormatException or NotSupportedException or ArgumentException or NullReferenceException or InvalidCastException or InvalidOperationException or System.Runtime.InteropServices.ExternalException)   // a card without it beats a crash on hover
+            {
+                System.Diagnostics.Trace.WriteLine($"[map] no GIF {file} for {key}: {ex.Message}");
+            }
+        _decoded = (key, [.. tiles]);
+        return _decoded.Value.Tiles;
     }
+
+    /// <summary>map.json from tools/make-map-gifs.ps1: each window's styles as {Label, File}, in order. Empty if unreadable.</summary>
+    static Dictionary<string, (string Label, string File)[]> Manifest()
+    {
+        if (_manifest is not null) return _manifest;
+        try
+        {
+            using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/map/map.json")).Stream;
+            var json = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, MapTile[]>>(stream) ?? [];
+            _manifest = json.ToDictionary(p => p.Key, p => p.Value.Select(t => (t.Label, t.File)).ToArray());
+        }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or NullReferenceException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[map] no map.json: {ex.Message}");
+            return [];   // not kept: the next hover tries again
+        }
+        return _manifest;
+    }
+
+    sealed record MapTile(string Label, string File);
 }

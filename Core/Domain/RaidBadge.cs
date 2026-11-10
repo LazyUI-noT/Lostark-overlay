@@ -28,6 +28,10 @@ public static class RaidBadge
         };
     }
 
+    /// <summary>A difficulty as 설정 shows it: 나이트메어 as 나메, so every capsule is about as long (user, 2026-11-10). Saved
+    /// names, raids.json and the game's text keep the full word.</summary>
+    public static string Label(string difficulty) => difficulty.Replace("나이트메어", "나메", StringComparison.Ordinal);
+
     static readonly (string Prefix, string Logo)[] Logos =
         [("벨가르딘", "belgardin"), ("1막", "act1"), ("2막", "act2"), ("3막", "act3"), ("4막", "act4"), ("종막", "final"),
          ("세르카", "serka"), ("고통의 마녀", "serka"),   // 숙제 names the raid, its gates the boss's title (raids.json)

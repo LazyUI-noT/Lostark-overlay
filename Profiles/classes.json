@@ -8,7 +8,7 @@
     "가디언나이트": { "id": 5, "adenSlots": [], "subclasses": { "업화의계승자": { "adenGauge": null }, "드레드로어": { "adenGauge": null } } },
     "발키리":       { "id": 6, "role": "서포터", "adenSlots": ["아덴1", "아덴2"], "adenRects": { "아덴1": [888, 1026, 40, 43], "아덴2": [992, 1026, 40, 43] }, "subclasses": {
                       "빛의기사": { "role": "딜러", "adenDark": true, "adenGauge": { "glow": { "when": "slotReady", "slot": "아덴2", "minGauge": 1 }, "spend": { "slots": ["아덴1"], "amount": 0.8 } } },
-                      "해방자": { "role": "서포터", "adenDark": true, "adenGauge": { "glow": { "when": "slotReady", "slot": "아덴1", "minGauge": 0.8 }, "spend": { "slots": ["아덴1"], "amount": 0.8 } } } } },
+                      "해방자": { "role": "서포터", "adenDark": true, "adenGauge": { "splits": [0.8], "glow": { "when": "slotReady", "slot": "아덴1", "minGauge": 0.8 }, "spend": { "slots": ["아덴1"], "amount": 0.8 } } } } },
     "슬레이어":     { "id": 7, "adenSlots": [], "subclasses": { "포식자": { "adenGauge": null }, "처단자": { "adenGauge": null } } }
   },
   "무도가": {

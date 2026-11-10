@@ -81,10 +81,9 @@ public sealed record Snapshot(
         []);
 }
 
-/// <summary>The 줄 수 창: the gate whose alerts apply, the bar count shown (null: not read yet, or lost), whether an alert glows,
-/// and the game's own "X n" pixels when 표시 is 화면그대로 (null otherwise); <paramref name="Text"/>, shown instead of the count:
-/// a ??? gate's estimated HP left ("≈62% 1.2조").</summary>
-public sealed record RaidStatus(Data.RaidGate? Gate, int? Count, bool Glow, Image? CountCrop, string? Text = null);
+/// <summary>The 줄 수 창: the gate whose alerts apply, the bar count shown (null: not read yet, or lost), whether an alert glows;
+/// <paramref name="Text"/>, shown instead of the count: a ??? gate's estimated HP left ("≈62% 1.2조").</summary>
+public sealed record RaidStatus(Data.RaidGate? Gate, int? Count, bool Glow, string? Text = null);
 
 /// <summary>A snapshot with the name to show next to it (empty for yourself), and the box colours the member sent
 /// (null until they arrive), used by 파티원 설정 따르기.</summary>

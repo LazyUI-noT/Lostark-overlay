@@ -118,7 +118,7 @@ public static class BossDigits
         if (!hp) words.Reverse();
         foreach (var (word, at) in words)
         {
-            if (count is null && word.Width <= MaxCountWidth * scale && ReadCount(word, scale) is { } c) (count, countArea) = (c, at);   // 화면 그대로 shows this part
+            if (count is null && word.Width <= MaxCountWidth * scale && ReadCount(word, scale) is { } c) (count, countArea) = (c, at);
             if (hp) read ??= ReadHpWithShield(word, scale, soft);
             else if (count is not null) break;
         }
