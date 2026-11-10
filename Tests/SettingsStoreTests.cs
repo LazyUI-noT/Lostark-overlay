@@ -694,6 +694,17 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_file_from_before_the_bin_still_needs_its_fights_kept_once()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RecordKeep":30}""");
+        Assert.False(new SettingsStore(FilePath).Load(out _).RecordOverflowKept);
+        Assert.True(new Settings().RecordOverflowKept);   // a new install has nothing to keep
+        File.WriteAllText(FilePath, """{"RecordOverflowKept":true}""");
+        Assert.True(new SettingsStore(FilePath).Load(out _).RecordOverflowKept);
+    }
+
+    [Fact]
     public void Another_saved_keep_stays()
     {
         Directory.CreateDirectory(_dir);

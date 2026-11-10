@@ -103,6 +103,24 @@ public sealed class RecordStoreTests : IDisposable
         Assert.Contains(Store.Bin.List(), x => x.Record.StartedAt == R(1).StartedAt && !x.Record.Kept);
     }
 
+    // Up to 0.19, N counted only unkept fights and 보관 ones were extra. Now 보관 ones take places, so the first save after the
+    // update would bin the unkept fights past N: once, those turn 보관 instead (user, 2026-11-10: the update bins nothing).
+    [Fact]
+    public void After_the_update_the_fights_past_the_new_count_turn_kept_and_the_next_save_bins_nothing()
+    {
+        var store = new RecordStore(Path.Combine(_dir, "a"));   // as 0.19 left 가 at keep 3: three unkept, two newer kept
+        foreach (var (minute, kept) in new[] { (0, false), (1, false), (2, false), (3, true), (4, true) })
+            store.Save(R(minute, kept) with { Character = "가" }, 50);
+        store.Save(R(10) with { Character = "나" }, 50);
+
+        Assert.Equal(2, store.KeepOverflow(3));   // newest three: R4, R3 (kept), R2; R1 and R0 past them
+        Assert.Equal(0, store.KeepOverflow(3));   // once is enough
+        Assert.Empty(store.Bin.List());
+        Assert.Contains(store.List(), x => x.Record.StartedAt == R(0).StartedAt && x.Record.Kept);
+        store.Save(R(5) with { Character = "가" }, 3);   // the save after: one fight, the ! one (R2), as every save
+        Assert.Equal(R(2).StartedAt, Assert.Single(store.Bin.List()).Record.StartedAt);
+    }
+
     [Fact]
     public void Only_the_characters_own_save_pushes_its_fights_to_the_bin()
     {

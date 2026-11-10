@@ -102,6 +102,19 @@ public sealed class RecordStore(string dir, bool isBin = false)
             foreach (var character in List().Select(x => RecordCharacter.Of(x.Record)).Distinct().ToList()) Prune(character, Clamped(keep));
     }
 
+    /// <summary>Once, after the update from 0.19 (N counted only unkept fights, 보관 ones extra): every fight the new count would
+    /// bin turns 보관, so the update moves nothing (user, 2026-11-10). Returns how many.</summary>
+    public int KeepOverflow(int keep)
+    {
+        lock (_gate)
+        {
+            var past = List().Where(x => !IsHeld(x.File)).GroupBy(x => RecordCharacter.Of(x.Record))
+                .SelectMany(g => Overflow(g.ToList(), _ => false, x => x.Record.Kept, keep)).ToList();
+            foreach (var (file, r) in past) Write(file, r with { Kept = true });
+            return past.Count;
+        }
+    }
+
     /// <summary>How many fights <see cref="PruneAll"/> with <paramref name="keep"/> would move: asked before, to warn.</summary>
     public int OverflowCount(int keep) =>
         List().Where(x => !IsHeld(x.File)).GroupBy(x => RecordCharacter.Of(x.Record))

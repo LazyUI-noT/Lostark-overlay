@@ -42,6 +42,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public int RecordKeep { get; set; } = 50;
     /// <summary>A saved <see cref="RecordKeep"/> of 20 (the default before 전투 기록 went per character) has moved to 50 once.</summary>
     public bool RecordKeepMigrated { get; set; } = true;
+    /// <summary>False in a file from before 0.20: its fights past the new count turn 보관 once at start-up (RecordStore.KeepOverflow).</summary>
+    public bool RecordOverflowKept { get; set; } = true;
     /// <summary>전투 기록's 자동 저장: off, only the last fight is held (unsaved) until the next one, and 보관 saves it.</summary>
     public bool RecordAutoSave { get; set; } = true;
     /// <summary>전투 기록's rows: 날짜순 (newest first) or 레이드순 (Timeline.ByRaid) (user, 2026-11-10).</summary>
@@ -84,7 +86,8 @@ public sealed partial class Settings : IJsonOnDeserializing
 
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
-    void IJsonOnDeserializing.OnDeserializing() => (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated) = (UiTheme.DeepTeal, false, false, false);
+    void IJsonOnDeserializing.OnDeserializing() =>
+        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept) = (UiTheme.DeepTeal, false, false, false, false);
     /// <summary>The 아덴 게이지 bar per "클래스/직업각인" (GaugeBar.Key): only the ones changed in the 게이지 tab; the
     /// rest use the classes.json default.</summary>
     public Dictionary<string, GaugeBarSettings> GaugeBars { get; set; } = [];

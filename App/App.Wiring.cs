@@ -99,6 +99,18 @@ public partial class App
         var records = new RecordStore(RecordStore.DefaultDir);
         var testRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "test"));   // 테스트 모드's fights: apart, own count
         RecordStore StoreNow() => GameWindow.TestMode ? testRecords : records;
+        bool overflowKept = settings.RecordOverflowKept;
+        if (!overflowKept)   // before any save: the update from 0.19 bins nothing
+            try
+            {
+                int kept = records.KeepOverflow(settings.RecordKeep) + testRecords.KeepOverflow(settings.RecordKeep);
+                (settings.RecordOverflowKept, overflowKept) = (true, true);
+                Save(now: false);
+                Trace.WriteLine($"[records] {kept} fight(s) past 최근 {settings.RecordKeep} kept as 보관 after the update");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[records] update keep failed, tried next start: {ex.Message}"); }
+        // Until that step has run, saves keep the most (50) so nothing it would have kept goes to the bin meanwhile.
+        int KeepNow() => overflowKept ? settings.RecordKeep : RecordStore.MaxKeep;
         // 숙제 and who is being played (homework.plan.md): the game menu names the character; the game's fights count, 테스트 모드's don't.
         var homework = new HomeworkService(settings, raidGates, HomeworkData.Load(CharacterService.DefaultProfilesDir), [.. characters.Classes.Select(c => c.Name)],
             new HomeworkStore(HomeworkStore.DefaultPath), records, Dispatcher, () => Save(now: false), () => _settingsWindow.RefreshRecords());
@@ -248,7 +260,7 @@ public partial class App
             Save(now: true);
             try { lastSave.Wait(SaveOnExit); }   // a fight saved just before closing finishes writing
             catch (AggregateException ex) { Trace.WriteLine($"[records] save before exit failed: {ex.InnerException?.Message}"); }
-            if (recorder.Finish() is { } fight && StoreNow() is var store) store.Save(Named(TakeSkills(fight), store == testRecords), settings.RecordKeep);   // the fight under way when the app closes
+            if (recorder.Finish() is { } fight && StoreNow() is var store) store.Save(Named(TakeSkills(fight), store == testRecords), KeepNow());   // the fight under way when the app closes
         };
         string PartyName() => string.IsNullOrWhiteSpace(settings.Party.DisplayName) ? "플레이어" : settings.Party.DisplayName.Trim();
 
@@ -613,7 +625,7 @@ public partial class App
                         && x.Record is { } r && RecordCharacter.Of(r) == RecordCharacter.Of(named));
                     var merged = last.Record is { } before ? FightRegions.Continued(before, named) : null;
                     if (merged is not null) Trace.WriteLine($"[records] {last.File} goes on: saved as {merged.Gate}");
-                    if (settings.RecordAutoSave) file = merged is not null ? EditOrSave(store, last.File, merged, named) : store.Save(named, settings.RecordKeep);
+                    if (settings.RecordAutoSave) file = merged is not null ? EditOrSave(store, last.File, merged, named) : store.Save(named, KeepNow());
                     else { store.Hold(merged ?? named); file = RecordStore.Held; }   // 자동 저장 off: only the last fight, until 보관 or the next one
                     if (store == records) homework.Saved(named);   // a clear counts even when the fight isn't kept
                     Trace.WriteLine($"[records] saved {file}");
@@ -636,11 +648,11 @@ public partial class App
         // instead, never lost (csharp-reviewer, 2026-11-10).
         string EditOrSave(RecordStore store, string file, FightRecord merged, FightRecord named)
         {
-            try { return store.Edit(file, merged, settings.RecordKeep); }
+            try { return store.Edit(file, merged, KeepNow()); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Trace.WriteLine($"[records] {file} not editable before the merge ({ex.GetType().Name}): saved apart");
-                return store.Save(named, settings.RecordKeep);
+                return store.Save(named, KeepNow());
             }
         }
 
