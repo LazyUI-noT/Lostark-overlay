@@ -14,17 +14,21 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
 {
     public const int MaxEntries = 200_000;
     public static readonly TimeSpan EndAfterFrozen = TimeSpan.FromSeconds(120);   // PauseLimit's default
-    /// <summary>The boss's last HP read under this is a kill: a finishing skill takes 100~300억 in one hit, so the last read
-    /// before the bar goes may show that much (user, 2026-11-03); for a smaller boss (older raids) <see cref="KillShare"/> of
-    /// its max instead.</summary>
+    /// <summary>A kill when the boss's max is unknown: a finishing skill takes 100~300억 in one hit, so the last read before
+    /// the bar goes may show that much (user, 2026-11-03).</summary>
     public const long ClearUnder = 50_000_000_000;
+    /// <summary>The kill line: <see cref="KillShare"/> of the boss's max, uncapped (user, 2026-11-11). The last read lags the
+    /// kill (0.1~1.2% left on the user's 33 clears). A wipe under it is 클리어 until the same boss comes again (<see cref="FightVerdict"/>).</summary>
     const double KillShare = 0.05;
     /// <summary>A boss this low is dead: a timer stopped on it ends the record at once (a phase change stops it too, on a
     /// phase bar that may be low but not this low).</summary>
     const long DeadUnder = 10_000;
+    /// <summary>A timer stopped with the boss under the kill line ends the record after this, not the full pause, so it is saved
+    /// before a character switch (user, 2026-11-11).</summary>
+    static readonly TimeSpan KilledWait = TimeSpan.FromSeconds(5);
 
     /// <summary>The boss's last HP read is a kill (also 숙제's fallback, <see cref="HomeworkWatch"/>).</summary>
-    public static bool Killed(long hp, long? max) => hp < Math.Min(ClearUnder, max is > 0 and var m ? (long)(m * KillShare) : ClearUnder);
+    public static bool Killed(long hp, long? max) => hp < (max is > 0 and var m ? (long)(m * KillShare) : ClearUnder);
 
     /// <summary>A fight is under way: it will be saved, so it decides 숙제 even with the panel closed since (<see cref="Homework.SourceOf"/>).</summary>
     public bool Recording => _started;
@@ -33,7 +37,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     /// its result is then settled by the next record's boss (<see cref="FightVerdict"/>).</summary>
     public bool Restarted { get; private set; }
     /// <summary>A boss HP read this recent counts as the bar still shown (the boss probe reads it 2/s).</summary>
-    static readonly TimeSpan HpFresh = TimeSpan.FromSeconds(1.5);
+    public static readonly TimeSpan HpFresh = TimeSpan.FromSeconds(1.5);
     /// <summary>Fight seconds the timer runs on with no boss bar before the end that make it a clear, at any HP it last showed
     /// (a read missed now and then is not). A wipe keeps the bar up and read (종막's 공략에 실패하였습니다, user 2026-11-03);
     /// 구원의 종탑 (2026-11-03): 9 s at 9.8% (1관문's gimmick kill), 4 s at 0.4% (2관문).</summary>
@@ -76,6 +80,22 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     List<RecordBoss> _boss = [];
     List<double> _phases = [];
     Dictionary<string, RecordMember> _members = [];
+    // Stretches left out of 버프 적용률 (LeftOut): the boss bar unread, or my skill bar tinted and 5 s after. Saved in the
+    // file's Assumed list (FightRecord.Assumed).
+    readonly LeftOut _left = new();
+    double? _leftFrom;
+    List<RecordSpan> _leftOut = [];
+
+    /// <summary>I play a support: my own dead time stays in 버프 적용률, so the tint leaves nothing out (user, 2026-11-11).</summary>
+    public bool Support { get; set; }
+
+    /// <summary>The fight second from <paramref name="before"/> on: left out or not; a stretch runs from its first left-out
+    /// second's start to the start of the first one counted again.</summary>
+    void Leave(bool left, double before)
+    {
+        if (left) _leftFrom ??= before;
+        else if (_leftFrom is { } from) { _leftOut.Add(new(from, before)); _leftFrom = null; }
+    }
 
     /// <summary>My own snapshot: casts and buff windows in my lane (<see cref="Me"/>).</summary>
     public void ObserveMine(Snapshot snap, TimeSpan now)
@@ -122,6 +142,22 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         _pending.Add((now, new RecordEvent(Math.Round(t + into, 2), name, kind, what)));
     }
 
+    /// <summary>How long after the engine's last read the same status may still be stepped again.</summary>
+    public static readonly TimeSpan ReadFresh = TimeSpan.FromSeconds(2);
+
+    /// <summary>Whether the last status may be stepped again with a later time (the app's 1 s timer): only while the engine
+    /// is reading the screen and finds nothing changed (the HUD and 전분 gone). With another app in front or the game
+    /// minimised it reads nothing, and the fight waits for the game to come back: one record, not two. Back from there,
+    /// not before <see cref="ReadFresh"/> of reading again (<paramref name="readingSince"/>): the status from before holds a
+    /// timer that last moved before the gap, and stepping it before a new one is published would end the fight.</summary>
+    public static bool MayStepAgain(TimeSpan now, TimeSpan readAt, TimeSpan readingSince) =>
+        readAt > TimeSpan.Zero && now - readAt <= ReadFresh && now - readingSince >= ReadFresh;
+
+    /// <summary>When the engine's current stretch of reading began, after a read at <paramref name="now"/>: a new stretch
+    /// when the last read is too old for <see cref="MayStepAgain"/>.</summary>
+    public static TimeSpan ReadingSince(TimeSpan now, TimeSpan lastRead, TimeSpan since) =>
+        lastRead > TimeSpan.Zero && now - lastRead <= ReadFresh ? since : now;
+
     /// <summary>The meter's second. Returns the fight that just ended, if one did.</summary>
     public FightRecord? Step(MeterStatus status, IReadOnlyList<MeterSample> samples, IReadOnlyList<RecordMember> members, long bossTaken,
         string? gate, TimeSpan now, DateTime wall)
@@ -133,6 +169,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         if (c.Fight != was.Fight)   // a new 전분 record: wait for its timer to move
         {
             done = Finish();
+            _diedIn = null;
             Restarted = done is not null;
             return done;
         }
@@ -141,7 +178,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         {
             if (!_started && !InRaid) return null;
             if (_stopped && _started) _phases.Add(before);   // a stop before the fight (the preparation) is no phase
-            if (!_started) (_started, _startedAt, _gate) = (true, wall, gate);
+            if (!_started) (_started, _startedAt, _gate, _startedOn, _rejoined, _diedIn) = (true, wall, gate, now, _diedIn == c.Fight, null);
             _stopped = false;
             if (ShadowOn)
             {
@@ -186,13 +223,35 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
             _boss.Add(new RecordBoss(t, bossTaken, status.Boss.Last, status.Boss.Max, status.Boss.LastShield > 0 ? status.Boss.LastShield : null));
             // 대난투 shows no boss HP, only the damage dealt (user, 2026-11-08): its seconds, a few unread ones too (until
             // ShadowEndAfter ends it), are no bar gone, so a fight ending in it isn't the bar-gone clear.
-            if (now - status.HpAt <= HpFresh || _shadowLogged) _hpSeen = t;
+            bool shown = now - status.HpAt <= HpFresh || _shadowLogged;
+            // BossOut too: the HP lost behind an unread bar comes in one jump on the seconds after it, which the saved boss
+            // line would count (Timeline.PartyBuffShare) where the live meter doesn't.
+            // ponytail: those seconds of my own damage go out with it, which the live meter keeps; a second span list if it shows.
+            Leave(_left.Step(!shown, !Support && status.Tinted(now), now) || _left.BossOut || _rejoined, before);
+            _rejoined = false;
+            if (shown) _hpSeen = t;
             return _events.Count + _samples.Count >= maxEntries ? Finish() : null;
         }
+        // The timer hidden or stopped with the bar: the second it next moves on was dealt across it, so is left out too.
+        if (_started && now - status.HpAt > HpFresh && !_shadowLogged) _left.Hide();
         if (c.Frozen && !_stopped) { _stopped = true; _pending.Clear(); }
         if (_started && c.Frozen && status.Boss.Last < DeadUnder) return Finish();   // cleared: the timer stops on the kill
-        return _started && now - c.MovedAt >= PauseLimit ? Finish() : null;
+        bool killed = status.Boss is { Last: { } hp, Max: > 0 } && Killed(hp, status.Boss.Max);
+        // The death save: my skill bar tinted when last seen, in this fight, and the HUD gone since (dead-disabled.plan.md).
+        // Not once the timer was seen stopped: a clear tints the bar too, and the loading screen after it is no death.
+        bool died = status.Died(now) && status.TintAt >= _startedOn && !c.Frozen;
+        var wait = (killed || died) && KilledWait < PauseLimit ? KilledWait : PauseLimit;
+        if (!_started || now - c.MovedAt < wait) return null;
+        var fight = End(died);
+        if (died) _diedIn = c.Fight;
+        return fight;
     }
+
+    // The 전분 record a death save cut: going on, its first second (from the cut's end to the timer's next move, dead and
+    // unread) is left out, so the joined file (FightRegions.Rejoined) counts nothing dealt meanwhile.
+    int? _diedIn;
+    bool _rejoined;
+    TimeSpan _startedOn;   // the capture clock at the fight's start: a tint from before it (a town's bar) is no death
 
     void Commit(RecordEvent e)
     {
@@ -209,7 +268,11 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
 
     /// <summary>Ends the fight being recorded (the meter turned off, the app closing); null when none was running. Events not
     /// yet confirmed by the timer are dropped.</summary>
-    public FightRecord? Finish()
+    public FightRecord? Finish() => End(died: false);
+
+    /// <param name="died">A death save: 실패 unless the boss was last read under the kill line (the bar gone is no clear here:
+    /// it goes with the HUD).</param>
+    FightRecord? End(bool died)
     {
         Restarted = false;
         _pending.Clear();
@@ -228,10 +291,12 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
         // gone for BarGoneFor while the timer still ran is a clear too.
         // Ended on ??? (종막 2-3): nothing to judge by, so 클리어 until the same raid starts again (FightVerdict, user 2026-11-04).
         bool? cleared = FightRegions.EndedHidden(_boss) ? true : _boss.LastOrDefault(b => b.Current is not null) is { Current: { } hp } last
-            ? Killed(hp, last.Max) || _hpSeen is { } seen && end - seen >= BarGoneFor : null;
+            ? Killed(hp, last.Max) || !died && _hpSeen is { } seen && end - seen >= BarGoneFor : died ? false : null;
+        if (_leftFrom is { } open && end > open) _leftOut.Add(new(open, end));   // still left out at the end
         var r = new FightRecord(_startedAt, _gate, end, _phases, Me, MyClass, MySubclass,
-            [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn);
-        (_events, _samples, _boss, _phases, _members, _gate, _hpSeen) = ([], [], [], [], [], null, null);
+            [.. _members.Values], _samples, _boss, _events, Cleared: cleared, AmsuOn: AmsuOn, Assumed: _leftOut.Count > 0 ? _leftOut : null);
+        (_events, _samples, _boss, _phases, _members, _gate, _hpSeen, _leftOut, _leftFrom) = ([], [], [], [], [], null, null, [], null);
+        _left.Clear();
         return r;
     }
 }

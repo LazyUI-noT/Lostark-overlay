@@ -3,11 +3,20 @@ using GaugeOverlay.Core.Vision;
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>The meter as read on this PC: the 전분 panel's last reading (null: unread), the boss damage of the current record,
-/// the record's clock, whether the panel is (still) being read, when it last read, and when the boss HP was last read.</summary>
+/// the record's clock, whether the panel is (still) being read, when it last read, when the boss HP was last read, and when my
+/// skill bar last carried the dead / disabled tint (Vision.SkillTint, set by the engine; default: never), and whether its last
+/// sighting did (<paramref name="TintLast"/>: true and the bar gone since is a death, <see cref="Died"/>).</summary>
 public sealed record MeterStatus(JeonbunReading? Panel, BossDamageState Boss, FightClockState Clock, bool PanelFound, TimeSpan LastRead = default,
-    TimeSpan HpAt = default)
+    TimeSpan HpAt = default, TimeSpan TintAt = default, bool TintLast = false)
 {
+    /// <summary>Dead: the skill bar was tinted when last seen, and hasn't been seen since (dead-disabled.plan.md, the death save).</summary>
+    public bool Died(TimeSpan now) => TintLast && TintAt > TimeSpan.Zero && now - TintAt > FightRecorder.HpFresh;
+
     public static readonly MeterStatus None = new(null, BossDamageState.None, FightClockState.None, false);
+
+    /// <summary>The skill bar is tinted this second: seen so within <see cref="FightRecorder.HpFresh"/> (the slots are read
+    /// several times a second while the bar is on screen).</summary>
+    public bool Tinted(TimeSpan now) => TintAt > TimeSpan.Zero && now - TintAt <= FightRecorder.HpFresh;
 }
 
 /// <summary>The meter's once-a-second step (spec § C): the 전분 timer moves the record (a new one starts the boss damage over,

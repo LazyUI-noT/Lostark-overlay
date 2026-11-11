@@ -693,6 +693,45 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(20, new SettingsStore(FilePath).Load(out _).RecordKeep);
     }
 
+    // display-split.plan.md step 5: the global 쿨 표시 moves into 기본 and every 개별 class once; a class following 기본 still does.
+    [Fact]
+    public void An_older_files_cooldown_view_moves_into_기본_and_each_개별_class_once()
+    {
+        Directory.CreateDirectory(_dir);
+        const string body = """
+            "Overlay":{"CooldownStyle":"Fill","FillFrom":"Left","ShowTimer":false,"TimerFont":20},"Classes":{"":{},"바드":{"Own":true},"워로드":{},"블레이드":{"Members":{"Width":1.2}}}
+            """;
+        File.WriteAllText(FilePath, $"{{{body}}}");
+        var s = new SettingsStore(FilePath).Load(out _);
+
+        var moved = new CooldownView(CooldownStyle.Fill, FillFrom.Left, false);
+        Assert.Equal(moved, ClassProfiles.Of(s, ClassProfiles.Template).Mine.Cooldown);
+        Assert.Equal(moved, s.Classes["바드"].Mine.Cooldown);
+        Assert.Equal(new CooldownView(), s.Classes["워로드"].Mine.Cooldown);   // not 개별: left bare …
+        Assert.Equal(moved, ClassProfiles.Of(s, "워로드").Mine.Cooldown);       // … so it shows 기본's
+        Assert.Equal(moved, s.Classes["블레이드"].Mine.Cooldown);   // 개별 turned off keeps its own values for turning back on
+        Assert.True(s.CooldownLooksMoved);
+        Assert.Equal(20, s.Overlay.TimerFont);   // 쿨 숫자 크기 stays global
+
+        File.WriteAllText(FilePath, $"{{{body},\"CooldownLooksMoved\":true}}");   // changed per class since
+        Assert.Equal(new CooldownView(), new SettingsStore(FilePath).Load(out _).Classes["바드"].Mine.Cooldown);
+    }
+
+    [Fact]
+    public void An_install_from_before_the_key_gate_keeps_homework_without_a_key()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"RecordKeep":30}""");
+        var old = new SettingsStore(FilePath).Load(out _);
+
+        Assert.True(old.HomeworkOn(hasKey: false));
+        Assert.False(new Settings().HomeworkOn(hasKey: false));   // a new install needs the key
+        Assert.True(new Settings().HomeworkOn(hasKey: true));
+
+        new SettingsStore(FilePath).Save(new Settings());   // the mark is saved: a new install stays new
+        Assert.False(new SettingsStore(FilePath).Load(out _).HomeworkOn(hasKey: false));
+    }
+
     [Fact]
     public void A_file_from_before_the_bin_still_needs_its_fights_kept_once()
     {

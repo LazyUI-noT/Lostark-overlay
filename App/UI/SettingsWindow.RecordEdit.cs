@@ -34,8 +34,17 @@ public partial class SettingsWindow
         var books = _s.BossBook.Values.ToList();
         var dungeon = Pick(RaidGates.Select(RaidData.Label).Concat(books.Select(b => b.Name)).Concat(all.Select(x => x.Record.Gate))
             .OfType<string>().Where(n => n.Trim().Length > 0).Distinct(), r.Gate, editable: true);
-        var difficulty = Pick(RaidGates.SelectMany(g => g.HpByDifficulty?.Keys ?? []).Concat(books.Select(b => b.Difficulty))
-            .Concat(all.Select(x => x.Record.Difficulty)).OfType<string>().Where(n => n.Trim().Length > 0).Distinct(), r.Difficulty, editable: true);
+        // A known raid's own difficulties only (user, 2026-11-11: 벨가 나메 · 하드 · 노말 · 매칭), else every one seen.
+        IEnumerable<string> DifficultiesOf(string? gate) => RaidOrder.Difficulties(gate, RaidGates, Homework?.Raids ?? []) ??
+            RaidGates.SelectMany(g => g.HpByDifficulty?.Keys ?? []).Concat(books.Select(b => b.Difficulty))
+                .Concat(all.Select(x => x.Record.Difficulty)).OfType<string>().Where(n => n.Trim().Length > 0).Distinct();
+        var difficulty = Pick(DifficultiesOf(r.Gate), r.Difficulty, editable: true);
+        dungeon.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) =>
+        {
+            string kept = difficulty.Text;   // a new list keeps what is typed
+            difficulty.ItemsSource = DifficultiesOf(dungeon.Text.Trim()).ToList();
+            difficulty.Text = kept;
+        }));
         var result = Pick([Cleared, Failed, RecordCharacter.Unknown], r.Cleared switch { true => Cleared, false => Failed, _ => RecordCharacter.Unknown }, editable: false);
         var characters = _chars.Classes.SelectMany(c => c.Subclasses.Keys.Select(s => (Class: c, Sub: s))).ToList();
         // A [Test] fight's class proposed from its skill icons (FightSkills): preselected, the user confirms it with 적용.
@@ -60,12 +69,31 @@ public partial class SettingsWindow
         drop.SetResourceReference(Border.BorderBrushProperty, "ComboBoxDropDownBorderBrush");
         var popup = new Popup { PlacementTarget = who, Placement = PlacementMode.Bottom, AllowsTransparency = true, Child = drop };
         who.LostKeyboardFocus += (_, _) => popup.IsOpen = false;
-        who.PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && popup.IsOpen) { popup.IsOpen = false; e.Handled = true; } };
-        list.SelectionChanged += (_, _) =>
+        // Picking a name: a click, or ↑/↓ then Enter. The rows can't take focus, and a ListBoxItem selects on a click only when
+        // it can, so both are handled here; ↑/↓ only mark a row, the text changes on Enter.
+        void Choose(string n)
         {
-            if (list.SelectedItem is not string n) return;
             who.Text = n;   // its TextChanged follows the class and closes the list: the name now matches in full
             who.CaretIndex = n.Length;
+        }
+        list.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (e.OriginalSource is not DependencyObject hit || ItemsControl.ContainerFromElement(list, hit) is not ListBoxItem { Content: string n }) return;
+            Choose(n);
+            e.Handled = true;
+        };
+        who.PreviewKeyDown += (_, e) =>
+        {
+            if (!popup.IsOpen) return;
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.Escape: popup.IsOpen = false; break;
+                case System.Windows.Input.Key.Down: list.SelectedIndex = Math.Min(list.SelectedIndex + 1, list.Items.Count - 1); break;
+                case System.Windows.Input.Key.Up: list.SelectedIndex = Math.Max(list.SelectedIndex - 1, 0); break;
+                case System.Windows.Input.Key.Enter when list.SelectedItem is string n: Choose(n); break;
+                default: return;
+            }
+            e.Handled = true;
         };
         // A known character, picked or typed in full, sets its saved class · 직업각인; it can still be changed below.
         void FollowClass(string name)

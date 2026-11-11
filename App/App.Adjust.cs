@@ -100,8 +100,8 @@ public partial class App
         engine.TestBuffSizeFound += size => Dispatcher.BeginInvoke(() =>
             _tray.Notify($"테스트 모드: 영상의 버프 크기 {size}%로 읽습니다 (설정은 그대로 둡니다)."));
         engine.PictureNotFound += () => Dispatcher.BeginInvoke(() =>
-            _tray.Notify("테스트 모드: 영상 화면을 찾지 못해 창 전체를 게임 화면으로 씁니다. 위치 조정에서 맞춰 주세요."));
+            _tray.Notify("테스트 모드: 영상 화면을 찾지 못해 창 전체를 게임 화면으로 씁니다. 위치 조정에서 맞춰 주세요.", kind: NoticeKind.Problem));
         engine.PreviewWithoutFit += test => Dispatcher.BeginInvoke(() =>
-            _tray.Notify((test ? "테스트 모드: 스킬창을 찾지 못해" : "맞춘 스킬창이 없어") + " HUD 100% 위치에서 시작합니다. 위치 조정 화면에서 맞게 옮긴 뒤 적용하세요."));
+            _tray.Notify((test ? "테스트 모드: 스킬창을 찾지 못해" : "맞춘 스킬창이 없어") + " HUD 100% 위치에서 시작합니다. 위치 조정 화면에서 맞게 옮긴 뒤 적용하세요.", kind: NoticeKind.Problem));
     }
 }

@@ -19,6 +19,14 @@ public partial class SettingsWindow
                 if (on) _s.MutedWarnings.Remove(kind);
                 else _s.MutedWarnings.Add(kind);
             }, Changed, help)));
+        // Windows 알림 (user, 2026-11-11): the tray's notices by kind, all on until turned off here (Tray.NoticeShown).
+        p.Children.Add(SubHeading("Windows 알림", "화면 오른쪽 아래에 뜨는 알림을 종류별로 켜고 끕니다. 꺼도 설정 창에 나오는 결과와 파티 상태는 그대로 보입니다."));
+        foreach (var (kind, name, help) in Notices.All)
+            p.Children.Add(Row("", Check(name, Notices.Shows(_s, kind), on =>
+            {
+                if (on) _s.MutedNotices.Remove(kind);
+                else _s.MutedNotices.Add(kind);
+            }, Changed, help)));
     }
 
     /// <summary>Asks before <paramref name="kind"/>'s action unless muted; true: go ahead. 다시 보지 않기 with 확인 mutes it.</summary>

@@ -116,6 +116,9 @@ public class GameMenuTests
     [InlineData("1791.66", null)]   // an item level
     [InlineData("가", null)]        // too short
     [InlineData("가Ot나", "가Ot나")]   // a typed name stays as typed
+    [InlineData("수164이00912", null)]   // a number read with its icon (user, 2026-11-10: fights named after it)
+    [InlineData("수177이83", null)]
+    [InlineData("Ab12", "Ab12")]        // as many letters as digits is still a name
     public void A_name_is_letters_and_digits_with_a_letter(string text, string? name)
     {
         Assert.Equal(name, CharacterName.Clean(text));

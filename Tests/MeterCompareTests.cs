@@ -80,6 +80,17 @@ public class MeterCompareTests
     }
 
     [Fact]
+    public void In_use_is_the_pick_else_the_newest_of_that_gate_and_difficulty()
+    {
+        (string, FightRecord)[] all = [Saved("b", 2), Saved("a", 1), Saved("n", 3, difficulty: "노말")];
+        var none = new Dictionary<string, string>();
+        Assert.Equal("b", MeterCompare.InUse(all, none, all[1].Item2));
+        Assert.Equal("a", MeterCompare.InUse(all, MeterCompare.Choose(none, all[1].Item2, "a"), all[0].Item2));
+        Assert.Equal("n", MeterCompare.InUse(all, none, all[2].Item2));   // another difficulty: its own
+        Assert.Null(MeterCompare.InUse(all, none, Saved("x", 1, gate: null).Record));
+    }
+
+    [Fact]
     public void A_fight_without_character_or_gate_cannot_be_chosen()
     {
         Assert.False(MeterCompare.CanChoose(Saved("a", 1, character: null).Record));

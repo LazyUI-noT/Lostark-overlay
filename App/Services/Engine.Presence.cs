@@ -11,7 +11,7 @@ namespace GaugeOverlay.App.Services;
 /// green cell at its saved spot once a second while 자동 인식 waits for the dungeon.</summary>
 public sealed partial class Engine
 {
-    static readonly TimeSpan BossProbeEvery = TimeSpan.FromMilliseconds(500), MeterProbeEvery = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan MeterProbeEvery = TimeSpan.FromSeconds(1);   // the boss probe follows the dial (Config.BossHpEvery)
     RaidPresence _presence = RaidPresence.None;
     TimeSpan _lastBossProbe = TimeSpan.MinValue, _lastMeterProbe = TimeSpan.MinValue;
 
@@ -111,7 +111,7 @@ public sealed partial class Engine
     /// <summary>The boss text row, when a raid read is on and a probe is due (twice a second; it is how a boss bar is seen
     /// when the overlay's meter is off; faster during 대난투).</summary>
     PixelRect? BossProbeRect(Config config, TimeSpan now) =>
-        (RaidReadsOn(config) || !_meterOn && BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) && Elapsed(now, _lastBossProbe, BossReadEvery(BossProbeEvery))
+        (RaidReadsOn(config) || !_meterOn && BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) && Elapsed(now, _lastBossProbe, BossReadEvery(TimeSpan.FromSeconds(config.BossHpEvery)))
             ? Geometry.BossTextRow(_vp, _fit!) : null;
 
     /// <summary>With the meter off this is the boss HP's read, the 그림자 number's too; with it on, the meter's step does both.</summary>

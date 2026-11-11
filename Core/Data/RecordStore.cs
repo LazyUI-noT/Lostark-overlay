@@ -49,6 +49,20 @@ public sealed class RecordStore(string dir, bool isBin = false)
 
     public static bool IsHeld(string file) => file == Held;
 
+    /// <summary>자동 저장 is gone (user, 2026-11-11: every fight saves): a fight an older version held becomes a saved one, pruned
+    /// as any save. Returns its file name; null when none was held (or it can't be read, left alone).</summary>
+    public string? SaveHeld(int keep = Keep)
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(Path.Combine(dir, Held)) || Read(Held) is not { } r) return null;
+            string name = SaveLocked(r with { Kept = false }, Clamped(keep));
+            File.Delete(Path.Combine(dir, Held));
+            Interlocked.Increment(ref _edits);
+            return name;
+        }
+    }
+
     public void Hold(FightRecord r)
     {
         lock (_gate)

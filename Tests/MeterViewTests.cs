@@ -149,6 +149,67 @@ public class MeterViewTests
         Assert.Null(V(110 * Eok, 500 * Eok, Buffs(true, false, false), small: false).BuffParty);   // 8-man: the boss mixes two parties
     }
 
+    // Left out of 버프 적용률 (LeftOut; user, 2026-11-11): the boss bar unread, or my skill bar tinted and 5 s after.
+    static MeterView Bar(MeterHistory h, double at, double hpAt, long damage, long boss, BuffState[] b, bool gimmick = false,
+        double tintAt = 0, MeterRole role = MeterRole.딜러) =>
+        MeterView.Build(AtBoss(damage, boss) with { HpAt = S(hpAt), TintAt = S(tintAt) }, role, "나", 3, [], 0, 0, new MeterSettings(), h, S(at), buffs: b, smallParty: true, gimmick: gimmick);
+
+    [Fact]
+    public void A_second_the_boss_bar_is_unread_adds_nothing_buffed_or_not()
+    {
+        var h = new MeterHistory();
+        Bar(h, 1, 1, 0, 0, Buffs(false, false, false));
+        Bar(h, 2, 2, 100 * Eok, 100 * Eok, Buffs(true, false, false));    // +100 under 공증
+        Bar(h, 4, 2, 200 * Eok, 100 * Eok, Buffs(true, true, true));      // the bar unread: +100 left out, whatever the buffs
+        var v = Bar(h, 5, 5, 300 * Eok, 400 * Eok, Buffs(false, false, false));   // back: +100 unbuffed counts
+        Assert.Equal([0.5, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([1.0, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));   // the 300 lost meanwhile came in one jump: not counted
+        Bar(h, 6, 6, 300 * Eok, 400 * Eok, Buffs(false, false, false));
+        v = Bar(h, 7, 7, 300 * Eok, 500 * Eok, Buffs(false, false, false));          // settled: the boss figure counts again
+        Assert.Equal([0.5, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));
+    }
+
+    [Theory]
+    [InlineData(MeterRole.딜러, 0.5)]      // dead at 3 s: that second and 5 s after are left out
+    [InlineData(MeterRole.서포터, 0.75)]   // the dead time of a support stays in
+    public void A_tinted_skill_bar_and_five_seconds_after_it_are_left_out_for_a_dealer_only(MeterRole role, double atk)
+    {
+        var h = new MeterHistory();
+        Bar(h, 1, 1, 0, 0, Buffs(false, false, false), role: role);
+        Bar(h, 2, 2, 100 * Eok, 0, Buffs(true, false, false), role: role);
+        Bar(h, 3, 3, 200 * Eok, 0, Buffs(true, false, false), tintAt: 3, role: role);
+        Bar(h, 8, 8, 300 * Eok, 0, Buffs(true, false, false), tintAt: 3, role: role);    // 5 s after the tint
+        Bar(h, 9, 9, 400 * Eok, 0, Buffs(false, false, false), tintAt: 3, role: role);
+        Assert.Equal(atk, h.Covered![0], 6);
+    }
+
+    [Fact]
+    public void What_is_counted_first_after_a_hidden_hud_is_left_out_too()
+    {
+        var h = new MeterHistory();
+        Bar(h, 1, 1, 0, 0, Buffs(false, false, false));
+        Bar(h, 2, 2, 100 * Eok, 0, Buffs(true, false, false));
+        for (int t = 4; t <= 6; t++)   // the whole HUD hidden: no panel, no bar
+            MeterView.Build(MeterStatus.None with { HpAt = S(2), Clock = FightClockState.None with { Fight = 1 } }, MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(t));
+        Bar(h, 7, 7, 300 * Eok, 0, Buffs(false, false, false));           // +200 dealt across it: left out
+        var v = Bar(h, 8, 8, 300 * Eok, 0, Buffs(false, false, false));
+        Assert.Equal([1.0, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
+    }
+
+    [Fact]
+    public void A_bar_never_read_or_대난투_in_its_place_is_not_an_unread_bar()
+    {
+        var never = new MeterHistory();
+        Bar(never, 5, 0, 0, 0, Buffs(false, false, false));
+        Bar(never, 6, 0, 100 * Eok, 0, Buffs(true, false, false));
+        Assert.Equal([1.0, 0.0, 0.0], Bar(never, 7, 7, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
+
+        var gimmick = new MeterHistory();
+        Bar(gimmick, 1, 1, 0, 0, Buffs(false, false, false));
+        Bar(gimmick, 4, 1, 100 * Eok, 0, Buffs(true, false, false), gimmick: true);
+        Assert.Equal([1.0, 0.0, 0.0], Bar(gimmick, 5, 5, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
+    }
+
     [Fact]
     public void No_party_share_before_the_boss_hp_is_read()
     {

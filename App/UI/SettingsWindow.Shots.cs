@@ -43,7 +43,55 @@ public partial class SettingsWindow
         _confirm.Children.Add(keep);
         _confirm.Children.Add(_again);
         _confirm.Children.Add(cancel);
-        return new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 16, 0), Children = { load, take, clear, _confirm } };
+        _copyProfile = CopyProfileButton();
+        return new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 16, 0), Children = { load, take, clear, _confirm, _copyProfile } };
+    }
+
+    const string CopyProfileLabel = "다른 배치로 복사…";
+    Button? _copyProfile;   // off in Test, like the 배치 buttons (ShowProfileButtons)
+
+    /// <summary>배치 복사 (profile-looks.plan.md): pick another 배치 from the menu, then click once more within 5 s
+    /// (ResetButton's inline confirm). It takes everything the active one holds but its screenshot.</summary>
+    Button CopyProfileButton()
+    {
+        var b = new Button { Content = CopyProfileLabel, Margin = new(0, 2, 6, 2),
+            ToolTip = "지금 배치의 창 위치·크기, 버프 막대, 파티 창, '모든 배치에 적용'을 끈 설정을 다른 배치에 덮어씁니다. 그 배치의 화면은 남습니다." };
+        _copyTimer.Tick += (_, _) => DisarmCopy();
+        Closed += (_, _) => _copyTimer.Stop();
+        b.Click += (_, _) =>
+        {
+            if (_copyProfileTo is int n)
+            {
+                DisarmCopy();
+                RecordStep();
+                if (!_s.CopyProfile(n)) return;
+                Changed();
+                _canvasNote.Text = $"배치 {_s.ActiveProfile + 1}의 설정을 배치 {n + 1}에 복사했습니다.";
+                return;
+            }
+            var menu = new ContextMenu { PlacementTarget = b };
+            for (int i = 0; i < OverlayProfile.Count; i++)
+            {
+                if (i == _s.ActiveProfile) continue;   // onto itself: not offered
+                int k = i;
+                var item = new MenuItem { Header = $"배치 {i + 1}에 덮어쓰기" };
+                item.Click += (_, _) => { _copyProfileTo = k; b.Content = $"정말 배치 {k + 1}에 복사"; _copyTimer.Start(); };
+                menu.Items.Add(item);
+            }
+            menu.IsOpen = true;
+        };
+        return b;
+    }
+
+    readonly System.Windows.Threading.DispatcherTimer _copyTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    int? _copyProfileTo;   // armed: the 배치 the next click copies into
+
+    /// <summary>Back to the menu label: after 5 s, a copy, or a 배치 switch (the armed one may now be the active one).</summary>
+    void DisarmCopy()
+    {
+        _copyTimer.Stop();
+        _copyProfileTo = null;
+        if (_copyProfile is { } b) b.Content = CopyProfileLabel;
     }
 
     /// <summary>The picture waiting for 덮어쓰기, else the profile's screenshot, else the sample screen.</summary>

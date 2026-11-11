@@ -1,0 +1,16 @@
+{
+  "source": "dead2.PNG",
+  "slot": "row",
+  "hud": 110,
+  "rect": [
+    178,
+    243,
+    114,
+    20
+  ],
+  "width": 114,
+  "height": 20,
+  "pts": [
+    0.0
+  ]
+}

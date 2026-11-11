@@ -30,7 +30,7 @@ public partial class App
                 JoinRequestPopup.Ask(request, ok =>
                 {
                     if (!(ok ? party.Approve(request.Id) : party.Decline(request.Id)))
-                        _tray.Notify($"{request.Name}님의 참가 요청은 이미 끝났습니다.");
+                        _tray.Notify($"{request.Name}님의 참가 요청은 이미 끝났습니다.", kind: NoticeKind.Party);
                 });
             foreach (var id in changes.Withdrawn) JoinRequestPopup.Withdraw(id);
             var trusted = settings.Party.TrustedDevices;
@@ -41,7 +41,7 @@ public partial class App
             }
             foreach (var device in changes.Untrusted) trusted.RemoveAll(t => t.Device == device);
             if (changes.Trusted.Count + changes.Untrusted.Count > 0) save();
-            foreach (var line in changes.Refused) _tray.Notify(line);
+            foreach (var line in changes.Refused) _tray.Notify(line, kind: NoticeKind.Party);
             _settingsWindow.SetPartyBlocked(party.Blocked);
         });
     }

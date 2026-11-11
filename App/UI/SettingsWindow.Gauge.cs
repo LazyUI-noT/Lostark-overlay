@@ -29,6 +29,7 @@ public partial class SettingsWindow
             p.Children.Add(Note("현재 직업각인은 아덴 게이지를 읽지 않습니다."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
+        p.Children.Add(ShareMark(LookGroup.게이지, FillGauge));
         p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));
         p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));

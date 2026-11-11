@@ -174,6 +174,43 @@ public class FightRegionsTests
         Assert.Null(FightRegions.Continued(Part1, retry));
     }
 
+    // A fight cut while its 전분 record went on (rejoin, 2026-11-11): saved 5 s after a stop under the kill line, or at the pause limit.
+    static readonly FightRecord Cut = Fight([.. Reads(4, 300, Hp21)], [Me(4, 0), Me(300, 500)], 300, gate: "세르카 · 2관문") with { Phases = [120] };
+
+    static FightRecord Rest(int from, long damage, bool? cleared = false, string? gate = "세르카 · 2관문") =>
+        Fight([.. Reads(from, from + 200, Hp21)], [Me(from, damage), Me(from + 200, damage + 400)], from + 200, Start.AddSeconds(from + 60), gate, cleared);
+
+    [Fact]
+    public void A_cut_fight_and_what_came_after_in_the_same_record_are_one_fight()
+    {
+        var whole = FightRegions.Rejoined(Cut, Rest(301, 500) with { CombatPower = 4321 });
+
+        Assert.NotNull(whole);
+        Assert.Equal((Cut.StartedAt, 501d, "세르카 · 2관문", false), (whole.StartedAt, whole.Duration, whole.Gate, whole.Cleared));
+        Assert.Equal(Cut.Samples.Count + 2, whole.Samples.Count);
+        Assert.Equal(new[] { 120d, 300d }, whole.Phases);   // the stop it was cut at is a phase like any other
+        Assert.Equal(4321, whole.CombatPower);
+    }
+
+    [Fact]
+    public void A_cut_at_the_pause_limit_joins_however_long_the_timer_ran_hidden_and_is_no_stop()
+    {
+        var whole = FightRegions.Rejoined(Cut, Rest(450, 500, cleared: true, gate: null) with { StartedAt = Start.AddMinutes(20) });
+
+        Assert.NotNull(whole);
+        Assert.Equal((650d, "세르카 · 2관문", true), (whole.Duration, whole.Gate, whole.Cleared));
+        Assert.Equal(new[] { 120d }, whole.Phases);
+    }
+
+    [Theory]
+    [InlineData(301, 400, "살살")]   // my damage went back: a retry read late
+    [InlineData(200, 500, "살살")]   // the clock went back
+    [InlineData(301, 500, "밝키리")] // another character since
+    public void What_does_not_go_on_is_not_rejoined(int from, long damage, string character)
+    {
+        Assert.Null(FightRegions.Rejoined(Cut, Rest(from, damage) with { Character = character }));
+    }
+
     [Fact]
     public void A_fight_hours_later_on_the_same_numbers_does_not_join()
     {

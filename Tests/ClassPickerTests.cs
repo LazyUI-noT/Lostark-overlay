@@ -144,5 +144,19 @@ public class ClassPickerTests
     [Fact]
     public void An_unknown_favourite_changes_nothing() =>
         Assert.Equal(Picked, ClassPicker.FavoritesFirst(Picked, ["없는 클래스", "바드 · 없는 각인"]));
+
+    [Fact]
+    public void 복사_대상_favourites_add_each_assigned_character_직업각인()
+    {
+        var chars = new Dictionary<string, CharacterSettings>
+        {
+            ["a"] = new() { Class = "워로드", Subclass = "고독한기사" },
+            ["b"] = new() { Class = "바드", Subclass = "" },   // no 직업각인 yet: not starred
+            ["c"] = new() { Class = "워로드", Subclass = "고독한기사" },
+        };
+        var favs = ClassPicker.CopyFavorites(["바드 · 절실한 구원"], chars);
+        Assert.Equal(["바드 · 절실한 구원", Lone], favs);
+        Assert.Equal([Lone, "바드 · 절실한 구원", "", "바드 · 진실된 용기", Combat], ClassPicker.FavoritesFirst(Picked, favs));   // list order
+    }
 }
 

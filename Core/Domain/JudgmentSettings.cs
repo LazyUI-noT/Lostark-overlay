@@ -37,6 +37,22 @@ public sealed class JudgmentSettings : IWindowPlace
     public static readonly int[] FontSizes = [75, 100, 150, 200, 300];
     public const double MinOpacity = 0.2;
 
+    /// <summary>A separate copy (오버레이 배치 keeps one each).</summary>
+    public JudgmentSettings Copy()
+    {
+        var copy = (JudgmentSettings)MemberwiseClone();
+        copy.Characters = [.. Characters];
+        return copy;
+    }
+
+    /// <summary>Hand edits back into range (SettingsStore.Normalize).</summary>
+    public void Clamp()
+    {
+        Characters ??= [];
+        if (!FontSizes.Contains(FontSize)) FontSize = 100;
+        Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, MinOpacity, 1) : 1;
+    }
+
     public bool On(string? characterKey) => characterKey is not null && Characters.Contains(characterKey);
 
     public void Set(string characterKey, bool on)

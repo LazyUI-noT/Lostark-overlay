@@ -93,6 +93,21 @@ public class CharacterWatchTests
     }
 
     [Fact]
+    public void A_class_change_before_the_loading_screen_ends_keeps_the_switch_waiting()
+    {
+        // The new class is read while the loading screen is still up (user's log, 2026-11-11): 불명 for a moment, then the
+        // picked character once it ends, not 불명 until the menu is opened again.
+        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "살살"), [], T0);
+        (watch, _) = watch.Menu(Menu(current: "살살", picked: "검지", waiting: true), [], T0);
+        (watch, _) = watch.Playing("브레이커", null, [C("살살", "워로드", "고독한기사"), C("검지", "브레이커", "수라의길")], Started);
+
+        var (loaded, change) = watch.Loaded(T0 + TimeSpan.FromSeconds(20), Started);
+
+        Assert.Equal("검지", loaded.Current);
+        Assert.Equal(new CharacterChange("검지", null), change);
+    }
+
+    [Fact]
     public void Unknown_with_a_subclass_only_one_character_has_is_that_character()
     {
         var (next, change) = CharacterWatch.Start(Started).Playing("워로드", "고독한기사", [C("살살", "워로드", "고독한기사"), C("바드짱", "바드", "진실된용맹")], Started.AddHours(1));
@@ -115,6 +130,54 @@ public class CharacterWatchTests
         var roster = new[] { C("살살", "워로드", "고독한기사"), C("워로드2", "워로드", null) };
 
         Assert.Null(CharacterWatch.Start(Started).Playing("워로드", "고독한기사", roster, Started).Change);
+    }
+
+    // Without an API key only known names count (settings-access.plan.md B): someone else read is 캐릭터 불명, and their
+    // fights are never given to a known character later.
+
+    [Fact]
+    public void Without_a_key_a_name_near_a_known_one_still_counts()
+    {
+        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "너무아파8살살"), ["너무아파요살살"], T0, onlyKnown: true);
+
+        Assert.Equal("너무아파요살살", watch.Current);
+    }
+
+    [Fact]
+    public void Without_a_key_an_unknown_name_is_unknown_and_its_fights_go_to_nobody_later()
+    {
+        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "살살"), ["살살"], T0, onlyKnown: true);
+
+        var (stranger, change) = watch.Menu(Menu(current: "남의캐릭터"), ["살살"], T0, onlyKnown: true);
+        Assert.Null(stranger.Current);
+        Assert.Equal(new CharacterChange(null, null), change);
+
+        var (back, again) = stranger.Menu(Menu(current: "살살"), ["살살"], T0, onlyKnown: true);
+        Assert.Equal("살살", back.Current);
+        Assert.Equal(new CharacterChange("살살", null), again);   // no backfill: the 불명 fights were the stranger's
+    }
+
+    [Fact]
+    public void Without_a_key_an_unknown_name_at_start_changes_nothing_yet()
+    {
+        var (watch, change) = CharacterWatch.Start(Started).Menu(Menu(current: "남의캐릭터"), [], T0, onlyKnown: true);
+
+        Assert.Null(watch.Current);
+        Assert.Null(change);
+        Assert.Null(watch.Playing("워로드", "고독한기사", [C("살살", "워로드", "고독한기사")], Started).Change);   // no class guess either
+    }
+
+    [Fact]
+    public void Without_a_key_a_switch_to_an_unknown_card_is_unknown_after_loading()
+    {
+        var (watch, _) = CharacterWatch.Start(Started).Menu(Menu(current: "살살"), ["살살"], T0, onlyKnown: true);
+        (watch, _) = watch.Menu(Menu(current: "살살", picked: "남의캐릭터", waiting: true), ["살살"], T0, onlyKnown: true);
+
+        var (loaded, change) = watch.Loaded(T0 + TimeSpan.FromSeconds(20), Started.AddMinutes(11));
+
+        Assert.Null(loaded.Current);
+        Assert.Equal(new CharacterChange(null, null), change);
+        Assert.Null(loaded.Menu(Menu(current: "살살"), ["살살"], T0, onlyKnown: true).Change!.BackfillFrom);
     }
 
     [Fact]

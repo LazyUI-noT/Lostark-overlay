@@ -5,6 +5,20 @@ namespace GaugeOverlay.Tests;
 /// <summary>미터기 and 버프 적용률: 끄기, 표시 안 함 (worked out, no window), 켜기. 버프 → 적용률 → 타임라인.</summary>
 public class MeterShowTests
 {
+    [Theory]
+    [InlineData(0.5, 0.5)]
+    [InlineData(0.1, 0.1)]
+    [InlineData(1.0, 1.0)]
+    [InlineData(0.04, 0.1)]    // under the dial's lowest
+    [InlineData(3.0, 1.0)]     // over its highest
+    [InlineData(0.26, 0.3)]    // a tenth of a second apart
+    [InlineData(double.NaN, 0.5)]
+    public void The_boss_hp_read_interval_stays_on_the_dial(double held, double used) =>
+        Assert.Equal(used, MeterSettings.ClampHpEvery(held), 6);
+
+    [Fact]
+    public void The_boss_hp_read_interval_starts_at_half_a_second() => Assert.Equal(0.5, new MeterSettings().HpEvery);
+
     static MeterSettings With(ThreeWay meter, ThreeWay wish)
     {
         var m = new MeterSettings();

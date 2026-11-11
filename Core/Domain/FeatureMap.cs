@@ -21,7 +21,7 @@ public static partial class FeatureMap
         new("레이드", Raid, ["레이드", "DPS 미터기"]),   // DPS 미터기 beside 레이드 (user, 2026-11-10)
         new("전투기록", Record, ["타임라인", "레이드 숙제"]),
         new("파티", Party, ["파티 공유"]),
-        new("앱", "", ["키·단축키", "로아 API", "경고", "테마·업데이트"]),
+        new("앱", "", ["키·단축키", "시스템 성능", "로아 API", "경고", "테마·업데이트"]),   // 시스템 성능: user, 2026-11-11
     ];
 
     /// <summary>A rail tab's second line, smaller and dimmer under its name.</summary>
@@ -35,6 +35,8 @@ public static partial class FeatureMap
     [
         ("캐릭터/캐릭터/", "직업 인식/직업 인식/"), ("표시/표시/", "기능 맵/기능 맵/"),
         ("기능 Map/기능 Map/", "기능 맵/기능 맵/"), ("화면 선택 및 출력/", "표시할 화면/"), ("원정대 (레이드 선택)/", "레이드 숙제/"), ("파티/", "파티 공유/"),   // 2026-11-09
+        // 2026-11-11: the two rate sliders moved from 화면·인식 → 스킬창 맞추기 to their own tab
+        ("화면·인식/스킬창 맞추기/초당 읽기 횟수", "시스템 성능/시스템 성능/초당 읽기 횟수"), ("화면·인식/스킬창 맞추기/초당 그리기 횟수", "시스템 성능/시스템 성능/초당 그리기 횟수"),
     ];
 
     /// <summary>The id under today's names (favourites and the rail's seen rows saved before the renames); other ids unchanged.</summary>

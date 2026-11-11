@@ -112,14 +112,23 @@ public sealed class MeterHistory
     readonly double[] _bossUnder = new double[Covering.Length];
     long _bossTotal, _lastBoss;
 
+    // Seconds left out of all of it: the boss bar unread, or my skill bar tinted (dead, disabled) and 5 s after (LeftOut).
+    readonly LeftOut _left = new();
+
+    /// <summary>The boss bar is unread on a second the panel isn't read either (the whole HUD hidden).</summary>
+    public void BarHidden() => _left.Hide();
+
+    /// <param name="barUnread">The boss bar isn't read this second.</param>
+    /// <param name="tinted">My skill bar carries the dead / disabled tint this second.</param>
     public void Cover(int fight, long damage, IReadOnlyList<BuffState>? buffs, TimeSpan now, IReadOnlyList<MeterSample>? otherDealers = null,
-        long bossTaken = 0)
+        long bossTaken = 0, bool barUnread = false, bool tinted = false)
     {
         long boss = bossTaken / BossUnit;
         // A new record: counted from its first reading on (damage before it, joined mid-fight, is nobody's guess).
         if (fight != _coverFight)
         {
             (_coverFight, _total, _lastDamage, _bossTotal, _lastBoss) = (fight, 0, damage, 0, boss);
+            _left.Clear();
             Array.Clear(_under);
             Array.Clear(_bossUnder);
             _others.Clear();
@@ -131,16 +140,16 @@ public sealed class MeterHistory
         if (_buffsRead)
             for (int i = 0; i < Covering.Length; i++)
                 if ((int)Covering[i] < buffs!.Count) on[i] = OnFor(buffs[(int)Covering[i]], from, now);
-        long added = damage - _lastDamage;
-        _lastDamage = damage;
-        if (added > 0 && _buffsRead)
+        long added = damage - _lastDamage, lost = boss - _lastBoss;
+        (_lastDamage, _lastBoss) = (damage, boss);
+        // A left-out second adds nothing, buffed or not: not my damage, the boss HP lost or the other dealers' figures.
+        bool left = _left.Step(barUnread, tinted, now);
+        if (added > 0 && _buffsRead && !left)
         {
             _total += added;
             for (int i = 0; i < Covering.Length; i++) _under[i] += added * on[i];
         }
-        long lost = boss - _lastBoss;
-        _lastBoss = boss;
-        if (lost > 0 && _buffsRead)
+        if (lost > 0 && _buffsRead && !_left.BossOut)
         {
             _bossTotal += lost;
             for (int i = 0; i < Covering.Length; i++) _bossUnder[i] += lost * on[i];
@@ -150,7 +159,7 @@ public sealed class MeterHistory
             // First seen (joined or started sharing mid-fight): counted from here on, not their whole record at once.
             if (!_others.TryGetValue(s.Id, out var o)) { _others[s.Id] = (s.Name, s.Damage, [double.NaN, 0, 0]); continue; }
             long d = s.Damage - o.Last;
-            if (d > 0 && _buffsRead) for (int i = 1; i < Covering.Length; i++) o.Under[i] += d * on[i];
+            if (d > 0 && _buffsRead && !left) for (int i = 1; i < Covering.Length; i++) o.Under[i] += d * on[i];
             o.Under[0] = s.AtkBuffed is { } atk ? atk : double.NaN;
             _others[s.Id] = (s.Name, s.Damage, o.Under);
         }

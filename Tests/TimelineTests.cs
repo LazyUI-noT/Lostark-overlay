@@ -316,6 +316,24 @@ public class TimelineTests
     }
 
     [Fact]
+    public void A_left_out_stretch_is_taken_out_of_the_buffed_part_and_of_the_whole()
+    {
+        // 100 damage a second from 0 to 20 s. 아덴 5–9, left out 8–12: 아덴 keeps 5–8 (300) of the 1600 not left out.
+        var r = R(60, null, E(5, "나", RecordEventKind.버프시작, (int)BuffKind.아덴피증), E(9, "나", RecordEventKind.버프끝, (int)BuffKind.아덴피증)) with
+        {
+            Samples = [new(0, "나", 0, 0), new(20, "나", 2000, 100), new(60, "나", 2000, 0)],
+            Boss = [new(0, 0, null, null), new(20, 200_000_000, null, null), new(60, 200_000_000, null, null)],
+            Assumed = [new(8, 12), new(10, 12)],   // overlaps (a rejoined fight) count once
+        };
+        Assert.Equal(300.0 / 1600, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(0, 60)), 6);
+        Assert.Equal(0, Timeline.BuffShare(r, BuffKind.초각스피증, new TimeWindow(0, 60)));
+        Assert.Equal(0, Timeline.BuffShare(r, BuffKind.아덴피증, new TimeWindow(8, 12)));   // all of it left out
+        Assert.Equal(300.0 / 1600, Timeline.PartyBuffShare(r, BuffKind.아덴피증, new TimeWindow(0, 60))!.Value, 6);
+        Assert.Null(Timeline.PartyBuffShare(r, BuffKind.아덴피증, new TimeWindow(8, 12)));
+        Assert.Equal([(8.0, 12.0)], Timeline.LeftOut(r));
+    }
+
+    [Fact]
     public void Party_buff_share_is_the_part_of_the_boss_hp_lost_under_my_buff()
     {
         // The boss loses 10M a second from 0 to 20 s: 공증 from 5 to 9 s takes 40M of 200M. Mine is a different curve.
@@ -340,10 +358,10 @@ public class TimelineTests
     }
 
     [Fact]
-    public void My_dps_is_my_average_over_the_whole_fight_or_null_without_my_figures()
+    public void My_dps_is_my_last_figure_or_null_without_my_figures()
     {
-        var r = R(60) with { Samples = [new(1, "민수", 0, 300), new(1, "나", 0, 100), new(59, "나", 0, 300)] };
-        Assert.Equal(200.0, Timeline.MyDps(r));
+        var r = R(60) with { Samples = [new(1, "민수", 0, 300), new(59, "나", 0, 300), new(1, "나", 0, 100)] };
+        Assert.Equal(300.0, Timeline.MyDps(r));
         Assert.Null(Timeline.MyDps(r with { Samples = [new(1, "민수", 0, 300)] }));
     }
 

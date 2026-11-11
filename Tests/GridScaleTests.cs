@@ -25,7 +25,27 @@ public class GridScaleTests
     public void An_empty_graph_gets_one_line(double max) => Assert.Equal((1e8, 1e8), GridScale.Values(max));
 
     [Theory]
-    [InlineData(600, 700, 70, 60)]   // 10 min across 700 px, labels ≥ 70 px apart → 1:00
+    [InlineData(20e8, 30e8, 2.5e8, 19e8, 31e8)]   // centred on 25억, a fifth more than the swing
+    [InlineData(20e8, 20e8, 5e7, 19e8, 21e8)]     // a flat line: 5 % of it each way, not its noise
+    [InlineData(1e8, 30e8, 1e9, 0, 32.9e8)]       // a swing down to nothing: from 0
+    public void A_scale_around_a_line_is_centred_between_its_lowest_and_highest(double lo, double hi, double step, double bottom, double top)
+    {
+        var (s, b, t) = GridScale.Around(lo, hi);
+        Assert.Equal((step, bottom, top), (Math.Round(s), Math.Round(b), Math.Round(t)));
+    }
+
+    [Fact]
+    public void Around_nothing_is_the_empty_graph() => Assert.Equal((1e8, 0, 1e8), GridScale.Around(0, 0));
+
+    [Fact]
+    public void Lines_fall_on_round_values_inside_the_scale_and_never_on_zero()
+    {
+        Assert.Equal([20e8, 22.5e8, 25e8, 27.5e8, 30e8], GridScale.Lines(2.5e8, 19e8, 31e8));
+        Assert.Equal([5e8, 10e8], GridScale.Lines(5e8, 0, 10e8));
+    }
+
+    [Theory]
+    [InlineData(600, 700, 70, 60)]  // 10 min across 700 px, labels ≥ 70 px apart → 1:00
     [InlineData(120, 300, 50, 30)]
     [InlineData(20, 700, 70, 2)]
     [InlineData(36000, 300, 70, 1200)]   // nothing fits: the widest step

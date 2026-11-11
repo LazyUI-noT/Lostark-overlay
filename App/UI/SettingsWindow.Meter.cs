@@ -55,6 +55,7 @@ public partial class SettingsWindow
         void Again() => Dispatcher.BeginInvoke(FillMeter);
         var p = Refill(_secMeter, AreaMeter, "보스가 받은 피해 중 각자의 몫(딜러 딜지분, 서포터 찬조)을 전분(전투 분석기)이 기록을 시작한 때부터 보여 줍니다. " +
             "파티원 몫은 나와 그 파티원이 모두 '내 피해량 보내기'를 켜야 보입니다. 같은 보스 수치로 나누기 때문에 누구 화면에서나 숫자가 같습니다.");
+        p.Children.Add(ShareMark(LookGroup.미터기, FillMeter));
         p.Children.Add(HelpRow("미터기", "끄기: 아무것도 읽지 않습니다 (미터기 창, 전투 기록, 보내기 모두 멈춤). 표시 안 함: 창만 숨기고 전투 기록과 보내기는 계속합니다.",
             EnumCombo([(ThreeWay.끄기, "끄기"), (ThreeWay.표시안함, "표시 안 함"), (ThreeWay.켜기, "켜기")], m.Mode(), v => { m.SetMode(v); Again(); })));
         if (m.Mode() == ThreeWay.켜기)
@@ -64,6 +65,10 @@ public partial class SettingsWindow
         }
         p.Children.Add(HelpRow("버프 적용률", "내 피해 중 공증 · 아덴 피증 · 초각스 피증이 켜져 있을 때 넣은 비율입니다(전분의 유효율과는 다른 값). 버프 줄을 읽어야 나옵니다. 표시 안 함: 미터기 창에는 없고 타임라인에만 나옵니다. 끄기: 둘 다 없습니다. 미터기를 끄거나 숨기면 고를 수 있는 값이 줄고, 다시 켜면 전에 고른 값으로 돌아옵니다.",
             BuffShareCombo(m, Again)));
+        if (m.BuffShare() == ThreeWay.켜기)   // the bars show only then (OverlayRenderer.BuffBarsShown)
+            p.Children.Add(Defaulted(SliderRow("막대 불투명도", MeterSettings.MinOpacity, 1, m.BarOpacity ?? m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.BarOpacity = v, Changed,
+                $"버프 적용률 막대 세 개의 불투명도입니다. 미터기 창의 불투명도와 따로 정합니다."),
+                s => s.Meter.BarOpacity, (s, v) => s.Meter.BarOpacity = v));
         p.Children.Add(DefaultedCheck(
             Check("전투 기록", m.Record, v => m.Record = v, Changed, "전투를 기록해 설정 → 타임라인에 남깁니다. 개수는 그곳에서 정합니다."), s => s.Meter.Record, (s, v) => s.Meter.Record = v));
         p.Children.Add(DefaultedCheck(Check("내 피해량 보내기", m.Send, v => m.Send = v, () => { Changed(); FillSend(); },
@@ -101,6 +106,12 @@ public partial class SettingsWindow
         p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.Opacity = v, Changed), s => s.Meter.Opacity, (s, v) => s.Meter.Opacity = v));
         p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => (m.Width, m.Height) = (v, v), Changed),
             s => (s.Meter.Width, s.Meter.Height), (s, v) => (s.Meter.Width, s.Meter.Height) = v));
+
+        p.Children.Add(SubHeading("읽기"));
+        p.Children.Add(Defaulted(SliderRow("보스 체력 읽기 주기", MeterSettings.MinHpEvery, MeterSettings.MaxHpEvery, m.HpEvery, 0.1, v => $"{v:0.0}초",
+            v => m.HpEvery = MeterSettings.ClampHpEvery(v), Changed,
+            "보스 체력을 몇 초마다 읽을지 정합니다. 짧을수록 보스 체력 바가 사라지거나 보스가 처치된 순간을 빨리 알아채지만 CPU를 조금 더 씁니다. 전분은 그대로 1초마다 읽습니다. 대난투 중에는 0.2초보다 느려지지 않습니다. 기본 0.5초."),
+            s => s.Meter.HpEvery, (s, v) => s.Meter.HpEvery = v));
 
         p.Children.Add(SubHeading("전분 위치", "전분 창이 화면 어디에 있는지입니다. 미터기가 켜져 있으면 전투 중에 알아서 찾아 게임 화면 크기마다 저장하고, 전분 창을 옮기면 다시 찾습니다. 위치 조정에서 끌어 옮기거나 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
         if (GameArea?.Invoke() is not { } key)

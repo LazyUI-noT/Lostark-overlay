@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using GaugeOverlay.App.Platform;
 using GaugeOverlay.App.Services;
 using GaugeOverlay.Core.Domain;
 
@@ -32,6 +33,16 @@ public partial class SettingsWindow
     void FillHomework()
     {
         var p = Refill(_secHomework, AreaHomework, HomeworkLead);
+        if (!_s.HomeworkOn(CredentialVault.Saved))   // a new install without a key (settings-access.plan.md B)
+        {
+            p.Children.Add(Note("숙제 기능은 로아 오픈 API 키가 필요합니다. 키를 넣으면 바로 켜집니다."));
+            var go = ApiButton("API 키 넣기");
+            go.HorizontalAlignment = HorizontalAlignment.Left;
+            go.Margin = new(0, 6, 0, 0);
+            go.Click += (_, _) => Go(AreaApi);
+            p.Children.Add(go);
+            return;
+        }
         if (Homework is not { } hw) { p.Children.Add(Note("숙제는 게임과 함께 켜졌을 때 씁니다.")); p.Children.Add(CapsulePalette()); return; }
         p.Children.Add(Note(hw.Current is { } now ? $"지금 캐릭터: {now}" : "지금 캐릭터: 캐릭터 불명 (ESC를 눌러 게임 메뉴를 열면 읽습니다)"));
         p.Children.Add(Note(Core.Domain.Homework.SourceOf(_s.Meter.On, _s.Meter.Record, _s.Raids.BossHpRead) switch

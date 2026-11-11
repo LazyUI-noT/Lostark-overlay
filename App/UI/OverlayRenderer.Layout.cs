@@ -21,6 +21,7 @@ public sealed partial class OverlayRenderer
         public Rect? Gauge;
         public GaugeBar? Bar;               // yours: splits, segment colours and glow (peers: the plain bar)
         public Appearance? Look;            // yours: the chosen cooldown colours (peers: dimmed automatically)
+        public CooldownView Cooldown = new();   // 쿨 진행 표시 and 남은 쿨 (초): the class's (peers: your 나 of their class)
         public double GridTop;              // top of the boxes (below the gauge)
         public Point Anchor;                // kept still on screen when the layout changes (OverlayWindow.Refresh)
         public Point CellOrigin;            // where cell (0, 0) is drawn
@@ -60,7 +61,7 @@ public sealed partial class OverlayRenderer
             if (!Settings.Overlay.SkillRead && !ShowHidden)   // 스킬창 읽기 off: unread boxes would stay as last read; the gauge is its own part
                 mine = mine with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false) };
             var own = LayoutPlayer(p, "", BoxSize(mine.Width), BoxSize(mine.Height), 0, Bleed, mine, leadH: 0);
-            if (own is not null) own.Look = mine;
+            if (own is not null) (own.Look, own.Cooldown) = (mine, mine.Cooldown);
             var (barClass, barSub) = Target is { } picked ? (picked.Class, picked.Subclass)
                 : Settings.ActiveCharacter is { } k && Settings.Characters.TryGetValue(k, out var c) ? (c.Class, c.Subclass) : default;
             if (own is not null && barClass is not null)
@@ -92,7 +93,7 @@ public sealed partial class OverlayRenderer
         double leadH = withIcon ? iconW + (withName ? Gap + nameH : 0) : 0;
         var l = LayoutPlayer(p, "peer:" + p.Name, bw, bh, numberW + Gap + leadW + Gap * 2, Bleed, look, leadH);
         if (l is null) return null;
-        l.Peer = true;
+        (l.Peer, l.Cooldown) = (true, look.Cooldown);
         double left = l.Plate.X + Pad;
         l.Number = slotLabel;
         l.NumberAt = new Point(left, l.GridTop + (colH - number.Height) / 2);

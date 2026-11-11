@@ -21,6 +21,12 @@ public sealed record RecordEvent(double T, string Name, RecordEventKind Kind, in
 /// ("gl_skill/gl_skill_01_30.png", Data.SkillIconSource) and its kind. Self-contained, so an import or a later library still draws it.</summary>
 public sealed record RecordSkill(string Name, string Icon, SlotGroup Kind);
 
+/// <summary>A stretch of a fight, in fight seconds. <see cref="FightRecord.Assumed"/> (since 0.21): the stretches left out of
+/// 버프 적용률, the boss bar unread or my skill bar tinted (dead, disabled) and 5 s after (user, 2026-11-11; LeftOut,
+/// dead-disabled.plan.md). The name is the file's, from when such a stretch was assumed buffed, kept so older and newer
+/// versions open each other's fights; null in older records and when there was none.</summary>
+public sealed record RecordSpan(double From, double To);
+
 /// <summary>A saved fight (spec § D): when it started, the gate recognised (null: 알 수 없음), its length and phase starts in
 /// fight seconds, the difficulty the dungeon panel showed, whether it was cleared (FightRecorder, FightVerdict, or set in 편집; null: 알 수 없음), who I am (my lane gets my skill icons), the players, 1 Hz samples and boss reads, the events, and 보관; since 0.19 the skill on each slot (<paramref name="Skills"/>: identified ones only), the
 /// candidates of a slot left unsure (<paramref name="Unsure"/>, for 편집) and a [Test] fight's proposed class · 직업각인; since 0.20
@@ -48,7 +54,8 @@ public sealed record FightRecord(
     IReadOnlyDictionary<SlotId, IReadOnlyList<RecordSkill>>? Unsure = null,
     string? ProposedClass = null,
     double? CombatPower = null,
-    double? ItemLevel = null)
+    double? ItemLevel = null,
+    IReadOnlyList<RecordSpan>? Assumed = null)
 {
     /// <summary>My share at the end (my last figure over the last boss figure; on a clear over all the boss's HP, the part its
     /// bar showed last counted as taken); null under the meter's dash rule.</summary>

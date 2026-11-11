@@ -57,12 +57,25 @@ public sealed class MeterSettings : IWindowPlace
     public string? OtherColor { get; set; }
     public string Background { get; set; } = "#CC101418";
     public double Opacity { get; set; } = 1.0;
+    /// <summary>버프 적용률 막대 투명도: the three bars', apart from <see cref="Opacity"/> (user, 2026-11-11); in 오버레이 배치.
+    /// Null in an older file: filled with <see cref="Opacity"/> at load, so the bars look as before.</summary>
+    public double? BarOpacity { get; set; }
     public double Left { get; set; } = double.NaN;
     public double Top { get; set; } = double.NaN;
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
     /// <summary>The 전분 panel's spot on screen per game-area size ("W×H").</summary>
     public Dictionary<string, PixelRect> Panels { get; set; } = [];
+
+    public const double MinHpEvery = 0.1, MaxHpEvery = 1.0, DefaultHpEvery = 0.5;
+
+    /// <summary>보스 체력 읽기 주기 (s, user 2026-11-11): how often the boss HP text is read while the meter is on. Shorter
+    /// notices a hidden bar or a kill sooner and costs a little more; 전분 itself stays once a second.</summary>
+    public double HpEvery { get; set; } = DefaultHpEvery;
+
+    /// <summary>A usable interval from whatever the file or a caller holds: in range, a tenth of a second apart.</summary>
+    public static double ClampHpEvery(double seconds) =>
+        double.IsFinite(seconds) ? Math.Clamp(Math.Round(seconds, 1), MinHpEvery, MaxHpEvery) : DefaultHpEvery;
 
     /// <summary>버프 적용률 끄기: not on the meter nor on the timeline. Apart from <see cref="BuffBars"/>, which older versions read.</summary>
     public bool BuffShareOff { get; set; }
@@ -100,12 +113,17 @@ public sealed class MeterSettings : IWindowPlace
     [JsonIgnore]
     public MeterLook ShownLook => Look == MeterLook.파티비교 && Scope is MeterScope.나 or MeterScope.파티 ? MeterLook.행 : Look;
 
+    public const double MinOpacity = 0.1;
+    public static double ClampOpacity(double v) => double.IsFinite(v) ? Math.Clamp(v, MinOpacity, 1) : 1;
+
     /// <summary>Load-time repairs (SettingsStore.Normalize): hand edits.</summary>
     internal void Normalize()
     {
         Panels ??= [];
         foreach (var (key, r) in Panels.ToList())
             if (r.Width <= 0 || r.Height <= 0) Panels.Remove(key);
-        Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, 0.1, 1) : 1;
+        Opacity = ClampOpacity(Opacity);
+        BarOpacity = ClampOpacity(BarOpacity ?? Opacity);
+        HpEvery = ClampHpEvery(HpEvery);
     }
 }

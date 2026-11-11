@@ -16,7 +16,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     const string AreaOverlay = "내 오버레이", AreaCharacter = "직업 인식", AreaParty = "파티 공유", AreaFit = "화면·인식", AreaKeys = "키·단축키";
-    const string AreaApp = "테마·업데이트", AreaScreens = "표시할 화면", AreaSkills = "스킬창", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고";
+    const string AreaApp = "테마·업데이트", AreaScreens = "표시할 화면", AreaSkills = "스킬창", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고", AreaPerformance = "시스템 성능";
     /// <summary>A form's width at most: rows don't stretch across a wide window (user, 2026-11-05: long blocks sideways).</summary>
     const double FormMaxWidth = 620;
     const string SecFit = "스킬창 맞추기";   // not "스킬창": that is the rail's area for the boxes' look
@@ -39,7 +39,7 @@ public partial class SettingsWindow
     readonly CardStack _secCharacter = new(), _secFit = new();
     readonly CardStack _secSkillLook = new(), _secDisplay = new(), _secBuffs = new(), _secOther = new(), _secAmsu = new(), _secPlace = new(), _secCopy = new();
     readonly CardStack _secConnect = new(), _secMembers = new(), _secOrder = new(), _secSend = new();
-    readonly CardStack _secKeys = new(), _secHotkeys = new(), _secApp = new(), _secApi = new(), _secWarnings = new();
+    readonly CardStack _secKeys = new(), _secHotkeys = new(), _secApp = new(), _secApi = new(), _secWarnings = new(), _secPerformance = new();
     readonly StackPanel _context = new() { Orientation = Orientation.Horizontal };   // 편집 중 (top bar): the class the class sections edit
     Area[] _areas = [];
     Area _area = null!;
@@ -134,7 +134,8 @@ public partial class SettingsWindow
             new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 앱에 알려 줍니다. 감지에서 칸을 눌러 칸마다 읽은 값을 봅니다.", (SecFit, _secFit), (SecDetect, _secDetect)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
             new(AreaApi, "로스트아크 오픈 API 키를 넣으면 캐릭터 정보를 서버에서 직접 받아 옵니다.", (AreaApi, _secApi)),
-            new(AreaWarnings, "작업 전에 묻는 경고 메시지를 켜고 끕니다.", (AreaWarnings, _secWarnings)),
+            new(AreaPerformance, "화면을 읽고 오버레이를 그리는 횟수입니다. 프레임이 떨어지면 낮춰 보세요.", (AreaPerformance, _secPerformance)),
+            new(AreaWarnings, "작업 전에 묻는 경고와 Windows 알림을 켜고 끕니다.", (AreaWarnings, _secWarnings)),
             new(AreaApp, "화면 테마, 업데이트, 전체 초기화입니다.", (AreaApp, _secApp)),
         ];
         _area = _areas.First(a => a.Name == AreaShow);
@@ -239,7 +240,7 @@ public partial class SettingsWindow
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA",
+        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA", [AreaPerformance] = "\uEC4A",
     };
 
     /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name with

@@ -55,6 +55,18 @@ public class FeatureMapTests
     }
 
     [Fact]
+    public void The_app_group_has_the_performance_tab() =>
+        Assert.Equal(["키·단축키", "시스템 성능", "로아 API", "경고", "테마·업데이트"], FeatureMap.Rail[Group("앱")].Areas);
+
+    [Fact]
+    public void The_two_rate_sliders_starred_on_the_fit_page_follow_them_to_the_performance_tab()
+    {
+        Assert.Equal("시스템 성능/시스템 성능/초당 읽기 횟수", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/초당 읽기 횟수"));
+        Assert.Equal("시스템 성능/시스템 성능/초당 그리기 횟수", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/초당 그리기 횟수"));
+        Assert.Equal("화면·인식/스킬창 맞추기/버프 크기 (%)", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/버프 크기 (%)"));
+    }
+
+    [Fact]
     public void Ids_of_areas_that_kept_their_names_are_left_alone() =>
         Assert.Equal("화면·인식/감지/x", FeatureMap.MigrateSettingId("화면·인식/감지/x"));
 

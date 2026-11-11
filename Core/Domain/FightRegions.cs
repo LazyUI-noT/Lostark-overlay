@@ -104,13 +104,15 @@ public static partial class FightRegions
         return chain;
     }
 
-    static bool GoesOn(FightRecord a, FightRecord b)
+    /// <summary><paramref name="sameRecord"/>: the caller saw one 전분 record through both, so no gap is too long (the timer ran
+    /// on hidden, a long cutscene); the clock and my damage still must not go back.</summary>
+    static bool GoesOn(FightRecord a, FightRecord b, bool sameRecord = false)
     {
         if (a.StartedAt == b.StartedAt || a.Samples.Count == 0 || b.Samples.Count == 0) return false;
         double aFirst = a.Samples.Min(s => s.T), bFirst = b.Samples.Min(s => s.T), gap = bFirst - a.Duration;
-        if (gap < 0 || gap > MaxClockGap) return false;
+        if (gap < 0 || !sameRecord && gap > MaxClockGap) return false;
         var ended = a.StartedAt + TimeSpan.FromSeconds(a.Duration - aFirst);
-        if (b.StartedAt < a.StartedAt || b.StartedAt - ended > MaxWallGap) return false;
+        if (b.StartedAt < a.StartedAt || !sameRecord && b.StartedAt - ended > MaxWallGap) return false;
         return a.Samples.LastOrDefault(s => s.Name == a.Me) is { } was && b.Samples.FirstOrDefault(s => s.Name == b.Me) is { } now && now.Damage >= was.Damage;
     }
 
@@ -130,6 +132,7 @@ public static partial class FightRegions
             Events = [.. chain.SelectMany(f => f.Events)],
             Cleared = last.Cleared,
             AmsuOn = chain.Any(f => f.AmsuOn),
+            Assumed = chain.Any(f => f.Assumed is not null) ? [.. chain.SelectMany(f => f.Assumed ?? [])] : null,
         };
     }
 
@@ -162,9 +165,31 @@ public static partial class FightRegions
                && WholeGate().Match(ng[(nat + 3)..]) is { Success: true } nm
                && nm.Groups["part"].Success && nm.Groups["n"].Value == n;   // a whole gate already, and this is its next part
         if (!isPart || previous.Me != next.Me || previous.Character != next.Character || !GoesOn(previous, next)) return null;
-        return Join([previous, next]) with
+        return Saved(previous, next) with { Gate = $"{gate[..at]} · {m.Groups["ex"].Value}{n}관문" };
+    }
+
+    /// <summary>A stop the fight was cut at is followed by the next second; a timer that ran on hidden comes back later.</summary>
+    const double StopGap = 2;
+
+    /// <summary>The fight to save in place of <paramref name="cut"/> when its 전분 record went on after it was saved (a timer
+    /// stopped under the kill line, or past the pause limit: a phase stop, a long cutscene) and <paramref name="rest"/> is what
+    /// came after (user, 2026-11-11): one fight under the first's name, with the last's result. The caller knows the record is
+    /// the same one; null when the clock or my damage went back anyway (a retry read late), or the character changed.</summary>
+    public static FightRecord? Rejoined(FightRecord cut, FightRecord rest)
+    {
+        if (cut.Me != rest.Me || cut.Character != rest.Character || !GoesOn(cut, rest, sameRecord: true)) return null;
+        bool stopped = rest.Samples.Min(s => s.T) - cut.Duration <= StopGap;   // as the recorder marks a stop it sees through
+        return Saved(cut, rest) with
         {
-            Gate = $"{gate[..at]} · {m.Groups["ex"].Value}{n}관문",
+            Gate = cut.Gate ?? rest.Gate,
+            Phases = [.. cut.Phases, .. stopped ? [cut.Duration] : Array.Empty<double>(), .. rest.Phases],
+        };
+    }
+
+    /// <summary>Two parts as one file: <see cref="Join"/>, with what only one of them has.</summary>
+    static FightRecord Saved(FightRecord previous, FightRecord next) =>
+        Join([previous, next]) with
+        {
             Difficulty = previous.Difficulty ?? next.Difficulty,
             Kept = previous.Kept || next.Kept,
             // What only one part read (Join keeps the first's): the skills, class and power from whichever has them.
@@ -175,7 +200,6 @@ public static partial class FightRegions
             MyClassName = previous.MyClassName ?? next.MyClassName,
             MySubclass = previous.MyClassName is null ? next.MySubclass : previous.MySubclass,
         };
-    }
 
     /// <summary>"EX 2-1관문", "2-2관문 (하드)", "EX 2관문", "1관문": the EX, the gate number and its part, if any.</summary>
     [GeneratedRegex(@"^(?<ex>EX )?(?<n>\d+)(?<part>-\d+)?관문")]

@@ -475,3 +475,12 @@ foreach ($b in @(@('mordum', 'mordum.png', 110), @('layout', 'Mordum_layout.png'
   CutRect "bosstop_$($b[0])" (Join-Path $ref $b[1]) 'bosstop' $b[2] @(560, 20, 800, 90)
 }
 CutRect 'bosstop_219' (Join-Path $ref 'Mordum_layout_21_9.png') 'bosstop' 110 @(560, 150, 800, 70)
+
+# The dead / disabled tint (SkillTintTests), HUD 110: a town's greyed bar on another character (dead.PNG), held in 종탑 with two
+# skills cooling (the long video at 559 s), and dead in a raid (dead2.PNG, a small crop: the skill bar's upper row).
+$ordinary = @('일반1', '일반2', '일반3', '일반4', '일반5', '일반6', '일반7', '일반8')
+$bell = Join-Path $ref '종탑 3단계/Lost Ark 2026.11.10 - 21.31.19.01.mp4'
+foreach ($slot in $ordinary) { Cut "dead_$slot" (Join-Path $ref 'dead.PNG') $slot 110 }
+foreach ($slot in $ordinary) { Cut "hold559_$slot" $bell $slot 110 559.0 0.016 }
+foreach ($slot in $ordinary) { Cut "hold556_$slot" $bell $slot 110 556.0 0.016 }   # the same bar before the hold (TintedSlotReadTests)
+CutRect 'dead2_row' (Join-Path $ref 'dead2.PNG') 'row' 110 @(178, 243, 114, 20)

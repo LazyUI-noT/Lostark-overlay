@@ -8,6 +8,10 @@ public enum CooldownStyle { Sweep, Fill, FillHatched }
 /// <summary>The edge a fill grows from.</summary>
 public enum FillFrom { Bottom, Top, Left, Right }
 
+/// <summary>How a class's boxes show a cooldown (<see cref="MineProfile"/>, per class): 쿨 진행 표시 (style and its
+/// direction, one setting) and 남은 쿨 (초). The number's size, 쿨 숫자 크기, is global (OverlaySettings.TimerFont).</summary>
+public sealed record CooldownView(CooldownStyle Style = CooldownStyle.Sweep, FillFrom From = FillFrom.Bottom, bool ShowTimer = true);
+
 /// <summary>The colours of a box on a seconds cooldown; OverlayRenderer draws the shape.</summary>
 /// <param name="Base">Lightness of the box colour under the refilled part (1 = full colour; see OverlayRenderer.Level).</param>
 /// <param name="Grey">The base is drawn grey (a stack skill with no use left).</param>

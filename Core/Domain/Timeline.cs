@@ -188,34 +188,49 @@ public static class Timeline
 
     /// <summary>The share of my damage in <paramref name="w"/> dealt while my <paramref name="kind"/> buff was up, as the DPS
     /// 미터기's 버프 적용률 counts it (MeterMath.Cover); 0 when I dealt none in it.</summary>
-    public static double BuffShare(FightRecord r, BuffKind kind, TimeWindow w) =>
-        DamageShare(r, BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)), w);
+    public static double BuffShare(FightRecord r, BuffKind kind, TimeWindow w) => Share(MyDamage(r), Covered(r, kind), LeftOut(r), w) ?? 0;
+
+    /// <summary>The stretches left out of 버프 적용률 (<see cref="FightRecord.Assumed"/>: the boss bar unread, or my skill bar
+    /// tinted and 5 s after), overlaps merged: out of the buffed part and out of the whole. The timeline's band.</summary>
+    public static IReadOnlyList<(double From, double To)> LeftOut(FightRecord r) => Merge((r.Assumed ?? []).Select(a => (a.From, a.To)));
+
+    /// <summary>Where <paramref name="kind"/> was up: its windows, overlaps merged so nothing counts twice.</summary>
+    static List<(double From, double To)> Covered(FightRecord r, BuffKind kind) =>
+        Merge(BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)));
+
+    static List<(double From, double To)> Merge(IEnumerable<(double From, double To)> spans)
+    {
+        var merged = new List<(double From, double To)>();
+        foreach (var (from, to) in spans.OrderBy(s => s.From))
+            if (merged.Count > 0 && from <= merged[^1].To) merged[^1] = (merged[^1].From, Math.Max(merged[^1].To, to));
+            else merged.Add((from, to));
+        return merged;
+    }
 
     /// <summary>The share of <paramref name="w"/>'s time a bomb was on the boss (the 암수 line's %, user 2026-11-05).</summary>
     public static double AmsuUptime(FightRecord r, TimeWindow w) =>
         w.Span <= 0 ? 0 : AmsuSpans(r).Sum(s => Math.Max(0, Math.Min(s.To, w.To) - Math.Max(s.From, w.From))) / w.Span;
 
     /// <summary>The share of my damage in <paramref name="w"/> dealt while a bomb was on the boss, as <see cref="BuffShare"/>.</summary>
-    public static double BombShare(FightRecord r, TimeWindow w) => DamageShare(r, AmsuSpans(r).Select(s => (s.From, s.To)), w);
+    public static double BombShare(FightRecord r, TimeWindow w) => Share(MyDamage(r), [.. AmsuSpans(r).Select(s => (s.From, s.To))], [], w) ?? 0;
 
     /// <summary>The share of the boss HP lost in <paramref name="w"/> while my <paramref name="kind"/> buff was up: the party's in a
-    /// 4-man raid (MeterView.BuffParty), whose damage is all the boss takes; null when no boss HP was lost in it.</summary>
-    public static double? PartyBuffShare(FightRecord r, BuffKind kind, TimeWindow w)
-    {
-        var boss = r.Boss.OrderBy(b => b.T).Select(b => (b.T, (double)b.Taken)).ToList();
-        if (At(boss, w.To) - At(boss, w.From) <= 0) return null;
-        return Share(boss, BuffSpans(r).Where(s => s.Kind == kind).Select(s => (s.From, s.To)), w);
-    }
+    /// 4-man raid (MeterView.BuffParty), whose damage is all the boss takes; null when no boss HP was lost in it (what was
+    /// lost in a left-out stretch doesn't count).</summary>
+    public static double? PartyBuffShare(FightRecord r, BuffKind kind, TimeWindow w) =>
+        Share([.. r.Boss.OrderBy(b => b.T).Select(b => (b.T, (double)b.Taken))], Covered(r, kind), LeftOut(r), w);
 
-    static double DamageShare(FightRecord r, IEnumerable<(double From, double To)> spans, TimeWindow w) => Share(MyDamage(r), spans, w);
-
-    static double Share(List<(double T, double V)> mine, IEnumerable<(double From, double To)> spans, TimeWindow w)
+    /// <summary>The part of <paramref name="line"/>'s rise in <paramref name="w"/> that fell in <paramref name="spans"/>, both
+    /// without what fell in <paramref name="cuts"/> (the left-out stretches); null when nothing is left to share.
+    /// <paramref name="spans"/> don't overlap each other, nor do <paramref name="cuts"/>.</summary>
+    static double? Share(List<(double T, double V)> line, IReadOnlyList<(double From, double To)> spans, IReadOnlyList<(double From, double To)> cuts, TimeWindow w)
     {
-        double total = At(mine, w.To) - At(mine, w.From);
-        if (total <= 0) return 0;
-        double under = spans.Where(s => s.To > w.From && s.From < w.To)
-            .Sum(s => At(mine, Math.Min(s.To, w.To)) - At(mine, Math.Max(s.From, w.From)));
-        return under / total;
+        double In(IEnumerable<(double From, double To)> parts) => parts.Where(s => s.To > w.From && s.From < w.To)
+            .Sum(s => At(line, Math.Min(s.To, w.To)) - At(line, Math.Max(s.From, w.From)));
+        double total = At(line, w.To) - At(line, w.From) - In(cuts);
+        if (total <= 0) return null;
+        var both = spans.SelectMany(s => cuts.Select(c => (From: Math.Max(s.From, c.From), To: Math.Min(s.To, c.To)))).Where(x => x.To > x.From);
+        return (In(spans) - In(both)) / total;
     }
 
     /// <summary>Each player's average DPS over <paramref name="w"/> (their samples in it): me first, then highest first.</summary>
@@ -223,10 +238,10 @@ public static class Timeline
         [.. r.Samples.Where(s => s.T >= w.From && s.T <= w.To).GroupBy(s => s.Name).Select(g => (Name: g.Key, Dps: g.Average(s => (double)s.Dps)))
             .OrderBy(x => x.Name != r.Me).ThenByDescending(x => x.Dps)];
 
-    /// <summary>My average DPS over the whole fight, as the timeline's legend has it when not zoomed (the 전투 기록 list beside 내 몫,
-    /// user 2026-11-09); null when I have no figures.</summary>
+    /// <summary>My DPS at the end of the fight, my last figure (the 전투 기록 list beside 내 몫; user 2026-11-11: the end, not the
+    /// average of the samples); null when I have no figures.</summary>
     public static double? MyDps(FightRecord r) =>
-        DpsAverages(r, TimeWindow.Whole(r.Duration)) is [var first, ..] && first.Name == r.Me ? first.Dps : null;
+        r.Samples.Where(s => s.Name == r.Me).MaxBy(s => s.T) is { } last ? last.Dps : null;
 
     public static IReadOnlyList<RecordEvent> Visible(FightRecord r, TimeWindow w) => [.. r.Events.Where(e => e.T >= w.From && e.T <= w.To)];
 

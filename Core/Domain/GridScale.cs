@@ -28,6 +28,28 @@ public static class GridScale
         return best.Step > 0 ? best : (max, max);   // unreachable for a positive max: some step always gives 3–5 lines
     }
 
+    const double Pad = 1.2;        // the scale around a line: a fifth more than its swing
+    const double MinHalf = 0.05;   // and at least 5 % of its middle each way, so a flat line's noise isn't blown up
+
+    /// <summary>A scale centred between a line's lowest and highest value (그래프 범위 최근 1분, user 2026-11-11), so its
+    /// swing fills the graph instead of lying flat on a scale from 0; never under 0. The step as <see cref="Values"/> picks
+    /// it for the height shown.</summary>
+    public static (double Step, double Bottom, double Top) Around(double lo, double hi)
+    {
+        double mid = (lo + hi) / 2, half = Math.Max((hi - lo) / 2 * Pad, mid * MinHalf);
+        if (!(half > 0)) return (EmptyStep, 0, EmptyStep);
+        double bottom = Math.Max(0, mid - half), top = mid + half;
+        return (Values(top - bottom).Step, bottom, top);
+    }
+
+    /// <summary>The value lines of a scale: the round multiples of <paramref name="step"/> inside it, 0 left out (the plot's edge).</summary>
+    public static IReadOnlyList<double> Lines(double step, double bottom, double top)
+    {
+        var lines = new List<double>();
+        for (double k = Math.Max(1, Math.Ceiling(bottom / step - 1e-9)); k * step <= top * (1 + 1e-9); k++) lines.Add(k * step);
+        return lines;
+    }
+
     /// <summary>The finest time step (s) whose lines lie at least <paramref name="minGap"/> px apart across
     /// <paramref name="width"/> px showing <paramref name="span"/> s; the widest when none does.</summary>
     public static double Seconds(double span, double width, double minGap) =>

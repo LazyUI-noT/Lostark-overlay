@@ -33,6 +33,9 @@ public sealed class AmsuSettings : IWindowPlace
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
 
+    /// <summary>A separate copy (오버레이 배치 keeps one each).</summary>
+    public AmsuSettings Copy() => (AmsuSettings)MemberwiseClone();
+
     /// <summary>Hand edits and old files back into range.</summary>
     public void Clamp()
     {

@@ -438,7 +438,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
         // A seconds cooldown takes its colours from CooldownLook (a stack skill with a use left stays full colour, one
         // with none left turns grey, its icon too).
-        var look = CooldownLook.For(st, Settings.Overlay.CooldownStyle);
+        var look = CooldownLook.For(st, l.Cooldown.Style);
         bool seconds = st.Phase == SlotPhase.Cooldown && !ready;
         double level = seconds ? look.Base : !ready ? CooldownLevel
             : reduced && shineT < 1 ? CooldownLevel + (1 - CooldownLevel) * EaseOut(shineT) : 1;
@@ -474,7 +474,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             }
             a.Drawn = shown;
 
-            if (shown > 0) DrawProgress(dc, r, c, dim, look, shown, l.Unit, icon);
+            if (shown > 0) DrawProgress(dc, r, c, dim, look, l.Cooldown, shown, l.Unit, icon);
             if (left > TimeSpan.Zero)
             {
                 if (_frozenAt is null) _moving = true;
@@ -520,7 +520,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         int? held = a.Held.Shown(now);
         if (held is not null && _frozenAt is null) _moving = true;
         if (held is { } h) DrawReadyCount(dc, r, h);
-        else if (timer is not null && Settings.Overlay.ShowTimer && !peer) DrawTimer(dc, r, timer);
+        else if (timer is not null && l.Cooldown.ShowTimer && !peer) DrawTimer(dc, r, timer);
         // 쿨 돈 뒤 지난 시간: where the timer would be, redrawn each frame until it holds at 29.
         if (counts && st is { Phase: SlotPhase.Ready, Estimated: false })
         {
@@ -565,11 +565,10 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>Time gone by, <paramref name="p"/> of the cooldown, as the 쿨타임 표시 setting draws it: a sweep or a fill
     /// in the refill colour (slashed if the look says so), or only a white line at the progress edge (a stack skill with
     /// a use left): the clock hand of the sweep, or the fill's edge.</summary>
-    void DrawProgress(DrawingContext dc, Rect r, Color c, Color? dim, CooldownLook look, double p, double unit, ImageSource? icon)
+    void DrawProgress(DrawingContext dc, Rect r, Color c, Color? dim, CooldownLook look, CooldownView o, double p, double unit, ImageSource? icon)
     {
-        var o = Settings.Overlay;
-        bool sweep = o.CooldownStyle == CooldownStyle.Sweep;
-        var (x, y, w, h) = CooldownLook.FillRect(r.X, r.Y, r.Width, r.Height, p, o.FillFrom);
+        bool sweep = o.Style == CooldownStyle.Sweep;
+        var (x, y, w, h) = CooldownLook.FillRect(r.X, r.Y, r.Width, r.Height, p, o.From);
         var fill = new Rect(x, y, w, h);
         dc.PushClip(BoxClip(r));
         if (look.Refill is { } refill)
@@ -591,7 +590,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
             else
             {
                 // The fill's moving edge.
-                var edge = o.FillFrom switch
+                var edge = o.From switch
                 {
                     FillFrom.Bottom => new Rect(r.X, y, r.Width, t),
                     FillFrom.Top => new Rect(r.X, y + h - t, r.Width, t),

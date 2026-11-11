@@ -57,8 +57,11 @@ public partial class App
         if (settingsFile is not null && int.TryParse(args.FirstOrDefault(a => a.StartsWith("--profile=", StringComparison.Ordinal))?["--profile=".Length..], out int profile))
             settings.SwitchProfile(profile - 1);
         string? Flag(string name) => args.FirstOrDefault(a => a.StartsWith($"--{name}="))?[(name.Length + 3)..];
-        if (Enum.TryParse(Flag("cooldown"), out CooldownStyle style)) settings.Overlay.CooldownStyle = style;
-        if (Enum.TryParse(Flag("fill"), out FillFrom from)) settings.Overlay.FillFrom = from;
+        // 쿨 진행 표시 is per class: the flags set 기본 and every 개별 class, as an older file's global value moves.
+        IEnumerable<MineProfile> Mines() => settings.Classes.Where(e => e.Key == ClassProfiles.Template || e.Value.Own).Select(e => e.Value.Mine)
+            .Prepend(ClassProfiles.Edit(settings, ClassProfiles.Template).Mine).Distinct();
+        if (Enum.TryParse(Flag("cooldown"), out CooldownStyle style)) foreach (var m in Mines()) m.CooldownStyle = style;
+        if (Enum.TryParse(Flag("fill"), out FillFrom from)) foreach (var m in Mines()) m.FillFrom = from;
         if (Enum.TryParse(Flag("peer-colors"), out ColorSource source)) ClassProfiles.Edit(settings, ClassProfiles.Template).Members.Color = source;
         if (int.TryParse(Flag("support"), out int support)) (settings.Party.SupportFixed, settings.Party.SupportNumber) = (true, support);
         if (int.TryParse(Flag("my-number"), out int number)) settings.Party.MyNumber = number;
@@ -196,6 +199,7 @@ public partial class App
         if (args.Contains("--grid-tags"))   // 숙제 tags as under the grid's cards and 전투력 beside the levels, at goal.png's spots
             _homeworkTags.Update(new Viewport(0, 0, 1920, 1080), [(new PixelRect(846, 426, 245, 19), [new HomeworkTag("세나메", HomeworkColor.Purple, false, 0), new HomeworkTag("종하↓", HomeworkColor.Orange, true, 0)])],
                 [new PowerTag(new PixelRect(972, 426, 0, 12), "2,345", Role.딜러), new PowerTag(new PixelRect(440, 704, 0, 11), "5,004", Role.서포터)], allowed: true);
+        if (args.Contains("--no-key")) CredentialVault.PretendNoKey();   // the key gate as a new install without a key sees it
         if (args.Contains("--homework-demo")) DemoHomework(settings);
         if (args.Contains("--settings")) _settingsWindow.Show();
         if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut" }.Any(f => Flag(f) is not null))
@@ -217,7 +221,9 @@ public partial class App
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, null);
         }
         if (args.Contains("--edit")) SetEditMode(true);
-        if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.ShowBox(picked, plate: false);
+        // As a click on the preview: the box's (or with "plate", 창 전체's) options in the inspector.
+        if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.Inspect(new("Skills", picked, null));
+        else if (Flag("pick") == "plate") _settingsWindow.Inspect(new("Plate", null, null));
         if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);
         if (args.Contains("--join")) Dispatcher.BeginInvoke(() => JoinDialog.Ask(settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--token")) Dispatcher.BeginInvoke(() => TokenDialog.ShowToken("demo-token-1234567890abcdef", settings.Party.HostPort, settings.Theme), DispatcherPriority.ApplicationIdle);
@@ -313,6 +319,6 @@ public partial class App
             store.Add(new HomeworkClear("데모", picks[0].Raid, picks[0].Difficulty, now), now);
             store.Add(new HomeworkClear("데모", picks[1].Raid, picks[1].Difficulty, now, Unsure: true), now);
         }
-        _settingsWindow.Homework = new HomeworkService(settings, gates, shipped, [], store, new RecordStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-records")), Dispatcher, () => { }, () => { });
+        _settingsWindow.Homework = new HomeworkService(settings, gates, shipped, [], store, new RecordStore(Path.Combine(Path.GetTempPath(), "GaugeOverlay-demo-records")), Dispatcher, () => { }, () => { }, () => true);
     }
 }

@@ -26,6 +26,7 @@ public partial class SettingsWindow
         var read = ClassProfiles.Of(_s, ShownClass).Mine;   // as saved; reading doesn't make the pick 개별
         var look = ClassProfiles.Mine(_s, cls);             // the colours as drawn
         var aden = BoxAdenSlots;
+        ClassCooldownRows(p, read, Fx);   // 쿨 진행 표시, 남은 쿨 (초): this class's (display-split.plan.md step 5)
         foreach (var g in Enum.GetValues<SlotGroup>())
         {
             var slots = SlotInfo.All.Where(id => SlotInfo.GroupOf(id, aden) == g).ToList();

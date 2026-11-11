@@ -15,9 +15,15 @@ public enum ColorSource { Default, Personal, Received }
 /// which the gauge, buffs, debuffs, 단심 and loading screens wait on; nothing of them is tracked, drawn or sent.</param>
 public sealed record ReadPlan(IReadOnlySet<SlotId> Skip, bool Label, int? BuffSize, bool Gauge, bool VoteOnly = false);
 
-/// <summary>What 복사 → 대상 copies.</summary>
+/// <summary>What 복사 → 대상 copies. <see cref="All"/> is 내 설정 복사's (나 → 파티원), which has no cooldown view to copy:
+/// party members' boxes draw with your 나's (<see cref="ClassProfiles.Member"/>).</summary>
 [Flags]
-public enum CopyParts { Color = 1, Size = 2, Layout = 4, Display = 8, Effects = 16, All = Color | Size | Layout | Display | Effects }
+public enum CopyParts
+{
+    Color = 1, Size = 2, Layout = 4, Display = 8, Effects = 16, All = Color | Size | Layout | Display | Effects,
+    /// <summary>쿨 진행 표시 (style and direction together) and 남은 쿨 (초): 나 → 나 only, unticked by default.</summary>
+    Progress = 32, Timer = 64,
+}
 
 /// <summary>One class's boxes for you (<see cref="ClassSettings.Mine"/>) or for a party member
 /// (<see cref="MemberProfile"/>): what is shown, where and in what colours.</summary>
@@ -108,6 +114,19 @@ public sealed class MineProfile : ClassProfile
     /// <summary>키 표시: boxes that show their key (from the 키 tab) in the top-left corner.</summary>
     public HashSet<SlotId> KeyLetters { get; set; } = [];
 
+    /// <summary>쿨 진행 표시 (<see cref="CooldownStyle"/> + <see cref="FillFrom"/>) and 남은 쿨 (초) (<see cref="Cooldown"/>);
+    /// global in older files (<c>OverlaySettings</c>), moved once by <see cref="ClassProfileMigration.MoveCooldownViews"/>.</summary>
+    public CooldownStyle CooldownStyle { get; set; } = CooldownStyle.Sweep;
+    public FillFrom FillFrom { get; set; } = FillFrom.Bottom;
+    public bool ShowTimer { get; set; } = true;
+    [JsonIgnore] public CooldownView Cooldown => new(CooldownStyle, FillFrom, ShowTimer);
+
+    internal void CopyCooldown(MineProfile from, CopyParts parts)
+    {
+        if (parts.HasFlag(CopyParts.Progress)) (CooldownStyle, FillFrom) = (from.CooldownStyle, from.FillFrom);
+        if (parts.HasFlag(CopyParts.Timer)) ShowTimer = from.ShowTimer;
+    }
+
     internal void CopyEffects(MineProfile from)
     {
         (NoShine, Pulse, PulseStyle, PulseColor, Icons) = ([.. from.NoShine], [.. from.Pulse], new(from.PulseStyle), new(from.PulseColor), [.. from.Icons]);
@@ -128,8 +147,12 @@ public sealed record Look(IReadOnlyDictionary<SlotGroup, string> Colors, double 
 public sealed record Appearance(IReadOnlyDictionary<SlotGroup, bool> Groups, IReadOnlySet<SlotId> Hidden, bool Gauge,
     IReadOnlyDictionary<Part, Cell>? Layout, IReadOnlyDictionary<SlotGroup, string> Colors, double Width, double Height,
     IReadOnlyDictionary<SlotId, string>? SlotColors = null, IReadOnlyDictionary<SlotGroup, string>? DimColors = null,
-    IReadOnlyDictionary<SlotId, string>? SlotDimColors = null, MineProfile? Effects = null)
+    IReadOnlyDictionary<SlotId, string>? SlotDimColors = null, MineProfile? Effects = null, CooldownView? CooldownOf = null)
 {
+    /// <summary>How the boxes show a cooldown: the class's (yours, or your 나 of a party member's class).</summary>
+    public CooldownView Cooldown => CooldownOf ?? Default;
+    static readonly CooldownView Default = new();
+
     /// <summary>A slot's colour: its own (<see cref="SlotColors"/>), else its group's.</summary>
     public string ColorOf(SlotId slot, SlotGroup g) => SlotColors?.GetValueOrDefault(slot) ?? Colors[g];
 
@@ -217,7 +240,7 @@ public static class ClassProfiles
         if (className is null or Template) return;
         var from = Of(s, Parent(className));
         var c = Entry(s, className);
-        if (on && !c.Own && Same(c.Mine, new MineProfile()) && Same(c.Members, new MemberProfile()))
+        if (on && !c.Own && IsBare(c))
             (c.Mine, c.Members) = (Clone(from.Mine), Clone(from.Members));
         c.Own = on;
     }
@@ -240,6 +263,9 @@ public static class ClassProfiles
     public static ClassProfile BoxesShown(Settings s, string? className, bool member) =>
         member ? EditShown(s, className).Members : EditShown(s, className).Mine;
 
+    /// <summary>Nothing kept from an earlier 개별: turning it on copies what it followed (<see cref="SetOwn"/>).</summary>
+    internal static bool IsBare(ClassSettings c) => Same(c.Mine, new MineProfile()) && Same(c.Members, new MemberProfile());
+
     static bool Same<T>(T a, T b) where T : ClassProfile =>
         JsonSerializer.SerializeToUtf8Bytes(a).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(b));
 
@@ -257,7 +283,7 @@ public static class ClassProfiles
         bool personal = c.Mine.Color == ColorSource.Personal;
         return new(c.Mine.Groups, hidden, c.Mine.Gauge && !classless, c.Mine.Layout, MineColors(c.Mine), s.Overlay.Width, s.Overlay.Height,
             personal && !c.Mine.SkillsOneColor ? c.Mine.SlotColors : null,
-            personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine);
+            personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine, c.Mine.Cooldown);
     }
 
     /// <summary>What the engine reads: with 스킬창 읽기 on, a slot is skipped when it is neither shown (its group on, the slot
@@ -331,7 +357,7 @@ public static class ClassProfiles
         bool size = s.Party.ReceiveSize && look is not null, cells = s.Party.ReceiveLayout && look?.Layout is { } sent
             && !FreeLayout.Spread(sent);   // skills placed apart: drawn compact, as the class's own party layout
         if (size || cells) (layout, w, h) = Fit(layout, w, h, look!, size, cells, s.Gauge.Thickness);
-        return new(display.Groups, display.HiddenSlots, display.Gauge, layout, colors, w, h);
+        return new(display.Groups, display.HiddenSlots, display.Gauge, layout, colors, w, h, CooldownOf: mine.Cooldown);
     }
 
     /// <summary>A received size and/or layout, scaled as one so it fills the area your layout takes at your size
@@ -367,7 +393,11 @@ public static class ClassProfiles
                 (to.AutoDim, to.DimColors, to.SlotDimColors) = (from.AutoDim, new(from.DimColors), new(from.SlotDimColors));
             }
             if (parts.HasFlag(CopyParts.Layout)) to.Layout = from.Layout is null ? null : new(from.Layout);
-            if (parts.HasFlag(CopyParts.Effects) && (from, to) is (MineProfile fx, MineProfile tx)) tx.CopyEffects(fx);
+            if ((from, to) is (MineProfile fx, MineProfile tx))
+            {
+                if (parts.HasFlag(CopyParts.Effects)) tx.CopyEffects(fx);
+                tx.CopyCooldown(fx, parts);
+            }
             if (parts.HasFlag(CopyParts.Display)) (to.Groups, to.HiddenSlots, to.Gauge) = (new(from.Groups), [.. from.HiddenSlots], from.Gauge);
             if (parts.HasFlag(CopyParts.Size) && to is MemberProfile m)
                 (m.Width, m.Height) = from is MemberProfile f ? (f.Width, f.Height) : (s.Overlay.Width, s.Overlay.Height);

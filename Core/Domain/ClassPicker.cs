@@ -28,6 +28,11 @@ public static class ClassPicker
         return activeKey is not null && listed.Contains(activeKey) ? activeKey : ClassProfiles.Template;
     }
 
+    /// <summary>복사 → 대상's ★ list: <paramref name="favorites"/>, plus the 직업각인 of each character with one assigned
+    /// (user, 2026-11-11), each once.</summary>
+    public static IReadOnlyList<string> CopyFavorites(IEnumerable<string> favorites, IReadOnlyDictionary<string, CharacterSettings> characters) =>
+        [.. favorites.Concat(characters.Values.Where(c => c.Class != "" && c.Subclass != "").Select(c => Settings.CharacterKey(c.Class, c.Subclass))).Distinct()];
+
     /// <summary>The entries 복사 → 대상 writes into: <paramref name="target"/> (null = 모든 클래스: 기본 and every 직업각인) as a
     /// settings entry. Party members' settings are the class's, so for <paramref name="toMembers"/> a 직업각인 stands for its
     /// class; each entry once.</summary>

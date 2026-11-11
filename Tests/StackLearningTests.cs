@@ -15,7 +15,8 @@ public class StackLearningTests
 
     // Every ready frame in the fixtures (2,376 on 2026-10-13): only live test / live_test2's Q, a 2-use stack skill, shows a
     // count. A count on any other ready icon would mark an ordinary skill as a stack skill at 스킬창 맞추기.
-    static readonly HashSet<string> StackQ = ["gold_lt_1_일반1", "lt_count2_일반1", "lt_lockout_일반1", "lt2_clear_일반1", "lt2_count2_일반1"];
+    // dead.PNG (a town, another character): its Q is a 2-use stack skill too, showing 2.
+    static readonly HashSet<string> StackQ = ["gold_lt_1_일반1", "lt_count2_일반1", "lt_lockout_일반1", "lt2_clear_일반1", "lt2_count2_일반1", "dead_일반1"];
 
     [Fact]
     public void No_ready_icon_in_the_fixtures_shows_a_count_but_the_stack_skill_Q()

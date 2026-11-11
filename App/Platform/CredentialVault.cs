@@ -58,11 +58,24 @@ public static partial class CredentialVault
             Marshal.ZeroFreeGlobalAllocUnicode(blob);   // this copy wiped, not only freed
             Marshal.FreeHGlobal(target);
             Marshal.FreeHGlobal(user);
+            _saved = null;   // after the write, as in Delete
         }
     }
 
     /// <summary>Removes the key; true when it is gone (also when there was none).</summary>
-    public static bool Delete() => CredDeleteW(Target, GenericType, 0) || Marshal.GetLastPInvokeError() == NotFound;
+    public static bool Delete()
+    {
+        try { return CredDeleteW(Target, GenericType, 0) || Marshal.GetLastPInvokeError() == NotFound; }
+        finally { _saved = null; }   // after the write: a read meanwhile can't cache the old state
+    }
+
+    /// <summary><see cref="Has"/>, asked of Windows once and again after each <see cref="Save"/> or <see cref="Delete"/>: what the
+    /// key gate (settings-access.plan.md B) reads on every menu read and fight. A key saved by hand with cmdkey counts after a restart.</summary>
+    public static bool Saved => _saved ??= Has();
+    static bool? _saved;
+
+    /// <summary>--demo --no-key: <see cref="Saved"/> reads false until a Save or Delete, for screenshots of the gate.</summary>
+    internal static void PretendNoKey() => _saved = false;
 
     [StructLayout(LayoutKind.Sequential)]
     struct Credential

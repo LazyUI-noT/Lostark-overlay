@@ -11,8 +11,10 @@ namespace GaugeOverlay.App.Services;
 /// clears kept (<see cref="HomeworkStore"/>), and 불명 fights are given the character once it is known. The decisions are
 /// Core's; this holds the state. Settings change on the UI thread only.</summary>
 public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> gates, IReadOnlyList<HomeworkRaid> shipped, IReadOnlyList<string> classNames,
-    HomeworkStore clears, RecordStore records, Dispatcher ui, Action settingsChanged, Action recordsChanged)
+    HomeworkStore clears, RecordStore records, Dispatcher ui, Action settingsChanged, Action recordsChanged, Func<bool> hasKey)
 {
+    volatile IReadOnlyList<string> _fightNames = [];   // the names on saved fights: known without a key too (settings-access.plan.md B)
+    bool _menuOpen;
     volatile CharacterWatch _watch = CharacterWatch.Start(DateTime.Now);
     (string? Class, string? Sub) _playing;
     NameVote _currentVote = NameVote.None, _pickedVote = NameVote.None;   // the portrait's and the header's names, twice alike
@@ -41,16 +43,27 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     /// clicked) join the list once read alike twice, with the class of their card. The cards' small names join too, twice alike
     /// (homework-auto.plan.md, user 2026-11-08), marked <see cref="HomeworkCharacter.FromCard"/>: they can misread the same way
     /// every time, so a big name near one renames it.</summary>
+    /// <remarks>Without an API key (settings-access.plan.md B, user 2026-11-11) no name joins the list: a read counts only when
+    /// it snaps to a listed name or one on a saved fight, else the watch takes it as someone else (캐릭터 불명). Class and item
+    /// level still fill in for listed characters.</remarks>
     public void Menu(MenuRead read, TimeSpan t)
     {
+        bool key = hasKey();
+        if (read.Open && !_menuOpen && !key) LoadFightNames();
+        _menuOpen = read.Open;
         if (!read.Open) { (_currentVote, _pickedVote, _orderMismatch) = (NameVote.None, NameVote.None, null); _cardVotes.Clear(); return; }
-        (_currentVote, var current) = _currentVote.Read(read.Current is { } c ? CharacterName.Snap(c, Confirmed) : null);
-        (_pickedVote, var picked) = _pickedVote.Read(read.Picked is { } p ? CharacterName.Snap(p, Confirmed) : null);
+        IReadOnlyList<string>? known = key ? null : [.. Known, .. _fightNames];   // null: every name counts
+        IReadOnlyList<string> snapTo = known is null ? Confirmed : [.. Confirmed, .. _fightNames];
+        (_currentVote, var voted) = _currentVote.Read(read.Current is { } c ? CharacterName.Snap(c, snapTo) : null);
+        (_pickedVote, var votedPick) = _pickedVote.Read(read.Picked is { } p ? CharacterName.Snap(p, snapTo) : null);
+        string? Counted(string? name) => name is null || known is null || known.Contains(name) ? name : null;
+        var (current, picked) = (Counted(voted), Counted(votedPick));
         bool listed = false;
-        if (current is not null) listed |= Confirm(current, read, played: true) | Add(current, ClassOnCard(read, current));
-        if (picked is not null) listed |= Confirm(picked, read, played: false) | Add(picked, ClassOnCard(read, picked));
-        foreach (var (card, owner) in CardOrder.Owners(read, current, settings.Homework.Characters, settings.Homework.Order))
-            listed |= FromCard(card, current, owned: owner is not null);   // a card the order places is that character, not a new one
+        if (current is not null) listed |= Confirm(current, read, played: true) | Add(current, ClassOnCard(read, current), register: key);
+        if (picked is not null) listed |= Confirm(picked, read, played: false) | Add(picked, ClassOnCard(read, picked), register: key);
+        if (key)
+            foreach (var (card, owner) in CardOrder.Owners(read, current, settings.Homework.Characters, settings.Homework.Order))
+                listed |= FromCard(card, current, owned: owner is not null);   // a card the order places is that character, not a new one
         foreach (var card in read.Cards)
         {
             var others = CardCharacters(current);
@@ -61,12 +74,19 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
         if (current is not null && read.CurrentLevel is { } mine) listed |= ReadLevel(current, mine);
         listed |= LearnOrder(read, current);
         LogOwners(read, current ?? _watch.Current);
-        var (watch, change) = _watch.Menu(read with { Current = current, Picked = picked }, Known, t);
+        var (watch, change) = _watch.Menu(read with { Current = voted, Picked = votedPick }, known ?? Known, t, onlyKnown: known is not null);
         _watch = watch;
         if (listed) settingsChanged();
         Apply(change);
         if (listed && change is null) Updated?.Invoke();
     }
+
+    /// <summary>The names on saved fights (in the background, at each menu opening without a key): a name typed in 기록 수정 counts.</summary>
+    void LoadFightNames() => Task.Run(() =>
+    {
+        try { _fightNames = [.. records.List().Select(x => x.Record.Character).OfType<string>().Where(n => n.Length > 0).Distinct()]; }
+        catch (Exception ex) { Trace.WriteLine($"[character] saved fights' names not read: {ex.Message}"); }   // background: keep the last names
+    });
 
     /// <summary>A loading screen ended (UI thread): a switch picked in the grid happens now.</summary>
     public void Loaded(TimeSpan t)
@@ -135,7 +155,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     /// <summary>The grid's cards with picks and their tags (UI thread); none while 숙제 표시 is off.</summary>
     public IReadOnlyList<(MenuCard Card, IReadOnlyList<HomeworkTag> Tags)> GridTags(MenuRead read)
     {
-        if (!read.Open || !settings.Homework.ShowOnGrid) return [];
+        if (!read.Open || !settings.Homework.ShowOnGrid || !settings.HomeworkOn(hasKey())) return [];
         var all = Clears();
         return [.. Homework.OnGrid(read, _watch.Current, settings.Homework.Characters, settings.Homework.Order).Select(x => (x.Card, TagsOf(x.Character, all)))];
     }
@@ -158,6 +178,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
 
     void Keep(HomeworkClear clear)
     {
+        if (!settings.HomeworkOn(hasKey())) return;   // 숙제 off: no clears recorded (a new install without a key)
         try { clears.Add(clear, DateTime.Now); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[homework] clear not kept: {ex.Message}"); return; }
         Trace.WriteLine($"[homework] {clear.Character}: {clear.Raid} [{clear.Difficulty}] {(clear.Unsure ? "cleared, to check" : "cleared")}");
@@ -384,7 +405,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     }
 
     /// <summary>Adds a character to the list, or fills its class when it had none; true when the list changed.</summary>
-    bool Add(string name, string? className, bool fromCard = false)
+    bool Add(string name, string? className, bool fromCard = false, bool register = true)
     {
         if (settings.Homework.Find(name) is { } known)
         {
@@ -392,6 +413,7 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
             known.ClassName = className;
             return true;
         }
+        if (!register) return false;   // without a key the menu adds no one
         var picks = settings.Homework.CustomRaids.Where(r => r.Auto).Select(Homework.AsRaid).Aggregate((IReadOnlyList<HomeworkPick>)[], Homework.WithRaid);
         settings.Homework.Characters.Add(new HomeworkCharacter { Name = name, ClassName = className, FromCard = fromCard, Picks = [.. picks] });
         if (fromCard) Trace.WriteLine($"[homework] {name}: listed from its card");

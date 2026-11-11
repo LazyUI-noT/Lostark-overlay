@@ -71,7 +71,7 @@ public partial class App : Application
         }
         if (_errorShown) return;
         _errorShown = true;
-        _tray.Notify("오류가 발생했습니다. 자세한 내용은 로그 파일(%APPDATA%\\GaugeOverlay\\logs)에 있습니다.");
+        _tray.Notify("오류가 발생했습니다. 자세한 내용은 로그 파일(%APPDATA%\\GaugeOverlay\\logs)에 있습니다.", kind: NoticeKind.Problem);
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -148,7 +148,7 @@ public partial class App : Application
         _homeworkTags = new HomeworkWindow();
         _settingsWindow = new SettingsWindow(settings, characters);
         _layer = new AdjustLayer();
-        _tray = new Tray();
+        _tray = new Tray { NoticeShown = kind => Notices.Shows(settings, kind) };
         _hotkeys = new Hotkeys();
         _owned.AddRange([_tray, _hotkeys]);
 
@@ -206,7 +206,7 @@ public partial class App : Application
         if (failed != _failedHotkeys && failed != "")
         {
             Trace.WriteLine($"[app] hotkey not registered: {failed}");
-            _tray.Notify($"단축키를 쓸 수 없습니다: 다른 키와 겹치거나, 다른 프로그램이 쓰거나, 지원하지 않는 조합입니다. 마우스 옆 버튼은 쓸 수 없습니다. ({failed})");
+            _tray.Notify($"단축키를 쓸 수 없습니다: 다른 키와 겹치거나, 다른 프로그램이 쓰거나, 지원하지 않는 조합입니다. 마우스 옆 버튼은 쓸 수 없습니다. ({failed})", kind: NoticeKind.Problem);
         }
         _failedHotkeys = failed;
         _tray.SetHotkeys(_settings.Hotkeys);

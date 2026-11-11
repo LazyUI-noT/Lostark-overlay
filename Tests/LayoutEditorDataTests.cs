@@ -127,7 +127,7 @@ public class LayoutEditorDataTests
     [Fact]
     public void Switching_profiles_swaps_places_sizes_style_and_backgrounds()
     {
-        var s = new Settings();
+        var s = new Settings { SharedLooks = [] };   // looks per 배치 too (by default they're shared)
         (s.Overlay.Left, s.Overlay.Top, s.Overlay.Width, s.Overlay.PlateColor) = (10, 20, 1.5, "#202020");
         (s.Buffs.Detached, s.Buffs.Left) = (true, 300);
         s.Buffs.Edit(BuffKind.공증).Thickness = 2;

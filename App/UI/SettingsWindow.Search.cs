@@ -45,6 +45,7 @@ public partial class SettingsWindow
         : p == _secScreens ? new(AreaScreens, AreaScreens, null)
         : p == _secKeys ? new(AreaKeys, "게임 키", null)
         : p == _secHotkeys ? new(AreaKeys, "앱 단축키", null)
+        : p == _secPerformance ? new(AreaPerformance, AreaPerformance, null)
         : p == _secApi ? new(AreaApi, AreaApi, null)
         : p == _secWarnings ? new(AreaWarnings, AreaWarnings, null)
         : null;

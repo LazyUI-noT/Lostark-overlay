@@ -9,17 +9,17 @@ public class RowDefaultTests
     public void Differs_FreshSettings_IsFalse()
     {
         Assert.False(RowDefault.Differs(new Settings(), s => s.Overlay.Opacity));
-        Assert.False(RowDefault.Differs(new Settings(), s => s.RecordAutoSave));
+        Assert.False(RowDefault.Differs(new Settings(), s => s.RecordSortByRaid));
         Assert.False(RowDefault.Differs(new Settings(), s => s.Theme));
     }
 
     [Fact]
     public void Differs_ChangedValue_IsTrue()
     {
-        var s = new Settings { RecordKeep = 10, RecordAutoSave = false };
+        var s = new Settings { RecordKeep = 10, RecordSortByRaid = true };
 
         Assert.True(RowDefault.Differs(s, x => x.RecordKeep));
-        Assert.True(RowDefault.Differs(s, x => x.RecordAutoSave));
+        Assert.True(RowDefault.Differs(s, x => x.RecordSortByRaid));
     }
 
     [Fact]

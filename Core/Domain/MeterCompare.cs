@@ -39,6 +39,11 @@ public static class MeterCompare
     public static Dictionary<string, string> Choose(IReadOnlyDictionary<string, string> picks, FightRecord r, string file) =>
         new(picks) { [KeyOf(r)] = file };
 
+    /// <summary>The file the meter compares with for <paramref name="r"/>'s character × gate × difficulty (its pick, else the
+    /// newest): the one 실시간 비교 is ticked on in the list, one per raid · gate · difficulty (user, 2026-11-11).</summary>
+    public static string? InUse(IReadOnlyList<(string File, FightRecord Record)> records, IReadOnlyDictionary<string, string> picks, FightRecord r) =>
+        CanChoose(r) ? Pick(records, r.Character, r.Gate, r.Difficulty, picks.GetValueOrDefault(KeyOf(r)))?.File : null;
+
     /// <summary>「자동으로」: the raid's pick dropped, in a new map.</summary>
     public static Dictionary<string, string> Auto(IReadOnlyDictionary<string, string> picks, FightRecord r)
     {

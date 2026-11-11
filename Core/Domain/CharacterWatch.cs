@@ -15,23 +15,37 @@ public sealed record CharacterWatch(string? Current, DateTime UnknownSince, stri
 
     /// <summary>A menu read: the name under the portrait is who is played; a picked card with the waiting text is a switch
     /// about to happen.</summary>
-    public (CharacterWatch Watch, CharacterChange? Change) Menu(MenuRead read, IReadOnlyList<string> known, TimeSpan t)
+    /// <remarks><paramref name="onlyKnown"/> (no API key, settings-access.plan.md B): a name not in <paramref name="known"/> after
+    /// snapping is someone else, so 캐릭터 불명 whose fights are never backfilled (<see cref="StrangerSince"/>).</remarks>
+    public (CharacterWatch Watch, CharacterChange? Change) Menu(MenuRead read, IReadOnlyList<string> known, TimeSpan t, bool onlyKnown = false)
     {
         var watch = this;
         CharacterChange? change = null;
-        if (read.Current is { } seen && CharacterName.Snap(seen, known) is var name && name != Current)
+        if (read.Current is { } seen && CharacterName.Snap(seen, known) is var name)
         {
-            change = new CharacterChange(name, Current is null ? UnknownSince : null);
-            watch = watch with { Current = name };
+            if (onlyKnown && !known.Contains(name)) return (Stranger(), Current is null ? null : new CharacterChange(null, null));
+            if (name != Current)
+            {
+                change = new CharacterChange(name, Current is null && UnknownSince != StrangerSince ? UnknownSince : null);
+                watch = watch with { Current = name };
+            }
         }
         if (read.Waiting && read.Picked is { } picked && CharacterName.Snap(picked, known) is var next && next != watch.Current)
-            watch = watch with { Pending = next, PendingAt = t };
+            watch = watch with { Pending = onlyKnown && !known.Contains(next) ? StrangerName : next, PendingAt = t };
         return (watch, change);
     }
+
+    /// <summary>The <see cref="UnknownSince"/> while someone not known is played: nothing since then is backfilled, and the class
+    /// guess (<see cref="Playing"/>) waits for the menu.</summary>
+    public static readonly DateTime StrangerSince = DateTime.MaxValue;
+    const string StrangerName = "";   // a pending switch to a card not known
+
+    CharacterWatch Stranger() => new(null, StrangerSince, null, TimeSpan.MinValue);
 
     /// <summary>A loading screen ended: the switch waiting for it happens; any other pick is dropped.</summary>
     public (CharacterWatch Watch, CharacterChange? Change) Loaded(TimeSpan t, DateTime wall)
     {
+        if (Pending == StrangerName && t - PendingAt <= SwitchWait) return (Stranger(), Current is null ? null : new CharacterChange(null, null));
         if (Pending is { } name && t - PendingAt <= SwitchWait)
             return (new CharacterWatch(name, wall, null, TimeSpan.MinValue), new CharacterChange(name, null));
         return (this with { Pending = null }, null);
@@ -44,9 +58,10 @@ public sealed record CharacterWatch(string? Current, DateTime UnknownSince, stri
         if (Current is { } current)
         {
             bool away = className is not null && roster.FirstOrDefault(c => c.Name == current)?.ClassName is { } known && known != className;
-            return away ? (new CharacterWatch(null, wall, null, TimeSpan.MinValue), new CharacterChange(null, null)) : (this, null);
+            // A switch picked in the grid stays waiting: the new class is often read before the loading screen ends.
+            return away ? (new CharacterWatch(null, wall, Pending, PendingAt), new CharacterChange(null, null)) : (this, null);
         }
-        if (className is null || subclass is null) return (this, null);
+        if (className is null || subclass is null || UnknownSince == StrangerSince) return (this, null);
         if (roster.Any(c => c.ClassName is null)) return (this, null);   // one not learned yet could be it
         var sameClass = roster.Where(c => c.ClassName == className).ToList();
         if (sameClass.Any(c => c.Subclass is null)) return (this, null);   // likewise

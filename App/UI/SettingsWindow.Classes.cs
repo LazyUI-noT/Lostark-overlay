@@ -161,23 +161,33 @@ public partial class SettingsWindow
     void CopyPart(Panel p, string cls)
     {
         var parts = new List<UIElement>();
-        foreach (var (part, text) in new[] { (CopyParts.Color, "색"), (CopyParts.Size, "크기"), (CopyParts.Layout, "배치"), (CopyParts.Display, "표시"), (CopyParts.Effects, "효과") })
+        foreach (var (part, text) in new[] { (CopyParts.Color, "색"), (CopyParts.Size, "크기"), (CopyParts.Layout, "배치"), (CopyParts.Display, "표시"), (CopyParts.Effects, "효과"),
+            (CopyParts.Progress, "쿨 진행 표시"), (CopyParts.Timer, "남은 쿨 (초)") })
             parts.Add(Check(text, _copyParts.HasFlag(part), v => _copyParts = v ? _copyParts | part : _copyParts & ~part, () => { }));
         p.Children.Add(Row("복사할 것", [.. parts]));
         p.Children.Add(Row("가져올 설정", SideCombo(_copyFromMembers, v => _copyFromMembers = v), Label($"({ClassName(cls)})", 0.7)));
-        var to = PickCombo(PickerEntries.Prepend(AllClasses), _copyTo, v => _copyTo = v);
+        var to = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, ClassPicker.CopyFavorites(_s.FavoriteClasses, _s.Characters)).Prepend(AllClasses), _copyTo, v => _copyTo = v);
         var copy = new Button { Content = "복사" };
         Themes.Primary(copy);
         copy.Click += (_, _) =>
         {
             if (_copyParts == 0) { _copyResult = "복사할 것을 고르세요."; Dispatcher.BeginInvoke(FillClassSections); return; }
+            const CopyParts mineOnly = CopyParts.Progress | CopyParts.Timer;   // 나 → 나 only (ClassProfiles.Copy)
+            bool membersSide = _copyFromMembers || _copyToMembers;
+            if (membersSide && (_copyParts & ~mineOnly) == 0)
+            {
+                _copyResult = "쿨 진행 표시와 남은 쿨 (초)는 나에서 나로만 복사됩니다.";
+                Dispatcher.BeginInvoke(FillClassSections);
+                return;
+            }
             var c = ClassProfiles.Of(_s, cls);
             ClassProfile from = _copyFromMembers ? c.Members : c.Mine;
             // 모든 클래스: 기본 and every 직업각인 (party members: each class once, as theirs are the class's).
             var entries = ClassPicker.CopyTargets(_copyTo == AllClasses ? null : _copyTo, _chars.Classes, _copyToMembers);
             var targets = entries.Select(n => ClassProfiles.Edit(_s, n)).Select(t => _copyToMembers ? (ClassProfile)t.Members : t.Mine).ToList();
             ClassProfiles.Copy(_s, from, targets, _copyParts);
-            _copyResult = $"{targets.Count(t => t != from)}곳에 복사했습니다.";
+            _copyResult = $"{targets.Count(t => t != from)}곳에 복사했습니다."
+                + (membersSide && (_copyParts & mineOnly) != 0 ? " 쿨 진행 표시와 남은 쿨 (초)는 파티원 쪽에 복사되지 않습니다." : "");
             Changed();
             Dispatcher.BeginInvoke(FillClassSections);
         };

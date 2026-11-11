@@ -27,6 +27,8 @@ sealed class TimelineView : FrameworkElement
     double HeadH => 20 * _font;
     double LegendH => 18 * _font;
     double BuffH => 16 * _font;
+    /// <summary>A left-out band this wide or wider is named ("제외").</summary>
+    double LeftOutLabelW => 28 * _font;
     double AxisH => 20 * _font;
     const string UnhittableLabel = "보스 타격 불가";
     static readonly Brush UnhittableBand = Frozen(new SolidColorBrush(Color.FromArgb(52, 0x5A, 0x8F, 0xE6))), UnhittableInk = Frozen(new SolidColorBrush(Color.FromRgb(0x7F, 0xB0, 0xF5)));
@@ -501,6 +503,15 @@ sealed class TimelineView : FrameworkElement
     {
         var spans = Timeline.BuffSpans(r);
         var track = new Pen(Faint(fg, 0.12).Brush, 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        // Left out of 버프 적용률 (Timeline.LeftOut: the boss bar unread, dead or disabled): one band across the buff lines,
+        // under them, named where it is wide enough.
+        foreach (var (from, to) in Timeline.LeftOut(r))
+        {
+            double x0 = Math.Max(LabelW, X(from, offset)), x1 = Math.Min(LabelW + PlotW, X(to, offset));
+            if (x1 <= x0) continue;
+            dc.DrawRectangle(Faint(fg, 0.10).Brush, null, new Rect(x0, y, x1 - x0, Buffs.Length * BuffH));
+            if (x1 - x0 >= LeftOutLabelW) Text(dc, "제외", new(x0 + 2, y), 9, fg, opacity: 0.6, width: x1 - x0 - 2);
+        }
         foreach (var (kind, name, color) in Buffs)
         {
             double cy = y + BuffH / 2;

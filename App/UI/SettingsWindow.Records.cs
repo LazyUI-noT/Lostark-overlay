@@ -171,12 +171,10 @@ public partial class SettingsWindow
         var p = Refill(_secRecords, AreaRecords, RecordsLead);
         p.Children.Add(SliderRow("글자 크기", Settings.MinRecordFont, Settings.MaxRecordFont,
             Math.Clamp(_s.RecordFontPercent, Settings.MinRecordFont, Settings.MaxRecordFont), 10, v => $"{v:0}%", v => _s.RecordFontPercent = (int)v, Changed));
-        p.Children.Add(Row("", Check("자동 저장", _s.RecordAutoSave, v => _s.RecordAutoSave = v, () => { Changed(); FillRecords(); },
-            "끄면 마지막 전투 하나만 '저장 안 됨'으로 남고 다음 전투가 덮어씁니다. 남기려면 보관을 누르세요. 기록 자체를 끄려면 DPS 미터기 → 전투 기록을 끄세요.")));
         p.Children.Add(SliderRow("멈춤 허용", Settings.MinRecordPause, Settings.MaxRecordPause, Math.Clamp(_s.RecordPauseSeconds, Settings.MinRecordPause, Settings.MaxRecordPause), 10,
             v => $"{v:0}초", v => _s.RecordPauseSeconds = (int)v, Changed,
             "전멸 등으로 타이머가 멈추거나 컷신 · 인벤토리에 가려지면 이 시간만큼 기다렸다가 전투를 끝냅니다."));
-        if (_s.RecordAutoSave) p.Children.Add(KeepSlider());
+        p.Children.Add(KeepSlider());
         var chips = ChipsOf(all);
         var bin = BinRecords();
         var names = chips.Select(c => c.Character).Concat(bin.Count > 0 ? [BinChip] : []).ToList();
@@ -189,18 +187,43 @@ public partial class SettingsWindow
         bool imported = picked == ImportChip;   // all kept until deleted: no 자동 / 보관 tabs
         if (!imported) p.Children.Add(TabRow(fights));
         var listed = imported ? fights : _keptTab ? KeptTabOf(fights) : RecentOf(fights);
-        bool prunes = !imported && picked != TestChip && _s.RecordAutoSave;   // 테스트 mixes characters; 자동 저장 off holds, never prunes
+        bool prunes = !imported && picked != TestChip;   // 테스트 mixes characters
         _goesNext = prunes ? [.. RecordStore.GoesNext(fights, Held, x => x.Record.Kept, _s.RecordKeep).Select(x => x.File)] : [];
-        var shown = _s.RecordSortByRaid ? Timeline.ByRaid(listed, x => x.Record.Gate, x => x.Record.Difficulty) : listed;
+        var raids = Homework?.Raids ?? [];
+        var groups = _s.RecordSortByRaid
+            ? RaidOrder.Group(listed, x => x.Record.Gate, x => x.Record.Difficulty, RaidGates, raids, _s.RecordRaidOrder)
+            : [(null, listed)];
+        var shown = groups.SelectMany(g => g.Fights).ToList();
         p.Children.Add(ShareRow(shown));
         if (shown.Count == 0) p.Children.Add(Note(_keptTab ? "보관한 기록이 없습니다." : "최근 기록이 없습니다."));
         _firstPick = _compare.Count > 0 ? all.FirstOrDefault(x => x.File == _compare[0]).Record : null;   // read once, for every row's 비교
-        foreach (var (file, r) in shown)
+        foreach (var (raid, inRaid) in groups)
         {
-            (UIElement Panel, UIElement[] Buttons)? editor = file == _editing ? RecordEditor(file, r, all) : null;
-            p.Children.Add(RecordRow(file, r, editor?.Buttons));
-            if (editor is { } e) p.Children.Add(e.Panel);
+            if (_s.RecordSortByRaid) p.Children.Add(RaidHeader(raid, raids));
+            foreach (var (file, r) in inRaid)
+            {
+                (UIElement Panel, UIElement[] Buttons)? editor = file == _editing ? RecordEditor(file, r, all) : null;
+                p.Children.Add(RecordRow(file, r, editor?.Buttons));
+                if (editor is { } e) p.Children.Add(e.Panel);
+            }
         }
+    }
+
+    /// <summary>레이드순's heading over a raid's fights: its name, and ▲ ▼ moving the raid, its gates and difficulties with it
+    /// (user, 2026-11-11). Null raid: the fights of no known raid, last, not movable.</summary>
+    UIElement RaidHeader(HomeworkRaid? raid, IReadOnlyList<HomeworkRaid> raids)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 12, 0, 2) };
+        row.Children.Add(new TextBlock { Text = raid?.Name ?? "그 밖의 콘텐츠", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        if (raid is null) return row;
+        foreach (var (glyph, step, tip) in new[] { ("▲", -1, "이 레이드를 위로"), ("▼", 1, "이 레이드를 아래로") })
+        {
+            var move = new Button { Content = glyph, Margin = new(8, 0, 0, 0), Padding = new(6, 0, 6, 0), ToolTip = tip, VerticalAlignment = VerticalAlignment.Center };
+            System.Windows.Automation.AutomationProperties.SetName(move, $"{raid.Name} {tip}");
+            move.Click += (_, _) => { _s.RecordRaidOrder = [.. RaidOrder.Move(raids, _s.RecordRaidOrder, raid.Id, step)]; Changed(); FillRecords(); };
+            row.Children.Add(move);
+        }
+        return row;
     }
 
     /// <summary>The chip a fight is listed under: its character, 테스트 for a 테스트 모드 fight, [가져옴] for an imported one.</summary>
@@ -279,7 +302,7 @@ public partial class SettingsWindow
         foreach (var (byRaid, text) in new[] { (false, "날짜순"), (true, "레이드순") })
         {
             var sort = Toggle(text, "recordSort", _s.RecordSortByRaid == byRaid);
-            sort.ToolTip = byRaid ? "같은 관문 · 난이도끼리 모으고, 그 안은 최근 것부터 보여 줍니다." : "최근 것부터 보여 줍니다.";
+            sort.ToolTip = byRaid ? "레이드별로 모읍니다. 레이드 안은 1관문부터, 관문 안은 높은 난이도부터, 최근 것부터. ▲ ▼로 레이드 순서를 바꿉니다." : "최근 것부터 보여 줍니다.";
             sort.Checked += (_, _) => { _s.RecordSortByRaid = byRaid; Changed(); FillRecords(); };
             row.Children.Add(sort);
         }
@@ -413,31 +436,33 @@ public partial class SettingsWindow
         return text;
     }
 
-    /// <summary>「미터기 비교」: this fight becomes the DPS 미터기's dashed 비교 line for its character's raid; on the fight picked,
-    /// 「자동으로」 goes back to the most recent (lostark-api.plan.md phase 6). None for a fight without character or gate, an
-    /// imported one, or the unsaved last fight (its file is the next fight's too).</summary>
-    Button? MeterCompareButton(string file, FightRecord r, Thickness margin)
+    /// <summary>「실시간 비교」 (user, 2026-11-11; was 미터기 비교, apart from the timeline's 비교): ticked on the one fight per
+    /// character × raid · gate · difficulty the DPS 미터기 draws as its dashed line (picked, else the newest). Ticking another picks
+    /// it; unticking the picked one goes back to the newest (lostark-api.plan.md phase 6). None for a fight without character
+    /// or gate, an imported one, or the unsaved last fight (its file is the next fight's too).</summary>
+    CheckBox? MeterCompareButton(string file, FightRecord r, Thickness margin)
     {
-        var (_, name) = StoreOf(file);
-        if (!MeterCompare.CanChoose(r) || IsImported(file) || RecordStore.IsHeld(name)) return null;
-        var button = new Button { Margin = margin, VerticalAlignment = VerticalAlignment.Center };
+        var (store, name) = StoreOf(file);
+        if (store is null || !MeterCompare.CanChoose(r) || IsImported(file) || RecordStore.IsHeld(name)) return null;
+        var box = new CheckBox { Content = "실시간 비교", Margin = margin, VerticalAlignment = VerticalAlignment.Center };
         bool Chosen() => MeterCompare.IsChosen(_s.MeterCompare, r, name);
-        void Show()   // read at each click too: the timeline bar's button isn't rebuilt with the list
+        void Show()   // read at each click too: the timeline bar's box isn't rebuilt with the list
         {
-            bool chosen = Chosen();
-            button.Content = chosen ? "자동으로" : "미터기 비교";
-            button.ToolTip = chosen ? "미터기 비교를 이 레이드의 가장 최근 전투로 되돌립니다."
-                : "DPS 미터기 선그래프에 이 전투의 내 DPS를 점선으로 겹칩니다. 같은 캐릭터로 같은 레이드 · 난이도에 들어가면 보입니다.";
+            bool chosen = Chosen(), inUse = MeterCompare.InUse(store.List(), _s.MeterCompare, r) == name;
+            box.IsChecked = inUse;
+            box.ToolTip = chosen ? "DPS 미터기가 이 전투와 비교합니다(고름). 끄면 이 레이드 · 관문 · 난이도의 가장 최근 전투로 돌아갑니다."
+                : inUse ? "DPS 미터기가 이 전투와 비교합니다(자동: 가장 최근). 다른 전투를 켜면 그 전투로 바뀝니다."
+                : "DPS 미터기 선그래프에 이 전투의 내 DPS를 점선으로 겹칩니다. 레이드 · 관문 · 난이도마다 하나입니다.";
         }
         Show();
-        button.Click += (_, _) =>
+        box.Click += (_, _) =>
         {
             _s.MeterCompare = Chosen() ? MeterCompare.Auto(_s.MeterCompare, r) : MeterCompare.Choose(_s.MeterCompare, r, name);
             Changed();
             FillRecords();
             Show();
         };
-        return button;
+        return box;
     }
 
     /// <summary>Demo (--record-view): opens a fight (one with 암수 when there is), or compares the two newest.</summary>

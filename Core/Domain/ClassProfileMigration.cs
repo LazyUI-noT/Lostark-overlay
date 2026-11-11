@@ -29,6 +29,20 @@ public static class ClassProfileMigration
         return added.Count > 0;
     }
 
+    /// <summary>An older file's global 쿨 진행 표시 (style, direction) and 남은 쿨 (초) go into 기본 and every 개별 entry, so
+    /// nothing looks different (display-split.plan.md step 5); also every entry whose 개별 is off but kept, as it comes back
+    /// when turned on. Bare entries stay bare: they show what they follow, and <see cref="ClassProfiles.SetOwn"/> copies
+    /// into them only while bare.</summary>
+    internal static void MoveCooldownViews(Settings s)
+    {
+        var o = s.Overlay;
+        ClassProfiles.Entry(s, ClassProfiles.Template);
+        foreach (var (key, c) in s.Classes)
+            if (key == ClassProfiles.Template || c is { Own: true } || !ClassProfiles.IsBare(c))
+                (c.Mine.CooldownStyle, c.Mine.FillFrom, c.Mine.ShowTimer) = (o.CooldownStyle, o.FillFrom, o.ShowTimer);
+        s.CooldownLooksMoved = true;
+    }
+
     /// <summary>A 직업각인 that followed its class stood at the class's spot and size. Where a 프로필 holds spots per 직업각인
     /// (so the class's differs from the one now on screen), each newly own 직업각인 takes the class's, or it would start
     /// where the window happens to be. A 프로필 with one spot for all needs nothing: a 직업각인 placed for the first time

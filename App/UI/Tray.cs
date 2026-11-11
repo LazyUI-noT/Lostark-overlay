@@ -135,10 +135,16 @@ public sealed class Tray : IDisposable
         UpdateIcon();
     }
 
-    /// <summary>A short Windows notification from the tray icon (fit needed, fit result, settings reset).</summary>
-    /// <summary>A balloon by the tray icon; <paramref name="onClick"/> runs if it's clicked (one notice at a time).</summary>
-    public void Notify(string text, Action? onClick = null)
+    /// <summary>Whether notices of a kind show (설정 → 경고 → Windows 알림, <see cref="Notices.Shows"/>); App sets it.</summary>
+    public Func<NoticeKind, bool> NoticeShown { get; set; } = _ => true;
+
+    /// <summary>A balloon by the tray icon (fit needed, fit result, settings reset), unless its <paramref name="kind"/> is turned
+    /// off; <paramref name="onClick"/> runs if it's clicked (one notice at a time).</summary>
+    public void Notify(string text, Action? onClick = null, NoticeKind kind = NoticeKind.Guide)
     {
+        // A kind turned off still reaches the log: some notices (settings reset, a hotkey not registered) show nowhere else.
+        // A muted notice's onClick is dropped with it; no caller passes one today.
+        if (!NoticeShown(kind)) { System.Diagnostics.Trace.WriteLine($"[tray] notice off ({kind}): {text}"); return; }
         _onNoticeClick = onClick;
         _icon.ShowBalloonTip(5000, "GaugeOverlay", text, ToolTipIcon.None);
     }

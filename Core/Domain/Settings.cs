@@ -44,10 +44,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     public bool RecordKeepMigrated { get; set; } = true;
     /// <summary>False in a file from before 0.20: its fights past the new count turn 보관 once at start-up (RecordStore.KeepOverflow).</summary>
     public bool RecordOverflowKept { get; set; } = true;
-    /// <summary>전투 기록's 자동 저장: off, only the last fight is held (unsaved) until the next one, and 보관 saves it.</summary>
-    public bool RecordAutoSave { get; set; } = true;
-    /// <summary>전투 기록's rows: 날짜순 (newest first) or 레이드순 (Timeline.ByRaid) (user, 2026-11-10).</summary>
+    /// <summary>전투 기록's rows: 날짜순 (newest first) or 레이드순 (RaidOrder.Group) (user, 2026-11-10).</summary>
     public bool RecordSortByRaid { get; set; }
+    /// <summary>레이드순's raid order as the user set it (숙제 raid ids); raids not in it follow, highest entry level first.</summary>
+    public List<string> RecordRaidOrder { get; set; } = [];
     /// <summary>휴지통 비우기 (user, 2026-11-10): the day and hour (0–23, PC clock) the bin empties every week.</summary>
     public DayOfWeek BinEmptyDay { get; set; } = BinSchedule.DefaultDay;
     public int BinEmptyHour { get; set; } = BinSchedule.DefaultHour;
@@ -55,6 +55,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public DateTime BinEmptiedAt { get; set; }
     /// <summary>설정 → 경고: the warnings the user turned off (다시 보지 않기, or the page's switch).</summary>
     public HashSet<WarningKind> MutedWarnings { get; set; } = [];
+    /// <summary>설정 → 경고 → Windows 알림: the kinds of tray notice turned off (<see cref="Notices.Shows"/>); empty = all on.</summary>
+    public HashSet<NoticeKind> MutedNotices { get; set; } = [];
     /// <summary>전투 기록: how long the 전분 timer may stay stopped (a wipe) or hidden (a cutscene) before the fight ends.</summary>
     public int RecordPauseSeconds { get; set; } = 120;
     public const int MinRecordPause = 10, MaxRecordPause = 600;
@@ -87,7 +89,18 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
     void IJsonOnDeserializing.OnDeserializing() =>
-        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept) = (UiTheme.DeepTeal, false, false, false, false);
+        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved) = (UiTheme.DeepTeal, false, false, false, false, true, false);
+
+    /// <summary>The global 쿨 진행 표시 & co. (<see cref="OverlaySettings.CooldownStyle"/>) have moved into 기본 and every 개별
+    /// class (<see cref="ClassProfileMigration.MoveCooldownViews"/>); false in an older file.</summary>
+    public bool CooldownLooksMoved { get; set; } = true;
+
+    /// <summary>숙제 without an API key: kept by installs from before the key gate (a file without this value), not by new ones
+    /// (settings-access.plan.md B, user 2026-11-11).</summary>
+    public bool HomeworkWithoutKey { get; set; }
+
+    /// <summary>Whether 숙제 runs (tab, in-game tags, clears kept): with a saved key, or on an install from before the gate.</summary>
+    public bool HomeworkOn(bool hasKey) => hasKey || HomeworkWithoutKey;
     /// <summary>The 아덴 게이지 bar per "클래스/직업각인" (GaugeBar.Key): only the ones changed in the 게이지 tab; the
     /// rest use the classes.json default.</summary>
     public Dictionary<string, GaugeBarSettings> GaugeBars { get; set; } = [];
@@ -187,6 +200,13 @@ public sealed partial class Settings : IJsonOnDeserializing
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
     public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile())];
     public int ActiveProfile { get; set; }
+    /// <summary>The looks marked 모든 배치에 적용: one value for every 배치, kept across a switch (display-split.plan.md).
+    /// Null in an older file: <c>SettingsStore.Normalize</c> shares them all. Replaced on load, not added to.</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public HashSet<LookGroup>? SharedLooks { get; set; } = [.. Enum.GetValues<LookGroup>()];
+    /// <summary>Set on loading an older file: the looks whose 배치 differed and now share the active one's, for the
+    /// one-time notice. Not saved.</summary>
+    [JsonIgnore] public List<LookGroup> MergedLooks { get; set; } = [];
 
     /// <summary>The 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the one shared by a character with no listed 직업각인.</summary>
     public string? PlaceKey { get; set; }

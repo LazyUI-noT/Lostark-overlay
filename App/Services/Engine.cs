@@ -41,7 +41,7 @@ public sealed partial class Engine : IDisposable
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
         AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool BuffsInRaidOnly = false,
-        int BossCount = Geometry.MaxBossSlots, bool HomeworkRead = false)
+        int BossCount = Geometry.MaxBossSlots, bool HomeworkRead = false, double BossHpEvery = MeterSettings.DefaultHpEvery)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -163,6 +163,18 @@ public sealed partial class Engine : IDisposable
     // Each 일반 slot's colour and crop at its last read (NaN, null until read): a greyed-out bar (a town) and its skills, sent with
     // the 초각스 crop; the ready ones for 스킬 등록.
     readonly double[] _skillColour = [.. Enumerable.Repeat(double.NaN, 8)];
+    // Each 일반 slot's dead / disabled tint share as last read (SkillTint), and when the bar last carried the tint while on
+    // screen: only for 버프 적용률 and the death save (MeterStatus.TintAt), never for cooldowns.
+    readonly double[] _skillTint = [.. Enumerable.Repeat(double.NaN, 8)];
+    TimeSpan _tintAt;
+    long _readAtTicks;
+    /// <summary>The capture clock at the last step that was allowed to read the screen (the game in front and fitted). It
+    /// stands still while another app is in front or the game is gone: the fight waits then (FightRecorder.MayStepAgain).</summary>
+    public TimeSpan ReadAt => new(Volatile.Read(ref _readAtTicks));
+    long _readingSinceTicks;
+    /// <summary>When the current stretch of reading began (FightRecorder.ReadingSince).</summary>
+    public TimeSpan ReadingSince => new(Volatile.Read(ref _readingSinceTicks));
+    bool _tintLast;   // the bar's last sighting carried it: gone since, a death (MeterStatus.Died)
     readonly Image?[] _skillCrops = new Image?[8];
     volatile bool _skillsRequested;
 
@@ -344,6 +356,8 @@ public sealed partial class Engine : IDisposable
             Thread.Sleep(50);
             return;
         }
+        Volatile.Write(ref _readingSinceTicks, FightRecorder.ReadingSince(now, ReadAt, ReadingSince).Ticks);
+        Volatile.Write(ref _readAtTicks, now.Ticks);
         if (_testMode) StepTestBuffSize(now);
         // Detection runs only when asked (스킬창 다시 맞추기, 테스트 모드, a pick by hand), never on its own: after a raid
         // cutscene it used to pick the wrong class.
@@ -555,7 +569,7 @@ public sealed partial class Engine : IDisposable
             _scheduler.MarkRead(slot, t);
             // ponytail: a copy per 일반 read (≤ 80 small crops a second); copy only greyed ones or on request if GC shows.
             if (slot is >= SlotId.일반1 and <= SlotId.일반8)
-                (_skillColour[slot - SlotId.일반1], _skillCrops[slot - SlotId.일반1]) = (SubclassMatcher.Colour(crop), crop.Copy());
+                (_skillColour[slot - SlotId.일반1], _skillTint[slot - SlotId.일반1], _skillCrops[slot - SlotId.일반1]) = (SubclassMatcher.Colour(crop), SkillTint.Share(crop), crop.Copy());
 
             if (cal is not null) { calibrated++; if (reading.Kind == ReadKind.Unreadable) unreadable++; }
             else if (reading.Kind == ReadKind.Ready) uncalibratedReady.Add(i);   // slots on cooldown during the fit
@@ -585,8 +599,12 @@ public sealed partial class Engine : IDisposable
         // vote at all (HudVote.MaySave), or the vote could never start.
         if (_foreground && HudVote.MaySave(shown, _cal.Count(c => c is not null), calibrated, unreadable))   // behind, a window can slide over between view checks: a covered frame would stay on disk
             foreach (int i in uncalibratedReady) SaveCalibration(slots[i], images[i], trusted: false, config);
+        // The bar gone: its last shares say nothing about the one that comes back (dead, then revived behind a hidden HUD).
+        if (shown == false) Array.Fill(_skillTint, double.NaN);
         if (shown == true && Seen)
         {
+            _tintLast = SkillTint.On(_skillTint);
+            if (_tintLast) _tintAt = t; // on screen in this very frame: a cutscene's red frames don't pass the vote
             if (_emblemPending) { _emblemPending = false; CaptureEmblem(); }
             bool greyed = SubclassMatcher.Greyed(_skillColour);
             if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>()] : null, ReadyOrdinary()); }

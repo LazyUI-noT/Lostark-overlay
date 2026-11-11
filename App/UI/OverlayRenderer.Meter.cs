@@ -57,14 +57,13 @@ public sealed partial class OverlayRenderer
         var size = MeterPanelSize();
         var (w, row) = MeterUnit;
         var panel = new Rect(Bleed, Bleed, w, size.Height - 2 * Bleed);
-        dc.PushOpacity(Math.Clamp(m.Opacity, 0.1, 1));
+        dc.PushOpacity(MeterSettings.ClampOpacity(m.Opacity));
         dc.DrawRoundedRectangle(Solid(UiColor.Parse(m.Background, Color.FromArgb(0xCC, 0x10, 0x14, 0x18))), null, panel, 4, 4);
         var view = _player?.Snapshot.MeterView;
         _ghostShown = null;
         double bars = BuffBarsShown ? row * BuffBarRows : 0, skill = MeterSkillHeight(row);
         if (view?.Skill is { } line) MeterSkillDraw(dc, new Rect(panel.X + 6, panel.Y + row, w - 12, skill), line);
         var body = new Rect(panel.X + 6, panel.Y + row + skill, w - 12, panel.Height - row - skill - 4 - bars);
-        if (bars > 0) MeterBuffBars(dc, new Rect(body.X, body.Bottom + 2, body.Width, bars - 2), view);
         if (view is null || !view.PanelFound && view.Rows.Count == 0)
             MeterText(dc, body.TopLeft, "전분 없음 · 전투 중에 전분 창을 찾습니다", row * 0.42, 0.75);
         else
@@ -81,6 +80,11 @@ public sealed partial class OverlayRenderer
         double noteX = panel.X + w * 0.32, noteSize = row * 0.4;
         if (note is not null) MeterText(dc, new(noteX, panel.Y + row * 0.25), note, noteSize, 0.7);
         MeterHeader(dc, new Rect(panel.X + 6, panel.Y, w - 12, row), view, note is null || noteSize < MinTimerFont ? null : noteX + Text(note, noteSize).Width);
+        dc.Pop();
+        if (bars <= 0) return;
+        // Their own 투명도 (profile-looks.plan.md), outside the panel's; on the panel's background, under none of the body.
+        dc.PushOpacity(MeterSettings.ClampOpacity(m.BarOpacity ?? m.Opacity));
+        MeterBuffBars(dc, new Rect(body.X, body.Bottom + 2, body.Width, bars - 2), view);
         dc.Pop();
     }
 
@@ -238,16 +242,22 @@ public sealed partial class OverlayRenderer
         double font = Math.Min(area.Height / (series.Count * 1.3 + 0.5), 12);   // the names fit the graph's height
         // 비교 (lostark-api.plan.md phase 6): the saved fight's my-DPS on the seconds shown, the scale fitting it too.
         var ghost = v.Ghost?.Points.Where(p => p.At >= t0 && p.At <= tEnd).ToList() ?? [];
-        var (step, top) = GridScale.Values(Math.Max(series.Max(s => s.Points.Max(p => (double)p.Dps)), ghost.Select(p => (double)p.Dps).DefaultIfEmpty().Max()));
+        // 최근 1분 (user, 2026-11-11): the scale sits around my own line's lowest and highest, so its swing shows instead of
+        // lying flat on a scale from 0; the other lines are cut at the plot's edge.
+        var around = Settings.Meter.Range == MeterRange.최근1분 ? series.FirstOrDefault(s => s.Row.Id == MeterMe).Points : null;
+        bool zoomed = around is { Count: > 1 };
+        double step, bottom = 0, top;
+        if (zoomed) (step, bottom, top) = GridScale.Around(around!.Min(p => (double)p.Dps), around!.Max(p => (double)p.Dps));
+        else (step, top) = GridScale.Values(Math.Max(series.Max(s => s.Points.Max(p => (double)p.Dps)), ghost.Select(p => (double)p.Dps).DefaultIfEmpty().Max()));
         double labelW = Text(GridScale.Label(top) + "/초", font).Width;   // the widest label is the top's
         bool labels = GridScale.LabelsFit(area.Height, area.Width, font, labelW);
         var plot = labels ? new Rect(area.X + labelW + 6, area.Y, Math.Max(1, area.Width - labelW - 6), Math.Max(0, area.Height - font * 1.3)) : area;
         var grid = new Pen(Solid(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), 1);   // round DPS steps, and round time steps
         double lastLabel = double.MaxValue;   // labels from the bottom up; one too close to the last is left out (its line stays)
-        for (int k = 1; k <= Math.Round(top / step); k++)
+        double Y(double value) => plot.Bottom - plot.Height * (value - bottom) / (top - bottom);
+        foreach (double value in GridScale.Lines(step, bottom, top))
         {
-            double value = k * step;
-            double gy = Math.Round(plot.Bottom - plot.Height * value / top) + 0.5;
+            double gy = Math.Round(Y(value)) + 0.5;
             dc.DrawLine(grid, new(plot.X, gy), new(plot.Right, gy));
             double ly = Math.Max(area.Y, gy - font * 0.6);   // the top one stays inside: the skill line is above it
             if (!labels || lastLabel - ly < font * 1.2) continue;
@@ -262,7 +272,8 @@ public sealed partial class OverlayRenderer
             string at = $"{(int)sec / 60}:{(int)sec % 60:00}";
             if (labels && gx + 2 + Text(at, font).Width <= plot.Right) MeterText(dc, new(gx + 2, plot.Bottom + 1), at, font, 0.6);
         }
-        Point At(TimeSpan at, long dps) => new(plot.X + plot.Width * (at - t0).TotalSeconds / span, plot.Bottom - plot.Height * dps / top);
+        Point At(TimeSpan at, long dps) => new(plot.X + plot.Width * (at - t0).TotalSeconds / span, Y(dps));
+        dc.PushClip(new RectangleGeometry(plot));   // a line off the scale (최근 1분 follows mine) stops at the plot's edge
         if (v.Ghost is { } compare)
         {
             if (ghost.Count > 1)   // under the live lines, dashed in my colour
@@ -270,8 +281,11 @@ public sealed partial class OverlayRenderer
                 var geo = new StreamGeometry();
                 using (var g = geo.Open())
                 {
-                    g.BeginFigure(At(ghost[0].At, ghost[0].Dps), false, false);
-                    foreach (var p in ghost.Skip(1)) g.LineTo(At(p.At, p.Dps), true, false);
+                    // Off the 최근 1분 scale it runs flat along the plot's top or bottom edge, which says where it went
+                    // (user, 2026-11-11); a pixel inside, so the clip doesn't halve it.
+                    Point Held(TimeSpan at, long dps) { var p = At(at, dps); return new(p.X, Math.Clamp(p.Y, plot.Y + 1, Math.Max(plot.Y + 1, plot.Bottom - 1))); }
+                    g.BeginFigure(Held(ghost[0].At, ghost[0].Dps), false, false);
+                    foreach (var p in ghost.Skip(1)) g.LineTo(Held(p.At, p.Dps), true, false);
                 }
                 var mine = series.FirstOrDefault(s => s.Row.Id == MeterMe).Row;
                 var color = mine is null ? Colors.White : MeterColor(mine);
@@ -287,12 +301,16 @@ public sealed partial class OverlayRenderer
                 for (int i = 0; i < points.Count; i++)
                 {
                     double value = points[i].Dps;
-                    var pt = new Point(plot.X + plot.Width * (points[i].At - t0).TotalSeconds / span, plot.Bottom - plot.Height * value / top);
+                    var pt = new Point(plot.X + plot.Width * (points[i].At - t0).TotalSeconds / span, Y(value));
                     if (i == 0) g.BeginFigure(pt, false, false); else g.LineTo(pt, true, false);
                 }
             dc.DrawGeometry(null, new Pen(Solid(MeterColor(r)), 1.5), geo);
-            names.Add((plot.Bottom - plot.Height * points[^1].Dps / top, r.Name));
+            // 최근 1분 (user, 2026-11-11): the line's current DPS is written at its end, after the name (the rows show the
+            // whole 전분 record's figure, not this).
+            string name = Settings.Meter.Range == MeterRange.최근1분 ? $"{r.Name} {GridScale.Label(points[^1].Dps)}" : r.Name;
+            names.Add((Math.Clamp(Y(points[^1].Dps), plot.Y, plot.Bottom), name));
         }
+        dc.Pop();
         double y = plot.Y;   // whose line: names just above the line ends (not on them), top down, kept apart
         if (font < MinTimerFont) return;   // too small to draw: no empty backings
         foreach (var (end, name) in names.OrderBy(n => n.Y))

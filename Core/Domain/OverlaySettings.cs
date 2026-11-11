@@ -15,8 +15,12 @@ public sealed class OverlaySettings : IWindowPlace
     public string PlateColor { get; set; } = DefaultPlate;
     public const string DefaultPlate = "#0C0D10";
     public double BoxOpacity { get; set; } = 1.0;     // boxes (and their timers)
+    /// <summary>남은 쿨 (초) with <see cref="CooldownStyle"/> and <see cref="FillFrom"/>, before they went per class
+    /// (<see cref="MineProfile.Cooldown"/>): read only to move an older file's once
+    /// (<see cref="ClassProfileMigration.MoveCooldownViews"/>), and kept so an older version opening the file finds them.</summary>
     public bool ShowTimer { get; set; } = true;
-    public double TimerFont { get; set; } = 14;      // DIP; drawn capped at what fits the box (OverlayRenderer.MaxTimerFont)
+    /// <summary>쿨 숫자 크기 (DIP), for every class; drawn capped at what fits the box (OverlayRenderer.MaxTimerFont).</summary>
+    public double TimerFont { get; set; } = 14;
     /// <summary>쿨 돈 뒤 지난 시간's number colour (#RRGGBB), outlined in white, or black for a light colour.</summary>
     public string ReadyCountColor { get; set; } = "#000000";
     public CooldownStyle CooldownStyle { get; set; } = CooldownStyle.Sweep;

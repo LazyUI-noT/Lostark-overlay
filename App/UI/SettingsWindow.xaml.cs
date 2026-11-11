@@ -185,6 +185,7 @@ public partial class SettingsWindow : Window
         FillSend();   // 파티원 모양 comes with the class sections
         FillKeys();
         FillHotkeys();
+        FillPerformance();
         FillApi();
         FillWarnings();
         FillRaid();
@@ -360,11 +361,6 @@ public partial class SettingsWindow : Window
                 p.Children.Add(revert);
             }
         }
-        p.Children.Add(SubHeading("성능"));
-        p.Children.Add(SliderRow("초당 읽기 횟수", ReadSteps.Min, ReadSteps.Max, _s.ReadsPerSecond, 1, v => $"{v:0}회", v => _s.ReadsPerSecond = (int)v, Changed,
-            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 CPU를 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
-        p.Children.Add(SliderRow("초당 그리기 횟수", DrawSteps.Min, DrawSteps.Max, _s.DrawsPerSecond, 1, v => $"{v:0}회", v => _s.DrawsPerSecond = (int)v, Changed,
-            "줄어드는 막대, 반짝임, 깜빡임처럼 움직이는 것이 있을 때 오버레이를 1초에 몇 번 다시 그릴지 정합니다. 높을수록 부드럽지만 CPU를 조금 더 씁니다. 움직이는 것이 없으면 다시 그리지 않습니다. 모니터 주사율에 맞춰 가까운 횟수로 그립니다(60 Hz에서 45는 30처럼). 기본 30."));
         // The main action first; fixing a fit that went wrong comes after it, under its own heading.
         p.Children.Add(SubHeading("인식이 어긋날 때"));
         var adjustButton = new Button { Content = "위치 조정", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 4), IsEnabled = _gameRunning };
@@ -381,6 +377,16 @@ public partial class SettingsWindow : Window
         if (_chars.SameSkillsNote is not null) p.Children.Add(Note($"{_chars.ActiveClass!.Name}: 두 직업각인의 스킬이 같아 스킬로 구분할 수 없어서 등록하지 않습니다."));
         if (_skillsResult is { } skills) p.Children.Add(new TextBlock { Text = skills, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
         p.Children.Add(ResetButton("맞춤 초기화", "저장된 스킬창 맞춤을 모두 지웁니다. 다음에 앱을 켜면 다시 맞춰야 합니다.", () => SettingsResets.Fits(_s)));
+    }
+
+    /// <summary>설정 → 시스템 성능 (user, 2026-11-11): the two rates, moved here from 스킬창 맞추기.</summary>
+    void FillPerformance()
+    {
+        var p = Refill(_secPerformance, AreaPerformance);
+        p.Children.Add(SliderRow("초당 읽기 횟수", ReadSteps.Min, ReadSteps.Max, _s.ReadsPerSecond, 1, v => $"{v:0}회", v => _s.ReadsPerSecond = (int)v, Changed,
+            "화면을 1초에 몇 번 읽을지 정합니다. 높을수록 정확하지만 CPU를 더 씁니다. 모니터 주사율(60·144 Hz)과 상관없이 이 횟수를 넘지 않습니다. 프레임이 떨어지면 낮춰 보세요. 기본 20."));
+        p.Children.Add(SliderRow("초당 그리기 횟수", DrawSteps.Min, DrawSteps.Max, _s.DrawsPerSecond, 1, v => $"{v:0}회", v => _s.DrawsPerSecond = (int)v, Changed,
+            "줄어드는 막대, 반짝임, 깜빡임처럼 움직이는 것이 있을 때 오버레이를 1초에 몇 번 다시 그릴지 정합니다. 높을수록 부드럽지만 CPU를 조금 더 씁니다. 움직이는 것이 없으면 다시 그리지 않습니다. 모니터 주사율에 맞춰 가까운 횟수로 그립니다(60 Hz에서 45는 30처럼). 기본 30."));
     }
 
     /// <summary>A hotkey as shown, or that there is none.</summary>
@@ -400,6 +406,7 @@ public partial class SettingsWindow : Window
         var o = _s.Overlay;
         var p = Refill(_secDisplay, "전체");
         UIElement? opacityRow = null;   // 오버레이 표시 and 스킬창이 안 보이면 숨기기: 설정 → 기능 Map (FillShow)
+        p.Children.Add(ShareMark(LookGroup.판, FillDisplay));
         p.Children.Add(Check("배경판", o.ShowPlate,
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤에 깔리는 배경판입니다. 분리된 버프 창에는 배경판이 없습니다."));
         p.Children.Add(opacityRow = SliderRow("배경판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
@@ -408,6 +415,7 @@ public partial class SettingsWindow : Window
 
         // 칸 모양: how every box shows its cooldown, 초각스, 금테 (the skill inspector)
         p = Refill(_secSkillLook, "칸 모양");
+        p.Children.Add(ShareMark(LookGroup.스킬칸, FillDisplay));
         p.Children.Add(DefaultedCheck(Check("스킬창 읽기", o.SkillRead, v => o.SkillRead = v, Changed,
             "끄면 스킬 쿨을 읽지 않습니다. 쿨타임, 타임라인의 스킬 아이콘, 파티로 보내기가 모두 멈춥니다. 켜 둔 채 스킬 칸만 숨기면 창은 안 보여도 타임라인에 쓰려고 계속 읽습니다."),
             s => s.Overlay.SkillRead, (s, v) => s.Overlay.SkillRead = v));
@@ -424,26 +432,32 @@ public partial class SettingsWindow : Window
         FillAmsu();
     }
 
-    /// <summary>How every box shows its cooldown: 칸 불투명도, 남은 시간 숫자 (and its size), 쿨타임 표시 (and 채움 방향).
-    /// The same rows in 내 오버레이 → 전체 and in the editor's 창 전체.</summary>
+    /// <summary>What every class's boxes share: 칸 불투명도 and 쿨 숫자 크기. The same rows in 내 오버레이 → 칸 모양 and in
+    /// the editor's 창 전체; the class's own 쿨 진행 표시 and 남은 쿨 (초) are <see cref="ClassCooldownRows"/>.</summary>
     void CooldownLookRows(Panel p)
     {
         var o = _s.Overlay;
         p.Children.Add(Defaulted(SliderRow("불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed),
             s => s.Overlay.BoxOpacity, (s, v) => s.Overlay.BoxOpacity = v));
         double maxFont = Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(o.Width, o.Height));   // the box size is the editor's
-        UIElement? fontRow = null, fromRow = null;
-        p.Children.Add(DefaultedCheck(Check("남은 쿨 (초)", o.ShowTimer, v => { o.ShowTimer = v; fontRow!.Visibility = Shown(v); }, Changed),
-            s => s.Overlay.ShowTimer, (s, v) => s.Overlay.ShowTimer = v));
-        p.Children.Add(fontRow = Defaulted(SliderRow("남은 쿨 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
-            OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed), s => s.Overlay.TimerFont, (s, v) => s.Overlay.TimerFont = v));
-        fontRow.Visibility = Shown(o.ShowTimer);
-        p.Children.Add(Defaulted(Row(HelpLabel("쿨 진행 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 해 줍니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 보입니다."), EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"),
-            (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")], o.CooldownStyle,
-            v => { o.CooldownStyle = v; fromRow!.Visibility = Shown(v != CooldownStyle.Sweep); })), s => s.Overlay.CooldownStyle, (s, v) => s.Overlay.CooldownStyle = v));
-        p.Children.Add(fromRow = Defaulted(Row("진행 방향", EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
-            o.FillFrom, v => o.FillFrom = v)), s => s.Overlay.FillFrom, (s, v) => s.Overlay.FillFrom = v));
-        fromRow.Visibility = Shown(o.CooldownStyle != CooldownStyle.Sweep);
+        p.Children.Add(Defaulted(SliderRow("쿨 숫자 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
+            OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed, "모든 클래스의 남은 쿨 숫자 크기입니다. 칸에 들어가는 크기보다 커지지 않습니다."),
+            s => s.Overlay.TimerFont, (s, v) => s.Overlay.TimerFont = v));
+    }
+
+    /// <summary>The class's 쿨 진행 표시 (style, and beside it the direction of a fill) and 남은 쿨 (초) (display-split.plan.md
+    /// step 5): on its 스킬 칸 page and in the editor's 창 전체. Party boxes of the class draw with these too.</summary>
+    void ClassCooldownRows(Panel p, MineProfile read, Func<MineProfile> edit)
+    {
+        void Again() => Dispatcher.BeginInvoke(() => { FillClassSections(); FillBox(); });   // both places show these
+        var from = EnumCombo([(FillFrom.Bottom, "아래 → 위"), (FillFrom.Top, "위 → 아래"), (FillFrom.Left, "왼쪽 → 오른쪽"), (FillFrom.Right, "오른쪽 → 왼쪽")],
+            read.FillFrom, v => { edit().FillFrom = v; Again(); });
+        System.Windows.Automation.AutomationProperties.SetName(from, "진행 방향");
+        from.Visibility = Shown(read.CooldownStyle != CooldownStyle.Sweep);
+        p.Children.Add(Row(HelpLabel("쿨 진행 표시", "빗금은 준비될 때까지 남아서, 거의 다 찬 칸을 준비된 칸으로 착각하지 않게 해 줍니다. 충전 스킬은 쓸 수 있는 횟수가 남아 있으면 원래 색에 흰 선으로, 다 쓰면 회색으로 보입니다. 이 클래스의 파티원 칸도 이렇게 보입니다."),
+            EnumCombo([(CooldownStyle.Sweep, "회전"), (CooldownStyle.Fill, "채움 (어두운 색 → 밝은 색)"), (CooldownStyle.FillHatched, "채움 (원래 색 + 빗금)")],
+                read.CooldownStyle, v => { edit().CooldownStyle = v; Again(); }), from));
+        p.Children.Add(Check("남은 쿨 (초)", read.ShowTimer, v => edit().ShowTimer = v, () => { Changed(); Again(); }));
     }
 
     /// <summary>버프/디버프: the buff bars, then under a line the raid debuffs, each part with its own reset.</summary>
@@ -459,6 +473,7 @@ public partial class SettingsWindow : Window
             "버프 줄 오른쪽 끝에서부터 몇 칸을 읽을지 정합니다. 이보다 왼쪽에 뜬 버프는 못 읽습니다. 버프가 많이 뜨면 늘리세요. 칸이 늘수록 CPU를 조금 더 씁니다. " +
             "게임은 한 줄에 들어가는 만큼만 그리고 나머지는 '+숫자' 아이콘으로 접습니다 (1080p 버프 크기 120%에서 10칸, 100%에서 14칸쯤). 그보다 많이 읽어도 더 찾지 못합니다."),
             s => s.Buffs.Count, (s, v) => s.Buffs.Count = v));
+        p.Children.Add(ShareMark(LookGroup.버프막대, FillBuffs));   // below the read row, which it doesn't cover (user, 2026-11-11)
         p.Children.Add(Defaulted(HelpRow("위치", "분리된 창: 버프 막대가 오버레이 배경판에서 빠져 자기 창에 그려집니다. 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (배경판과 함께면 배경판 왼쪽 바깥). 끄면 눕혀서 위아래로 쌓습니다 (배경판과 함께면 칸 아래에 두 개씩).", Check("분리 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)),
             s => (s.Buffs.Detached, s.Buffs.Side), (s, v) => (s.Buffs.Detached, s.Buffs.Side) = v));
         p.Children.Add(Defaulted(Row("움직임", Check("유지시간 비례 감소", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")), s => s.Buffs.Drain, (s, v) => s.Buffs.Drain = v));

@@ -230,6 +230,7 @@ public partial class SettingsWindow
     void PlateRows(Panel p)
     {
         p.Children.Add(Heading("창 전체"));
+        ClassCooldownRows(p, ClassProfiles.Of(_s, ShownClass).Mine, () => ClassProfiles.EditShown(_s, BoxKey).Mine);
         CooldownLookRows(p);
     }
 }

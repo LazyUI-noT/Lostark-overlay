@@ -92,6 +92,8 @@ public static partial class FeatureMap
         new("dungeon", "콘텐츠 인식", Raid, 1, null, OffOn),
         new("amsu", "암수", Raid, 1, null, OffRead, Show),
         new("char", "캐릭터 이름 인식", Homework, 1, null, OffOn),
+        // settings-access.plan.md B (user, 2026-11-11): without a key no new names, no 전투력, and no 숙제 on a new install.
+        new("api", "로아 API 키", Homework, 1) { Note = "없으면 새 캐릭터 등록 · 전투력 없음" },
         new("party", "파티", Party, 1),
         new("meter", "DPS 미터기", Record, 2, null, Three),
         new("cover", "버프 적용률", Buff, 2, "meter", Three),
@@ -118,6 +120,7 @@ public static partial class FeatureMap
         new("boss", "count"), new("boss", "debuff"), new("boss", "hw"), new("dungeon", "hw"), new("char", "hw"),
         new("rec", "hw", Label: "있으면 더 정확", Optional: true), new("amsu", "amsuline"), new("shadow", "zone"),
         new("shadow", "hw", Label: "대난투 중 보류"),
+        new("api", "hw", Label: "새 설치는 키 필요", Optional: true), new("api", "rec", Label: "전투력", Optional: true),
         new("skill", "party", true, "스킬쿨"), new("aden", "party", true, "아덴"), new("meter", "party", true, "내 전분"),
         new("party", "peers", true, "파티원 창"), new("party", "meter", true, "파티원 전분"),
         new("skill", "meter", Label: "스킬 횟수", Optional: true),

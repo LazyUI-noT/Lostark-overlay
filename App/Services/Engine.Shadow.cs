@@ -20,7 +20,7 @@ public sealed partial class Engine
     static readonly TimeSpan ShadowEvery = TimeSpan.FromMilliseconds(200);
 
     /// <summary>How often the boss HP is read: <paramref name="usual"/>, faster during the gimmick so its number follows the damage.</summary>
-    TimeSpan BossReadEvery(TimeSpan usual) => _shadow is null ? usual : ShadowEvery;
+    TimeSpan BossReadEvery(TimeSpan usual) => _shadow is null || usual < ShadowEvery ? usual : ShadowEvery;
 
     /// <summary>The gimmick's number area when this step reads the boss HP (the meter's, or the probe with the meter off) in a 그림자 gate with its switch on (the gate by the
     /// last bar's max HP, else the one recognised).</summary>

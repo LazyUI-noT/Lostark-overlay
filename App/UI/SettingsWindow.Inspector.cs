@@ -79,6 +79,9 @@ public partial class SettingsWindow
         return new StackPanel { Orientation = Orientation.Horizontal, Children = { run, reset } };
     }
 
+    /// <summary>The demo's --pick: as if <paramref name="box"/> were clicked in the preview.</summary>
+    internal void Inspect(CanvasBox box) => ShowInspector(box);
+
     /// <summary>The inspector for <paramref name="box"/> (null: nothing picked, the overlay as a whole).</summary>
     void ShowInspector(CanvasBox? box)
     {
@@ -98,7 +101,7 @@ public partial class SettingsWindow
             Text = box?.Kind switch
             {
                 "Skills" => $"색과 효과: {ClassName(ShownClass)}에만 · 칸 모양: 모든 직업각인",
-                "Plate" => $"창 모양: {ClassName(ShownClass)}에만 · 전체: 모든 직업각인",
+                "Plate" => $"쿨 진행·남은 쿨: {ClassName(ShownClass)}에만 · 나머지: 모두",
                 _ when ClassScoped(box) => $"{ClassName(ShownClass)}에만 적용",
                 _ => "모든 직업각인에 적용",
             },

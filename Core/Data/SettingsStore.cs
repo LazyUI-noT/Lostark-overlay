@@ -65,7 +65,7 @@ public sealed class SettingsStore(string path)
         foreach (var file in broken)
             try { File.Copy(file, $"{file}.broken-{stamp}", overwrite: true); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // best effort
-        return new Settings();
+        return new Settings { HomeworkWithoutKey = true };   // reset, but not a new install
     }
 
     /// <summary>A hand edit can leave a class entry, or its 나 or 파티원 part, null: the entry is dropped, the part made default.</summary>
@@ -91,6 +91,7 @@ public sealed class SettingsStore(string path)
     internal static Settings Normalize(Settings s)
     {
         RepairClasses(s);
+        if (!s.CooldownLooksMoved) ClassProfileMigration.MoveCooldownViews(s);   // after RepairClasses: no null entries
         PeerSlots(s);
         FiveProfiles(s);
         // Hand-edited, or saved by the old 70–130 slider: a preset, unless 값 직접 조정 is on (it saves any whole % in FitAdjust's range).
@@ -108,9 +109,7 @@ public sealed class SettingsStore(string path)
         s.ReadsPerSecond = ReadSteps.Clamp(s.ReadsPerSecond);
         s.DrawsPerSecond = DrawSteps.Clamp(s.DrawsPerSecond);
         s.Judgment ??= new();
-        s.Judgment.Characters ??= [];
-        if (!JudgmentSettings.FontSizes.Contains(s.Judgment.FontSize)) s.Judgment.FontSize = 100;   // a hand edit
-        s.Judgment.Opacity = double.IsFinite(s.Judgment.Opacity) ? Math.Clamp(s.Judgment.Opacity, JudgmentSettings.MinOpacity, 1) : 1;
+        s.Judgment.Clamp();
         s.StackSkills ??= [];
         foreach (var (key, slots) in s.StackSkills.ToList())   // a hand edit: null, or a name that isn't a slot
             if (slots is null) s.StackSkills.Remove(key);
@@ -123,7 +122,11 @@ public sealed class SettingsStore(string path)
         s.Raids.Normalize(s.Debuffs);
         s.Meter ??= new();
         s.Meter.Normalize();
+        foreach (var p in s.Profiles) p.Fill(s);   // after 암수, 단심 and the meter are repaired: an older file's profiles take them
+        if (s.SharedLooks is null)   // an older file: every look is shared now, the notice names the ones that differed
+            (s.MergedLooks, s.SharedLooks) = (s.DifferingLooks(), [.. Enum.GetValues<LookGroup>()]);
         s.BossBook ??= [];
+        s.MutedNotices ??= [];   // a hand edit: null
         if (s.RailSeen is not null) s.RailSeen = s.RailSeen.ToDictionary(kv => kv.Key, kv => kv.Value ?? []);   // a hand edit: a null list
         s.Homework ??= new();
         s.RaidCapsules ??= new();

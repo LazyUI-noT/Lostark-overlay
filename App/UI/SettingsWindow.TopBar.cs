@@ -34,7 +34,7 @@ public partial class SettingsWindow
             int n = i;
             var b = Toggle($"{i + 1}", "profile", i == _s.ActiveProfile);
             (b.Margin, b.MinWidth, b.Padding) = (new(0, 0, 2, 0), 36, new(10, 4, 10, 4));
-            b.ToolTip = $"오버레이 배치 {i + 1}: 창의 위치와 크기를 배치마다 따로 저장합니다.";
+            b.ToolTip = $"오버레이 배치 {i + 1}: 창의 위치와 크기, 그리고 '모든 배치에 적용'을 끈 설정을 배치마다 따로 저장합니다.";
             b.Checked += (_, _) => { if (n != _s.ActiveProfile) { RecordStep(); ProfileRequested?.Invoke(n); ShowProfileButtons(); } };
             profiles.Children.Add(_profileButtons[i] = b);
         }
@@ -66,6 +66,8 @@ public partial class SettingsWindow
         for (int i = 0; i < _profileButtons.Length; i++)
             (_profileButtons[i].IsChecked, _profileButtons[i].IsEnabled) = (!_inTestProfile && i == _s.ActiveProfile, !_inTestProfile);
         _testProfile.IsChecked = _inTestProfile;
+        if (_copyProfile is { } c) c.IsEnabled = !_inTestProfile;
+        DisarmCopy();
     }
 
     readonly RadioButton _testProfile = new() { Content = "Test" };

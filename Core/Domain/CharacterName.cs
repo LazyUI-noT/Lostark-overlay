@@ -8,13 +8,15 @@ public static partial class CharacterName
 {
     const int MinLength = 2, MaxLength = 16;
 
-    /// <summary>The name in <paramref name="text"/>: Hangul, Latin letters and digits with at least one letter; null for an
-    /// item level ("1791.66") or a scrap.</summary>
+    /// <summary>The name in <paramref name="text"/>: Hangul, Latin letters and digits, no more digits than letters; null for an
+    /// item level ("1791.66"), a number read with its icon ("수164이00912" became a character and named fights, user 2026-11-10)
+    /// or a scrap.</summary>
     public static string? Clean(string text)
     {
         if (Decimal().IsMatch(text)) return null;
         string name = string.Concat(text.Where(c => IsHangul(c) || char.IsAsciiLetterOrDigit(c)));
-        return name.Length is >= MinLength and <= MaxLength && name.Any(c => !char.IsAsciiDigit(c)) ? name : null;
+        int digits = name.Count(char.IsAsciiDigit);
+        return name.Length is >= MinLength and <= MaxLength && digits <= name.Length - digits ? name : null;
     }
 
     /// <summary>A grid card's small name (<see cref="Clean"/>), with the small font's misreads put back: "Ot" between Hangul is

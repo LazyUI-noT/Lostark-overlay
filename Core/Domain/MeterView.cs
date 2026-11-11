@@ -26,10 +26,10 @@ public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long
     /// <paramref name="align"/>: lines the figures up on one 전분 second (null: as they arrived). <paramref name="buffs"/>: my buff
     /// indicators this second (by BuffKind; empty or null when the buff row isn't read), for 버프 적용률.
     /// <paramref name="smallParty"/>: a 4-man raid, where the boss HP lost is the party's damage: each buff's share of it too
-    /// (<see cref="BuffParty"/>).</summary>
+    /// (<see cref="BuffParty"/>). <paramref name="gimmick"/>: 대난투 is up, its number in the boss bar's place.</summary>
     public static MeterView Build(MeterStatus mine, MeterRole role, string myName, int classId, IReadOnlyList<MeterSample> session,
         ulong me, ulong host, MeterSettings settings, MeterHistory history, TimeSpan now, int myParty = 1,
-        MeterAlign? align = null, IReadOnlyList<BuffState>? buffs = null, bool smallParty = false)
+        MeterAlign? align = null, IReadOnlyList<BuffState>? buffs = null, bool smallParty = false, bool gimmick = false)
     {
         if (!settings.Send) session = [];   // only someone who shares sees the others
         myParty = session.FirstOrDefault(s => s.Id == me)?.Party ?? myParty;
@@ -47,8 +47,13 @@ public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long
         // The panel lost (a cutscene, the inventory over it): the last figures and the graph stay, marked by PanelFound.
         if (mine.Panel is null && history.LastRows is { Count: > 0 } last) rows = last;
         else if (mine.Clock.Timer is not null && !mine.Clock.Frozen) history.Add(fightAt, mine.Clock.Fight, rows);
+        // Left out of 버프 적용률 (LeftOut): the boss bar unread (read before, and not 대난투, whose number stands in for it),
+        // or my skill bar tinted. A support's own dead time stays in (user, 2026-11-11).
+        bool barUnread = !gimmick && mine.HpAt > TimeSpan.Zero && now - mine.HpAt > FightRecorder.HpFresh;
+        bool tinted = role != MeterRole.서포터 && mine.Tinted(now);
         if (mine.Panel is { } p)
-            history.Cover(mine.Clock.Fight, p.Damage, buffs, now, [.. samples.Where(s => s.Id != me && s.Role == MeterRole.딜러)], BossDamage.Taken(mine.Boss));
+            history.Cover(mine.Clock.Fight, p.Damage, buffs, now, [.. samples.Where(s => s.Id != me && s.Role == MeterRole.딜러)], BossDamage.Taken(mine.Boss), barUnread, tinted);
+        else if (barUnread) history.BarHidden();
         // A dealer sees the buffs' part of their own damage; a support (whose 조력 피해량 is the dealers' damage) sees each buff
         // split between the dealers, never itself.
         var split = role == MeterRole.서포터 ? history.Split(me, myName, iDeal: false) : null;

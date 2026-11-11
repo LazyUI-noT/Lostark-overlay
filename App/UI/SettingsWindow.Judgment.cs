@@ -14,6 +14,7 @@ public partial class SettingsWindow
     {
         var j = _s.Judgment;
         var p = Refill(_secOther, "단심", "단죄·심판 룬의 심판이 켜져 있는 6초와, 다시 터질 수 있을 때까지 남은 24초를 보여 줍니다. 내 화면에만 보이고 파티원에게는 보내지 않습니다.");
+        p.Children.Add(ShareMark(LookGroup.단심, FillJudgment));
         if (_s.ActiveCharacter is not { } key)
         {
             p.Children.Add(Note("캐릭터를 먼저 고르세요. 단심은 직업각인마다 따로 켭니다."));
