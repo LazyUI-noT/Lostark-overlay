@@ -95,7 +95,7 @@ public sealed partial class OverlayCanvas
             (_drag, _bar) = (Drag.BarLength, bar);
             (_startLength, _barFull) = (BarSizes.Length(_s.Buffs.Of(bar.Kind)), r.BarFull);
         }
-        else if (r != _buffs && r.PartAt(at) is var (part, rect))   // the buff window is the fixed grid
+        else if (r != _buffs && MovesBox(r) && r.PartAt(at) is var (part, rect))   // the buff window is the fixed grid; 내 스킬창 moves whole without 칸 따로
         {
             _drag = InGrip(rect, at) ? Drag.BoxSize : Drag.Box;
             StartBoxDrag(r, part, _drag == Drag.BoxSize);
@@ -211,7 +211,7 @@ public sealed partial class OverlayCanvas
             Changed?.Invoke();
             return;
         }
-        if (_pickedDebuff is null && _picked?.Part is { } part && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_pickedDebuff is null && _picked?.Part is { } part && MovesBox(r) && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
             StartBoxDrag(r, part, resize: false);
             MoveBox(r, dx, dy, resize: false, snap: false);
@@ -239,7 +239,7 @@ public sealed partial class OverlayCanvas
             return;
         }
         if (r.Peer >= 0) return;   // a member's size is its class's
-        if (_picked?.Part is { } part && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_picked?.Part is { } part && MovesBox(r) && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
             var sized = _s.Overlay.LayoutLinkSizes ? FreeLayout.Linked(part).Parts : [part];   // linked sizes all grow
             var before = sized.Select(p => (p, OnCanvasRect(r, p))).ToList();
@@ -296,7 +296,7 @@ public sealed partial class OverlayCanvas
     /// <summary>The pointer is on a box's corner grip that a drag would resize.</summary>
     bool OverGrip(MouseEventArgs e)
     {
-        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _gauge || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r)) return false;
+        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _gauge || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r) || !MovesBox(r)) return false;   // without 칸 하나씩 a drag there moves 내 스킬창
         var at = e.GetPosition(r);
         if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
         return r.PartAt(at) is var (_, rect) && InGrip(rect, at);

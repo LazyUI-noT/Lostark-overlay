@@ -143,6 +143,11 @@ public sealed partial class OverlayCanvas : Border
     /// <summary>꺼진 창: windows that are off in 설정 are drawn faint (on), or not at all and not pickable (off). Not saved.</summary>
     public bool ShowOff { get => _showOff; set { _showOff = value; Relayout(); } }
     public bool Snap { get => _s.Overlay.LayoutSnap; set => _s.Overlay.LayoutSnap = value; }
+
+    /// <summary>칸 하나씩: a drag, nudge or Ctrl+arrow on a 내 스킬창 box moves or sizes that box, not the window (<see cref="BoxDragRule"/>; not saved).</summary>
+    public bool BoxesApart { get; set; }
+
+    bool MovesBox(OverlayRenderer r) => BoxDragRule.MovesBox(r == _mine, BoxesApart);
     public bool LinkSizes { get => _s.Overlay.LayoutLinkSizes; set => _s.Overlay.LayoutLinkSizes = value; }
 
     OverlayRenderer Renderer(int peer, bool buffs)

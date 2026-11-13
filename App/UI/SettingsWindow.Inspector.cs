@@ -38,6 +38,8 @@ public partial class SettingsWindow
         CanvasBadgeHost.Children.Add(ProfileBadgeChip());
         CanvasTools.Children.Add(ShotButtons());
         CanvasTools.Children.Add(RunButtons(canvas, out _run));
+        var apartCheck = ToolCheck("칸 하나씩", false, v => { canvas.BoxesApart = v; ShowCanvasShot(); }, "켜면 스킬 칸을 하나씩 옮기고 크기를 바꿉니다. 끄면 칸을 끌어도 내 스킬창 전체가 움직입니다.");
+        CanvasTools.Children.Add(apartCheck);
         CanvasTools.Children.Add(ToolCheck("자석", canvas.Snap, v => canvas.Snap = v, "끌 때 다른 칸에 맞춰 붙습니다. Shift를 누르고 끌면 붙지 않습니다."));
         CanvasTools.Children.Add(ToolCheck("크기 연동", canvas.LinkSizes, v => canvas.LinkSizes = v, "모서리로 크기를 바꿀 때 같은 줄의 칸도 같이 바뀝니다."));
         CanvasTools.Children.Add(ToolCheck("나", canvas.ShowMine, v => canvas.ShowMine = v, null));
@@ -52,6 +54,8 @@ public partial class SettingsWindow
         {
             if (!IsVisible) { StopPlay(); return; }
             offCheck.IsChecked = canvas.ShowOff = true;   // 꺼진 창 is on each time 설정 opens, never saved
+            apartCheck.IsChecked = canvas.BoxesApart = false;   // 칸 하나씩 is off each time (user, 2026-11-13: no accidental box moves)
+            ShowCanvasShot();   // and the note says so
         };
         Loaded += (_, _) => { ShowCanvasShot(); canvas.Relayout(); };   // the picture at the window's real DPI
         ShowInspector(null);
@@ -70,7 +74,9 @@ public partial class SettingsWindow
 
     readonly TextBlock _canvasNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(8, 0, 0, 0) };
 
-    void ShowCanvasNote() => _canvasNote.Text = "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대";
+    void ShowCanvasNote() => _canvasNote.Text = _canvas?.BoxesApart == true
+        ? "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대"
+        : "칸을 눌러 설정 · 끌어서 이동 (내 스킬창은 칸 하나씩을 켜야 칸마다) · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대";
 
     static CheckBox ToolCheck(string text, bool value, Action<bool> set, string? help)
     {

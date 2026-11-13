@@ -121,7 +121,7 @@ public partial class SettingsWindow
             new(AreaOverlay, ""),
             new(AreaScreens, "오버레이를 띄울 모니터와 언제 보일지를 정합니다.", (AreaScreens, _secScreens)),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", (AreaCharacter, _secCharacter)),
-            new(AreaSkills, "스킬 칸을 켜고 끄고, 스킬마다 보이기와 색을 정합니다. 칸 모양은 모든 칸의 쿨 표시입니다.", ("내 스킬", _secSkillList), ("칸 모양", _secSkillLook), ("창 구성", _secApart)),
+            new(AreaSkills, "스킬 칸을 켜고 끄고, 스킬마다 보이기와 색을 정합니다. 칸 모양은 모든 칸의 쿨 표시입니다.", ("창 구성", _secApart), ("내 스킬", _secSkillList), ("칸 모양", _secSkillLook)),   // 창 구성 first (user, 2026-11-13)
             new(AreaGauge, "아덴 게이지를 읽는 직업각인의 막대입니다. 따로로 하면 자기 창에 그려집니다.", (AreaGauge, GaugeBox)),
             new(AreaJudgment, "단죄·심판 룬의 심판 시간입니다.", (AreaJudgment, _secOther)),
             new(AreaBuffs, "내 버프 줄에서 찾아 남은 시간을 막대로 보여 줍니다.", (AreaBuffs, _secBuffs)),
