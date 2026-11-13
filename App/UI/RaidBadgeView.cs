@@ -7,7 +7,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>A raid's difficulty as a capsule in its colour with white text, the raid's logo in front (RaidBadge; settings-reorg.plan.md
+/// <summary>A raid's difficulty as a capsule in its colour with black or white text (whichever reads), the raid's logo in front (RaidBadge; settings-reorg.plan.md
 /// 11, 12). No logo: the capsule alone. No difficulty: the logo alone. An unknown one: a grey capsule with its name. As a control
 /// (설정's rows) or drawn (TimelineView).</summary>
 public static class RaidBadgeView
@@ -27,9 +27,20 @@ public static class RaidBadgeView
         return FillBrushes[hex] = Frozen(UiColor.Parse(hex, Color.FromRgb(0x8C, 0x8C, 0x8C)));
     }
 
+    /// <summary>The capsule's text colour: white or black, whichever contrasts more with the fill (4.5:1 or better for any colour, WCAG 1.4.3).</summary>
+    public static Color Ink(DifficultyTier tier)
+    {
+        string hex = Colors().HexOf(tier);
+        if (Inks.TryGetValue(hex, out var ink)) return ink;   // the timeline redraws on every mouse move
+        return Inks[hex] = InkOn(UiColor.Parse(hex, Color.FromRgb(0x8C, 0x8C, 0x8C)));
+    }
+    static readonly Dictionary<string, Color> Inks = [];   // by "#RRGGBB", as FillBrushes; UI thread only
+
+    public static Color InkOn(Color fill) => Contrast.BlackInk(fill.R, fill.G, fill.B) ? Color.FromRgb(0, 0, 0) : Color.FromRgb(255, 255, 255);
+
     static readonly Dictionary<string, ImageSource?> Logos = [];
     static readonly Typeface Face = new(new FontFamily("Malgun Gothic"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
-    static readonly Dictionary<(string, double, double), FormattedText> Texts = [];   // UI thread only, like Logos; a few difficulties × sizes
+    static readonly Dictionary<(string, double, double, Color), FormattedText> Texts = [];   // UI thread only, like Logos; a few difficulties × sizes
 
     static Brush Frozen(Color c)
     {
@@ -72,7 +83,7 @@ public static class RaidBadgeView
             {
                 Background = Fill(RaidBadge.Tier(difficulty)), CornerRadius = new(size * CornerPerSize), Padding = new(size * 0.7, 1, size * 0.7, 1.5),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock { Text = RaidBadge.Label(difficulty), FontSize = size, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White },
+                Child = new TextBlock { Text = RaidBadge.Label(difficulty), FontSize = size, FontWeight = FontWeights.SemiBold, Foreground = Frozen(Ink(RaidBadge.Tier(difficulty))) },
             });
         return row;
     }
@@ -88,9 +99,10 @@ public static class RaidBadgeView
             x += side + 4;
         }
         if (string.IsNullOrWhiteSpace(difficulty)) return x - at.X;
-        var key = (difficulty, size, pixelsPerDip);   // TimelineView redraws on every mouse move: measure each capsule once
+        var ink = Ink(RaidBadge.Tier(difficulty));
+        var key = (difficulty, size, pixelsPerDip, ink);   // TimelineView redraws on every mouse move: measure each capsule once
         if (!Texts.TryGetValue(key, out var text))
-            Texts[key] = text = new FormattedText(RaidBadge.Label(difficulty), CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, size, Brushes.White, pixelsPerDip);
+            Texts[key] = text = new FormattedText(RaidBadge.Label(difficulty), CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, size, Frozen(ink), pixelsPerDip);
         double pad = size * 0.7, h = Math.Min(height, text.Height + 2);
         var box = new Rect(x, at.Y + (height - h) / 2, text.Width + pad * 2, h);
         dc.DrawRoundedRectangle(Fill(RaidBadge.Tier(difficulty)), null, box, size * CornerPerSize, size * CornerPerSize);

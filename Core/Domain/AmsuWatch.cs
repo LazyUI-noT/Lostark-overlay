@@ -30,6 +30,7 @@ public sealed class AmsuWatch
     TimeSpan _framesAt = TimeSpan.MinValue, _timersAt = TimeSpan.MinValue;
     TimeSpan? _foundSince;               // since when bombs have been found without a break (AmsuPace's lock)
     IconCache<(Bomb Kind, int Dx)?> _gate = AmsuReader.Gate();   // a slot matched only when it shows an icon not matched lately
+    Image? _sized;                       // the strip at reference size, reused each pass (Frames)
 
     /// <summary>Every slot matched again (강화 읽기 switched: the strip is prepared differently).</summary>
     public void ResetGate() => _gate.Reset();
@@ -100,8 +101,16 @@ public sealed class AmsuWatch
         (_framesAt, _timersAt) = (t, t);
         if (layout != _layout) (_layout, _snap, _snapped, _gate) = (layout, 0, false, AmsuReader.Gate());   // another HUD, size or resolution: placed again
         // The strip at reference size, once for the pass: the walk and the identification both use it.
+        // Into the watch's own buffer: nothing read from it keeps the image past this pass. At scale 1 the strip itself comes
+        // back (the capture's buffer): never kept as ours.
         Image? sized = null;
-        Image Sized() => sized ??= DebuffReader.ToReference(strip, layout.Scale);
+        Image Sized()
+        {
+            if (sized is not null) return sized;
+            sized = DebuffReader.ToReference(strip, layout.Scale, _sized);
+            if (sized != strip) _sized = sized;
+            return sized;
+        }
         // Identifying due by time or an unread timer: no walk first (the match walks the row itself).
         var walk = !bossRead && Line is { } y ? AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, y) : null;
         bool identify = walk is null || RowCadence.Identify(_filled, walk.Filled.Count, ClassifiedAt, _unread, t, classify);

@@ -22,4 +22,25 @@ public class ImageTests
         var outside = img.Crop(new PixelRect(9, 9, 2, 2));
         Assert.Equal((0, 0), (outside.Width, outside.Height));
     }
+
+    [Fact]
+    public void CopyInto_reuses_a_same_size_buffer_and_copies_otherwise()
+    {
+        var img = new Image(2, 2);
+        img.Bgra[5] = 7;
+
+        var fresh = img.CopyInto(null);
+        Assert.NotSame(img, fresh);
+        Assert.Equal(img.Bgra, fresh.Bgra);
+
+        var kept = new Image(2, 2);
+        Assert.Same(kept, img.CopyInto(kept));
+        Assert.Equal(img.Bgra, kept.Bgra);
+
+        var other = new Image(3, 1);
+        var resized = img.CopyInto(other);
+        Assert.NotSame(other, resized);
+        Assert.Equal((2, 2), (resized.Width, resized.Height));
+        Assert.Equal(img.Bgra, resized.Bgra);
+    }
 }

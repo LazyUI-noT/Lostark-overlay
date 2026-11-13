@@ -47,8 +47,9 @@ public static class DebuffReader
     public static bool Filled(Image area, PixelRect icon) => RedFrame(area, icon) >= MinFrame;
 
     /// <summary>The strip resampled to reference pixels (the boss icon <see cref="BossIcon"/> px).</summary>
-    internal static Image ToReference(Image strip, double scale) =>
-        Math.Abs(scale - 1) < 0.01 ? strip : ImageOps.Resample(strip, new PixelRect(0, 0, strip.Width, strip.Height), 1 / scale);
+    /// <param name="into">A buffer the caller keeps between calls (see <see cref="ImageOps.Resample(Image, PixelRect, double, Image?)"/>).</param>
+    internal static Image ToReference(Image strip, double scale, Image? into = null) =>
+        Math.Abs(scale - 1) < 0.01 ? strip : ImageOps.Resample(strip, new PixelRect(0, 0, strip.Width, strip.Height), 1 / scale, into);
 
     /// <summary>The shares of an icon's frame band that are red (a debuff on the boss) and green (the boss's own buff).</summary>
     internal static (double Red, double Green) FrameColours(Image area, PixelRect icon)
@@ -70,9 +71,12 @@ public static class DebuffReader
     /// <summary><see cref="FrameColours"/> for many windows over one image: each pixel's frame colour counted once into tables
     /// of sums, so a window's band is its outer box less its inner box, four lookups each (icon-gates.plan.md: the boss row's
     /// walk asked for the same pixels hundreds of times a pass). The same integers, so the same shares.</summary>
-    internal sealed class FrameMap
+    internal sealed class FrameMap : IDisposable
     {
-        readonly int[] _red, _green;   // (Width + 1) × (Height + 1) sums of the frame-red and frame-green pixels above and left
+        // (Width + 1) × (Height + 1) sums of the frame-red and frame-green pixels above and left. Rented (one map per boss-row
+        // walk, ~25% of steady allocations before, perf-trace): only the first row and column are read before written, so
+        // those are cleared.
+        readonly int[] _red, _green;
         readonly int _w, _h;
 
         /// <summary>The width of the image this map was made from.</summary>
@@ -81,8 +85,12 @@ public static class DebuffReader
         public FrameMap(Image area)
         {
             (_w, _h) = (area.Width, area.Height);
-            _red = new int[(_w + 1) * (_h + 1)];
-            _green = new int[_red.Length];
+            int n = (_w + 1) * (_h + 1);
+            _red = System.Buffers.ArrayPool<int>.Shared.Rent(n);
+            _green = System.Buffers.ArrayPool<int>.Shared.Rent(n);
+            Array.Clear(_red, 0, _w + 1);
+            Array.Clear(_green, 0, _w + 1);
+            for (int y = 1; y <= _h; y++) _red[y * (_w + 1)] = _green[y * (_w + 1)] = 0;
             for (int y = 0; y < _h; y++)
             {
                 int rowRed = 0, rowGreen = 0, o = (y + 1) * (_w + 1), up = y * (_w + 1);
@@ -95,6 +103,12 @@ public static class DebuffReader
                     _green[o + x + 1] = _green[up + x + 1] + rowGreen;
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            System.Buffers.ArrayPool<int>.Shared.Return(_red);
+            System.Buffers.ArrayPool<int>.Shared.Return(_green);
         }
 
         /// <summary>The same as <see cref="FrameColours"/> on the image this map was made from.</summary>
@@ -198,7 +212,11 @@ public static class DebuffReader
     /// <summary>The boss buff zone on line <paramref name="y"/> of <paramref name="r"/> (reference px): the x of each green-framed
     /// icon, left to right. Green frame share: the sigils 0.30–0.45 (bossrow*), 0.10–0.31 shrunk to HUD 80 and back; any other
     /// window 0.00 (the debuffs' frames are red).</summary>
-    internal static IReadOnlyList<int> BuffZone(Image r, int y) => BuffZone(new FrameMap(r), y);
+    internal static IReadOnlyList<int> BuffZone(Image r, int y)
+    {
+        using var map = new FrameMap(r);
+        return BuffZone(map, y);
+    }
 
     /// <summary><see cref="BuffZone(Image, int)"/> from a frame map already made over the strip (the 암수 walk's).</summary>
     internal static IReadOnlyList<int> BuffZone(FrameMap map, int y)

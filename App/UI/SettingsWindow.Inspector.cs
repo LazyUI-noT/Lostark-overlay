@@ -16,6 +16,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     OverlayCanvas? _canvas;
+    CheckBox? _offCheck;   // 꺼진 창
     CanvasBox? _inspected;
     readonly StackPanel _contextNotes = new();   // what 편집 중's pick means: over the inspector's rows
 
@@ -24,7 +25,7 @@ public partial class SettingsWindow
 
     void BuildCanvasPage()
     {
-        var canvas = _canvas = new OverlayCanvas(_s, _chars);
+        var canvas = _canvas = new OverlayCanvas(_s, _chars) { IsOn = CanvasWindowOn };   // 꺼진 창 are drawn faint
         canvas.Play.Auto = () => PreviewPlayer.Gauge(_s, _chars, PreviewTarget);   // ▶ plays a fight on its own; a click still uses a box
         canvas.Selected += ShowInspector;
         canvas.GestureStarted += RecordStep;
@@ -40,18 +41,35 @@ public partial class SettingsWindow
         CanvasTools.Children.Add(ToolCheck("크기 연동", canvas.LinkSizes, v => canvas.LinkSizes = v, "모서리로 크기를 바꿀 때 같은 줄의 칸도 같이 바뀝니다."));
         CanvasTools.Children.Add(ToolCheck("나", canvas.ShowMine, v => canvas.ShowMine = v, null));
         CanvasTools.Children.Add(ToolCheck("파티원", canvas.ShowParty, v => canvas.ShowParty = v, null));
+        var offCheck = _offCheck = ToolCheck("꺼진 창", canvas.ShowOff, v => canvas.ShowOff = v, "설정에서 꺼 둔 창도 흐리게 보여 줍니다. 끄면 켜 둔 창만 보여서 자리를 잡기 쉽습니다.");
+        CanvasTools.Children.Add(offCheck);
         var actual = new Button { Content = "1:1 크기", Margin = new(0, 2, 8, 2), ToolTip = "게임 화면과 같은 크기(100%)로 봅니다." };
         actual.Click += (_, _) => canvas.ActualSize();
         CanvasTools.Children.Add(actual);
         CanvasTools.Children.Add(_canvasNote);
-        IsVisibleChanged += (_, _) => { if (!IsVisible) StopPlay(); };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) { StopPlay(); return; }
+            offCheck.IsChecked = canvas.ShowOff = true;   // 꺼진 창 is on each time 설정 opens, never saved
+        };
         Loaded += (_, _) => { ShowCanvasShot(); canvas.Relayout(); };   // the picture at the window's real DPI
         ShowInspector(null);
     }
 
+    /// <summary>Whether a window is on, as the canvas draws it: the 디버프 and 줄 수 windows also follow their gates (자동).</summary>
+    bool CanvasWindowOn(OverlayPart part) => part switch
+    {
+        OverlayPart.Debuffs => _s.Raids.DebuffShown(_s.Debuffs),
+        OverlayPart.BarCount => _s.Raids.CountShown(),
+        _ => TrayToggles.IsShown(_s, part),
+    };
+
+    /// <summary>--hide-off: 꺼진 창 off, for screenshots.</summary>
+    internal void DemoHideOff() { if (_offCheck is not null && _canvas is not null) _offCheck.IsChecked = _canvas.ShowOff = false; }
+
     readonly TextBlock _canvasNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(8, 0, 0, 0) };
 
-    void ShowCanvasNote() => _canvasNote.Text = "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 화살표 키로 1px (Shift 10px) · 휠로 확대";
+    void ShowCanvasNote() => _canvasNote.Text = "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대";
 
     static CheckBox ToolCheck(string text, bool value, Action<bool> set, string? help)
     {
@@ -80,7 +98,11 @@ public partial class SettingsWindow
     }
 
     /// <summary>The demo's --pick: as if <paramref name="box"/> were clicked in the preview.</summary>
-    internal void Inspect(CanvasBox box) => ShowInspector(box);
+    internal void Inspect(CanvasBox box)
+    {
+        _canvas?.Select(box);   // outlined on the canvas too
+        ShowInspector(box);
+    }
 
     /// <summary>The inspector for <paramref name="box"/> (null: nothing picked, the overlay as a whole).</summary>
     void ShowInspector(CanvasBox? box)
@@ -88,8 +110,11 @@ public partial class SettingsWindow
         _inspected = box;
         var (title, about, panels) = InspectorFor(box);
         InspectorHead.Children.Clear();
+        InspectorHead.Children.Add(InspectorChips(box, title));
         InspectorHead.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        InspectorHead.Children.Add(new TextBlock { Text = about, Opacity = 0.75, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) });
+        InspectorHead.Children.Add(Muted(new TextBlock { Text = about, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) }));
+        if (SizeHint(box) is { } hint)
+            InspectorHead.Children.Add(new TextBlock { Text = hint, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) });
         foreach (var p in panels) Detach(p);
         Detach(_contextNotes);
         Inspector.Children.Clear();
@@ -117,6 +142,29 @@ public partial class SettingsWindow
         }
         foot.Children.Add(scope);
         InspectorFoot.Child = foot;
+    }
+
+    /// <summary>What the inspector can show, as chips over its title (user, 2026-11-12): the canvas's windows can be picked from
+    /// here too, the one shown is lit like its gold outline on the canvas, and 전체 goes back. A skill box has no chip of its own
+    /// until it is picked on the canvas.</summary>
+    WrapPanel InspectorChips(CanvasBox? box, string title)
+    {
+        var chips = new List<(string Text, CanvasBox? Box)>
+        {
+            ("전체", null), ("내 창", new("Plate", null, null)), ("게이지", new("Gauge", Part.게이지, null)),
+            ("버프 막대", new("BuffBar", FreeLayout.FirstBuff, null)), ("디버프", new("Debuff", null, 0)),
+        };
+        if (_s.Party.ShowOthersBySlot.Count > 0) chips.Add(("파티원", new("Party", null, null)));
+        chips.AddRange([("단심", new("Judgment", null, null)), ("암수", new("Amsu", null, null)), ("줄 수", new("Raid", null, null))]);
+        if (box?.Kind == "Skills") chips.Insert(2, (title, box));
+        var row = new WrapPanel { Margin = new(0, 0, 0, 10) };
+        foreach (var (text, target) in chips)
+        {
+            var chip = new ToggleButton { Content = text, IsChecked = target?.Kind == box?.Kind, Padding = new(8, 1, 8, 2), Margin = new(0, 0, 4, 4), FontSize = 12 };
+            chip.Click += (_, _) => { _canvas?.Select(target); ShowInspector(target); };   // ShowInspector also for a box the canvas can't pick (no party)
+            row.Children.Add(chip);
+        }
+        return row;
     }
 
     /// <summary>The panel's 기본값 (two clicks: the button asks once), the same reset its section had at the bottom. Gone where
@@ -170,28 +218,17 @@ public partial class SettingsWindow
                 ShowBox(null, plate: true);
                 return ("내 오버레이 창", "창 전체의 모양입니다.", [BoxTab, _secDisplay]);
             default:
-                return ("전체", "오버레이 전체의 표시와 배치입니다. 칸을 누르면 그 칸의 설정이 나옵니다.", [_secDisplay, _secPlace]);
+                return ("전체", "오버레이 전체의 표시와 배치입니다. 왼쪽 화면에서 칸을 누르거나 위에서 고르면 그 칸의 설정이 여기에 나옵니다.", [_secDisplay, _secPlace, _secCopyLink]);
         }
     }
 
-    /// <summary>다른 직업각인에 복사… (top bar): 복사 in the inspector, on 내 오버레이.</summary>
-    void ShowCopy()
+    /// <summary>Where a window whose size slider went to the canvas (settings-copy.plan.md) is sized now; null: it has its rows.</summary>
+    static string? SizeHint(CanvasBox? box) => box?.Kind switch
     {
-        if (_canvas is null) return;
-        _inspected = new("Copy", null, null);
-        if (_area.Name != AreaOverlay) Go(AreaOverlay);   // ShowArea fills it
-        else FillCopyInspector();
-    }
-
-    void FillCopyInspector()
-    {
-        InspectorHead.Children.Clear();
-        InspectorHead.Children.Add(new TextBlock { Text = "다른 직업각인에 복사", FontSize = 18, FontWeight = FontWeights.SemiBold });
-        Detach(_secCopy);
-        Inspector.Children.Clear();
-        Inspector.Children.Add(_secCopy);
-        InspectorFoot.Child = new TextBlock { Text = $"{ClassName(ShownClass)}의 설정을 복사합니다", Opacity = 0.75 };
-    }
+        "Judgment" or "Amsu" or "Raid" => "크기: 화면에서 테두리를 끌거나 Ctrl+화살표",
+        "BuffBar" => "길이: 화면에서 막대 끝을 끌어 바꿉니다 (자유 배치에서는 칸 모서리)",
+        _ => null,
+    };
 
     /// <summary>The inspector again for what it shows, after its rows were rebuilt.</summary>
     void RefreshInspector()

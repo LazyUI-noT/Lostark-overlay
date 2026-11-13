@@ -35,7 +35,7 @@ public sealed partial class Engine
             if (!_testMode) SaveGains();
             _gains = new(_gainsFor is not null ? _savedGains?.GetValueOrDefault(_gainsFor) : null);
             _gainsSaved = _gains.Version;
-            (_foundPanel, _panelMisses) = (null, 0);   // a spot placed on the video isn't the game's
+            (_foundPanel, _panelMisses, _measuredScale) = (null, 0, null);   // a spot placed on the video isn't the game's
         }
         _testMode = test;
         // 테스트 모드: a minimised window pauses everything (its capture would be stale), as if it weren't there.
@@ -250,7 +250,7 @@ public sealed partial class Engine
     (Fit? Fit, string Note, ManualScreen? Detected) SolveAuto(Image band, PixelRect rect)
     {
         if (FitSolver.Solve(band, rect, _vp, _testMode) is not { } fit)
-            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 스킬창에서 직접 입력을 켜 보세요. 저장된 맞춤은 그대로 둡니다.", null);
+            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 화면·인식 → 스킬창 위치에서 직접 입력을 골라 보세요. 저장된 맞춤은 그대로 둡니다.", null);
         return (fit, "", Geometry.Detected(_vp, _client));
     }
 

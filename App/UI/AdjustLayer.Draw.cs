@@ -80,22 +80,7 @@ public sealed partial class AdjustLayer
             var thin = new SolidColorBrush(Color.FromArgb(0xB0, color.R, color.G, color.B));
             var r = a.RectOf(part);
             Box(r, brush, picked ? 3 : 1.5, name);
-            switch (part)
-            {
-                case AdjustPart.스킬창:
-                    foreach (var slot in SlotInfo.All) Box(Geometry.Slot(slot, a.Vp, a.Current), thin, 1, null);
-                    break;
-                case AdjustPart.버프 or AdjustPart.디버프:
-                    var boxes = part == AdjustPart.버프 ? Geometry.BuffBoxes(a.Vp, a.Current, a.BuffSize, a.BuffCount) : Geometry.DebuffBoxes(a.Vp, a.Current, a.BuffSize);
-                    var (columns, iconBottom) = Geometry.RowGrid(boxes);
-                    foreach (int x in columns) Line(x, r.Y, x, r.Bottom, thin);
-                    Line(r.X, iconBottom, r.Right, iconBottom, thin);
-                    break;
-                case AdjustPart.보스:
-                    double axis = r.X + Geometry.BossAxis * Geometry.BossScale(a.Vp, a.Current, a.BossGameSize);
-                    Line(axis, r.Y, axis, r.Bottom, thin);
-                    break;
-            }
+            foreach (var (x1, y1, x2, y2) in a.Guides(part)) Line(x1, y1, x2, y2, thin);
             Handle(a.Handle(part), part, brush, picked);
         }
         _part.Text = Describe(a, _selected);

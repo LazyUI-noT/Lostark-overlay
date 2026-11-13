@@ -25,7 +25,7 @@ public sealed partial class OverlayCanvas : Border
     public const string PreviewNote = "다른 직업각인을 편집하는 중입니다. 칸 배치는 그 캐릭터로 접속해야 바꿀 수 있고, 창은 지금도 옮길 수 있습니다.";
 
     /// <summary>Said when a box of a member drawn from a received layout is grabbed: it can't move.</summary>
-    public const string ReceivedNote = "이 파티원은 보내 준 칸 배치 그대로 그려집니다. 직접 옮기려면 파티 탭에서 파티원 배치 받기를 끄세요.";
+    public const string ReceivedNote = "이 파티원은 보내 준 칸 배치 그대로 그려집니다. 직접 옮기려면 파티 공유 → 보내기·받기에서 '배치 받기'를 끄세요.";
 
     readonly Settings _s;
     readonly CharacterService _chars;
@@ -38,11 +38,15 @@ public sealed partial class OverlayCanvas : Border
     // ponytail: the primary screen stands for the game's; take the game window's monitor when a screenshot is linked (phase D)
     readonly Rect _screen = new(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
     readonly Rectangle _grip = new() { Fill = Brushes.White, Stroke = Brushes.Black, StrokeThickness = 1, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
-    readonly Rectangle _pick = new() { Stroke = Brushes.White, StrokeThickness = 2, StrokeDashArray = [3, 2], IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Rectangle _gripRight = Handle(), _gripBottom = Handle();   // a picked window's edge handles, where it has two sizes
+    static Rectangle Handle() => new() { Fill = Brushes.White, Stroke = Brushes.Black, StrokeThickness = 1, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    // The picked box in the accent gold, as its chip in the inspector (user, 2026-11-12); the box under the pointer dashed white.
+    readonly Rectangle _pick = new() { StrokeThickness = 3, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Rectangle _hover = new() { Stroke = Brushes.White, StrokeThickness = 1.5, StrokeDashArray = [3, 2], Opacity = 0.8, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     (OverlayRenderer R, Part? Part)? _picked;
     int? _pickedDebuff;   // a debuff box picked instead
     EditorView? _v, _beforeFull;
-    bool _showMine = true, _showParty = true;
+    bool _showMine = true, _showParty = true, _showOff = true;
 
     /// <summary>Something was picked (null: nothing), by a click or <see cref="Select"/>.</summary>
     public event Action<CanvasBox?>? Selected;
@@ -84,8 +88,12 @@ public sealed partial class OverlayCanvas : Border
             _meter.MeterOnly = true;
             _world.Children.Insert(0, _frame = ScreenFrame());   // under the screenshot and the windows
         }
+        _pick.SetResourceReference(Shape.StrokeProperty, "AccentFillColorDefaultBrush");
+        _world.Children.Add(_hover);
         _world.Children.Add(_pick);
         _world.Children.Add(_grip);
+        _world.Children.Add(_gripRight);
+        _world.Children.Add(_gripBottom);
         Play = _meter is null ? new PreviewPlayer(_mine, _buffs, _debuffs, _judgment, _amsu, _raid) : new PreviewPlayer(_mine, _buffs, _debuffs, _judgment, _amsu, _raid, _meter);
         if (scene)   // previews play at 초당 그리기 횟수, as the overlays do (user, 2026-11-10; was a fixed 15 fps)
         {
@@ -118,9 +126,10 @@ public sealed partial class OverlayCanvas : Border
             MouseLeave += (_, _) => SceneHover?.Invoke(null);
             return;
         }
-        MouseWheel += (_, e) => { var at = e.GetPosition(this); _v?.ZoomAt(at.X, at.Y, e.Delta > 0 ? ZoomStep : 1 / ZoomStep); ShowView(); ShowPick(); };
+        MouseWheel += (_, e) => { var at = e.GetPosition(this); _v?.ZoomAt(at.X, at.Y, e.Delta > 0 ? ZoomStep : 1 / ZoomStep); ShowView(); ShowPick(); ZoomFaint(); };
         MouseDown += OnDown;
         MouseMove += OnMove;
+        MouseLeave += (_, _) => { ShowHover(null); Cursor = null; };
         MouseUp += (_, _) => OnUp();
         LostMouseCapture += (_, _) => _drag = Drag.None;   // released, or taken away (Alt+Tab): no drag on hover
         KeyDown += OnKey;
@@ -128,12 +137,16 @@ public sealed partial class OverlayCanvas : Border
 
     public bool ShowMine { get => _showMine; set { _showMine = value; Relayout(); } }
     public bool ShowParty { get => _showParty; set { _showParty = value; Relayout(); } }
+
+    /// <summary>꺼진 창: windows that are off in 설정 are drawn faint (on), or not at all and not pickable (off). Not saved.</summary>
+    public bool ShowOff { get => _showOff; set { _showOff = value; Relayout(); } }
     public bool Snap { get => _s.Overlay.LayoutSnap; set => _s.Overlay.LayoutSnap = value; }
     public bool LinkSizes { get => _s.Overlay.LayoutLinkSizes; set => _s.Overlay.LayoutLinkSizes = value; }
 
     OverlayRenderer Renderer(int peer, bool buffs)
     {
         var r = new OverlayRenderer { Settings = _s, Peer = peer, BuffsOnly = buffs, ShowHidden = true };
+        r.SizeChanged += (_, _) => { if (_picked?.R == r || _pickedDebuff is not null && r == _debuffs) ShowPick(); };   // the gold frame follows the window's size
         _world.Children.Add(r);
         return r;
     }
@@ -227,13 +240,13 @@ public sealed partial class OverlayCanvas : Border
     public void Relayout()
     {
         _s.SyncPlace();   // the class picked may have a spot of its own
-        _mine.Visibility = Shown(_showMine);
-        _buffs.Visibility = Shown(_showMine && _s.Buffs.Detached);
-        _debuffs.Visibility = Shown(_showMine && _s.Raids.DebuffShown(_s.Debuffs));
-        _raid.Visibility = Shown(_showMine && _s.Raids.CountShown());
-        _judgment.Visibility = Shown(_showMine && _s.Judgment.On(_s.ActiveCharacter));
-        _amsu.Visibility = Shown(_showMine && _s.Amsu.On);
-        foreach (var p in _peers) p.Visibility = Shown(_showParty);
+        _mine.Visibility = Drawn(_mine, _showMine);
+        _buffs.Visibility = Drawn(_buffs, _showMine && _s.Buffs.Detached);
+        _debuffs.Visibility = Drawn(_debuffs, _showMine);
+        _raid.Visibility = Drawn(_raid, _showMine);
+        _judgment.Visibility = Drawn(_judgment, _showMine);
+        _amsu.Visibility = Drawn(_amsu, _showMine);
+        foreach (var p in _peers) p.Visibility = Drawn(p, _showParty);
         OverlayRenderer[] all = _meter is null ? [_mine, _buffs, _debuffs, _judgment, _amsu, _raid, .. _peers] : [_mine, _buffs, _debuffs, _judgment, _amsu, _raid, _meter, .. _peers];
         if (_scene) SceneVisibility(all);
         foreach (var r in all)
@@ -250,9 +263,9 @@ public sealed partial class OverlayCanvas : Border
         if (_scene)
         {
             if (!_sceneFitted) FitScene(all);   // once (and on a resize): the looks cycling mustn't move the zoom
-            ShowFaint(all);
         }
-        if (_pickedDebuff is not null && _debuffs.Visibility != Visibility.Visible) Pick(null, null);   // 디버프 창 turned off
+        ShowFaint(all);
+        if ((_pickedDebuff is not null ? _debuffs : _picked?.R) is { Visibility: not Visibility.Visible }) Pick(null, null);   // its window turned off or hidden
         ShowPick();
     }
 
@@ -274,8 +287,19 @@ public sealed partial class OverlayCanvas : Border
             case { Kind: "Party" } b when _peers.Length > 0: Pick(_peers[0], b.Part); break;
             case { Kind: "BuffBar" } b when _s.Buffs.Detached: Pick(_buffs, b.Part); break;
             case { Kind: not "Party" } b: Pick(_mine, b.Part); break;
+            default: (_picked, _pickedDebuff) = (null, null); ShowPick(); break;   // party with no member drawn: no old gold frame left
         }
+        // picked from the chips or search, it may lie off the view (e.g. 암수 at the screen's left): pan just enough to show it
+        // (after layout: a pick while the page opens has no view or window size yet)
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            if ((_pickedDebuff is not null ? _debuffs : _picked?.R) is not { Visibility: Visibility.Visible } shown || _v is not { } v) return;
+            v.PanInto(Canvas.GetLeft(shown), Canvas.GetTop(shown), shown.ActualWidth, shown.ActualHeight, ActualWidth, ActualHeight, PickMargin);
+            ShowView();
+        });
     }
+
+    const double PickMargin = 24;   // view px between a window panned into view and the canvas edge
 
     CanvasBox Box(OverlayRenderer r, Part? part) =>
         r == _judgment ? new("Judgment", part, null)
@@ -307,22 +331,68 @@ public sealed partial class OverlayCanvas : Border
     /// <summary>Outlines the picked box; its corner grip, which resizes it, shows as a white square.</summary>
     void ShowPick()
     {
-        _grip.Visibility = Visibility.Collapsed;
+        _grip.Visibility = _gripRight.Visibility = _gripBottom.Visibility = Visibility.Collapsed;
         (OverlayRenderer? On, Rect? Rect) shown = _pickedDebuff is { } d ? (_debuffs, _debuffs.DebuffRect(d))
-            : _picked is ({ } r, { } part) ? (r, r.PartRect(part)) : (null, null);
+            : _picked is ({ } r, { } part) ? (r, r.PartRect(part))
+            : _picked is ({ } w, null) ? (w, Whole(w)) : ((OverlayRenderer?)null, (Rect?)null);   // a window picked as a whole: its plate
         var (on, rect) = shown;
-        bool visible = rect is not null && on?.Visibility == Visibility.Visible;   // not on a window turned off (디버프 창)
-        _pick.Visibility = Shown(visible);
-        if (!visible || rect is not { } b || on is null) return;
-        (_pick.Width, _pick.Height) = (b.Width + 4, b.Height + 4);
-        Canvas.SetLeft(_pick, Canvas.GetLeft(on) + b.X - 2);
-        Canvas.SetTop(_pick, Canvas.GetTop(on) + b.Y - 2);
+        if (!Outline(_pick, on, rect)) return;
+        if (_picked is ({ } sized, null) && Sizing(sized) is { } sizing) { ShowPlateHandles(sized, Whole(sized), WindowSizing.ModeOf(_s, sizing) == SizeMode.Two); return; }
+        if (rect is not { } b || on is null || _picked is (_, null)) return;   // a whole window has no box grip
         if (on == _buffs || on == _judgment || on == _amsu || on == _raid || on.ShowsReceivedLayout || Previewing(on)) return;
         double g = GripSize(b);
         (_grip.Width, _grip.Height, _grip.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
         Canvas.SetLeft(_grip, Canvas.GetLeft(on) + b.Right - g);
         Canvas.SetTop(_grip, Canvas.GetTop(on) + b.Bottom - g);
         _grip.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>The white squares on a picked window's outline: the corner, and the middle of the right and bottom edges where it has two sizes.</summary>
+    void ShowPlateHandles(OverlayRenderer on, Rect plate, bool edges)
+    {
+        double g = Math.Min(Grip / (_v?.Scale ?? 1), Math.Min(plate.Width, plate.Height) / 3);
+        void Put(Rectangle h, double cx, double cy)
+        {
+            (h.Width, h.Height, h.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
+            Canvas.SetLeft(h, Canvas.GetLeft(on) + cx - g / 2);
+            Canvas.SetTop(h, Canvas.GetTop(on) + cy - g / 2);
+            h.Visibility = Visibility.Visible;
+        }
+        Put(_grip, plate.Right - g / 2, plate.Bottom - g / 2);
+        if (!edges) return;
+        Put(_gripRight, plate.Right, plate.Y + plate.Height / 2);
+        Put(_gripBottom, plate.X + plate.Width / 2, plate.Bottom);
+    }
+
+    /// <summary>A window's plate, inside its bleed.</summary>
+    static Rect Whole(OverlayRenderer r) => new(Bleed, Bleed, Math.Max(0, r.ActualWidth - 2 * Bleed), Math.Max(0, r.ActualHeight - 2 * Bleed));
+
+    /// <summary>Puts <paramref name="frame"/> 2 px round <paramref name="rect"/> of <paramref name="on"/>; hidden with no rect or on
+    /// a window turned off (디버프 창). Returns whether it shows.</summary>
+    static bool Outline(Rectangle frame, OverlayRenderer? on, Rect? rect)
+    {
+        bool visible = rect is not null && on?.Visibility == Visibility.Visible;
+        frame.Visibility = Shown(visible);
+        if (!visible || rect is not { } b || on is null) return false;
+        (frame.Width, frame.Height) = (b.Width + 4, b.Height + 4);
+        Canvas.SetLeft(frame, Canvas.GetLeft(on) + b.X - 2);
+        Canvas.SetTop(frame, Canvas.GetTop(on) + b.Y - 2);
+        return true;
+    }
+
+    /// <summary>Outlines what a click at the pointer would pick (a box, else the window), with a hand: so the canvas reads as
+    /// clickable (user, 2026-11-12). Nothing while ▶ runs.</summary>
+    void ShowHover(System.Windows.Input.MouseEventArgs? e)
+    {
+        Rect? rect = null;
+        var r = e?.OriginalSource as OverlayRenderer;
+        if (r is not null && e is not null && !Play.Running)
+        {
+            var at = e.GetPosition(r);
+            rect = r == _debuffs ? r.DebuffAt(at) is { } i ? r.DebuffRect(i) : Whole(r)
+                : r.PartAt(at) is var (_, box) ? box : Whole(r);
+        }
+        Outline(_hover, r, rect);
     }
 
     /// <summary>The boxes <paramref name="r"/> draws: yours for the class shown, or a party member's for theirs; 기본's

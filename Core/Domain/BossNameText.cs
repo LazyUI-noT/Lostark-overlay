@@ -17,7 +17,7 @@ public static class BossNameText
         if (read.Count == 0) return null;
         var best = new List<string>();
         int bestErrors = int.MaxValue;
-        foreach (var gate in gates)
+        foreach (var gate in gates.Where(g => !g.Hidden))   // a ??? gate (2-3) is reached through its After, never by name: it shares 2-2's boss
             foreach (var boss in gate.Bosses.Select(Normalize).Where(b => b.Length > 0))
             {
                 int errors = read.Min(line => Errors(line, boss));
@@ -42,7 +42,7 @@ public static class BossNameText
         List<RaidGate> shown = [.. scored.Where(x => x.Score == scored.Max(y => y.Score)).Select(x => x.Gate)];
         if (panel.Difficulty is not { } d) return shown;
         bool ex = d.StartsWith("EX", StringComparison.Ordinal);
-        static IEnumerable<string> Levels(RaidGate g) => g.Hp.Keys.Concat(g.HiddenHp.Keys);
+        static IEnumerable<string> Levels(RaidGate g) => g.Hp.Keys;
         static bool IsEx(RaidGate g) => g.Gate.Contains("EX") || Levels(g).Any(k => k.StartsWith("EX", StringComparison.Ordinal));
         // EX or not only: an exact difficulty would drop a gate whose HP for it isn't in raids.json yet (4막 2관문 싱글).
         List<RaidGate> level = [.. shown.Where(g => IsEx(g) == ex)];

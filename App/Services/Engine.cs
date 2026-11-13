@@ -111,7 +111,7 @@ public sealed partial class Engine : IDisposable
     readonly bool[] _iconFresh = new bool[SlotInfo.All.Length];   // IconSeen already sent in this copy run
     const double MinHueSpread = 20;   // below: one dark tint (town, silenced), a poor picture of the skill
     BuffState[] _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
-    readonly IconGate<BuffKind?> _buffIdentify = new(BuffReader.Classify);   // buff icons identified on change (perf-hotspots 3b)
+    readonly IconGate<(BuffKind Kind, double Structure)?> _buffIdentify = new(BuffReader.Read);   // buff icons identified on change (perf-hotspots 3b)
     readonly IconGate<DebuffKind?> _debuffIdentify = new(DebuffReader.Classify);   // your debuff icons, the same (icon-gates step 2)
     bool _buffsOn, _gaugeOn, _debuffsOn;   // planned this step (Publish reads these, not the live config)
     DebuffStatus _debuffs = DebuffStatus.None;
@@ -310,6 +310,7 @@ public sealed partial class Engine : IDisposable
 
     void Step()
     {
+        Perf.Count("엔진 스텝");   // loop turns a second (perf-trace)
         if (_gainsReset) { _gainsReset = false; ForgetGains(); }   // also with no game running
         if (!EnsureGame())
         {
@@ -371,7 +372,7 @@ public sealed partial class Engine : IDisposable
         if (!ReadSteps.Due(_lastStep, config.ReadsPerSecond, now))
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
-            Thread.Sleep(1);
+            Thread.Sleep(ReadSteps.Idle(_lastStep, config.ReadsPerSecond, now));
             return;
         }
         _lastStep = ReadSteps.Next(_lastStep, config.ReadsPerSecond, now);
@@ -567,9 +568,10 @@ public sealed partial class Engine : IDisposable
             var cal = _cal[(int)slot];
             var reading = SlotClassifier.Read(slot, crop, t, cal, _digits!, Dark(slot, config));
             _scheduler.MarkRead(slot, t);
-            // ponytail: a copy per 일반 read (≤ 80 small crops a second); copy only greyed ones or on request if GC shows.
+            // The capture buffer is reused next step: keep the pixels in this slot's own buffer (no allocation once sized);
+            // the rare handouts (ReadyOrdinary, the subclass capture) get copies of it.
             if (slot is >= SlotId.일반1 and <= SlotId.일반8)
-                (_skillColour[slot - SlotId.일반1], _skillTint[slot - SlotId.일반1], _skillCrops[slot - SlotId.일반1]) = (SubclassMatcher.Colour(crop), SkillTint.Share(crop), crop.Copy());
+                (_skillColour[slot - SlotId.일반1], _skillTint[slot - SlotId.일반1], _skillCrops[slot - SlotId.일반1]) = (SubclassMatcher.Colour(crop), SkillTint.Share(crop), crop.CopyInto(_skillCrops[slot - SlotId.일반1]));
 
             if (cal is not null) { calibrated++; if (reading.Kind == ReadKind.Unreadable) unreadable++; }
             else if (reading.Kind == ReadKind.Ready) uncalibratedReady.Add(i);   // slots on cooldown during the fit
@@ -607,7 +609,7 @@ public sealed partial class Engine : IDisposable
             if (_tintLast) _tintAt = t; // on screen in this very frame: a cutscene's red frames don't pass the vote
             if (_emblemPending) { _emblemPending = false; CaptureEmblem(); }
             bool greyed = SubclassMatcher.Greyed(_skillColour);
-            if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>()] : null, ReadyOrdinary()); }
+            if (subclassCrop is not null) { _subclassPending = false; SubclassSlotCaptured?.Invoke(subclassCrop, greyed ? [.. _skillCrops.OfType<Image>().Select(c => c.Copy())] : null, ReadyOrdinary()); }
             if (_skillsRequested)
             {
                 _skillsRequested = false;
@@ -628,7 +630,7 @@ public sealed partial class Engine : IDisposable
 
     /// <summary>The 일반 slots' last crops, those ready now.</summary>
     List<Image> ReadyOrdinary() => [.. Enumerable.Range(0, 8)
-        .Where(k => _skillCrops[k] is not null && _states[(int)(SlotId.일반1 + k)].Phase == SlotPhase.Ready).Select(k => _skillCrops[k]!)];
+        .Where(k => _skillCrops[k] is not null && _states[(int)(SlotId.일반1 + k)].Phase == SlotPhase.Ready).Select(k => _skillCrops[k]!.Copy())];
 
     bool Advance(TimeSpan now)
     {
@@ -642,7 +644,8 @@ public sealed partial class Engine : IDisposable
         return changed;
     }
 
-    /// <summary>Finds the buffs in the captured buff row (<see cref="Geometry.BuffArea"/>) and updates each indicator.
+    /// <summary>Finds the buffs in the captured buff row (<see cref="Geometry.BuffArea"/>) and updates each indicator. Boxes
+    /// past the row's framed icons are most likely empty scenery and need a closer match (<see cref="BuffReader.ReadRow"/>).
     /// Kept apart from the slot reads: nothing here feeds the skill or gauge paths. Returns true if anything changed.</summary>
     bool ReadBuffs(Image area, int size, int count, TimeSpan t)
     {
@@ -652,9 +655,11 @@ public sealed partial class Engine : IDisposable
         PixelRect Local(PixelRect r) => r with { X = r.X - origin.X, Y = r.Y - origin.Y };
         var readings = new List<BuffReading>();
         var boxes = Geometry.BuffBoxes(_vp, _fit!, size, count);
+        var kinds = BuffReader.ReadRow(boxes.Length, i => BuffReader.Framed(area, Local(boxes[i].Icon)),
+            i => _buffIdentify.Classify(area, i, Local(boxes[i].Icon)));
         for (int i = 0; i < boxes.Length; i++)
         {
-            var kind = _buffIdentify.Classify(area, i, Local(boxes[i].Icon));
+            var kind = kinds[i];
             double? seconds = kind is null ? null : reader.ReadTimer(area, Local(boxes[i].Timer));
             if (kind is { } k) readings.Add(new(k, seconds, t));
             BoxDebug($"버프 {i + 1}", area, Local(boxes[i].Icon), Local(boxes[i].Timer), kind?.ToString(), seconds);
@@ -749,7 +754,13 @@ public sealed partial class Engine : IDisposable
     /// video (Reinforce.Clean; buff sweep 720p 36 → 95%); else as captured.</summary>
     static Image Reinforced(Image capture) => GameWindow.ReadsReinforced ? Reinforce.Clean(capture) : capture;
 
-    void Publish(TimeSpan t) =>
+    void Publish(TimeSpan t)
+    {
+        Perf.Count("스냅샷");
+        PublishNow(t);
+    }
+
+    void PublishNow(TimeSpan t) =>
         SnapshotReady?.Invoke(new Snapshot(t, [.. _states], _awakeningChanged, _gaugeOn ? _gauge : null, [.. Enum.GetValues<SlotGroup>()], [.. _config.AdenSlots])
         {
             Buffs = _buffsOn ? [.. _buffs] : [],
@@ -765,7 +776,7 @@ public sealed partial class Engine : IDisposable
             DaenantuKilled = _shadow is { Dead: true },
             Shadow = _shadow is { Dead: false } s && _shadowBar is { } bar && _shadowDealt is { } dealt && ShadowRead.Shown(_config.Raids, ShadowGate(_config))
                 ? new ShadowView(s.Remaining, s.Lines, bar, s.Dealt, dealt) : null,
-            BossHp = _config.Raids?.BossHpEasy == true && _shadow is null ? _bossHp.View : null,   // not over 대난투's number
+            BossHp = _config.Raids?.BossHpEasy == true && _shadow is null ? LabelBesideName(t) : null,   // not over 대난투's number
             Detect = _detect,
             DetectAreas = _detectAreas,
             DetectView = _vp,

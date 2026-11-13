@@ -199,21 +199,10 @@ public class RaidSettingsTests
     }
 
     [Fact]
-    public void The_two_three_estimate_settings_survive_a_save_and_hand_edits_are_clamped()
+    public void An_older_file_with_the_retired_2_3_estimate_fields_still_loads()
     {
-        var s = new Settings();
-        Assert.Equal((43.5, 1.0), (s.Raids.AssistShare, s.Raids.OtherParty));
-        (s.Raids.AssistShare, s.Raids.OtherParty) = (45, 0.5);
-        s.Raids.Gate("final-ex-g2-3").Esthers = [new("공아만 3칸", 1870, 60), new("히든 아만 3칸", 3779, 10)];
-        (s.Raids.Gate("final-ex-g2-3").Assist1, s.Raids.Gate("final-ex-g2-3").Assist2) = (1000, 1100);
-        Assert.Equal((1000, 1100), (RoundTrip(s).Raids.Gate("final-ex-g2-3").Assist1, RoundTrip(s).Raids.Gate("final-ex-g2-3").Assist2));
-        var back = RoundTrip(s).Raids;
-        Assert.Equal((45, 0.5), (back.AssistShare, back.OtherParty));
-        Assert.Equal([new EstherUse("공아만 3칸", 1870, 60), new EstherUse("히든 아만 3칸", 3779, 10)], back.Gate("final-ex-g2-3").Esthers);
-        (s.Raids.AssistShare, s.Raids.OtherParty) = (500, -1);
-        s.Raids.Gate("final-ex-g2-3").Esthers = [new("x", -5, -1), new(" ", 10, 10)];
-        back = RoundTrip(s).Raids;
-        Assert.Equal((RaidSettings.MaxAssistShare, 0), (back.AssistShare, back.OtherParty));
-        Assert.Equal([new EstherUse("x", 0, 0)], back.Gate("final-ex-g2-3").Esthers);   // clamped; a nameless use dropped
+        // 0.17 and before: 조력 비율, 다른 파티 배수, 2-1 조력 피해량 and the 에스더 plan (retired 2026-11-12).
+        var s = SettingsStore.Normalize(JsonSerializer.Deserialize<Settings>("""{ "Raids": { "AssistShare": 45, "OtherParty": 0.5, "Gates": { "final-ex-g2-3": { "Assist1": 1000, "Esthers": [ { "Name": "공아만 3칸", "Damage": 1870, "At": 60 } ], "Offset": 2 } } } }""", SettingsStore.Json)!);
+        Assert.Equal(2, s.Raids.Gate("final-ex-g2-3").Offset);
     }
 }

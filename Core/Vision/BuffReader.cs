@@ -1,3 +1,4 @@
+using GaugeOverlay.Core.Cooldown;
 using GaugeOverlay.Core.Domain;
 
 using static GaugeOverlay.Core.Vision.ImageOps;
@@ -6,7 +7,8 @@ namespace GaugeOverlay.Core.Vision;
 
 /// <summary>Finds the four party buffs (PLAN §4 버프) in the buff row and reads their timers. A box counts as a buff
 /// only when its icon matches the buff's template in structure (a coarse colour grid) and in hue; the frame and timer
-/// colours differ between players (gold, green), so neither is used. Kept apart from the skill and gauge paths.
+/// colours differ between players (gold, green), so the frame only tells where the row's icons end (<see cref="ReadRow"/>).
+/// Kept apart from the skill and gauge paths.
 /// Not thread-safe: one instance per reading thread.</summary>
 public sealed class BuffReader
 {
@@ -37,7 +39,57 @@ public sealed class BuffReader
 
     /// <summary>The buff in the icon at <paramref name="icon"/> (relative to <paramref name="area"/>), or null for
     /// another buff, an empty box or an icon under the game's periodic glare.</summary>
-    public static BuffKind? Classify(Image area, PixelRect icon) => Best(Scores(area, icon)) is { } k ? (BuffKind)k : null;
+    public static BuffKind? Classify(Image area, PixelRect icon) => Read(area, icon)?.Kind;
+
+    /// <summary><see cref="Classify"/> and the winning template's structure score, for <see cref="ReadRow"/>'s stricter bar.</summary>
+    public static (BuffKind Kind, double Structure)? Read(Image area, PixelRect icon)
+    {
+        var scores = Scores(area, icon);
+        return Best(scores) is { } k ? ((BuffKind)k, scores.Structure[k]) : null;
+    }
+
+    // ── Frame ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    // A buff's frame is gold or green by who cast it (olive at buff 80%); some icons (another player's purple 뎀증) have none.
+    // Frame-band share in those colours (scratch probe over every buffrow fixture and v1, 2026-11-12): real buffs 0.19+ on
+    // buffrow_bg, dbl, dohwa1/2, gzbug, hud80/90 and wrong; down to 0.00 on 4k_down (frames shrunk to grey) and a dimmed
+    // screen; v1's empty boxes over the scenery 0.00–0.05.
+    internal const double MinFrame = 0.05;
+    // Past the framed run a box needs this structure: v1's empty boxes reach 0.69 (60 fps scan); frameless real icons past
+    // the run score 0.71–0.87 on 4k_down, so 2 of its 493 reads (0.71, 0.73) are lost, and a dimmed screen (the settings
+    // window in buff_80_to_110) drops a real icon for those frames. BuffTracker rides over short gaps.
+    internal const double MinUnframedStructure = 0.75;
+
+    /// <summary>Whether the box at <paramref name="icon"/> has a buff frame: its outer band (2 px of 31, scaled) at least
+    /// <see cref="MinFrame"/> green or gold. Empty boxes show the scenery and no frame.</summary>
+    public static bool Framed(Image area, PixelRect icon)
+    {
+        int band = Math.Max(1, (int)Math.Round(icon.Width * 2 / 31.0)), frame = 0, all = 0;
+        for (int y = Math.Max(0, icon.Y); y < Math.Min(area.Height, icon.Bottom); y++)
+            for (int x = Math.Max(0, icon.X); x < Math.Min(area.Width, icon.Right); x++)
+            {
+                if (x - icon.X >= band && icon.Right - 1 - x >= band && y - icon.Y >= band && icon.Bottom - 1 - y >= band) continue;
+                var (b, g, r) = area.Pixel(x, y);
+                all++;
+                if (FramePixel(b, g, r)) frame++;
+            }
+        return all > 0 && frame >= MinFrame * all;
+    }
+
+    /// <summary>Green (as <see cref="DebuffReader.FrameColours"/>) or gold to olive: red and green well over blue.</summary>
+    static bool FramePixel(int b, int g, int r) =>
+        g >= 90 && g - Math.Max(r, b) >= 40 || Math.Max(r, g) >= 90 && Math.Min(r, g) - b >= 30;
+
+    /// <summary>The buffs in a row of <paramref name="count"/> boxes, box 0 first. The row packs from box 0 (the right), so the
+    /// boxes up to the last framed one (<see cref="RowCadence.Filled"/>: one unframed box passed) hold icons and read at the
+    /// usual bar; a box past them is most likely empty scenery, read only at <see cref="MinUnframedStructure"/>. Pure.</summary>
+    public static BuffKind?[] ReadRow(int count, Func<int, bool> framed, Func<int, (BuffKind Kind, double Structure)?> read)
+    {
+        int run = RowCadence.Filled(count, framed);
+        var row = new BuffKind?[count];
+        for (int i = 0; i < count; i++)
+            if (read(i) is { } r && (i < run || r.Structure >= MinUnframedStructure)) row[i] = r.Kind;
+        return row;
+    }
 
     /// <summary>The template that passes both checks with the highest structure score, unless a look-alike of it
     /// scores as well; null for none. Shared with <see cref="DebuffReader"/>.</summary>
@@ -70,17 +122,21 @@ public sealed class BuffReader
         // Every offset's thumbnail from one table of sums: no crop or array per offset (perf-hotspots.plan.md, 3a).
         using var sums = new BgrSums(area, region);
         Span<float> thumb = stackalloc float[Grid * Grid * 3];
+        Span<double> centred = stackalloc double[Grid * Grid * 3];
+        var templates = Array.ConvertAll(thumbs, Centred.Of);
+        var alikes = Array.ConvertAll(lookAlikes, l => (l.Of, Thumb: Centred.Of(l.Thumb)));
         for (int dy = -search; dy <= search; dy++)
             for (int dx = -search; dx <= search; dx++)
             {
                 var r = inner with { X = inner.X + dx, Y = inner.Y + dy };
                 if (r.X < 0 || r.Y < 0 || r.Right > area.Width || r.Bottom > area.Height) continue;
                 sums.Thumb(r, thumb);
-                foreach (var (of, t) in lookAlikes) lookAlike[of] = Math.Max(lookAlike[of], ChannelNcc(thumb, t));
+                double squares = Centre(thumb, centred);
+                foreach (var (of, t) in alikes) lookAlike[of] = Math.Max(lookAlike[of], ChannelNcc(centred, squares, t));
                 double? meanHue = null;   // once per offset, and only when a template's best moved here
                 for (int k = 0; k < thumbs.Length; k++)
                 {
-                    double s = ChannelNcc(thumb, thumbs[k]);
+                    double s = ChannelNcc(centred, squares, templates[k]);
                     if (s <= best[k]) continue;
                     best[k] = s;
                     meanHue ??= SlotClassifier.ColourStats(area, r).MeanHue;
@@ -159,14 +215,37 @@ public sealed class BuffReader
 
     /// <summary>Correlation of two colour thumbnails with each channel's own mean removed: the same shapes in each
     /// channel, whatever the colour balance (every gold icon has R &gt; G &gt; B; colour is the hue check's job).</summary>
-    internal static double ChannelNcc(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
+    /// <remarks>Split in two so each side is centred once: the thumb once per offset (<see cref="Centre"/>), each template once
+    /// ever (<see cref="Centred.Of"/>). Same sums in the same order as one pass, so bit for bit the same (BuffMatchExactTests).</remarks>
+    internal static double ChannelNcc(ReadOnlySpan<double> a, double saa, Centred b)
     {
-        Span<double> ma = stackalloc double[3], mb = stackalloc double[3];
-        for (int i = 0; i < a.Length; i++) { ma[i % 3] += a[i]; mb[i % 3] += b[i]; }
-        for (int c = 0; c < 3; c++) { ma[c] /= a.Length / 3; mb[c] /= b.Length / 3; }
-        double sab = 0, saa = 0, sbb = 0;
-        for (int i = 0; i < a.Length; i++) { double da = a[i] - ma[i % 3], db = b[i] - mb[i % 3]; sab += da * db; saa += da * da; sbb += db * db; }
-        return saa < 1e-6 || sbb < 1e-6 ? 0 : sab / Math.Sqrt(saa * sbb);
+        double sab = 0;
+        var db = b.Values;
+        for (int i = 0; i < a.Length; i++) sab += a[i] * db[i];
+        return saa < 1e-6 || b.Squares < 1e-6 ? 0 : sab / Math.Sqrt(saa * b.Squares);
+    }
+
+    /// <summary>Writes <paramref name="a"/> with each channel's mean removed into <paramref name="centred"/>; returns its sum of squares.</summary>
+    internal static double Centre(ReadOnlySpan<float> a, Span<double> centred)
+    {
+        Span<double> m = stackalloc double[3];
+        for (int i = 0; i < a.Length; i++) m[i % 3] += a[i];
+        for (int c = 0; c < 3; c++) m[c] /= a.Length / 3;
+        double squares = 0;
+        for (int i = 0; i < a.Length; i++) { double d = a[i] - m[i % 3]; centred[i] = d; squares += d * d; }
+        return squares;
+    }
+
+    /// <summary>A template thumb centred by <see cref="Centre"/>, kept per array (templates are never changed once built).</summary>
+    internal sealed record Centred(double[] Values, double Squares)
+    {
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<float[], Centred> Kept = new();
+
+        public static Centred Of(float[] thumb) => Kept.GetValue(thumb, t =>
+        {
+            var values = new double[t.Length];
+            return new(values, Centre(t, values));
+        });
     }
 
     internal static double HueDistance(double a, double b) { double d = Math.Abs(a - b) % 360; return d > 180 ? 360 - d : d; }

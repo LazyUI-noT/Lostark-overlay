@@ -8,17 +8,12 @@ using static GaugeOverlay.App.UI.UiBuild;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>클래스별: per 직업각인, your boxes (나), and per class party members' (파티원): what is shown, where, in what
-/// colour and for members what size, plus 복사. The 직업각인 (or 기본) edited is picked in the header's 편집 중 line; the rules
+/// colour and for members what size, plus 복사 (on its own page, SettingsWindow.Copy.cs). The 직업각인 (or 기본) edited is picked in the header's 편집 중 line; the rules
 /// are <see cref="ClassProfiles"/>' and <see cref="ClassPicker"/>'.</summary>
 public partial class SettingsWindow
 {
-    const string AllClasses = "*";   // 복사 → 대상: every class and the template
     string? _classShown;             // the entry picked in 편집 중 (ClassProfiles.Template = 기본); null = the character's
     readonly CardStack _skillsClass = new();   // 스킬 칸 under the box options: the class's 나 part
-    CopyParts _copyParts = CopyParts.Color | CopyParts.Size | CopyParts.Layout;
-    bool _copyFromMembers, _copyToMembers = true;
-    string _copyTo = AllClasses;
-    string? _copyResult;
 
     static string ClassName(string cls) => cls == ClassProfiles.Template ? "기본" : cls;
 
@@ -39,7 +34,8 @@ public partial class SettingsWindow
             () => SettingsResets.Classes(_s)));
         FillPlace(read, Edit);
         FillSkillList();
-        CopyPart(Refill(_secCopy, "복사", "이 설정의 나 또는 파티원 설정에서 고른 부분을 다른 설정으로 복사합니다. 크기는 파티원 설정에만 있습니다."), cls);
+        FillCopyPage();
+        FillCopyLink();
         FillMembers();
     }
 
@@ -52,10 +48,11 @@ public partial class SettingsWindow
         var pick = _pickCombo = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), cls, PickEntry);
         pick.MinWidth = 220;
         AutomationProperties.SetName(pick, "편집 중");
-        _context.Children.Add(new TextBlock { Text = "편집 중", Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) });
+        _context.Children.Add(Muted(new TextBlock { Text = "편집 중", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) }));
         _context.Children.Add(pick);
+        _context.Children.Add(PickSearch(pick, "편집 중"));
         if (cls == ActiveOrTemplate && cls != ClassProfiles.Template)
-            _context.Children.Add(new TextBlock { Text = "· 지금 캐릭터", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 0, 0, 0) });
+            _context.Children.Add(Muted(new TextBlock { Text = "· 지금 캐릭터", VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 0, 0, 0) }));
         if (cls != ClassProfiles.Template)
         {
             bool starred = _s.FavoriteClasses.Contains(cls);
@@ -64,19 +61,14 @@ public partial class SettingsWindow
             star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); };
             _context.Children.Add(star);
         }
-        var copy = _copyButton = new Button { Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = CopyLabel };
-        AutomationProperties.SetName(copy, CopyLabel);
-        copy.Click += (_, _) => ShowCopy();
-        _context.Children.Add(copy);
-        FitCopyButton();
         if (cls == ClassProfiles.Template)
         {
             _contextNotes.Children.Add(Note("기본: 클래스 정보가 없는 캐릭터와, 설정을 바꾸지 않은 클래스의 파티원에게 쓰입니다. 새 직업각인은 처음에 클래스의 설정을, 없으면 기본을 복사합니다. 버프·초각스·각성기·일반스킬만 있고, 아덴 게이지와 아덴스킬은 없습니다."
-                + (ClassProfiles.ActiveKey(_s) is null ? "" : " 직업각인마다 자기 설정이 있어서, 기본을 바꿔도 지금 오버레이는 달라지지 않습니다.")));
+                + (ClassProfiles.ActiveKey(_s) is null ? "" : " 직업각인마다 자기 설정이 있어, 기본을 바꿔도 지금 오버레이는 그대로입니다.")));
             return;
         }
         _contextNotes.Children.Add(Note("내 칸과 내 창의 위치·크기는 이 직업각인에 따로 저장됩니다. 파티원 설정은 클래스 안의 모든 직업각인이 같이 씁니다."
-            + (PreviewTarget is null ? "" : " 설정을 닫을 때까지 화면의 내 오버레이도 이 직업각인의 예시로 보입니다.")));
+            + (PreviewTarget is null ? "" : " 내 오버레이 화면의 내 칸은 이 직업각인의 예시로 보입니다.")));
         if (PreviewTarget is not null && PreviewTarget.IconsMissing(ClassProfiles.Of(_s, cls).Mine, PreviewIcons))
             _contextNotes.Children.Add(Note(NoSavedIconsNote));
     }
@@ -147,7 +139,7 @@ public partial class SettingsWindow
 
         if (!m.UseMineSize)
         {
-            p.Children.Add(SliderRow("너비", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "보내기·받기의 '파티원 크기 받기'나 '파티원 배치 받기'를 켜도, 받은 크기와 배치는 비율을 유지한 채 이 크기 안에 맞춥니다. 이보다 커지지 않습니다."));
+            p.Children.Add(SliderRow("너비", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => edit().Members.Width = v, Changed, "파티원 칸은 이 크기보다 커지지 않습니다. 보내기·받기의 '파티원 크기 받기'나 '배치 받기'를 켜도 받은 크기와 배치를 비율대로 이 안에 맞춥니다."));
             p.Children.Add(SliderRow("높이", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Height, 0.05, v => $"{v * 100:0}%", v => edit().Members.Height = v, Changed));
         }
         if (m.UseMineColor) return;
@@ -158,60 +150,25 @@ public partial class SettingsWindow
             enabled: m.Color == ColorSource.Personal);
     }
 
-    void CopyPart(Panel p, string cls)
-    {
-        var parts = new List<UIElement>();
-        foreach (var (part, text) in new[] { (CopyParts.Color, "색"), (CopyParts.Size, "크기"), (CopyParts.Layout, "배치"), (CopyParts.Display, "표시"), (CopyParts.Effects, "효과"),
-            (CopyParts.Progress, "쿨 진행 표시"), (CopyParts.Timer, "남은 쿨 (초)") })
-            parts.Add(Check(text, _copyParts.HasFlag(part), v => _copyParts = v ? _copyParts | part : _copyParts & ~part, () => { }));
-        p.Children.Add(Row("복사할 것", [.. parts]));
-        p.Children.Add(Row("가져올 설정", SideCombo(_copyFromMembers, v => _copyFromMembers = v), Label($"({ClassName(cls)})", 0.7)));
-        var to = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, ClassPicker.CopyFavorites(_s.FavoriteClasses, _s.Characters)).Prepend(AllClasses), _copyTo, v => _copyTo = v);
-        var copy = new Button { Content = "복사" };
-        Themes.Primary(copy);
-        copy.Click += (_, _) =>
-        {
-            if (_copyParts == 0) { _copyResult = "복사할 것을 고르세요."; Dispatcher.BeginInvoke(FillClassSections); return; }
-            const CopyParts mineOnly = CopyParts.Progress | CopyParts.Timer;   // 나 → 나 only (ClassProfiles.Copy)
-            bool membersSide = _copyFromMembers || _copyToMembers;
-            if (membersSide && (_copyParts & ~mineOnly) == 0)
-            {
-                _copyResult = "쿨 진행 표시와 남은 쿨 (초)는 나에서 나로만 복사됩니다.";
-                Dispatcher.BeginInvoke(FillClassSections);
-                return;
-            }
-            var c = ClassProfiles.Of(_s, cls);
-            ClassProfile from = _copyFromMembers ? c.Members : c.Mine;
-            // 모든 클래스: 기본 and every 직업각인 (party members: each class once, as theirs are the class's).
-            var entries = ClassPicker.CopyTargets(_copyTo == AllClasses ? null : _copyTo, _chars.Classes, _copyToMembers);
-            var targets = entries.Select(n => ClassProfiles.Edit(_s, n)).Select(t => _copyToMembers ? (ClassProfile)t.Members : t.Mine).ToList();
-            ClassProfiles.Copy(_s, from, targets, _copyParts);
-            _copyResult = $"{targets.Count(t => t != from)}곳에 복사했습니다."
-                + (membersSide && (_copyParts & mineOnly) != 0 ? " 쿨 진행 표시와 남은 쿨 (초)는 파티원 쪽에 복사되지 않습니다." : "");
-            Changed();
-            Dispatcher.BeginInvoke(FillClassSections);
-        };
-        p.Children.Add(Row("대상", SideCombo(_copyToMembers, v => _copyToMembers = v), to, copy));
-        if (_copyResult is { } result) p.Children.Add(Note(result));
-    }
-
     /// <summary>표시: groups, gauge and hidden slots of <paramref name="read"/>; edits go to <paramref name="edit"/>().</summary>
     void DisplayRows(Panel p, ClassProfile read, Func<ClassProfile> edit, bool enabled)
     {
         if (!enabled) return;   // following 나: nothing of its own to show
-        var groups = new List<UIElement>();
-        foreach (var g in Enum.GetValues<SlotGroup>())
-            groups.Add(Check(g.ToString(), read.Groups.GetValueOrDefault(g, true), v => edit().Groups[g] = v, Changed));
-        groups.Add(Check("아덴 게이지", read.Gauge, v => edit().Gauge = v, Changed));
-        p.Children.Add(Row(Described("표시", "끈 그룹은 빠지고 배경판이 그만큼 줄어듭니다"), [.. groups]));
-        var slots = new List<UIElement>();
-        foreach (var id in SlotInfo.All)
-            slots.Add(Check(SlotWithKey(_s, id), read.HiddenSlots.Contains(id), v =>
-            {
-                var hidden = edit().HiddenSlots;
-                if (v) hidden.Add(id); else hidden.Remove(id);
-            }, Changed));
-        p.Children.Add(Row(Described("숨길 칸", "빈 칸 등을 숨깁니다. 자리는 비워 둡니다"), [.. slots]));
+        UIElement GroupCheck(SlotGroup g) => Check(g.ToString(), read.Groups.GetValueOrDefault(g, true), v => edit().Groups[g] = v, Changed);
+        UIElement HideCheck(SlotId id) => Check(SlotWithKey(_s, id), read.HiddenSlots.Contains(id), v =>
+        {
+            var hidden = edit().HiddenSlots;
+            if (v) hidden.Add(id); else hidden.Remove(id);
+        }, Changed);
+        p.Children.Add(Row(Described("표시", "끈 그룹은 빠지고 배경판이 그만큼 줄어듭니다"),
+            [.. Enum.GetValues<SlotGroup>().Where(g => g != SlotGroup.아덴스킬).Select(GroupCheck)]));
+        p.Children.Add(Row(Described("숨길 칸", "빈 칸 등을 숨깁니다. 자리는 비워 둡니다"),
+            [.. SlotInfo.All.Where(id => !ClassProfiles.AdenSlots.Contains(id)).Select(HideCheck)]));
+        // 아덴 apart (user, 2026-11-12): set on any 직업각인, drawn only where it has 아덴; 복사 → 표시 leaves it alone.
+        p.Children.Add(SubHeading("아덴", "아덴 게이지와 아덴스킬이 없는 직업각인에서도 켜고 끌 수 있지만, 그 직업각인에서는 보이지 않습니다. "
+            + "복사의 '표시'는 아덴을 바꾸지 않습니다. 아덴도 복사하려면 '아덴'을 고르세요."));
+        p.Children.Add(Row("표시", GroupCheck(SlotGroup.아덴스킬), Check("아덴 게이지", read.Gauge, v => edit().Gauge = v, Changed)));
+        p.Children.Add(Row(Described("숨길 칸", "자리는 비워 둡니다"), [.. SlotInfo.All.Where(ClassProfiles.AdenSlots.Contains).Select(HideCheck)]));
     }
 
     void PlacementRow(Panel p, ClassProfile read, Func<ClassProfile> edit, string hint)
@@ -281,9 +238,29 @@ public partial class SettingsWindow
     static ComboBox PickCombo(IEnumerable<string> classes, string value, Action<string> set)
     {
         var c = Combo();
-        c.ItemsSource = classes.Select(n => new ComboBoxItem { Content = n == AllClasses ? "모든 클래스" : ClassName(n), Tag = n }).ToList();
+        c.ItemsSource = classes.Select(n => new ComboBoxItem { Content = n == AllClasses ? "모든 직업각인" : ClassName(n), Tag = n }).ToList();
         c.SelectedItem = c.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == value) ?? c.Items[0];
         c.SelectionChanged += (_, _) => { if (c.SelectedItem is ComboBoxItem { Tag: string v }) set(v); };
         return c;
+    }
+
+    const double SearchWidth = 130;
+
+    /// <summary>직업 검색 beside a <see cref="PickCombo"/> (user, 2026-11-12): the entries whose class or 직업각인 match what is
+    /// typed (<see cref="ClassPicker.Matches"/>) list under it at once; a click, or ↑/↓ and Enter (Enter alone: the top one),
+    /// picks it in the combo. A text box, not an editable combo, for IME (<see cref="TypeAhead"/>).</summary>
+    static UIElement PickSearch(ComboBox pick, string name)
+    {
+        var items = pick.Items.Cast<ComboBoxItem>().ToList();
+        var box = new TextBox { Width = SearchWidth, VerticalContentAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(box, $"{name} 검색");
+        TypeAhead.Attach(box,
+            typed => string.IsNullOrWhiteSpace(typed) ? [] : [.. items.Select(i => (string)i.Content).Where(t => ClassPicker.Matches(t, typed))],
+            shown => { box.Clear(); pick.SelectedItem = items.First(i => (string)i.Content == shown); },
+            enterTakesTop: true);
+        // The hint while empty: the box says what it is without a label.
+        var hint = Muted(new TextBlock { Text = "직업 검색", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new(10, 0, 0, 0) });
+        box.TextChanged += (_, _) => hint.Visibility = Shown(box.Text.Length == 0);
+        return new Grid { Margin = new(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { box, hint } };
     }
 }

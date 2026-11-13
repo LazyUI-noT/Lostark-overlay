@@ -130,7 +130,7 @@ public partial class SettingsWindow
         if (row.Fixed is not null)
         {
             var app = new StackPanel { Orientation = Orientation.Horizontal };
-            app.Children.Add(new TextBlock { Text = row.Shipped is { } s ? $"앱 {BossHpGraph.AmountText(s)}" : "앱 값 없음", FontSize = 11, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+            app.Children.Add(Muted(new TextBlock { Text = row.Shipped is { } s ? $"앱 {BossHpGraph.AmountText(s)}" : "앱 값 없음", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }));
             var undo = new System.Windows.Controls.Button
             {
                 Content = "", FontFamily = IconFont, FontSize = 11, Padding = new(4, 2, 4, 2), Margin = new(4, 0, 0, 0),

@@ -20,9 +20,12 @@ public sealed record ReadPlan(IReadOnlySet<SlotId> Skip, bool Label, int? BuffSi
 [Flags]
 public enum CopyParts
 {
-    Color = 1, Size = 2, Layout = 4, Display = 8, Effects = 16, All = Color | Size | Layout | Display | Effects,
+    Color = 1, Size = 2, Layout = 4, Display = 8, Effects = 16, All = Color | Size | Layout | Display | Effects | Aden,
     /// <summary>쿨 진행 표시 (style and direction together) and 남은 쿨 (초): 나 → 나 only, unticked by default.</summary>
     Progress = 32, Timer = 64,
+    /// <summary>아덴: 아덴스킬, its two slots' 숨길 칸 and the 아덴 게이지, apart from <see cref="Display"/> (user, 2026-11-12), so
+    /// a 표시 copied from a class with no 아덴 doesn't turn it off everywhere. Unticked by default.</summary>
+    Aden = 128,
 }
 
 /// <summary>One class's boxes for you (<see cref="ClassSettings.Mine"/>) or for a party member
@@ -398,10 +401,27 @@ public static class ClassProfiles
                 if (parts.HasFlag(CopyParts.Effects)) tx.CopyEffects(fx);
                 tx.CopyCooldown(fx, parts);
             }
-            if (parts.HasFlag(CopyParts.Display)) (to.Groups, to.HiddenSlots, to.Gauge) = (new(from.Groups), [.. from.HiddenSlots], from.Gauge);
+            if (parts.HasFlag(CopyParts.Display)) CopyShown(from, to, aden: false);
+            if (parts.HasFlag(CopyParts.Aden))
+            {
+                CopyShown(from, to, aden: true);
+                to.Gauge = from.Gauge;
+            }
             if (parts.HasFlag(CopyParts.Size) && to is MemberProfile m)
                 (m.Width, m.Height) = from is MemberProfile f ? (f.Width, f.Height) : (s.Overlay.Width, s.Overlay.Height);
         }
+    }
+
+    /// <summary>The 아덴 slots, which <see cref="CopyParts.Aden"/> covers and <see cref="CopyParts.Display"/> doesn't.</summary>
+    public static readonly IReadOnlySet<SlotId> AdenSlots = new HashSet<SlotId> { SlotId.아덴1, SlotId.아덴2 };
+
+    /// <summary>The groups and 숨길 칸 of one side (<paramref name="aden"/>: 아덴스킬 and its slots; else all the others).</summary>
+    static void CopyShown(ClassProfile from, ClassProfile to, bool aden)
+    {
+        foreach (var g in Enum.GetValues<SlotGroup>().Where(g => g == SlotGroup.아덴스킬 == aden))
+            to.Groups[g] = from.Groups.GetValueOrDefault(g, true);
+        to.HiddenSlots.RemoveWhere(id => AdenSlots.Contains(id) == aden);
+        to.HiddenSlots.UnionWith(from.HiddenSlots.Where(id => AdenSlots.Contains(id) == aden));
     }
 
     static IReadOnlyDictionary<SlotGroup, string> MineColors(MineProfile mine) => ColorsBy(g =>

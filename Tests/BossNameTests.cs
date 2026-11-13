@@ -48,6 +48,52 @@ public class BossNameTests
         Assert.Equal(["act3-g3"], BossName.LoadTemplates(Profiles, [.. RaidData.Load(Profiles), other]).Select(t => t.GateId));
     }
 
+    /// <summary>Where the name's red text ends in its strip, for the HP label beside it (boss-label-name.plan.md): the ink's right
+    /// edge on all five shots (16:9, 21:9 at 0.75, HUD 100 and 80).</summary>
+    [Theory]
+    [InlineData("bosstop_mordum", 0, 1080, 110, 280)]
+    [InlineData("bosstop_layout", 0, 1080, 110, 281)]
+    [InlineData("bosstop_219", 135, 810, 110, 209)]
+    [InlineData("bosstop_dummy100", 0, 1080, 100, 209)]
+    [InlineData("bosstop_dummy80", 0, 1080, 80, 167)]
+    public void The_name_ends_where_its_red_text_ends(string name, int top, int height, double hud, int end)
+    {
+        var (strip, scale) = Strip(name, top, height, hud);
+        Assert.Equal(end, BossName.TextEnd(strip, scale));
+    }
+
+    [Fact]
+    public void Red_specks_are_no_name_and_dont_lengthen_one()
+    {
+        var specks = new Image(400, 30);
+        foreach (var x in new[] { 50, 51, 300 }) Paint(specks, x, 10);
+        Assert.Null(BossName.TextEnd(specks, 1));   // a flash's few red pixels: no name, so no label
+        Assert.Null(BossName.TextEnd(new Image(400, 30), 1));
+        var (strip, scale) = Strip("bosstop_mordum", 0, 1080, 110);
+        Paint(strip, 380, 12);
+        Paint(strip, 381, 12);
+        Assert.Equal(280, BossName.TextEnd(strip, scale));   // a speck 100 px past the name stays out of it
+    }
+
+    /// <summary>OCR reads only the red name: no red text (대난투, a cutscene) means no read at all, never the whole strip with the
+    /// app's own label in it ("[7,568역1", 세르카 대난투 replay 2026-11-12).</summary>
+    [Fact]
+    public void Ocr_reads_up_to_the_name_and_nothing_without_one()
+    {
+        Assert.Null(BossName.OcrStrip(new Image(400, 30), 1));
+        var (strip, scale) = Strip("bosstop_mordum", 0, 1080, 110);
+        var read = BossName.OcrStrip(strip, scale);
+        Assert.NotNull(read);
+        Assert.Equal(280 + (int)Math.Ceiling(4 * scale), read.Width);
+        Assert.Equal(strip.Height, read.Height);
+    }
+
+    static void Paint(Image img, int x, int y)
+    {
+        int i = (y * img.Width + x) * 4;
+        (img.Bgra[i], img.Bgra[i + 1], img.Bgra[i + 2], img.Bgra[i + 3]) = (0, 0, 255, 255);
+    }
+
     /// <summary>Writes Profiles/bossnames/act3-g3.bgra: the name's red ink in mordum.png at HUD 110 (GAUGE_BUILD_TEMPLATES=1).</summary>
     [Fact]
     public void Build_boss_name_templates_when_requested()

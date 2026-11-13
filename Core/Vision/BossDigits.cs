@@ -114,12 +114,14 @@ public static class BossDigits
         int? count = null;
         (long, long, long)? read = null;
         PixelRect? countArea = null;
-        var words = Words(row, scale).ToList();
+        var words = Words(row, scale);
         if (!hp) words.Reverse();
-        foreach (var (word, at) in words)
+        foreach (var at in words)
         {
-            if (count is null && word.Width <= MaxCountWidth * scale && ReadCount(word, scale) is { } c) (count, countArea) = (c, at);
-            if (hp) read ??= ReadHpWithShield(word, scale, soft);
+            // Cut out only when read: once the count and the HP are found, the other words are never copied.
+            Image? word = null;
+            if (count is null && at.Width <= MaxCountWidth * scale && ReadCount(word = row.Crop(at), scale) is { } c) (count, countArea) = (c, at);
+            if (hp) read ??= ReadHpWithShield(word ?? row.Crop(at), scale, soft);
             else if (count is not null) break;
         }
         return (count, read, countArea);
@@ -129,7 +131,7 @@ public static class BossDigits
     const double MaxCountWidth = 70;
 
     /// <summary>The row cut at every run of blank columns wider than <see cref="WordGap"/> (a column margin kept each side).</summary>
-    static IEnumerable<(Image Word, PixelRect At)> Words(Image row, double scale)
+    static List<PixelRect> Words(Image row, double scale)
     {
         var (grey, minInk) = Ink(row);
         int w = row.Width, h = row.Height, gap = (int)Math.Ceiling(WordGap * scale);
@@ -138,16 +140,17 @@ public static class BossDigits
             for (int y = 0; y < h; y++) if (grey[y * w + x] > minInk) return true;
             return false;
         }
+        var words = new List<PixelRect>();
         for (int x = 0, start = -1, last = -1; x <= w; x++)
         {
             bool ink = x < w && Inked(x);
             if (ink) { if (start < 0) start = x; last = x; continue; }
             if (start < 0 || (x < w && x - last <= gap)) continue;
             int x0 = Math.Max(0, start - 1), x1 = Math.Min(w, last + 2);
-            var at = new PixelRect(x0, 0, x1 - x0, h);
-            yield return (row.Crop(at), at);
+            words.Add(new PixelRect(x0, 0, x1 - x0, h));
             start = -1;
         }
+        return words;
     }
 
     /// <summary>Each pixel's min(R,G,B), and the level text clears. A white bar (a shield added to the lines): the ink clears
@@ -178,17 +181,30 @@ public static class BossDigits
     {
         int w = area.Width, h = area.Height;
         var (grey, minInk) = Ink(area, anyColour);
+        // Loops, not Enumerable.Range(...).Any: this runs per column on every poll (an iterator and a closure each, perf-trace).
+        bool ColumnInk(int x, int y0, int y1)
+        {
+            for (int y = y0; y < y1; y++) if (grey[y * w + x] > minInk) return true;
+            return false;
+        }
+        bool RowInk(int y, int x0, int x1)
+        {
+            for (int c = x0; c < x1; c++) if (grey[y * w + c] > minInk) return true;
+            return false;
+        }
         // The ink runs between blank columns, a column's ink looked for in rows y0..y1 only.
         List<(int X0, int X1, int Top, int Bottom)> Runs(int y0, int y1)
         {
             var found = new List<(int X0, int X1, int Top, int Bottom)>();
             for (int x = 0, start = -1; x <= w; x++)
             {
-                bool ink = x < w && Enumerable.Range(y0, y1 - y0).Any(y => grey[y * w + x] > minInk);
+                bool ink = x < w && ColumnInk(x, y0, y1);
                 if (ink && start < 0) start = x;
                 if (ink || start < 0) continue;
-                var rows = Enumerable.Range(y0, y1 - y0).Where(y => Enumerable.Range(start, x - start).Any(c => grey[y * w + c] > minInk)).ToList();
-                found.Add((start, x, rows[0], rows[^1] + 1));
+                int first = y0, last = y1 - 1;   // the run has ink, so both stop inside y0..y1
+                while (!RowInk(first, start, x)) first++;
+                while (!RowInk(last, start, x)) last--;
+                found.Add((start, x, first, last + 1));
                 start = -1;
             }
             // A run taller than any text (a bright tick or highlight of the bar, bosstop_2560) is no glyph and sets no line height.
@@ -271,7 +287,7 @@ public static class BossDigits
     /// <summary>강화: each word of the row as the best digit of each full-height glyph (marks and commas dropped, a '/' read as
     /// its nearest digit). BossHpSoftReader finds the boss's known max in them when the '/' itself fades.</summary>
     internal static IEnumerable<string> DigitWords(Image row, double scale) =>
-        Words(row, scale).Select(w => Glyphs(w.Word, scale) is { } g
+        Words(row, scale).Select(w => Glyphs(row.Crop(w), scale) is { } g
             ? new string([.. g.Where(x => x.Grid is not null).Select(x => Best(x.Grid!, char.IsAsciiDigit).Ch)]) : "");
 
     static float[] Template(char ch) => Templates.FirstOrDefault(t => t.Ch == ch).Grid ?? new float[GridW * GridH];

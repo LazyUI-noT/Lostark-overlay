@@ -5,18 +5,14 @@ using static GaugeOverlay.App.UI.UiBuild;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>편집 중's pick as the rest of the app sees it: while 설정 is open, a 직업각인 other than the character's shows its
-/// sample on my overlay window (<see cref="PreviewTarget"/>, with its saved icons), and the 칸 옵션 follow it. 설정 only
-/// decides and tells (<see cref="PickedChanged"/>); App applies it to the windows.</summary>
+/// <summary>편집 중's pick as 설정 shows it: a 직업각인 other than the character's shows its sample on the 내 오버레이 canvas and in
+/// the page previews (<see cref="PreviewTarget"/>, with its saved icons), and the 칸 옵션 follow it. The real overlay is never
+/// changed by it.</summary>
 public partial class SettingsWindow
 {
     readonly IconStore _iconStore = new(IconStore.DefaultDir);
 
-    /// <summary>Raised when the pick or the character it is compared with changed (and when 설정 opens): read
-    /// <see cref="PreviewTarget"/> and <see cref="PreviewIcons"/> anew.</summary>
-    public event Action? PickedChanged;
-
-    /// <summary>What my overlay window shows while 설정 is open, or null for the live data: the pick is the character's own
+    /// <summary>What the canvas and the previews show of my window, or null for the live data: the pick is the character's own
     /// entry or 기본. Never set for the 레이아웃 편집기's copy, which edits the character.</summary>
     public PreviewTarget? PreviewTarget { get; private set; }
 
@@ -59,8 +55,8 @@ public partial class SettingsWindow
         });
     }
 
-    /// <summary>Decides the target for the pick and the character now, loads its icons, points the 설정 preview at it and
-    /// tells <see cref="PickedChanged"/>. Call after the pick or the active character changed, before the sections are built.
+    /// <summary>Decides the target for the pick and the character now, loads its icons, points the 설정 preview at it.
+    /// Call after the pick or the active character changed, before the sections are built.
     /// The icons are read again only for another target, or with <paramref name="reloadIcons"/> (설정 opened: they may have been read since).</summary>
     void RefreshPick(bool reloadIcons = false)
     {
@@ -71,6 +67,5 @@ public partial class SettingsWindow
             PreviewIcons = PreviewTarget is { } t ? _iconStore.Load(t.Class, t.Subclass) : new Dictionary<SlotId, Image>();
         }
         _canvas?.SetTarget(PreviewTarget);
-        PickedChanged?.Invoke();
     }
 }

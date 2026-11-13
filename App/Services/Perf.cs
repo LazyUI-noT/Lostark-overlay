@@ -52,9 +52,11 @@ public static partial class Perf
                 line = $"[perf] {total:0.0} ms/s in all: " + string.Join(", ", Ticks.OrderByDescending(kv => kv.Value)
                     .Select(kv => $"{kv.Key} {kv.Value * 1000.0 / Stopwatch.Frequency / seconds:0.0}"));
                 if (Counts.Count > 0) line += " | per s: " + string.Join(", ", Counts.Select(kv => $"{kv.Key} {kv.Value / seconds:0.0}"));
+                if (Delays.Count > 0) line += " | 지연 ms (중간/95%/최대): " + string.Join(", ", Delays.Select(kv => $"{kv.Key} {DelayStats.Text(kv.Value)}"));
                 line += " | " + Whole(seconds, Ticks.Where(kv => kv.Key.EndsWith(CpuTag)).Sum(kv => kv.Value) * 1000.0 / Stopwatch.Frequency / seconds);
                 Ticks.Clear();
                 Counts.Clear();
+                Delays.Clear();
                 _since = now;
             }
         }
@@ -127,6 +129,19 @@ public static partial class Perf
     public static void Count(string name, long n = 1)
     {
         lock (Gate) Counts[name] = Counts.GetValueOrDefault(name) + n;
+    }
+
+    static readonly Dictionary<string, List<double>> Delays = [];
+
+    /// <summary>Adds one sample of a delay (ms; shown as median/95%/max in the [perf] line). The line is written by the next
+    /// <see cref="Add"/>, which the engine calls every step.</summary>
+    public static void Delay(string name, double ms)
+    {
+        lock (Gate)
+        {
+            if (!Delays.TryGetValue(name, out var list)) Delays[name] = list = [];
+            list.Add(ms);
+        }
     }
 
     [LibraryImport("kernel32.dll")] private static partial IntPtr GetCurrentThread();

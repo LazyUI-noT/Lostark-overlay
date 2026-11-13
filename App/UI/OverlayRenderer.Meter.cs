@@ -37,7 +37,7 @@ public sealed partial class OverlayRenderer
             _ => row * (MeterRows + (m.Support ? 1 : 0) + (m.Other ? 1 : 0)),
         };
         double graph = m.Graph && m.ShownLook == MeterLook.행 ? BoxSize(m.Height, MeterGraph) : 0;
-        return new(w + 2 * Bleed, row + MeterSkillHeight(row) + body + graph + (BuffBarsShown ? row * BuffBarRows : 0) + 2 * Bleed);
+        return new(w + 2 * Bleed, row + MeterSkillHeight(row) + body + graph + BuffBarsHeight(row) + 2 * Bleed);
     }
 
     /// <summary>스킬 사용 횟수 has a skill picked for the character played.</summary>
@@ -61,7 +61,7 @@ public sealed partial class OverlayRenderer
         dc.DrawRoundedRectangle(Solid(UiColor.Parse(m.Background, Color.FromArgb(0xCC, 0x10, 0x14, 0x18))), null, panel, 4, 4);
         var view = _player?.Snapshot.MeterView;
         _ghostShown = null;
-        double bars = BuffBarsShown ? row * BuffBarRows : 0, skill = MeterSkillHeight(row);
+        double bars = BuffBarsHeight(row), skill = MeterSkillHeight(row);
         if (view?.Skill is { } line) MeterSkillDraw(dc, new Rect(panel.X + 6, panel.Y + row, w - 12, skill), line);
         var body = new Rect(panel.X + 6, panel.Y + row + skill, w - 12, panel.Height - row - skill - 4 - bars);
         if (view is null || !view.PanelFound && view.Rows.Count == 0)
@@ -100,7 +100,7 @@ public sealed partial class OverlayRenderer
         string left = $"{state} {timer}";
         double y = r.Y + r.Height * 0.2, timerSize = r.Height * 0.5, size = r.Height * 0.45;
         MeterText(dc, new(r.X, y), left, timerSize, 1);
-        if (v?.Header(MeterMe, Eok) is not var (name, after) || size < MinTimerFont) return;
+        if (v?.Header(MeterMe, d => AmountText.Damage(d)) is not var (name, after) || size < MinTimerFont) return;
         double from = Math.Max(r.X + Text(left, timerSize).Width, noteEnd ?? 0) + size * 0.6;
         var tail = Text(after, size);
         double room = r.Right - tail.Width - from;
@@ -114,6 +114,13 @@ public sealed partial class OverlayRenderer
         }
         dc.Pop();
     }
+
+    /// <summary>The 선그래프's colours for the other players, apart from each other and from gold (mine).</summary>
+    static readonly Color[] GraphColors =
+    [
+        Color.FromRgb(0x4C, 0x8D, 0xFF), Color.FromRgb(0x2E, 0xC4, 0xB6), Color.FromRgb(0xE0, 0x5F, 0xD0), Color.FromRgb(0xFF, 0x7A, 0x45),
+        Color.FromRgb(0x7B, 0xD3, 0x4F), Color.FromRgb(0xFF, 0x5A, 0x6E), Color.FromRgb(0xA7, 0x8B, 0xFA),
+    ];
 
     Color MeterColor(MeterRow r)
     {
@@ -142,7 +149,7 @@ public sealed partial class OverlayRenderer
                 var cell = new Rect(body.X + body.Width * 0.38 + i * each, y + row * 0.15, each - 4, row * 0.7);
                 dc.DrawRectangle(Solid(Color.FromArgb(0x60, 0, 0, 0)), null, cell);
                 if (s.Share is { } sh) dc.DrawRectangle(Solid(MeterColor(s)), null, cell with { Width = cell.Width * Math.Clamp(sh, 0, 1) });
-                MeterText(dc, new(cell.X + 3, cell.Y), $"{s.Name} {Value(s)}", row * 0.36, 1);
+                MeterText(dc, new(cell.X + 3, cell.Y), Value(s), row * 0.36, 1);
             }
             y += row;
         }
@@ -163,23 +170,21 @@ public sealed partial class OverlayRenderer
         dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, cell);
         if (r.Share is { } s) dc.DrawRectangle(Solid(Color.FromArgb(0xB0, c.R, c.G, c.B)), null, cell with { Width = cell.Width * Math.Clamp(s, 0, 1) });
         string party = r.Party == 2 && Settings.Meter.Scope == MeterScope.파티별 ? "2 · " : "";
-        MeterText(dc, new(cell.X + 4, cell.Y + row * 0.16), party + r.Name, row * 0.46, 1);
+        MeterText(dc, new(cell.X + 4, cell.Y + row * 0.16), party, row * 0.46, 1);   // no names (user, 2026-11-13): colour and class tell rows apart
         if (Emblems.Class(r.ClassId)?.Name is { } cls) MeterText(dc, new(cell.X + cell.Width * 0.36, cell.Y + row * 0.24), cls, row * 0.34, 0.6);
         string arrow = r.Trend > 0 ? "▲ " : r.Trend < 0 ? "▼ " : "";
         MeterTextRight(dc, new(cell.Right - 4, cell.Y + row * 0.1), arrow + Value(r), row * 0.55, 1);
         if (r.Damage >= MeterMath.DashUnder)
-            MeterTextRight(dc, new(cell.Right - cell.Width * 0.3, cell.Y + row * 0.24), $"{Eok(r.Dps)}/초", row * 0.32, 0.65);
+            MeterTextRight(dc, new(cell.Right - cell.Width * 0.3, cell.Y + row * 0.24), $"{AmountText.Dps(r.Dps)}/초", row * 0.32, 0.65);
     }
 
     /// <summary>The row's number as 수치 says: % with one decimal, or 피해량 / DPS in 억; "–" under the dash rule.</summary>
     string Value(MeterRow r) => Settings.Meter.Value switch
     {
-        MeterValue.피해량 => r.Damage >= MeterMath.DashUnder ? Eok(r.Damage) : "–",
-        MeterValue.DPS => r.Damage >= MeterMath.DashUnder ? Eok(r.Dps) : "–",
+        MeterValue.피해량 => r.Damage >= MeterMath.DashUnder ? AmountText.Damage(r.Damage) : "–",
+        MeterValue.DPS => r.Damage >= MeterMath.DashUnder ? AmountText.Dps(r.Dps) : "–",
         _ => r.Share is { } s ? $"{s * 100:0.0}%" : "–",
     };
-
-    static string Eok(long v) => v >= 1_000_000_000_000 ? $"{v / 1e12:0.0}조" : $"{v / 1e8:0.0}억";
 
     void MeterColumns(DrawingContext dc, Rect body, MeterView v)
     {
@@ -191,7 +196,6 @@ public sealed partial class OverlayRenderer
             var r = rows[i];
             double h = (body.Height - label) * Math.Clamp(r.Share ?? 0, 0, 1);
             dc.DrawRectangle(Solid(MeterColor(r)), null, new Rect(body.X + i * each + 2, body.Bottom - label - h, Math.Max(0, each - 4), h));
-            MeterText(dc, new(body.X + i * each + 2, body.Bottom - label), r.Name, label * 0.4, 1);
             MeterText(dc, new(body.X + i * each + 2, body.Bottom - label * 0.5), Value(r), label * 0.38, 0.8);
         }
     }
@@ -203,7 +207,7 @@ public sealed partial class OverlayRenderer
         {
             double w = body.Width * Math.Clamp(r.Share!.Value, 0, 1);
             dc.DrawRectangle(Solid(MeterColor(r)), new Pen(Solid(Colors.Black), 1), new Rect(x, body.Y, w, h));
-            if (w > h * 2) MeterText(dc, new(x + 3, body.Y + h * 0.2), $"{r.Name} {Value(r)}", h * 0.4, 1);
+            if (w > h * 2) MeterText(dc, new(x + 3, body.Y + h * 0.2), Value(r), h * 0.4, 1);
             x += w;
         }
         if (v.Other is { } o)
@@ -220,7 +224,7 @@ public sealed partial class OverlayRenderer
         double split = body.Width * a / total;
         dc.DrawRectangle(Solid(MeterDealer), null, new Rect(body.X, body.Y, split, h));
         dc.DrawRectangle(Solid(MeterSupport), null, new Rect(body.X + split, body.Y, body.Width - split, h));
-        string Fmt(double x) => Settings.Meter.CompareAsShare ? $"{x * 100:0.0}%" : Eok((long)x);
+        string Fmt(double x) => Settings.Meter.CompareAsShare ? $"{x * 100:0.0}%" : AmountText.Damage(x);
         MeterText(dc, new(body.X + 4, body.Y + h * 0.2), $"1파티 {Fmt(a)}", h * 0.42, 1);
         MeterTextRight(dc, new(body.Right - 4, body.Y + h * 0.2), $"{Fmt(b)} 2파티", h * 0.42, 1);
     }
@@ -293,7 +297,12 @@ public sealed partial class OverlayRenderer
                 _ghostShown = compare.How;   // its label goes in the header (DrawMeter): the plot's corners hold the scale and the names
             }
         }
-        var names = new List<(double Y, string Name)>();
+        var names = new List<(double Y, string Name, Color Edge)>();
+        // Each other player's line has its own colour (user, 2026-11-12), picked by id among the whole 전분 record's members
+        // (not only the lines drawn), so it stays put while ranks change or a line comes and goes. Mine keeps my colour. Only
+        // the graph: the rows keep the role colours.
+        var others = v.Rows.Select(r => r.Id).Concat(series.Select(s => s.Row.Id)).Where(id => id != MeterMe).Distinct().Order().ToList();
+        Color LineColor(MeterRow r) => r.Id == MeterMe ? MeterColor(r) : GraphColors[others.IndexOf(r.Id) % GraphColors.Length];
         foreach (var (r, points) in series)
         {
             var geo = new StreamGeometry();
@@ -304,23 +313,26 @@ public sealed partial class OverlayRenderer
                     var pt = new Point(plot.X + plot.Width * (points[i].At - t0).TotalSeconds / span, Y(value));
                     if (i == 0) g.BeginFigure(pt, false, false); else g.LineTo(pt, true, false);
                 }
-            dc.DrawGeometry(null, new Pen(Solid(MeterColor(r)), 1.5), geo);
-            // 최근 1분 (user, 2026-11-11): the line's current DPS is written at its end, after the name (the rows show the
-            // whole 전분 record's figure, not this).
-            string name = Settings.Meter.Range == MeterRange.최근1분 ? $"{r.Name} {GridScale.Label(points[^1].Dps)}" : r.Name;
-            names.Add((Math.Clamp(Y(points[^1].Dps), plot.Y, plot.Bottom), name));
+            dc.DrawGeometry(null, new Pen(Solid(LineColor(r)), 1.5), geo);
+            // The line's current DPS is written at its end, after the name: in 최근 1분 (user, 2026-11-11), and in 전체 too
+            // (user, 2026-11-12). Written as the rows write it, so the two read the same.
+            string name = AmountText.Dps(points[^1].Dps);
+            // Its backing's outline says whose it is: gold for mine (the boxes' 골드 colour), the line's colour for the others
+            // (user, 2026-11-12).
+            var edge = r.Id == MeterMe ? Parse(Settings.Overlay.GoldColor) : LineColor(r);
+            names.Add((Math.Clamp(Y(points[^1].Dps), plot.Y, plot.Bottom), name, edge));
         }
         dc.Pop();
-        double y = plot.Y;   // whose line: names just above the line ends (not on them), top down, kept apart
         if (font < MinTimerFont) return;   // too small to draw: no empty backings
-        foreach (var (end, name) in names.OrderBy(n => n.Y))
+        // Whose line: names just above the line ends (not on them), kept apart and inside the plot (GridScale.Stack).
+        var sorted = names.OrderBy(n => n.Y).ToList();
+        var tops = GridScale.Stack([.. sorted.Select(n => n.Y)], plot.Y, plot.Bottom, font * 1.25, font * 1.3);
+        for (int i = 0; i < sorted.Count; i++)
         {
-            y = Math.Max(y, Math.Min(end - font * 1.3, plot.Bottom - font * 1.3));
-            // Pushed down by the names above, a name can land on another line: a dark backing keeps it readable.
-            double nameW = Text(name, font).Width;
-            dc.DrawRoundedRectangle(Solid(Color.FromArgb(0xB0, 0x10, 0x14, 0x18)), null, new Rect(plot.Right - 5 - nameW, y, nameW + 4, font * 1.25), 2, 2);
-            MeterTextRight(dc, new(plot.Right - 3, y), name, font, 0.85);
-            y += font * 1.25;
+            // Pushed by the names around it, a name can land on another line: a dark backing keeps it readable.
+            double nameW = Text(sorted[i].Name, font).Width;
+            dc.DrawRoundedRectangle(Solid(Color.FromArgb(0xB0, 0x10, 0x14, 0x18)), new Pen(Solid(sorted[i].Edge), 1), new Rect(plot.Right - 5 - nameW, tops[i], nameW + 4, font * 1.25), 2, 2);
+            MeterTextRight(dc, new(plot.Right - 3, tops[i]), sorted[i].Name, font, 0.85);
         }
     }
 
@@ -329,28 +341,36 @@ public sealed partial class OverlayRenderer
     /// <summary>버프 적용률 is on and I'm not on a support (the view says so once the meter has read).</summary>
     bool BuffBarsShown => Settings.Meter.BuffShare() == ThreeWay.켜기 && _player?.Snapshot.MeterView?.ShowBuffBars != false;
 
+    /// <summary>The buff bars' rows: the three buffs, or 공증 alone under the buff lock (BuffLock.Apply).</summary>
+    // Before the first view: the lock as it is now, so the panel doesn't open at three rows and shrink.
+    int BuffBarCount => (_player?.Snapshot.MeterView?.BuffLocked ?? Services.BuffUnlock.Locked) ? 1 : TimelineView.Buffs.Length;
+
+    double BuffBarsHeight(double row) => BuffBarsShown ? row * BuffBarRows * BuffBarCount / TimelineView.Buffs.Length : 0;
+
     /// <summary>버프 적용률: the share of my damage dealt while each of my three buffs was on (TimelineView's colours); with two
     /// or more dealers sharing, 버프 분배 instead: each buff's bar is 100% of the damage dealt under it, split by dealer (who
-    /// made the most of it). A note while the buff row isn't read (설정 → 버프 off).</summary>
+    /// made the most of it). A note while the buff row isn't read (설정 → 버프 off). Under the buff lock: 공증's row only, its
+    /// figure and bar capped at 85% (BuffLock).</summary>
     void MeterBuffBars(DrawingContext dc, Rect r, MeterView? v)
     {
-        double each = r.Height / 3, font = each * 0.75, label = r.Width * 0.3;
+        double each = r.Height / BuffBarCount, font = each * 0.75, label = r.Width * 0.3;
+        bool locked = v?.BuffLocked == true;
         if (v?.BuffSplit is { } split) { MeterBuffSplit(dc, r, v, split, each, font, label); return; }
         // A 4-man raid: the party's share (boss HP lost under the buff) in brackets after mine; a support sees the party's alone.
         var party = v?.BuffParty;
-        if ((v?.BuffCover ?? party) is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프를 켜면 보입니다", font, 0.6); return; }
+        if ((v?.BuffCover ?? party) is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프 줄을 켜면 보입니다", font, 0.6); return; }
         bool mine = v!.BuffCover is not null;
         double text = font * (mine && party is not null ? 6 : 3.2);
         for (int i = 0; i < TimelineView.Buffs.Length && i < cover.Count; i++)
         {
             var (_, name, color) = TimelineView.Buffs[i];
-            double y = r.Y + i * each, share = Math.Clamp(cover[i], 0, 1);
+            double y = r.Y + i * each, share = cover[i];
             MeterText(dc, new(r.X, y), name, font, 0.8);
             var bar = new Rect(r.X + label, y + each * 0.15, Math.Max(0, r.Width - label - text), each * 0.7);
             dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, bar);
-            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * share });
-            string figure = !mine ? $"({share * 100:0}%)"
-                : party is not null && i < party.Count ? $"{share * 100:0}% ({Math.Clamp(party[i], 0, 1) * 100:0}%)" : $"{share * 100:0}%";
+            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * BuffLock.Bar(share, locked) });
+            string figure = !mine ? $"({BuffLock.Figure(share, locked)})"
+                : party is not null && i < party.Count ? $"{BuffLock.Figure(share, locked)} ({BuffLock.Figure(party[i], locked)})" : BuffLock.Figure(share, locked);
             MeterTextRight(dc, new(r.Right, y), figure, font, 0.9);
         }
     }

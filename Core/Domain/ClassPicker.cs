@@ -18,6 +18,15 @@ public static class ClassPicker
         return [.. entries.Where(Starred), .. entries.Where(e => !Starred(e))];
     }
 
+    /// <summary>편집 중 typed into (user, 2026-11-12): <paramref name="shown"/> (an entry's text, "클래스 · 직업각인") has every
+    /// word of <paramref name="typed"/>, case and spaces ignored, so the class or the 직업각인 alone finds it.</summary>
+    public static bool Matches(string shown, string typed)
+    {
+        string Squeeze(string t) => string.Concat(t.Where(ch => !char.IsWhiteSpace(ch)));
+        var text = Squeeze(shown);
+        return typed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(w => text.Contains(w, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>The entry to show for <paramref name="shown"/> (null = nothing picked yet): itself while it is in
     /// <paramref name="entries"/> (<see cref="PickerEntries"/>), else, for an old class-alone or unknown key, the active
     /// character's entry (<see cref="ClassProfiles.ActiveKey"/>) when listed, else 기본.</summary>
@@ -41,6 +50,24 @@ public static class ClassPicker
         var picked = target is null ? PickerEntries(classes) : [target];
         return [.. picked.Select(k => toMembers && ClassProfiles.Parent(k) is { } p and not ClassProfiles.Template ? p : k).Distinct()];
     }
+
+    const CopyParts CooldownViewParts = CopyParts.Progress | CopyParts.Timer;   // 나 → 나 only (ClassProfiles.Copy)
+
+    /// <summary>Why 복사 → 대상 can't run, or null when it can: nothing ticked, only 쿨 진행 표시 / 남은 쿨 (초) with a party
+    /// side, or the settings copied onto themselves (<paramref name="from"/> and <paramref name="target"/> the same entry on the
+    /// same side, where party members' entry is the class's).</summary>
+    public static string? CopyRefusal(CopyParts parts, string from, bool fromMembers, string? target, bool toMembers, IEnumerable<ClassInfo> classes)
+    {
+        if (parts == 0) return "복사할 것을 고르세요.";
+        if ((fromMembers || toMembers) && (parts & ~CooldownViewParts) == 0) return "쿨 진행 표시와 남은 쿨 (초)는 나에서 나로만 복사됩니다.";
+        if (target is null || fromMembers != toMembers) return null;
+        string source = fromMembers && ClassProfiles.Parent(from) is { } p and not ClassProfiles.Template ? p : from;
+        return CopyTargets(target, classes, toMembers) is [var only] && only == source
+            ? "같은 설정에는 복사할 수 없습니다. 가져올 설정이나 대상을 바꾸세요." : null;
+    }
+
+    /// <summary>복사 → 모든 직업각인 overwrites everything: it takes a second click (a single 직업각인 doesn't).</summary>
+    public static bool CopyNeedsConfirm(string? target) => target is null;
 
     /// <summary>파티원's line when a 직업각인 is picked: its class's party look is shared by all of the class's 직업각인; null
     /// when nobody shares it (one or no 직업각인, or no class).</summary>

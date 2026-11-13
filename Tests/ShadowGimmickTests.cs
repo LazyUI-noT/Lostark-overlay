@@ -25,6 +25,25 @@ public class ShadowGimmickTests
         238_620_583_824, 239_674_092_807, 248_039_915_861, 249_292_970_381, 249_755_521_722,
     ];
 
+    /// <summary>The app's own damage label must stay out of the number's read area: with 캡처 제외 off the capture sees it, and
+    /// "[5,677만]" in the area failed every read until the label hid 3 s later, so the 체력 moved in ~3.5 s steps (세르카 3관문,
+    /// Lost Ark 2026.11.10 - 21.31.19.01.mp4 28:34–29:24: 36 reads in 50 s; 250 with the area cut short of the label).</summary>
+    [Theory]
+    [InlineData(1920, 1080, 110)]
+    [InlineData(1920, 1080, 80)]
+    [InlineData(2560, 1440, 100)]
+    [InlineData(3840, 2160, 110)]
+    [InlineData(2560, 1080, 100)]
+    [InlineData(3440, 1440, 100)]
+    public void The_damage_label_stays_out_of_the_numbers_read_area(int w, int h, int hud)
+    {
+        var (vp, fit) = (new Viewport(0, 0, w, h), new Fit(hud));
+        var (area, label) = (Geometry.ShadowNumber(vp, fit), Geometry.ShadowDealt(vp, fit).X);
+        Assert.True(area.Right <= label);
+        // and still holds the widest number: 15 characters popped 1.5× end near x 1080, 320 of the 355 px from x 760 to the label
+        Assert.True(area.Right - area.X >= (label - area.X) * 320 / 355);
+    }
+
     [Fact]
     public void The_hp_text_sits_in_the_gimmicks_fill_bar_under_its_number()
     {

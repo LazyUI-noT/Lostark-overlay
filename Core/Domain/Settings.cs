@@ -121,6 +121,10 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// character read off the 게임 메뉴.</summary>
     public string? ApiMainCharacter { get; set; }
 
+    /// <summary>The buff lock's unlock key as entered (<see cref="Domain.BuffKey"/>), checked again at every start; null: locked.
+    /// The key itself, never an "unlocked" flag (buff-lock.design.md).</summary>
+    public string? BuffUnlockKey { get; set; }
+
     /// <summary>설정 → 로아 API: each character's best 전투력 on the 게임 메뉴 (<see cref="MenuPower"/>). Apart from
     /// <see cref="HomeworkSettings.ShowOnGrid"/>: hiding the 숙제 tags keeps these.</summary>
     public bool ApiShowCombatPower { get; set; } = true;
@@ -200,7 +204,7 @@ public sealed partial class Settings : IJsonOnDeserializing
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
     public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile())];
     public int ActiveProfile { get; set; }
-    /// <summary>The looks marked 모든 배치에 적용: one value for every 배치, kept across a switch (display-split.plan.md).
+    /// <summary>The looks marked 모든 위치 프로필에 적용: one value for every 배치, kept across a switch (display-split.plan.md).
     /// Null in an older file: <c>SettingsStore.Normalize</c> shares them all. Replaced on load, not added to.</summary>
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
     public HashSet<LookGroup>? SharedLooks { get; set; } = [.. Enum.GetValues<LookGroup>()];

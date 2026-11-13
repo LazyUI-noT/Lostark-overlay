@@ -58,7 +58,7 @@ public sealed partial class SettingsWindow
         _checkTable.Visibility = _checkOn ? Visibility.Visible : Visibility.Collapsed;
         _checkTable.Children.Clear();
         if (!_checkOn) return;
-        var note = (string text, double opacity) => new TextBlock { Text = text, Opacity = opacity, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 2) };
+        var note = (string text, double opacity) => opacity < 1 ? UiBuild.Muted(new TextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 2) }) : new TextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 2) };
         if (_checkSample is not { } sample)
         {
             _checkTable.Children.Add(note("재는 중입니다. 2초마다 갱신됩니다.", 0.8));

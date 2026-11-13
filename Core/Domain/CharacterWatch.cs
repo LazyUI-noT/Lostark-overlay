@@ -70,3 +70,17 @@ public sealed record CharacterWatch(string? Current, DateTime UnknownSince, stri
         return (this with { Current = match[0].Name }, new CharacterChange(match[0].Name, UnknownSince));
     }
 }
+
+/// <summary>A character read by name switches the app to the 직업각인 remembered for it (user, 2026-11-12): the skill bar's class
+/// check often stays unsure after a switch (greyed bar in town), which left the class, and 설정's 편집 중, on the last one.
+/// Only a 직업각인 learned while playing that name (<see cref="HomeworkCharacter.Subclass"/>) counts; no API guess. Pure.</summary>
+public static class NameSwitch
+{
+    /// <summary>The class and 직업각인 to switch to for <paramref name="read"/>, or null: nothing remembered for it, or
+    /// <paramref name="activeCharacter"/> ("클래스 · 직업각인", null = 기본) is it already.</summary>
+    public static (string Class, string Subclass)? Target(HomeworkCharacter? read, string? activeCharacter)
+    {
+        if (read is not { ClassName: { Length: > 0 } cls, Subclass: { Length: > 0 } sub }) return null;
+        return Settings.CharacterKey(cls, sub) == activeCharacter ? null : (cls, sub);
+    }
+}

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -112,6 +113,7 @@ internal sealed class FeatureMapView : Canvas
     {
         (_s, _open, _pinned, _changed, _go, _note, _pinnedChanged) = (s, open, pinned, changed, go, note, pinnedChanged);
         Background = Brushes.Transparent;   // empty map takes the click that lets go
+        Grid.SetIsSharedSizeScope(this, true);   // every switch key on the map shares one width (Pill)
         MouseLeftButtonDown += (_, e) => { if (e.OriginalSource == this) Pin(null); };
         MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) StartPan(e); };
         MouseMove += (_, e) => Pan(e);
@@ -193,12 +195,18 @@ internal sealed class FeatureMapView : Canvas
     {
         var state = FeatureMap.State(_s, box.Id);
         var head = new DockPanel { LastChildFill = true, Height = FoldedHeight - 8 };
-        var fold = new TextBlock { Text = open ? "▾" : "▸", Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+        // The keyboard's way to fold: the mouse still folds from anywhere on the box.
+        var fold = UiBuild.Bare<ToggleButton>(new TextBlock { Text = open ? "▾" : "▸", Padding = new(6, 0, 2, 0), Opacity = 0.7 }, box.Title, $"fold:{box.Id}");
+        (fold.IsChecked, fold.Tag, fold.VerticalAlignment) = (open, Segment, VerticalAlignment.Center);
+        AutomationProperties.SetHelpText(fold, open ? "접기" : "펼치기");
+        fold.Click += (_, _) => Toggle(box.Id);
         DockPanel.SetDock(fold, Dock.Right);
         head.Children.Add(fold);
         if (open)
         {
-            var gear = new Button { Content = "⚙", Padding = new(4, 0, 4, 0), Margin = new(4, 0, 0, 0), ToolTip = $"{FeatureMap.Page(box.Id)} 설정 열기", Tag = Segment };
+            string tip = $"{FeatureMap.Page(box.Id)} 설정 열기";
+            var gear = new Button { Content = "⚙", Padding = new(4, 0, 4, 0), Margin = new(4, 0, 0, 0), ToolTip = tip, Tag = Segment };
+            AutomationProperties.SetName(gear, tip);
             gear.Click += (_, e) => { e.Handled = true; _go(FeatureMap.Page(box.Id)); };
             DockPanel.SetDock(gear, Dock.Right);
             head.Children.Add(gear);
@@ -228,7 +236,9 @@ internal sealed class FeatureMapView : Canvas
             DockPanel.SetDock(chip, Dock.Right);
             head.Children.Add(chip);
         }
-        head.Children.Add(new TextBlock { Text = box.Title, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        bool off = state == BoxState.Off;
+        var title = new TextBlock { Text = box.Title, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        head.Children.Add(off ? UiBuild.Muted(title) : title);
 
         var body = new StackPanel();
         body.Children.Add(head);
@@ -245,8 +255,8 @@ internal sealed class FeatureMapView : Canvas
         var face = new Border
         {
             Child = body, Padding = new(Pad, 4, Pad, 4), CornerRadius = new(6), BorderThickness = new(4, 1, 1, 1),   // the group's colour as a bar, as on the rail
-            BorderBrush = new SolidColorBrush(ColourOf(box.Id)), Cursor = Cursors.Hand, MinHeight = FoldedHeight,
-            Opacity = state == BoxState.Off ? 0.55 : 1,   // off: faded on the theme's own card, readable in light and dark themes
+            // Off: only the frame fades and the title goes muted; text keeps its contrast (audit 2026-11-12: whole-box 0.55 was ~3:1).
+            BorderBrush = new SolidColorBrush(ColourOf(box.Id)) { Opacity = off ? 0.4 : 1 }, Cursor = Cursors.Hand, MinHeight = FoldedHeight,
         };
         face.SetResourceReference(Border.BackgroundProperty, Themes.CardBrushKey);
         face.MouseLeftButtonDown += (_, e) => { if (!OnSegment(e)) _pressed = box.Id; };
@@ -255,9 +265,7 @@ internal sealed class FeatureMapView : Canvas
             if (OnSegment(e) || _pressed != box.Id) return;   // a switch, ⚙, or a press that began elsewhere
             e.Handled = true;
             _pressed = null;
-            if (!_open.Remove(box.Id)) _open.Add(box.Id);
-            Pin(box.Id);
-            Build();
+            Toggle(box.Id);
         };
         face.MouseEnter += (_, _) =>
         {
@@ -275,37 +283,58 @@ internal sealed class FeatureMapView : Canvas
         return face;
     }
 
+    void Toggle(string id)
+    {
+        if (!_open.Remove(id)) _open.Add(id);
+        Pin(id);
+        Build();
+    }
+
     /// <summary>One switch part as a square well: its choices side by side as bevelled keys, the chosen one lit by meaning. A part with no setting
     /// yet is drawn faint and does nothing (its ⚙ page sets it).</summary>
     UIElement Pill(MapBox box, int part)
     {
         int? selected = FeatureMap.Selected(_s, box.Id, part);
         bool own = CharacterPart.Contains((box.Id, part));
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        // Keys as wide as the map's longest choice (표시 안 함), so 끄기|읽기 splits where 켜기|표시 안 함 does (user, 2026-11-12).
+        var row = new Grid();
         var pill = new Border
         {
-            Child = row, Background = Well, BorderThickness = new(own ? 1.5 : 1), Margin = new(0, 5, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+            Child = row, BorderThickness = new(own ? 1.5 : 1), Margin = new(0, 5, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
             BorderBrush = new SolidColorBrush(own ? Gold : Dark), ClipToBounds = true, Opacity = selected is null ? 0.45 : 1,
             ToolTip = selected is null ? "이 스위치는 여기서 켜고 끌 수 없습니다. ⚙에서 설정하세요." : own ? "이 캐릭터에만 적용됩니다." : null,
         };
+        pill.SetResourceReference(Border.BackgroundProperty, WellKey);
         var choices = box.Choices[part];
         for (int i = 0; i < choices.Length; i++)
         {
             int index = i;
             bool on = selected == i;
-            var seg = new Border
+            var key = new Border
             {
-                Tag = Segment, Padding = new(7, 1, 7, 1), Cursor = selected is null ? Cursors.Arrow : Cursors.Hand, BorderThickness = new(1),
-                Background = on ? Lit(Meaning(choices[i])) : KeyFace, BorderBrush = on ? LitEdge : KeyEdge,
-                Child = on ? new TextBlock { Text = choices[i], FontSize = 12, Foreground = Brushes.White } : new TextBlock { Text = choices[i], FontSize = 12 },
+                Padding = new(7, 1, 7, 1), BorderThickness = new(1),
+                Background = on ? Lit(Meaning(choices[i])) : null, BorderBrush = on ? LitEdge : null,
+                Child = on ? new TextBlock { Text = choices[i], FontSize = 12, TextAlignment = TextAlignment.Center, Foreground = new SolidColorBrush(RaidBadgeView.InkOn(Meaning(choices[i]))) }
+                    : new TextBlock { Text = choices[i], FontSize = 12, TextAlignment = TextAlignment.Center },
             };
-            if (selected is not null && !on)
-                seg.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    if (FeatureMap.Choose(_s, box.Id, part, index) is { } note) _note(note);
-                    _changed();   // 설정 refills the page, this map with it
-                };
+            if (!on)
+            {
+                key.SetResourceReference(Border.BackgroundProperty, KeyFaceKey);
+                key.SetResourceReference(Border.BorderBrushProperty, KeyEdgeKey);
+            }
+            // A radio button per choice (one group per row): Tab, arrows and Space choose, and Narrator says which one is on.
+            var seg = UiBuild.Bare<RadioButton>(key, $"{box.Title} {choices[i]}", $"seg:{box.Id}:{part}:{i}");
+            (seg.Tag, seg.IsChecked, seg.IsEnabled) = (Segment, on, selected is not null);
+            (seg.MinWidth, seg.HorizontalAlignment) = (0, HorizontalAlignment.Stretch);   // the theme's radio button asks 120 px, left-aligned
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = KeyWidthGroup });
+            Grid.SetColumn(seg, i);
+            if (selected is null) seg.Cursor = Cursors.Arrow;
+            seg.Click += (_, _) =>
+            {
+                if (on) return;
+                if (FeatureMap.Choose(_s, box.Id, part, index) is { } note) _note(note);
+                _changed();   // 설정 refills the page, this map with it
+            };
             row.Children.Add(seg);
         }
         return pill;
@@ -323,10 +352,25 @@ internal sealed class FeatureMapView : Canvas
     static LinearGradientBrush Lit(Color c) => Vertical(Shade(c, 1.2), Shade(c, 0.8));
 
     // The well is sunk (dark at its top), the keys stand out of it: light along their top edge, dark along the bottom.
-    static readonly Brush Well = Vertical(Color.FromArgb(0x70, 0, 0, 0), Color.FromArgb(0x28, 0, 0, 0));
-    static readonly Brush KeyFace = Vertical(Color.FromArgb(0x24, 255, 255, 255), Color.FromArgb(0x06, 255, 255, 255));
-    static readonly Brush KeyEdge = Vertical(Color.FromArgb(0x38, 255, 255, 255), Color.FromArgb(0x60, 0, 0, 0));
+    // Per theme, by resource key, so a theme switch redraws them (audit 2026-11-12: on a light card the dark well was a grey slab).
+    const string WellKey = "MapWell", KeyFaceKey = "MapKeyFace", KeyEdgeKey = "MapKeyEdge";
+    const string KeyWidthGroup = "MapKey";   // SharedSizeGroup of every switch key's column (scope: this Canvas)
+    static readonly (Brush Well, Brush Face, Brush Edge) DarkKeys = (
+        Vertical(Color.FromArgb(0x70, 0, 0, 0), Color.FromArgb(0x28, 0, 0, 0)),
+        Vertical(Color.FromArgb(0x24, 255, 255, 255), Color.FromArgb(0x06, 255, 255, 255)),
+        Vertical(Color.FromArgb(0x38, 255, 255, 255), Color.FromArgb(0x60, 0, 0, 0)));
+    static readonly (Brush Well, Brush Face, Brush Edge) LightKeys = (
+        Vertical(Color.FromArgb(0x30, 0, 0, 0), Color.FromArgb(0x12, 0, 0, 0)),
+        Vertical(Color.FromArgb(0xE0, 255, 255, 255), Color.FromArgb(0x90, 255, 255, 255)),
+        Vertical(Color.FromArgb(0x18, 0, 0, 0), Color.FromArgb(0x50, 0, 0, 0)));
     static readonly Brush LitEdge = Vertical(Color.FromArgb(0x90, 255, 255, 255), Color.FromArgb(0x90, 0, 0, 0));
+
+    /// <summary>Called by <see cref="Themes.Apply"/>: the switch well and key brushes for a dark or light card.</summary>
+    internal static void SetTheme(ResourceDictionary r, bool dark)
+    {
+        var k = dark ? DarkKeys : LightKeys;
+        (r[WellKey], r[KeyFaceKey], r[KeyEdgeKey]) = (k.Well, k.Face, k.Edge);
+    }
 
     /// <summary>감지 중: ✓ green read for certain, ? yellow nothing yet, ! red should have read; the mark goes with the colour.
     /// On a folded box the chip is part of the box: a click there opens the box (user, 2026-11-10), only an open box's chip
@@ -342,12 +386,15 @@ internal sealed class FeatureMapView : Canvas
         var chip = new Border   // no tooltip: hovering shows the Live card (DetectPreview), which says the same
         {
             CornerRadius = new(4), Padding = new(4, 0, 4, 0), Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Background = new SolidColorBrush(colour), Tag = open ? Segment : null,
-            Child = new TextBlock { Text = $"감지 중 {mark}", FontSize = 11, Foreground = Brushes.White },
+            Background = new SolidColorBrush(colour),
+            Child = new TextBlock { Text = $"감지 중 {mark}", FontSize = 11, Foreground = new SolidColorBrush(RaidBadgeView.InkOn(colour)) },
             Cursor = System.Windows.Input.Cursors.Hand,
         };
-        if (open) chip.MouseLeftButtonUp += (_, e) => { ShowDetect?.Invoke(id); e.Handled = true; };
-        return chip;
+        if (!open) return chip;
+        var go = UiBuild.Bare<Button>(chip, $"{_byId[id].Title} 감지 중 {mark}: 감지 보기", $"detect:{id}");
+        (go.Tag, go.VerticalAlignment) = (Segment, VerticalAlignment.Center);
+        go.Click += (_, _) => ShowDetect?.Invoke(id);
+        return go;
     }
 
     /// <summary>How long ago, for a mark's time (the engine's clock counts from the PC's start, so a clock time means nothing).</summary>
@@ -555,20 +602,27 @@ internal sealed class FeatureMapView : Canvas
         Highlight();
     }
 
-    /// <summary>끊기 on a line at 파티: hovering shows what a click makes it; the click cuts or reconnects it.</summary>
+    /// <summary>끊기 on a line at 파티: hovering (or Tab onto it) shows what a click makes it; a click or Space cuts or reconnects
+    /// it. A toggle button drawn as the line alone, so Narrator says 연결됨 / 끊김 (audit 2026-11-12).</summary>
     void CutHandle(PartyLine line, Geometry geometry)
     {
-        var hit = new Path { Data = geometry, Stroke = Brushes.Transparent, StrokeThickness = 12, Cursor = Cursors.Hand };
-        hit.MouseEnter += (_, _) => HoverLine(line.Edge, cuts: true);
-        hit.MouseLeave += (_, _) => HoverLine(null, cuts: false);
-        hit.MouseLeftButtonUp += (_, e) =>
+        var hit = new Path { Data = geometry, Stroke = Brushes.Transparent, StrokeThickness = 12 };
+        string name = $"{_byId[line.Edge.From].Title} → {_byId[line.Edge.To].Title} 파티 연결";
+        var toggle = UiBuild.Bare<ToggleButton>(hit, name, $"cut:{line.Edge.From}:{line.Edge.To}");
+        (toggle.IsChecked, toggle.FocusVisualStyle) = (!line.Cut, null);   // the lit line and its slash show focus
+        toggle.MouseEnter += (_, _) => HoverLine(line.Edge, cuts: true);
+        // Focus lights the line only when it came by keyboard: a click focuses the button too (and the rebuild refocuses it).
+        static bool ByKey() => InputManager.Current.MostRecentInputDevice is KeyboardDevice;
+        toggle.MouseLeave += (_, _) => { if (!(toggle.IsKeyboardFocused && ByKey())) HoverLine(null, cuts: false); };
+        toggle.GotKeyboardFocus += (_, _) => { if (ByKey()) HoverLine(line.Edge, cuts: true); };
+        toggle.LostKeyboardFocus += (_, _) => HoverLine(null, cuts: false);
+        toggle.Click += (_, _) =>
         {
-            e.Handled = true;
             FeatureMap.SetCut(_s, line.Edge, !line.Cut);
             _changed();
         };
-        Panel.SetZIndex(hit, 4);
-        Children.Add(hit);
+        Panel.SetZIndex(toggle, 4);
+        Children.Add(toggle);
     }
 
     void WaitForPreview(string id, UIElement face, bool detect)

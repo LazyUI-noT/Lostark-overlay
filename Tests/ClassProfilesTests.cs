@@ -389,6 +389,59 @@ public class ClassProfilesTests
         Assert.Contains(SlotId.일반8, c.Members.HiddenSlots);
     }
 
+    [Fact]
+    public void 표시_copy_leaves_the_아덴_part_of_every_target_alone()
+    {
+        // A class with no 아덴 support has it all off; copying its 표시 to every class must not take a 바드's away.
+        var s = new Settings();
+        var from = new MineProfile { Gauge = false };
+        from.Groups[SlotGroup.아덴스킬] = false;
+        from.Groups[SlotGroup.초각스] = false;
+        from.HiddenSlots.UnionWith([SlotId.아덴1, SlotId.아덴2, SlotId.일반8]);
+        var to = ClassProfiles.Edit(s, Bard).Mine;
+        to.HiddenSlots.Add(SlotId.일반1);
+
+        ClassProfiles.Copy(s, from, [to], CopyParts.Display);
+
+        Assert.True(to.Gauge);
+        Assert.True(to.Groups[SlotGroup.아덴스킬]);
+        Assert.False(to.Groups[SlotGroup.초각스]);
+        Assert.Equal([SlotId.일반8], to.HiddenSlots);
+    }
+
+    [Fact]
+    public void 아덴_copy_takes_the_아덴_part_only()
+    {
+        var s = new Settings();
+        var from = new MineProfile { Gauge = false };
+        from.Groups[SlotGroup.아덴스킬] = false;
+        from.Groups[SlotGroup.초각스] = false;
+        from.HiddenSlots.UnionWith([SlotId.아덴2, SlotId.일반8]);
+        var to = ClassProfiles.Edit(s, Bard).Mine;
+        to.HiddenSlots.UnionWith([SlotId.아덴1, SlotId.일반1]);
+
+        ClassProfiles.Copy(s, from, [to], CopyParts.Aden);
+
+        Assert.False(to.Gauge);
+        Assert.False(to.Groups[SlotGroup.아덴스킬]);
+        Assert.True(to.Groups[SlotGroup.초각스]);
+        Assert.Equal(new HashSet<SlotId> { SlotId.일반1, SlotId.아덴2 }, to.HiddenSlots);
+    }
+
+    [Fact]
+    public void 내_설정_복사_includes_the_아덴_part()
+    {
+        var s = new Settings();
+        var c = ClassProfiles.Edit(s, Bard);
+        c.Mine.Groups[SlotGroup.아덴스킬] = false;
+        c.Mine.HiddenSlots.Add(SlotId.아덴1);
+
+        ClassProfiles.Copy(s, c.Mine, [c.Members], CopyParts.All);
+
+        Assert.False(c.Members.Groups[SlotGroup.아덴스킬]);
+        Assert.Contains(SlotId.아덴1, c.Members.HiddenSlots);
+    }
+
 
     [Fact]
     public void Copying_파티원_설정_받기_to_your_profile_becomes_기본()

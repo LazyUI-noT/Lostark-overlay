@@ -27,8 +27,8 @@ public partial class OverlayWindow : Window
     readonly bool _amsu;   // the 암수 창
     readonly bool _raid;   // the 줄 수 창 (설정 → 레이드)
     readonly bool _meter;   // the DPS 미터기
-    Player? _player, _shown;   // live data; what is drawn (sample data in edit mode and preview)
-    bool _editMode, _preview;
+    Player? _player, _shown;   // live data; what is drawn (sample data in edit mode)
+    bool _editMode;
     enum Drag { None, Move, Scale }
     Drag _drag;
     System.Drawing.Point _dragFrom;
@@ -105,40 +105,13 @@ public partial class OverlayWindow : Window
     /// <summary>True while edit mode is on.</summary>
     public bool EditMode => _editMode;
 
-    /// <summary>While 설정 is open: live data, so changed colours can be judged on it; sample data only for another 직업각인
-    /// picked in 편집 중 (<see cref="SetPreviewTarget"/>). Never clickable.</summary>
-    public bool Preview
-    {
-        get => _preview;
-        set { _preview = value; ShowLabel(); Redraw(); }
-    }
-
     /// <summary>New live data: yourself, or the member now in this party slot (null = nobody). Ignored on screen while
-    /// sample data is shown, and drawn when it ends.</summary>
+    /// edit mode shows sample data, and drawn when it ends.</summary>
     public void Update(Player? player)
     {
-        bool wasSample = Sample;
         _player = player;
         if (_editMode) return;
-        if (Sample || wasSample) Redraw(); else Renderer.Update(_shown = player);
-    }
-
-    /// <summary>Sample data is drawn: in edit mode, and while 설정 is open with another 직업각인 picked in 편집 중. Opening 설정
-    /// alone shows the live data only (an empty party slot stays empty).</summary>
-    bool Sample => _editMode || (_preview && _target is not null);
-
-    PreviewTarget? _target;
-
-    /// <summary>설정 has another 직업각인 than the character's picked in 편집 중 (<see cref="PreviewTarget.Decide"/>): this window,
-    /// yours only, shows that 직업각인's sample with its settings and <paramref name="icons"/> (its saved ones) until cleared
-    /// (null), which brings back the live data and the character's own icons.</summary>
-    public void SetPreviewTarget(PreviewTarget? target, IReadOnlyDictionary<SlotId, Image>? icons = null)
-    {
-        if (_peer >= 0 || _buffs || _debuffs || _judgment || _raid || _meter || _amsu) return;
-        _target = target;
-        Renderer.SetTarget(target, icons);
-        ShowLabel();
-        Redraw();
+        Renderer.Update(_shown = player);
     }
 
     /// <summary>Call after the settings object changed.</summary>
@@ -190,22 +163,18 @@ public partial class OverlayWindow : Window
 
     void ShowLabel()
     {
-        EditLabel.Visibility = Sample ? Visibility.Visible : Visibility.Collapsed;
+        EditLabel.Visibility = _editMode ? Visibility.Visible : Visibility.Collapsed;
         string who = _amsu ? " (암수)" : _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
-        EditLabelText.Text = _editMode
-            ? $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기"
-            : _target is { } t ? $"미리보기 · {t.Key} (예시 데이터)"
-            : $"미리보기{who} (예시 데이터)";
+        EditLabelText.Text = $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기";
         EditLabel.ToolTip = EditLabelText.Text;
     }
 
     void Redraw()
     {
-        Renderer.ShowHidden = Sample;   // sample data: a box that hides on cooldown stays faint, to be seen and dragged
-        if (Sample)
+        Renderer.ShowHidden = _editMode;   // sample data: a box that hides on cooldown stays faint, to be seen and dragged
+        if (_editMode)
         {
-            var (self, peers) = DemoSnapshots.Sample(Clock.Now(), _target?.AdenSlots ?? _player?.Snapshot.AdenSlots);
-            if (_target is { } t) self = self with { Snapshot = self.Snapshot with { ClassId = t.ClassId } };
+            var (self, peers) = DemoSnapshots.Sample(Clock.Now(), _player?.Snapshot.AdenSlots);
             var sample = _peer < 0 ? self : peers[_peer % peers.Count];
             Renderer.Update(_shown = sample, frozenAt: sample.Snapshot.At);
         }

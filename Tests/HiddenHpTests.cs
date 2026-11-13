@@ -1,173 +1,176 @@
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>종막 EX 2-3: the boss HP shows ???, so it is estimated from the party's damage (spec: the user's 2-3 rules).</summary>
+/// <summary>종막 2-3 (EX and 하드): the boss HP shows ???, so its HP removed is my damage ÷ my share of 2-2 (the user, 2026-11-12;
+/// hidden-hp-own-damage.plan.md).</summary>
 public sealed class HiddenHpTests
 {
-    const long G22 = 2_223_536_657_594, G23 = 2_001_182_991_834;   // EX 하드
+    const long G22 = 2_223_536_657_594;   // EX 하드 2-2
     static readonly RaidGate Ex22 = new("final-ex-g2-2", "종막: 최후의 날", "EX 2-2관문", [], [620], Raid.없음, new Dictionary<string, long> { ["EX 하드"] = G22 });
-    static readonly RaidGate Ex23 = new("final-ex-g2-3", "종막: 최후의 날", "EX 2-3관문", [], [75, 40], Raid.없음,
-        After: "final-ex-g2-2", HiddenHpByDifficulty: new Dictionary<string, long> { ["EX 하드"] = G23 });
-    static readonly IReadOnlyList<RaidGate> Gates = [Ex22, Ex23];
-    const long G21 = 550_000_000_000;   // the user's example: 2-1 HP 5500억
-    static readonly RaidGate Ex21 = new("final-ex-g2-1", "종막: 최후의 날", "EX 2-1관문", [], [], Raid.없음, new Dictionary<string, long> { ["EX 하드"] = G21 });
-    static readonly HiddenHpOptions Opt = new(43.5, 1.0, []);
+    static readonly RaidGate Ex23 = new("final-ex-g2-3", "종막: 최후의 날", "EX 2-3관문", [], [75, 40], Raid.없음, After: "final-ex-g2-2", Hidden: true);
+    static readonly RaidGate Hard22 = new("final-g2-2", "종막: 최후의 날", "2-2관문 (하드)", [], [620], Raid.없음);
+    static readonly RaidGate Hard23 = new("final-g2-3", "종막: 최후의 날", "2-3관문 (하드)", [], [75, 40], Raid.없음, After: "final-g2-2", Hidden: true);
+    static readonly IReadOnlyList<RaidGate> Gates = [Ex22, Ex23, Hard22, Hard23];
 
-    static MeterSample S(int party, MeterRole role, long damage, ulong id = 0) => new(id, "", 0, role, party, damage, 0, 100, true, 1, 0);
     static TimeSpan T(double s) => TimeSpan.FromSeconds(s);
 
-    // 2-2's HP last read near 0 at 10 s; a running timer, fight 1.
-    static MeterStatus Status(long last, TimeSpan hpAt, int fight = 1, bool frozen = false) =>
+    /// <summary>A second of the meter: the bar at <paramref name="max"/> with <paramref name="last"/> left (removed since the
+    /// record first saw it at full), last read at <paramref name="hpAt"/>; my panel at <paramref name="mine"/> (null: closed).</summary>
+    static MeterStatus Status(long max, long last, TimeSpan hpAt, long? mine, bool support = false, int fight = 1, bool frozen = false) =>
         MeterStatus.None with
         {
-            Boss = new BossDamageState(0, G22, last, G22, last, null),
+            Panel = mine is { } d ? new JeonbunReading(d, 0, 100, support) : null,
+            Boss = new BossDamageState(0, max, last, max, last, null),
             Clock = FightClockState.None with { Fight = fight, Frozen = frozen, Timer = 100 },
             HpAt = hpAt,
         };
 
-    [Fact]
-    public void A_party_is_its_three_dealers_or_else_its_supports_assist_over_the_share()
+    // 2-2 seen from full: I dealt 1/10 of what it lost.
+    static ShareTrack Seen22(long max = G22, long mine = 0, MeterRole role = MeterRole.딜러, bool support = false)
     {
-        Assert.Equal(600, HiddenHp.PartyDamage([S(1, MeterRole.딜러, 100), S(1, MeterRole.딜러, 200), S(1, MeterRole.딜러, 300), S(1, MeterRole.서포터, 87)], 43.5));
-        Assert.Equal(200, HiddenHp.PartyDamage([S(1, MeterRole.딜러, 100), S(1, MeterRole.서포터, 87)], 43.5));   // 87 × 100 ÷ 43.5
-        Assert.Null(HiddenHp.PartyDamage([S(1, MeterRole.딜러, 100)], 43.5));
+        var t = HiddenHp.Track(null, Status(max, max, T(1), mine, support), role, T(1));
+        return HiddenHp.Track(t, Status(max, max / 2, T(60), mine + max / 20, support), role, T(60))!;
     }
 
     [Fact]
-    public void The_raid_is_both_parties_or_the_known_one_times_the_users_multiple()
+    public void My_share_is_my_damage_over_the_hp_removed_since_both_first_read()
     {
-        IReadOnlyList<MeterSample> both = [S(1, MeterRole.서포터, 87), S(2, MeterRole.서포터, 174)];
-        Assert.Equal(600, HiddenHp.RaidDamage(both, 1, 43.5, 1.0));
-        Assert.Equal(300, HiddenHp.RaidDamage([S(1, MeterRole.서포터, 87)], 1, 43.5, 0.5));   // 200 + 200 × 0.5
-        Assert.Equal(400, HiddenHp.RaidDamage([S(2, MeterRole.서포터, 87)], 1, 43.5, 1.0));   // only the other party's support sends
-        Assert.Null(HiddenHp.RaidDamage([], 1, 43.5, 1.0));
+        var t = HiddenHp.Track(null, Status(G22, G22 - 1000, T(1), 5_000), MeterRole.딜러, T(1));   // the app started mid-2-2
+        t = HiddenHp.Track(t, Status(G22, G22 / 2 - 1000, T(60), 5_000 + G22 / 10), MeterRole.딜러, T(60));
+        Assert.Equal(0.2, t!.Share!.Value, 6);   // (G22/10) ÷ (G22/2): what came before the first joint read is left out
     }
 
     [Fact]
-    public void Two_three_starts_when_two_two_was_near_zero_and_its_hp_stopped_reading_with_the_timer_running()
+    public void Under_a_fifth_of_two_two_seen_or_no_damage_of_mine_gives_no_share()
     {
-        Assert.Null(HiddenHp.Step(null, Gates, Status(G22 / 2, T(10)), 0, Opt, T(14)));        // 2-2 still far from 0
-        Assert.Null(HiddenHp.Step(null, Gates, Status(1000, T(10)), 0, Opt, T(11)));          // HP read a second ago
-        Assert.Null(HiddenHp.Step(null, Gates, Status(1000, T(10), frozen: true), 0, Opt, T(14)));
-        var s = HiddenHp.Step(null, Gates, Status(1000, T(10)), 5000, Opt, T(14))!;
-        Assert.Equal(("final-ex-g2-3", "EX 하드", G23, G23), (s.Gate.Id, s.Difficulty, s.Max, s.Left));
+        var t = HiddenHp.Track(null, Status(G22, G22, T(1), 0), MeterRole.딜러, T(1));
+        Assert.Null(HiddenHp.Track(t, Status(G22, G22 - G22 / 10, T(30), G22 / 100), MeterRole.딜러, T(30))!.Share);   // 10% seen
+        Assert.Null(HiddenHp.Track(t, Status(G22, G22 / 2, T(30), 0), MeterRole.딜러, T(30))!.Share);                 // nothing of mine
     }
 
     [Fact]
-    public void The_estimate_takes_damage_since_the_start_the_esther_once_and_the_gimmick_drop()
+    public void The_share_freezes_while_the_bar_isnt_read_so_two_threes_damage_stays_out_of_it()
     {
-        var status = Status(1000, T(10));
-        var opt = Opt with { Esthers = [new("공아만 3칸", 1000, 50)] };   // 1000억 at 50%
-        var s = HiddenHp.Step(null, Gates, status, 1_000_000, opt, T(14))!;   // the base: damage dealt before 2-3
-        s = HiddenHp.Step(s, Gates, status, 1_000_000 + G23 / 5, opt, T(20))!;
-        Assert.Equal(G23 - G23 / 5, s.Left);                                   // 80%
-        s = HiddenHp.Step(s, Gates, status, 1_000_000 + G23 / 2, opt, T(30))!;
-        Assert.Equal(G23 - G23 / 2 - 100_000_000_000, s.Left);                 // 50%: the esther goes in
-        long at25 = 1_000_000 + G23 * 3 / 4;
-        s = HiddenHp.Step(s, Gates, status, at25, opt, T(40))!;                // past 25%: waiting for the gimmick
-        Assert.Equal((GimmickPhase.Waiting, G23 - (at25 - 1_000_000) - 100_000_000_000), (s.Phase, s.Left));
-        s = HiddenHp.Step(s, Gates, status, at25, opt, T(43))!;
-        Assert.Equal(GimmickPhase.Waiting, s.Phase);                           // standing still, not yet 5 s
-        s = HiddenHp.Step(s, Gates, status, at25, opt, T(45))!;
-        Assert.Equal(GimmickPhase.Paused, s.Phase);                            // everyone down: the damage stands still
-        s = HiddenHp.Step(s, Gates, status, at25 + 1000, opt, T(80))!;         // damage again after the revive: from 10%
-        Assert.Equal((GimmickPhase.Done, (long)(G23 * 0.10) - 1000), (s.Phase, s.Left));
+        var t = Seen22();
+        var later = HiddenHp.Track(t, Status(G22, G22 / 2, T(60), G22), MeterRole.딜러, T(70));   // bar last read 10 s ago
+        Assert.Equal(t.Share, later!.Share);
     }
 
     [Fact]
-    public void Several_uses_go_in_at_their_own_percent_and_one_at_ten_comes_off_the_ten_after_the_gimmick_even_below_zero()
+    public void A_new_record_or_another_bar_starts_the_share_over()
     {
-        var status = Status(1000, T(10));
-        var opt = Opt with { Esthers = [new("공아만 3칸", 1000, 60), new("히든 아만 3칸", 3000, 10)] };
-        var s = HiddenHp.Step(null, Gates, status, 0, opt, T(14))!;
-        s = HiddenHp.Step(s, Gates, status, G23 * 41 / 100, opt, T(20))!;                  // 59%: the first goes in
-        Assert.Equal(G23 - G23 * 41 / 100 - 100_000_000_000, s.Left);
-        s = HiddenHp.Step(s, Gates, status, G23 * 85 / 100, opt, T(30))!;                  // under 10% before the gimmick: 히든 아만 waits
-        Assert.Equal(G23 - G23 * 85 / 100 - 100_000_000_000, s.Left);
-        s = HiddenHp.Step(s, Gates, status, G23 * 85 / 100, opt, T(36))!;                  // paused
-        s = HiddenHp.Step(s, Gates, status, G23 * 85 / 100 + 1, opt, T(60))!;              // 10% − 3000억: under 0 when 히든 아만 is bigger
-        Assert.Equal((long)(G23 * 0.10) - 300_000_000_000 - 1, s.Left);
-        Assert.True(s.Left < 0);
+        var t = Seen22();
+        Assert.Null(HiddenHp.Track(t, Status(G22, G22, T(61), 0, fight: 2), MeterRole.딜러, T(61))!.Share);
+        Assert.Null(HiddenHp.Track(t, Status(G22 * 2, G22 * 2, T(61), G22), MeterRole.딜러, T(61))!.Share);
     }
 
     [Fact]
-    public void The_plans_damage_is_an_hp_share_written_at_nightmare()
+    public void The_damage_column_must_match_my_role()
     {
-        // 2-3 at EX 하드 has half the EX 나이트메어 HP here: a 1000억 use (나이트메어) takes 500억 off.
-        var ex23 = Ex23 with { HiddenHpByDifficulty = new Dictionary<string, long> { ["EX 하드"] = G23, ["EX 나이트메어"] = G23 * 2 } };
-        var gates = new[] { Ex22, ex23 };
-        var opt = Opt with { Esthers = [new("공아만 3칸", 1000, 90)] };
-        var s = HiddenHp.Step(null, gates, Status(1000, T(10)), 0, opt, T(14))!;
-        s = HiddenHp.Step(s, gates, Status(1000, T(10)), G23 / 5, opt, T(20))!;
-        Assert.Equal(G23 - G23 / 5 - 50_000_000_000, s.Left);
+        Assert.True(HiddenHp.ColumnFits(MeterRole.딜러, new JeonbunReading(1, 1, 1, false)));
+        Assert.True(HiddenHp.ColumnFits(MeterRole.서포터, new JeonbunReading(1, 1, 1, true)));
+        Assert.False(HiddenHp.ColumnFits(MeterRole.서포터, new JeonbunReading(1, 1, 1, false)));   // a support reading 피해량
+        Assert.False(HiddenHp.ColumnFits(MeterRole.딜러, new JeonbunReading(1, 1, 1, true)));
+        Assert.Null(HiddenHp.Track(null, Status(G22, G22, T(1), 0), MeterRole.서포터, T(1)));      // no share from the wrong number
+        Assert.NotNull(Seen22(role: MeterRole.서포터, support: true).Share);                       // 조력 피해량: works the same
     }
 
     [Fact]
-    public void Unknown_damage_keeps_the_last_estimate_and_a_new_record_or_a_readable_hp_ends_it()
+    public void Two_three_starts_after_two_two_near_zero_once_its_bar_stops_reading_with_the_timer_running()
     {
-        var s = HiddenHp.Step(null, Gates, Status(1000, T(10)), 0, Opt, T(14))!;
-        s = HiddenHp.Step(s, Gates, Status(1000, T(10)), 100, Opt, T(15))!;
-        Assert.Equal(G23 - 100, HiddenHp.Step(s, Gates, Status(1000, T(10)), null, Opt, T(16))!.Left);
-        Assert.Null(HiddenHp.Step(s, Gates, Status(1000, T(10), fight: 2), 100, Opt, T(16)));
-        Assert.Null(HiddenHp.Step(s, Gates, Status(1000, T(16)), 100, Opt, T(16)));   // a bar read again: another boss
+        var t = Seen22();
+        Assert.Null(HiddenHp.Step(null, Gates, null, Status(G22, G22 / 2, T(10), 0), t, MeterRole.딜러, T(14)));             // 2-2 still far from 0
+        Assert.Null(HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0), t, MeterRole.딜러, T(11)));                // read a second ago
+        Assert.Null(HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0, frozen: true), t, MeterRole.딜러, T(14)));
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0), t, MeterRole.딜러, T(14))!;
+        Assert.Equal(("final-ex-g2-3", (long)Math.Round(G22 * 0.9), 0.1), (s.Gate.Id, s.Max, Math.Round(s.Share!.Value, 6)));
     }
 
     [Fact]
-    public void Two_one_results_give_the_other_partys_ratio()
+    public void Hard_two_two_with_no_hp_in_the_data_is_found_by_its_name()
     {
-        // Only party 1's support sends (87 → 200); 2-1 ended 1000억 : 1100억, so party 2 ≈ 200 × 1.1.
-        Assert.Equal(420, HiddenHp.RaidDamage([S(1, MeterRole.서포터, 87)], 1, 43.5, 1.0, 1000, 1100));
-        Assert.Equal(764, HiddenHp.RaidDamage([S(2, MeterRole.서포터, 174)], 1, 43.5, 1.0, 1000, 1100));   // only party 2 known: 400 + 400 × 1000/1100
-        Assert.Equal(382, HiddenHp.RaidDamage([S(2, MeterRole.서포터, 87)], 2, 43.5, 1.0, 1000, 1100));    // party 2 is mine: 200 + 200 × 1000/1100
+        const long H22 = 1_000_000_000_000;
+        var t = Seen22(H22);
+        Assert.Null(HiddenHp.Step(null, Gates, null, Status(H22, 1000, T(10), 0), t, MeterRole.딜러, T(14)));   // unknown HP, no name: nothing
+        var s = HiddenHp.Step(null, Gates, Hard22, Status(H22, 1000, T(10), 0), t, MeterRole.딜러, T(14))!;
+        Assert.Equal(("final-g2-3", 900_000_000_000L), (s.Gate.Id, s.Max));
     }
 
     [Fact]
-    public void Two_one_results_estimate_the_esther_when_the_user_gave_none()
+    public void Hp_removed_is_my_damage_since_two_three_began_over_my_share()
     {
-        // 2100억 × 100 ÷ 43.4 ≈ 4838.7억 by the players, so the 에스더 did 5500 − 4838.7 ≈ 661억: 12.0% of 2-1's HP.
-        double share = HiddenHp.EstherShare(G21, 1000, 1100, 43.4)!.Value;
-        Assert.Equal(0.1202, share, 3);
-        var gates = new[] { Ex21, Ex22, Ex23 with { CalibrateFrom = "final-ex-g2-1" } };
-        var o = new HiddenHpOptions(43.4, 1.0, [], 1000, 1100);   // no plan: 2-1's share at 50%
-        var status = Status(1000, T(10));
-        var s = HiddenHp.Step(null, gates, status, 0, o, T(14))!;
-        s = HiddenHp.Step(s, gates, status, G23 / 2, o, T(20))!;
-        long expected = G23 / 2 - (long)Math.Round(share * G23);
-        Assert.InRange(s.Left, expected - 1_000_000, expected + 1_000_000);
-        Assert.Null(HiddenHp.EstherShare(G21, 0, 1100, 43.4));   // a party unknown: nothing to work out
+        var t = Seen22();   // share 0.1
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 7_000), t, MeterRole.딜러, T(14))!;
+        Assert.Equal((7_000L, 0L), (s.MyBase!.Value, s.Removed));
+        s = HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 7_000 + 100_000_000_000), t, MeterRole.딜러, T(20))!;
+        Assert.Equal((long)Math.Round(100_000_000_000 / s.Share!.Value), s.Removed);   // 1000억 of mine ÷ 0.1 (G22's odd half: ≈1조)
+        Assert.InRange(s.Removed, 999_999_000_000, 1_000_001_000_000);
+        Assert.Equal(s.Removed * 100.0 / s.Max, s.RemovedPercent, 6);
+        Assert.Equal((long)Math.Round(s.Max * HiddenHp.Target) - s.Removed, s.ToTarget);
     }
 
     [Fact]
-    public void Two_one_cleared_takes_each_sending_supports_assist()
+    public void A_new_record_or_a_bar_reading_again_ends_two_three()
     {
-        var gates = new[] { Ex21, Ex22, Ex23 with { CalibrateFrom = "final-ex-g2-1" } };
-        MeterStatus At(long last) => MeterStatus.None with { Boss = new BossDamageState(0, G21, last, G21, last, null) };
-        IReadOnlyList<MeterSample> all = [S(1, MeterRole.서포터, 100_000_000_000), S(1, MeterRole.딜러, 5), S(2, MeterRole.딜러, 7)];
-        Assert.Equal([("final-ex-g2-3", 1, 1000.0)], HiddenHp.Calibration(gates, At(0), all));
-        Assert.Empty(HiddenHp.Calibration(gates, At(G21 / 3), all));   // 2-1 not cleared yet
+        var t = Seen22();
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0), t, MeterRole.딜러, T(14))!;
+        Assert.Null(HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 0, fight: 2), t, MeterRole.딜러, T(15)));
+        Assert.Null(HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(15), 0), t, MeterRole.딜러, T(15)));
     }
 
     [Fact]
-    public void Two_ones_esther_plan_gives_the_share_two_one_shows()
+    public void The_window_says_why_it_cant_estimate()
     {
-        // EX 나이트메어 2-1 (111,232억), both supports 24,253억, 2-1's 에스더 11,800억: the players did 99,432억, so 48.78%.
-        Assert.Equal(48.78, HiddenHp.CalibratedShare(11_123_200_336_247, 24253, 24253, 11800)!.Value, 2);
-        Assert.Null(HiddenHp.CalibratedShare(11_123_200_336_247, 24253, 0, 11800));
-        Assert.Null(HiddenHp.CalibratedShare(11_123_200_336_247, 24253, 24253, 0));
+        var t = Seen22();
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0), t, MeterRole.딜러, T(14))!;
+        Assert.Equal("≈? 전분 필요", HiddenHp.Label(s, null, MeterRole.딜러));
+        Assert.Equal("≈? 조력 피해량 열 필요", HiddenHp.Label(s, new JeonbunReading(1, 1, 1, false), MeterRole.서포터));
+        Assert.Equal("≈? 피해량 열 필요", HiddenHp.Label(s, new JeonbunReading(1, 1, 1, true), MeterRole.딜러));
+        Assert.Equal("≈? 2-2 기록 없음", HiddenHp.Label(s with { Share = null }, new JeonbunReading(1, 1, 1, false), MeterRole.딜러));
     }
 
     [Fact]
-    public void The_share_is_two_ones_with_its_esther_plan_else_the_users()
+    public void The_window_shows_removed_over_the_target_and_whats_left_to_it_or_past_it()
     {
-        var gates = new[] { Ex21, Ex22, Ex23 with { CalibrateFrom = "final-ex-g2-1" } };
-        var r = new RaidSettings { AssistShare = 43.5 };
-        Assert.Equal(43.5, HiddenHp.Share(gates, gates[2], "EX 하드", r));                      // nothing entered
-        (r.Gate("final-ex-g2-3").Assist1, r.Gate("final-ex-g2-3").Assist2) = (1200, 1200);
-        Assert.Equal(43.5, HiddenHp.Share(gates, gates[2], "EX 하드", r));                      // no 2-1 plan yet
-        r.Gate("final-ex-g2-1").Esthers = [new("카단 3칸", 0.5, 0)];                              // 5500억 − 0.5억 → 2400 × 100 ÷ 5499.5
-        Assert.Equal(43.64, HiddenHp.Share(gates, gates[2], "EX 하드", r), 2);
-        Assert.Equal(43.5, HiddenHp.Share(gates, gates[2], null, r));                           // difficulty unknown
+        var panel = new JeonbunReading(1, 1, 1, false);
+        var s = new HiddenHpState(Ex23, 1_000_000_000_000, 1, T(0), 0.1, 0, 450_000_000_000);
+        Assert.Equal("≈45% / 70% · 2500억", HiddenHp.Label(s, panel, MeterRole.딜러));
+        Assert.Equal("≈78% / 70% · +800억", HiddenHp.Label(s with { Removed = 780_000_000_000 }, panel, MeterRole.딜러));
+        Assert.Equal("≈10% / 70% · 3.00조", HiddenHp.Label(new HiddenHpState(Ex23, 5_000_000_000_000, 1, T(0), 0.1, 0, 500_000_000_000), panel, MeterRole.딜러));
+        Assert.Equal(55, s.LeftPercent, 6);   // the alerts stay on HP % left
+    }
+    [Fact]
+    public void Two_three_counts_only_the_column_of_my_role_even_when_it_flips()
+    {
+        var t = Seen22();   // a dealer, share 0.1
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 900_000, support: true), t, MeterRole.딜러, T(14))!;
+        Assert.Null(s.MyBase);   // the 조력 column gives no base for a dealer
+        s = HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 7_000), t, MeterRole.딜러, T(15))!;
+        Assert.Equal(7_000L, s.MyBase);
+        s = HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 50_000_000_000, support: true), t, MeterRole.딜러, T(16))!;
+        Assert.Equal((7_000L, 0L), (s.MyBase!.Value, s.Removed));   // flipped to 조력: held, not counted
+    }
+
+    [Fact]
+    public void Hp_removed_never_goes_back_when_the_panel_misreads_lower()
+    {
+        var t = Seen22();
+        var s = HiddenHp.Step(null, Gates, null, Status(G22, 1000, T(10), 0), t, MeterRole.딜러, T(14))!;
+        s = HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 10_000_000_000), t, MeterRole.딜러, T(20))!;
+        long high = s.Removed;
+        s = HiddenHp.Step(s, Gates, null, Status(G22, 1000, T(10), 1_000_000_000), t, MeterRole.딜러, T(21))!;
+        Assert.Equal(high, s.Removed);
+    }
+
+    [Fact]
+    public void A_share_under_one_percent_or_over_all_of_it_is_no_share()
+    {
+        var t = HiddenHp.Track(null, Status(G22, G22, T(1), 0), MeterRole.딜러, T(1));
+        Assert.Null(HiddenHp.Track(t, Status(G22, G22 / 2, T(60), G22 / 1000), MeterRole.딜러, T(60))!.Share);   // 0.2%: a misread
+        Assert.Null(HiddenHp.Track(t, Status(G22, G22 / 2, T(60), G22), MeterRole.딜러, T(60))!.Share);          // 200%: impossible
+        Assert.NotNull(HiddenHp.Track(t, Status(G22, G22 / 2, T(60), G22 / 2), MeterRole.딜러, T(60))!.Share);   // 100%: solo
     }
 }

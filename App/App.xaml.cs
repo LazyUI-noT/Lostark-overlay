@@ -154,8 +154,9 @@ public partial class App : Application
 
         _settingsWindow.SettingsChanged += changed;
         _settingsWindow.EditModeRequested += () => SetEditMode(true);
-        _settingsWindow.IsVisibleChanged += (_, _) => UpdatePreview();
-        _settingsWindow.PickedChanged += ApplyPreviewTarget;
+        _settingsWindow.IsVisibleChanged += (_, _) => UpdateVisibility();   // 설정 acts as in front or closed, no 미리보기
+        _settingsWindow.CanvasShownChanged += UpdateVisibility;             // the canvas draws the windows: the real ones hide
+        foreach (var w in Others.Prepend(_overlay)) w.Closed += (_, _) => _quitting = true;   // they close only when the app quits
         _hotkeys.Pressed += action => Dispatcher.BeginInvoke(() =>
         {
             if (action == nameof(HotkeySettings.EditMode)) SetEditMode(!_overlay.EditMode);
@@ -170,6 +171,7 @@ public partial class App : Application
         _tray.OpenDiagnostics += _settingsWindow.ShowDiagnostics;
         _tray.PartToggled += (part, on) => { TrayToggles.Show(_settings, part, on); _settingsWindow.Reload(); changed(); };
         _settingsWindow.ProfileRequested += SwitchProfile;
+        _settingsWindow.ProfileOverwritten += ApplyProfile;
         _settingsWindow.DisplayChosen += ApplyDisplay;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.BeginInvoke(ApplyDisplay);
         _settingsWindow.LayoutChanged += () =>
@@ -221,17 +223,23 @@ public partial class App : Application
     /// <summary>오버레이 프로필 (hotkey, tray): the windows go to that profile's spots and sizes, and it is saved.</summary>
     void SwitchProfile(int profile)
     {
-        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 배치를 씁니다. 끄면 전에 쓰던 배치로 돌아갑니다."); return; }
+        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 위치 프로필을 씁니다. 끄면 전에 쓰던 위치 프로필로 돌아갑니다."); return; }
         // mid-drag, the drop would land in the other profile's spots
         if (profile == _settings.ActiveProfile || _overlay.Dragging || Others.Any(w => w.Dragging)) return;
         _settings.SwitchProfile(profile);
+        ApplyProfile();
+        _tray.Notify($"위치 프로필 {profile + 1}");
+    }
+
+    /// <summary>The windows go to the active profile's spots and sizes (after a switch, or a copy into it from 설정 → 복사).</summary>
+    void ApplyProfile()
+    {
         _overlay.Replace();
         foreach (var w in Others) w.Replace();
         ApplyDisplay();
         StackParty();
         _settingsWindow.Reload();
         _changed();
-        _tray.Notify($"오버레이 배치 {profile + 1}");
     }
 
     string _failedHotkeys = "";   // told once, not on every change
@@ -244,7 +252,6 @@ public partial class App : Application
     void SetEditMode(bool on)
     {
         _overlay.SetEditMode(on);
-        ApplyPreviewTarget();   // none while editing; back after
         foreach (var w in Others) w.SetEditMode(on);
         _tray.SetEditMode(on);
         UpdateVisibility();
@@ -316,20 +323,26 @@ public partial class App : Application
     /// <summary>Shows the last 숙제 tags again (null when none are up): set by ShowTags, run when the game is seen again.</summary>
     Action? _replayTags;
 
+    bool _quitting;   // an overlay window closed: the app is quitting, and 설정 hiding after it must not touch the closed ones
+
     void UpdateVisibility()
     {
+        if (_quitting) return;
         var o = _settings.Overlay;
+        bool canvas = _settingsWindow.CanvasShown && _ownForeground;   // 설정's 내 오버레이 page draws the windows itself, while it is in front (minimized or behind the game it stays IsVisible)
         bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
-            gameForeground: _gameForeground || _gameBehind, hudVisible: _hudVisible, auto: o.Auto(), inDungeon: _inDungeon || !_settings.Meter.On, firstRunDone: _settings.FirstRunDone);
+            gameForeground: _gameForeground || _gameBehind, hudVisible: _hudVisible, auto: o.Auto(), inDungeon: _inDungeon || !_settings.Meter.On, firstRunDone: _settings.FirstRunDone,
+            canvasShown: canvas);
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
         _debuffs.Visibility = _settings.Raids.DebuffShown(_settings.Debuffs) ? _overlay.Visibility : Visibility.Hidden;
-        bool placing = _overlay.EditMode || _ownForeground;   // 편집 모드 or 설정 in front: shown to be placed, read or not
+        bool placing = _overlay.EditMode;   // 편집 모드: shown to be placed, read or not (설정 places on its canvas)
         _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
         bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
-            gameForeground: _gameForeground || _gameBehind, hudVisible: true, auto: OverlayAuto.게임앞, inDungeon: true, firstRunDone: _settings.FirstRunDone);
+            gameForeground: _gameForeground || _gameBehind, hudVisible: true, auto: OverlayAuto.게임앞, inDungeon: true, firstRunDone: _settings.FirstRunDone,
+            canvasShown: canvas);
         _meter.Visibility = ClassProfiles.MeterShown(_settings) && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
@@ -392,7 +405,7 @@ public partial class App : Application
     });
 
     // ── --demo: the real UI driven by DemoSnapshots; no capture, no party, nothing saved ──────
-    // Flags: --settings, --first-run, --debug, --edit, --pick=<Part> (a part's box options in 설정), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
+    // Flags: --settings, --first-run, --debug, --edit, --hide-off (꺼진 창 off on 내 오버레이), --pick=<Part>|plate|copy (a part's box options in 설정), --tab=<settings tab header>, --countdown, --cooldown=<CooldownStyle>, --fill=<FillFrom>,
     // --theme=<UiTheme>, --peer-colors=<ColorSource>, --support=<number 1–4>, --my-number=<1–4>, --name-length=<2–14>, --receive (파티원 크기·배치 받기),
     // --glow (계속 빛남 in chosen colours and 쿨 돈 뒤 지난 시간 on 일반스킬 and 초각스), --icons (아이콘으로 표시 on 일반스킬 and 초각스),
     // --saved-icons (the icons saved for the active 직업각인, from the real icons folder),

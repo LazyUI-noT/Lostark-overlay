@@ -62,39 +62,9 @@ public partial class SettingsWindow
         var known = _s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
             .Select(n => n.Trim()).Where(n => n.Length > 0).Distinct().ToList();
         var who = new TextBox { Text = r.Character ?? "", MinWidth = 220, Margin = new(0, 2, 0, 2) };
-        var list = new ListBox { MaxHeight = 240, BorderThickness = new(0), Background = System.Windows.Media.Brushes.Transparent, Focusable = false };
-        list.ItemContainerStyle = new Style(typeof(ListBoxItem), TryFindResource(typeof(ListBoxItem)) as Style) { Setters = { new Setter(FocusableProperty, false) } };
-        var drop = new Border { Child = list, BorderThickness = new(1), CornerRadius = new(6), Padding = new(2) };
-        drop.SetResourceReference(Border.BackgroundProperty, "ComboBoxDropDownBackground");   // the theme's dropdown look
-        drop.SetResourceReference(Border.BorderBrushProperty, "ComboBoxDropDownBorderBrush");
-        var popup = new Popup { PlacementTarget = who, Placement = PlacementMode.Bottom, AllowsTransparency = true, Child = drop };
-        who.LostKeyboardFocus += (_, _) => popup.IsOpen = false;
-        // Picking a name: a click, or ↑/↓ then Enter. The rows can't take focus, and a ListBoxItem selects on a click only when
-        // it can, so both are handled here; ↑/↓ only mark a row, the text changes on Enter.
-        void Choose(string n)
-        {
-            who.Text = n;   // its TextChanged follows the class and closes the list: the name now matches in full
-            who.CaretIndex = n.Length;
-        }
-        list.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            if (e.OriginalSource is not DependencyObject hit || ItemsControl.ContainerFromElement(list, hit) is not ListBoxItem { Content: string n }) return;
-            Choose(n);
-            e.Handled = true;
-        };
-        who.PreviewKeyDown += (_, e) =>
-        {
-            if (!popup.IsOpen) return;
-            switch (e.Key)
-            {
-                case System.Windows.Input.Key.Escape: popup.IsOpen = false; break;
-                case System.Windows.Input.Key.Down: list.SelectedIndex = Math.Min(list.SelectedIndex + 1, list.Items.Count - 1); break;
-                case System.Windows.Input.Key.Up: list.SelectedIndex = Math.Max(list.SelectedIndex - 1, 0); break;
-                case System.Windows.Input.Key.Enter when list.SelectedItem is string n: Choose(n); break;
-                default: return;
-            }
-            e.Handled = true;
-        };
+        // Picking a name: its TextChanged follows the class and closes the list (the name now matches in full).
+        TypeAhead.Attach(who, typed => typed.Trim() is var t ? [.. known.Where(n => n != t && n.StartsWith(t, StringComparison.Ordinal)).Take(MaxSuggested)] : [],
+            n => { who.Text = n; who.CaretIndex = n.Length; });
         // A known character, picked or typed in full, sets its saved class · 직업각인; it can still be changed below.
         void FollowClass(string name)
         {
@@ -102,21 +72,7 @@ public partial class SettingsWindow
                 && characters.FindIndex(x => RecordCharacter.Label(x.Class.Name, x.Sub) == saved) is >= 0 and var at)
                 character.SelectedIndex = at;
         }
-        void Suggest()
-        {
-            string typed = who.Text.Trim();
-            var matches = known.Where(n => n != typed && n.StartsWith(typed, StringComparison.Ordinal)).Take(MaxSuggested).ToList();
-            list.ItemsSource = matches;
-            drop.MinWidth = who.ActualWidth;
-            popup.IsOpen = who.IsKeyboardFocused && matches.Count > 0;
-        }
-        who.GotKeyboardFocus += (_, _) => Suggest();
-        who.TextChanged += (_, _) =>
-        {
-            Suggest();
-            if (known.Contains(who.Text.Trim())) FollowClass(who.Text.Trim());
-        };
-        Suggest();
+        who.TextChanged += (_, _) => { if (known.Contains(who.Text.Trim())) FollowClass(who.Text.Trim()); };
 
         static string? Text(ComboBox c) => c.Text.Trim() is { Length: > 0 } t ? t : null;
         // What 적용 stores: the fight as the boxes read now. The unapplied check compares it with the fight as stored.

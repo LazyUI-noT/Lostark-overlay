@@ -85,6 +85,8 @@ public static class JeonbunReader
     /// <summary>강화: a digit counts from <see cref="SoftGlyph"/> (blur lowers every score; the format checks the rest).</summary>
     [ThreadStatic] static bool _soft;
     const double SoftGlyph = 0.4;
+    // 강화: a stream's blur greys the timer's yellow (discord_전분_sample.png: pale, its strokes under the game's floor of 60).
+    const int SoftYellowFloor = 50;
 
     /// <param name="clockHint">강화: the timer the fight's clock expects, used when the panel's own doesn't read.</param>
     static JeonbunReading? ReadAs(Image panel, bool soft, int? clockHint, out bool hinted)
@@ -134,22 +136,25 @@ public static class JeonbunReader
         int x0 = Math.Max(0, bx0), x1 = Math.Min(panel.Width, bx1), y0 = Math.Max(0, by0), y1 = Math.Min(panel.Height, by1);
         int w = x1 - x0, h = y1 - y0;
         if (w <= 0 || h <= 0) return null;
+        // Medians from counts, not sorted copies (28 boxes per panel read, perf-trace): the same values.
         var ink = new int[w * h];
+        Span<int> levels = stackalloc int[256];   // WhiteInk is 0..255
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
                 var (b, g, r) = panel.Pixel(x0 + x, y0 + y);
-                ink[y * w + x] = WhiteInk(b, g, r);
+                levels[ink[y * w + x] = WhiteInk(b, g, r)]++;
             }
-        var sorted = ink.Order().ToArray();
-        int threshold = Math.Max(110, sorted[sorted.Length / 2] + 60);
-        var on = new List<(int X, int Y)>();
+        int threshold = Math.Max(110, KthOfCounts(levels, ink.Length / 2) + 60);
+        Span<int> columns = w <= 512 ? stackalloc int[w] : new int[w];   // the inked pixels per column
+        int on = 0;
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
-                if (ink[y * w + x] > threshold) on.Add((x, y));
-        if (on.Count < MinLine * s) return null;
+                if (ink[y * w + x] > threshold) { columns[x]++; on++; }
+        if (on < MinLine * s) return null;
         // Centred across on the ink's median (a speck doesn't move it, a crop a few pixels off does), the box's size kept.
-        int dx = Median(on.Select(p => p.X)) - w / 2;   // across only (down, the caller tries a few offsets)
+        int medianX = on % 2 == 1 ? KthOfCounts(columns, on / 2) : (KthOfCounts(columns, on / 2 - 1) + KthOfCounts(columns, on / 2)) / 2;
+        int dx = medianX - w / 2;   // across only (down, the caller tries a few offsets)
         float At(int i)
         {
             int x = i % w + dx, y = i / w;
@@ -208,12 +213,27 @@ public static class JeonbunReader
     public static string?[] Cells(Image panel) =>
         [.. Enumerable.Range(0, 4).Select(c => CellGlyphs(panel, c) is { } g ? Text(g, ValueTemplates, marks: true) : null)];
 
+    /// <summary>테스트 모드's 전분 search: whether <paramref name="panel"/> is the panel with my row at <paramref name="row"/>, read
+    /// from its frame, not its figures: the timer (강화), a 피해량 or DPS title and my green row. A stream's blur can lose one
+    /// digit of an amount (the green cell's '8' in discord_전분_sample.png) while the panel is plainly there.</summary>
+    public static bool Shows(Image panel, int row)
+    {
+        bool was = _soft;
+        _soft = true;
+        try
+        {
+            return MyRow(panel) == row && SoftClock(panel) is not null
+                && Columns(panel).Any(k => k is JeonbunColumn.피해량 or JeonbunColumn.조력피해량 or JeonbunColumn.DPS);
+        }
+        finally { _soft = was; }
+    }
+
     static double Scale(Image panel) => panel.Width / RefW;
 
     internal static List<Glyph>? TimerGlyphs(Image panel)
     {
         double s = Scale(panel);
-        return Glyphs(panel, Box(TimerBox.X0, TimerBox.X1, TimerBox.Y0, TimerBox.Y1, s), YellowInk, floor: 60, margin: 40, s);
+        return Glyphs(panel, Box(TimerBox.X0, TimerBox.X1, TimerBox.Y0, TimerBox.Y1, s), YellowInk, floor: _soft ? SoftYellowFloor : 60, margin: 40, s);
     }
 
     internal static List<Glyph>? CellGlyphs(Image panel, int cell)
@@ -358,6 +378,14 @@ public static class JeonbunReader
             if (rows.Count == 0) continue;
             foreach (var p in Split((part.Item1, part.Item2, rows[0], rows[^1] + 1), line, on)) yield return p;
         }
+    }
+
+    /// <summary>The <paramref name="k"/>-th smallest (0-based) of the values counted in <paramref name="counts"/> (counts[v] = how many are v).</summary>
+    internal static int KthOfCounts(ReadOnlySpan<int> counts, int k)
+    {
+        for (int v = 0, seen = 0; v < counts.Length; v++)
+            if ((seen += counts[v]) > k) return v;
+        return counts.Length - 1;
     }
 
     static int Median(IEnumerable<int> values)

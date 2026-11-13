@@ -41,6 +41,19 @@ public class ClassPickerTests
     [Fact]
     public void Only_기본_with_no_classes() => Assert.Equal([ClassProfiles.Template], ClassPicker.PickerEntries([]));
 
+    [Theory]
+    [InlineData("바드 · 절실한 구원", "바드", true)]          // the class
+    [InlineData("바드 · 절실한 구원", "구원", true)]          // the 직업각인
+    [InlineData("바드 · 절실한 구원", "바드 절실", true)]     // both, any order of words
+    [InlineData("바드 · 절실한 구원", "절실 바드", true)]
+    [InlineData("바드 · 절실한 구원", "절실한구원", true)]    // spaces typed or not
+    [InlineData("바드 · 절실한 구원", "워로드", false)]
+    [InlineData("바드 · 절실한 구원", "", true)]              // nothing typed: everything
+    [InlineData("바드 · 절실한 구원", "  ", true)]
+    [InlineData("Valkyrie", "valk", true)]                   // case doesn't matter
+    public void Search_matches_class_or_직업각인(string shown, string typed, bool expected) =>
+        Assert.Equal(expected, ClassPicker.Matches(shown, typed));
+
     // ── Normalize ────────────────────────────────────────────────────────────────────
 
     static IReadOnlyList<string> Entries => ClassPicker.PickerEntries(Shipped);
@@ -110,6 +123,55 @@ public class ClassPickerTests
     {
         var targets = ClassPicker.CopyTargets(null, Shipped, toMembers: true);
         Assert.Equal([ClassProfiles.Template, .. Shipped.Where(c => c.Subclasses.Count > 0).Select(c => c.Name)], targets);
+    }
+
+    // ── CopyRefusal / CopyNeedsConfirm (복사 page) ─────────────────────────────────────────
+
+    const string Other = "워로드 · 고독한기사";
+
+    [Fact]
+    public void Copying_a_직업각인_onto_itself_on_the_same_side_is_refused()
+    {
+        Assert.NotNull(ClassPicker.CopyRefusal(CopyParts.Color, Combat, false, Combat, false, Shipped));
+        Assert.NotNull(ClassPicker.CopyRefusal(CopyParts.Color, ClassProfiles.Template, true, ClassProfiles.Template, true, Shipped));
+    }
+
+    [Fact]
+    public void Party_members_share_the_class_so_two_직업각인_of_one_class_are_the_same_target()
+    {
+        Assert.NotNull(ClassPicker.CopyRefusal(CopyParts.Color, Combat, true, Other, true, Shipped));
+        Assert.Null(ClassPicker.CopyRefusal(CopyParts.Color, Combat, false, Other, false, Shipped));
+    }
+
+    [Fact]
+    public void Another_side_or_another_target_or_all_is_allowed()
+    {
+        Assert.Null(ClassPicker.CopyRefusal(CopyParts.Color, Combat, false, Combat, true, Shipped));
+        Assert.Null(ClassPicker.CopyRefusal(CopyParts.Color, Combat, true, Combat, false, Shipped));
+        Assert.Null(ClassPicker.CopyRefusal(CopyParts.Color, Combat, false, null, false, Shipped));
+    }
+
+    [Fact]
+    public void Nothing_ticked_is_refused()
+    {
+        Assert.Equal("복사할 것을 고르세요.", ClassPicker.CopyRefusal(0, Combat, false, Other, false, Shipped));
+    }
+
+    [Fact]
+    public void Cooldown_view_parts_alone_only_go_from_me_to_me()
+    {
+        const CopyParts mineOnly = CopyParts.Progress | CopyParts.Timer;
+        Assert.NotNull(ClassPicker.CopyRefusal(mineOnly, Combat, false, Other, true, Shipped));
+        Assert.NotNull(ClassPicker.CopyRefusal(mineOnly, Combat, true, Other, false, Shipped));
+        Assert.Null(ClassPicker.CopyRefusal(mineOnly, Combat, false, Other, false, Shipped));
+        Assert.Null(ClassPicker.CopyRefusal(mineOnly | CopyParts.Color, Combat, false, Other, true, Shipped));
+    }
+
+    [Fact]
+    public void Only_모든_직업각인_asks_for_a_second_click()
+    {
+        Assert.True(ClassPicker.CopyNeedsConfirm(null));
+        Assert.False(ClassPicker.CopyNeedsConfirm(Other));
     }
 
     // ── SharedPartyNote ──────────────────────────────────────────────────────────────

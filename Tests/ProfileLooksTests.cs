@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>암수, 단심 and the meter's buff bar 투명도 follow 오버레이 배치 1–5 (profile-looks.plan.md).</summary>
+/// <summary>암수, 단심 and the meter's buff bar 투명도 follow 위치 프로필 1–5 (profile-looks.plan.md).</summary>
 public class ProfileLooksTests
 {
     static Settings Loaded(Action<Settings>? edit = null)
@@ -185,7 +185,7 @@ public class ProfileLooksTests
         var notice = s.MergedLooksNotice();
 
         Assert.Contains("암수, 게이지", notice);
-        Assert.Contains("모든 배치에 적용", notice);
+        Assert.Contains("모든 위치 프로필에 적용", notice);
         Assert.Null(new Settings().MergedLooksNotice());
     }
 
@@ -306,5 +306,39 @@ public class ProfileLooksTests
         Assert.False(s.CopyProfile(to));
 
         Assert.Equal(before, JsonSerializer.Serialize(s.Profiles, SettingsStore.Json));
+    }
+
+    [Fact]
+    public void A_profile_is_copied_from_another_than_the_active_one()
+    {
+        var s = Loaded();
+        s.Profiles[2].Overlay.Left = 77;
+        s.Profiles[2].Shot = null;
+        var shot = new PixelRect(0, 0, 50, 50);
+        s.Profiles[4].Shot = shot;
+
+        Assert.True(s.CopyProfile(2, 4));
+
+        Assert.Equal(77, s.Profiles[4].Overlay.Left);
+        Assert.Equal(shot, s.Profiles[4].Shot);
+        Assert.Equal(0, s.ActiveProfile);
+    }
+
+    [Fact]
+    public void Copying_into_the_active_profile_puts_it_on_screen_at_once()
+    {
+        var s = Loaded();
+        s.Profiles[2].Overlay.Left = 77;
+
+        Assert.True(s.CopyProfile(2, 0));
+
+        Assert.Equal(77, s.Overlay.Left);
+        Assert.Equal(0, s.ActiveProfile);
+    }
+
+    [Fact]
+    public void Copying_a_profile_onto_itself_from_the_pair_form_does_nothing()
+    {
+        Assert.False(Loaded().CopyProfile(2, 2));
     }
 }

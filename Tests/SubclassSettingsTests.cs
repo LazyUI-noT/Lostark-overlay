@@ -130,6 +130,49 @@ public class SubclassSettingsTests
     }
 
     [Fact]
+    public void Leaving_테스트_모드_with_another_character_puts_its_spot_on_and_keeps_the_old_one()
+    {
+        // Normal settings: 고독한기사 개별 at 825, the class spot at 300. In 테스트 모드 the app went to 기본 (ActiveCharacter is
+        // app-written, so leaving keeps it): the window must not stay at 고독한기사's spot under no character.
+        var normal = Playing(Lone);
+        ClassProfiles.SetOwn(normal, Lone, true);
+        Place(normal, 300, 1.0);
+        normal.ActiveCharacter = Combat;
+        normal.SyncPlace();
+        normal.ActiveCharacter = Lone;
+        normal.SyncPlace();
+        Place(normal, 825, 0.93);
+
+        var live = Playing(Lone);
+        live.ActiveCharacter = null;
+        live.SwapIn(normal);
+
+        Assert.Null(live.PlaceKey);
+        Assert.Equal((300, 1.0), (live.Overlay.Left, live.Overlay.Width));
+        live.ActiveCharacter = Lone;
+        live.SyncPlace();
+        Assert.Equal((825, 0.93), (live.Overlay.Left, live.Overlay.Width));
+    }
+
+    [Fact]
+    public void Leaving_테스트_모드_onto_a_개별_직업각인_puts_its_own_spot_on()
+    {
+        var normal = Playing(Lone);
+        ClassProfiles.SetOwn(normal, Lone, true);
+        Place(normal, 300, 1.0);
+        normal.SyncPlace();
+        Place(normal, 825, 0.93);
+        normal.ActiveCharacter = null;   // saved on the class spot, 고독한기사's kept
+        normal.SyncPlace();
+
+        var live = Playing(Lone);
+        live.SwapIn(normal);
+
+        Assert.Equal(Lone, live.PlaceKey);
+        Assert.Equal((825, 0.93), (live.Overlay.Left, live.Overlay.Width));
+    }
+
+    [Fact]
     public void Turning_개별_off_puts_the_class_spot_back()
     {
         var s = Playing(Combat);

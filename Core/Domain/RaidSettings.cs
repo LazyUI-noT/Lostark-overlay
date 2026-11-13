@@ -22,13 +22,6 @@ public sealed class GateSettings
     public bool DebuffAuto { get; set; } = true;
     /// <summary>This gate's ± bars, used when <see cref="RaidSettings.OffsetPerGate"/> is on.</summary>
     public int Offset { get; set; }
-    /// <summary>The 에스더 plan for this gate (종막 EX): each use's damage (억) and when it goes in (bar count; HP % on a ??? gate).
-    /// 2-1's total sets the 조력 비율 (HiddenHp.CalibratedShare); 2-3's uses come off the estimate as they are reached.</summary>
-    public List<EstherUse>? Esthers { get; set; }
-    /// <summary>A ??? gate: each party's support 조력 피해량 at the end of its calibration gate (2-1; 억, 0 = unknown). Filled when
-    /// 2-1 is cleared for the parties whose support sends; the user types the rest.</summary>
-    public double Assist1 { get; set; }
-    public double Assist2 { get; set; }
     /// <summary>HP 변경 감지: max HP learned per difficulty (<see cref="HpChange"/>), used instead of raids.json's.</summary>
     public Dictionary<string, LearnedHp>? LearnedHp { get; set; }
     /// <summary>HP 변경 감지: first values seen in one raid, waiting for a later raid to read them again (<see cref="HpChange.Keep"/>).</summary>
@@ -96,11 +89,6 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;
     public int GlowBars { get; set; } = 5;
-    /// <summary>A ??? gate's estimate: a support's 조력 피해량 as a share of its party's damage (%), and the other party's damage as a
-    /// multiple of the known one when only one party's figures arrive.</summary>
-    public double AssistShare { get; set; } = 43.5;
-    public double OtherParty { get; set; } = 1.0;
-    public const double MinAssistShare = 20, MaxAssistShare = 80, MaxOtherParty = 3, MaxEsther = 1_000_000;
     public string Background { get; set; } = "#CC101418";
     public double Opacity { get; set; } = 1.0;
     public double Left { get; set; } = double.NaN;
@@ -143,13 +131,7 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
             else
             {
                 g.Alerts = g.Alerts is null ? null : [.. g.Alerts.Where(a => a is > 0 and < 100_000).Distinct().OrderDescending()];
-                g.Esthers = g.Esthers?.Where(u => u is not null && !string.IsNullOrWhiteSpace(u.Name))   // hand edits
-                    .Select(u => u with { Damage = double.IsFinite(u.Damage) ? Math.Clamp(u.Damage, 0, MaxEsther) : 0, At = Math.Clamp(u.At, 0, 99_999) }).ToList();
-                g.Assist1 = double.IsFinite(g.Assist1) ? Math.Clamp(g.Assist1, 0, MaxEsther) : 0;
-                g.Assist2 = double.IsFinite(g.Assist2) ? Math.Clamp(g.Assist2, 0, MaxEsther) : 0;
             }
-        AssistShare = double.IsFinite(AssistShare) ? Math.Clamp(AssistShare, MinAssistShare, MaxAssistShare) : 43.5;
-        OtherParty = double.IsFinite(OtherParty) ? Math.Clamp(OtherParty, 0, MaxOtherParty) : 1.0;
         (GlowSeconds, GlowBars) = (Math.Clamp(GlowSeconds, 1, MaxGlowSeconds), Math.Clamp(GlowBars, 1, MaxGlowBars));
         Offset = Math.Clamp(Offset, -MaxOffset, MaxOffset);
         Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, 0.1, 1) : 1;

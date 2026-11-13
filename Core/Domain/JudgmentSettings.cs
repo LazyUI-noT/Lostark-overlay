@@ -37,7 +37,7 @@ public sealed class JudgmentSettings : IWindowPlace
     public static readonly int[] FontSizes = [75, 100, 150, 200, 300];
     public const double MinOpacity = 0.2;
 
-    /// <summary>A separate copy (오버레이 배치 keeps one each).</summary>
+    /// <summary>A separate copy (위치 프로필 keeps one each).</summary>
     public JudgmentSettings Copy()
     {
         var copy = (JudgmentSettings)MemberwiseClone();

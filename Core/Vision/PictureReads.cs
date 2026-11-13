@@ -12,8 +12,10 @@ public static class PictureReads
     public static bool? Of(AdjustPart part, Image picture, PixelRect at, Viewport vp, Fit fit, int buffSize, int buffCount, int bossSize, PixelRect? panel = null) => part switch
     {
         AdjustPart.스킬창 => Holds(at, FitSolver.CueArea(vp, fit)) ? FitSolver.ReadsWell(FitSolver.Score(picture, at, vp, fit)) : null,
-        AdjustPart.버프 => Row(picture, at, Geometry.BuffArea(vp, fit, buffSize, buffCount), Geometry.BuffBoxes(vp, fit, buffSize, buffCount), (row, icon) => BuffReader.Classify(row, icon) is not null),
-        AdjustPart.디버프 => Row(picture, at, Geometry.DebuffArea(vp, fit, buffSize), Geometry.DebuffBoxes(vp, fit, buffSize), (row, icon) => DebuffReader.Classify(row, icon) is not null),
+        AdjustPart.버프 => Row(picture, at, Geometry.BuffArea(vp, fit, buffSize, buffCount), Geometry.BuffBoxes(vp, fit, buffSize, buffCount),
+            (row, icons) => BuffReader.ReadRow(icons.Length, i => BuffReader.Framed(row, icons[i]), i => BuffReader.Read(row, icons[i])).Any(k => k is not null)),
+        AdjustPart.디버프 => Row(picture, at, Geometry.DebuffArea(vp, fit, buffSize), Geometry.DebuffBoxes(vp, fit, buffSize),
+            (row, icons) => icons.Any(icon => DebuffReader.Classify(row, icon) is not null)),
         AdjustPart.전분 => panel is { } r && Holds(at, r) ? Panel(picture.Crop(r with { X = r.X - at.X, Y = r.Y - at.Y })) : null,
         _ => Boss(picture, at, vp, fit, bossSize),
     };
@@ -24,12 +26,12 @@ public static class PictureReads
 
     static bool Holds(PixelRect at, PixelRect area) => area.Width > 0 && area.Height > 0 && at.Intersect(area) == area;
 
-    /// <summary>A row of icon boxes: any box with a known icon.</summary>
-    static bool? Row(Image picture, PixelRect at, PixelRect area, Geometry.BuffBox[] boxes, Func<Image, PixelRect, bool> known)
+    /// <summary>A row of icon boxes: whether <paramref name="known"/> finds a known icon among them (boxes relative to the row).</summary>
+    static bool? Row(Image picture, PixelRect at, PixelRect area, Geometry.BuffBox[] boxes, Func<Image, PixelRect[], bool> known)
     {
         if (!Holds(at, area)) return null;
         var row = picture.Crop(area with { X = area.X - at.X, Y = area.Y - at.Y });
-        return boxes.Any(b => known(row, b.Icon with { X = b.Icon.X - area.X, Y = b.Icon.Y - area.Y }));
+        return known(row, [.. boxes.Select(b => b.Icon with { X = b.Icon.X - area.X, Y = b.Icon.Y - area.Y })]);
     }
 
     static bool? Boss(Image picture, PixelRect at, Viewport vp, Fit fit, int bossSize)

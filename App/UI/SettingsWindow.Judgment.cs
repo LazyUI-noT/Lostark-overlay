@@ -49,21 +49,10 @@ public partial class SettingsWindow
                 s => s.Judgment.CooldownColor, (s, v) => s.Judgment.CooldownColor = v));
             p.Children.Add(DefaultedCheck(Check("남은 초", j.ShowLabel, v => j.ShowLabel = v, Changed,
                 "심판이 켜져 있는 동안은 심판의 남은 시간, 그 뒤로는 다시 터질 수 있을 때까지의 시간입니다. 막대가 너무 얇으면 숫자가 보이지 않습니다."), s => s.Judgment.ShowLabel, (s, v) => s.Judgment.ShowLabel = v));
-            // 길이 runs along the bar: Width when flat, Height when upright (OverlayRenderer.JudgmentCell).
-            // The page refills when 세로 flips, so `side` is this page's: the default is read on the same side, not the default's.
-            bool side = j.Side;
-            p.Children.Add(Defaulted(SliderRow("길이", ClassProfiles.MinScale, ClassProfiles.MaxScale, side ? j.Height : j.Width, 0.05, v => $"{v * 100:0}%",
-                v => { if (side) j.Height = v; else j.Width = v; }, Changed),
-                s => side ? s.Judgment.Height : s.Judgment.Width, (s, v) => { if (side) s.Judgment.Height = v; else s.Judgment.Width = v; }));
-            p.Children.Add(Defaulted(SliderRow("두께", ClassProfiles.MinScale, ClassProfiles.MaxScale, side ? j.Width : j.Height, 0.05, v => $"{v * 100:0}%",
-                v => { if (side) j.Width = v; else j.Height = v; }, Changed),
-                s => side ? s.Judgment.Width : s.Judgment.Height, (s, v) => { if (side) s.Judgment.Width = v; else s.Judgment.Height = v; }));
         }
-        else p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, j.Width, 0.05, v => $"{v * 100:0}%", v => j.Width = v, Changed),
-            s => s.Judgment.Width, (s, v) => s.Judgment.Width = v));
         p.Children.Add(Defaulted(SliderRow("불투명도", JudgmentSettings.MinOpacity, 1, j.Opacity, 0.05, v => $"{v * 100:0}%", v => j.Opacity = v, Changed),
             s => s.Judgment.Opacity, (s, v) => s.Judgment.Opacity = v));
-        p.Children.Add(Note("편집 모드에서 단심 창을 끌어 옮기고, 모서리를 끌어 크기를 바꿀 수도 있습니다."));
+        p.Children.Add(Note("크기는 내 오버레이 화면에서 단심 창을 눌러 윤곽의 흰 점을 끌어 바꿉니다. 모서리는 비율을 지키고, 막대 모양에서는 오른쪽·아래 점이 너비·높이(길이·두께)를 따로 바꿉니다. Ctrl+화살표로 1px씩 바꿀 수도 있습니다."));
     }
 
     /// <summary>게임의 데미지 폰트 크기, shown in 스킬창 beside 버프 크기, in 기타 → 단심 and the 표시 map; any one changes the same setting.</summary>

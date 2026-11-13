@@ -36,7 +36,7 @@ public partial class SettingsWindow
             EnumCombo([(OverlayShow.끄기, "끄기"), (OverlayShow.자동, "자동"), (OverlayShow.항상, "항상 표시")], o.Mode(), v => { o.SetMode(v); Dispatcher.BeginInvoke(BuildAll); })));
         if (o.Mode() == OverlayShow.자동)
         {
-            p.Children.Add(HelpRow("자동일 때", "스킬창이 보일 때: 컷신이나 로딩으로 스킬창이 안 보이면 숨깁니다. 전투 중일 때: 게임의 전투 분석기나 보스 체력바가 보이면 전투 중으로 봅니다. 전투 분석기를 게임에서 열어 두어야 하고, 이 항목을 고를 때 미터기가 꺼져 있으면 표시 안 함으로 켜집니다. DPS 미터기 창은 이 설정을 따르지 않습니다.", AutoWhenCombo(o)));
+            p.Children.Add(HelpRow("자동일 때", "스킬창이 보일 때: 컷신이나 로딩으로 스킬창이 안 보이면 숨깁니다. 전투 중일 때: 게임의 전투 분석기나 보스 체력바가 보이면 전투 중으로 봅니다. 게임에서 전투 분석기를 열어 두세요. 이 항목을 고를 때 미터기가 꺼져 있으면 미터기를 '표시 안 함'으로 켭니다. DPS 미터기 창은 이 설정을 따르지 않습니다.", AutoWhenCombo(o)));
             if (o.Auto() == OverlayAuto.던전) p.Children.Add(Note(_s.Meter.On ? "게임에서 전투 분석기를 열어 두세요. 안 보이면 오버레이도 나오지 않습니다." : "미터기가 꺼져 있어 전투 중인지 알 수 없습니다. 게임이 앞에 있으면 보여 줍니다."));
         }
 
@@ -113,7 +113,7 @@ public partial class SettingsWindow
     /// <summary>The 표시 map (FeatureMapView): 모두 접기 / 모두 펼치기 above it, a note line under it for what a switch also did.</summary>
     void AddMap(Panel p)
     {
-        var note = new TextBlock { Opacity = 0.8, Margin = new(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
+        var note = Muted(new TextBlock { Margin = new(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap });
         var map = _map = new FeatureMapView(_s, _mapOpen, _mapPin, () => { Changed(); Dispatcher.BeginInvoke(FillShow); }, area => Go(area),
             text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, Preview = MapCard, DetectPreview = MapLiveCard, DetectHover = MapLive, ShowResources = _checkOn, ShowDetect = id => { _detectPicked = id; Go(AreaFit, SecDetect); DrawDetect(); } };
         map.SetDetect(_detect, _detectAt);
@@ -171,7 +171,7 @@ public partial class SettingsWindow
         var p = Refill(_secScreens, AreaScreens, "게임과 디스코드 같은 다른 앱을 서로 다른 모니터에 두고 쓸 때의 설정입니다.");
         p.Children.Add(HelpRow("표시 화면", "오버레이를 띄울 모니터입니다. 바꾸면 오버레이 창들이 그 모니터의 같은 자리쯤으로 옮겨 갑니다. 그 모니터를 빼면 게임이 있는 모니터로 돌아옵니다.", DisplayCombo()));
         p.Children.Add(Check("Alt+Tab 중에도 항상 표시", _s.Screens.ReadBehind, v => { _s.Screens.ReadBehind = v; ShowBehindLine(); }, Changed,
-            "켜면 디스코드나 브라우저를 쓰는 동안에도 게임을 읽고 오버레이를 보여 줍니다. 전체 화면 모드는 다른 앱을 누르면 게임이 내려가니 전체 창 모드로 쓰세요. 끄면 게임을 다시 누를 때까지 멈춥니다. 켜 두어도 게임이 최소화되거나 다른 창에 가려지면 멈춥니다."));
+            "켜면 디스코드나 브라우저를 쓰는 동안에도 게임을 읽고 오버레이를 보여 줍니다. 끄면 게임을 다시 누를 때까지 멈춥니다. 켜 두어도 게임이 최소화되거나 다른 창에 가려지면 멈춥니다. 전체 화면 모드에서는 다른 앱을 누르면 게임이 내려가니 전체 창 모드로 쓰세요."));
         Detach(_behindLine);
         p.Children.Add(_behindLine);
         ShowBehindLine();
@@ -221,7 +221,7 @@ public partial class SettingsWindow
         if (part == OverlayPart.Judgment && _s.ActiveCharacter is null) check.IsEnabled = false;
         var cell = new StackPanel { Margin = new(0, 0, 0, 6) };
         cell.Children.Add(check);
-        if (ShowNote(part) is { } note) cell.Children.Add(new TextBlock { Text = note, Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(24, 0, 0, 0) });
+        if (ShowNote(part) is { } note) cell.Children.Add(Muted(new TextBlock { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(24, 0, 0, 0) }));
         return cell;
     }
 
@@ -233,9 +233,7 @@ public partial class SettingsWindow
         foreach (var part in new[] { OverlayPart.Debuffs, OverlayPart.Judgment, OverlayPart.Amsu, OverlayPart.Meter, OverlayPart.BarCount, OverlayPart.Party })
             TrayToggles.Show(copy, part, true);
         copy.Raids.Gate(RaidSettings.MordumGate).CountWindow = true;   // a 줄 수 창 to draw
-        // The sample fight is a raid: a 자동 buff bar shows, not faint as out of a raid (user, 2026-11-10: full bars too dim).
-        foreach (var kind in Enum.GetValues<BuffKind>().Where(k => copy.Buffs.Of(k).InRaidOnly))
-            copy.Buffs.Edit(kind).InRaidOnly = false;
+        // 자동 buff bars: the renderer draws them as in a raid in every preview (OverlayRenderer.ShowHidden).
         return copy;
     }
 

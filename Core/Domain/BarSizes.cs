@@ -27,6 +27,16 @@ public static class BarSizes
     public static (double X, double Y) DragFactors(Cell c, double length, double thickness) =>
         c.W >= c.H ? (length, thickness) : (thickness, 1);
 
+    /// <summary>A fixed-grid bar's 길이 after its far end (a flat bar's right, an upright bar's top) moved <paramref name="by"/>
+    /// DIPs outwards on a bar drawn <paramref name="drawn"/> long, <paramref name="full"/> long at 길이 1. The end follows the
+    /// pointer from where it is drawn, so the renderer's 2 px floor or its rounding doesn't make the first move jump.
+    /// The drag stops the bar at <see cref="MinDraggedPx"/> drawn; a bar already shorter doesn't shrink.</summary>
+    public static double LengthDragged(double start, double drawn, double full, double by) => full <= 0 ? start
+        : Math.Round(Math.Clamp((drawn + Math.Max(by, Math.Min(0, MinDraggedPx - drawn))) / full, MinLength, MaxLength), 2);
+
+    /// <summary>The shortest a bar's end drag leaves it, in drawn pixels (user, 2026-11-13).</summary>
+    public const double MinDraggedPx = 5;
+
     /// <summary>The debuff row (내 색, 교체, 번개) from the left, tops level: each box <paramref name="w"/> × <paramref name="h"/>
     /// times its own size, <paramref name="gap"/> apart.</summary>
     public static IReadOnlyList<Cell> DebuffBoxes(DebuffSettings d, double w, double h, double gap)

@@ -45,6 +45,50 @@ public static class BossName
         return best;
     }
 
+    // A name's widest gap is a word space (~13 px on the bosstop shots); red more than this past the name is something else.
+    const double MaxGap = 24;
+    // Red pixels a name has at least, at HUD 110 1080p: 2–3 letters (the dummy's 2 letters at HUD 80 hold ~330).
+    const double MinInk = 60;
+
+    /// <summary>What the name's OCR reads: the strip up to the red name's end (a few px past it), or null with no red name. The
+    /// whole strip is never read: with 방송·캡처에서 숨김 off it holds the app's own labels ("[7,568억]", 대난투 2026-11-12).
+    /// A new image, since the capture buffer is reused.</summary>
+    public static Image? OcrStrip(Image strip, double scale) =>
+        TextEnd(strip, scale) is { } end
+            ? strip.Crop(new(0, 0, Math.Min(strip.Width, end + (int)Math.Ceiling(4 * scale)), strip.Height))
+            : null;
+
+    /// <summary>Where the name's red text ends in <paramref name="strip"/> (exclusive, strip pixels), or null when there is no name:
+    /// the HP label is placed after it and the name's OCR stops at it (boss-label-name.plan.md). The text is the run of red columns
+    /// around the reddest one, gaps up to a word space; a flash's specks are too few to be a name and too far to lengthen one.</summary>
+    public static int? TextEnd(Image strip, double scale)
+    {
+        var cols = new int[strip.Width];
+        for (int y = 0; y < strip.Height; y++)
+            for (int x = 0; x < strip.Width; x++)
+                if (Red(strip.Pixel(x, y))) cols[x]++;
+        var runs = Runs(cols, (int)Math.Ceiling(MaxGap * scale));
+        if (runs.Count == 0) return null;
+        int best = 0;
+        for (int i = 1; i < runs.Count; i++) if (runs[i].Ink > runs[best].Ink) best = i;
+        return runs[best].Ink >= MinInk * scale * scale ? runs[best].End : null;
+    }
+
+    /// <summary>The strip's red columns grouped into runs whose gaps are at most <paramref name="gap"/> columns.</summary>
+    static List<(int End, int Ink)> Runs(int[] cols, int gap)
+    {
+        var runs = new List<(int End, int Ink)>();
+        int last = -1, ink = 0;
+        for (int x = 0; x < cols.Length; x++)
+        {
+            if (cols[x] == 0) continue;
+            if (last >= 0 && x - last - 1 > gap) { runs.Add((last + 1, ink)); ink = 0; }
+            (last, ink) = (x, ink + cols[x]);
+        }
+        if (last >= 0) runs.Add((last + 1, ink));
+        return runs;
+    }
+
     static bool Red((byte B, byte G, byte R) p) => p.R > 170 && p.G < 110 && p.B < 110;
 
     /// <summary>The bounds of the strip's red text, or null when there is none.</summary>

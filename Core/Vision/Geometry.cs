@@ -330,8 +330,10 @@ public static class Geometry
     /// y 62–82 at 1080p HUD 110, Lost Ark 2026.11.03 - 21.46.27.02.mp4 9:03). As it jumps it pops bigger about (960, 91): glyphs
     /// 16 px at y 64–80, 21 px at y 56–77 (ShadowNumberSweep, the whole 대난투), so a 1.5× pop reaches y 51; the top at 46 keeps
     /// 5 px over that (the old 56 cut it). Follows the HUD and the resolution from the top centre like the boss bar; 21:9 and
-    /// other HUD sizes untested on footage (ShadowGimmickTests draws the clip's frames there).</summary>
-    public static readonly PixelRect RefShadowNumber = new(760, 46, 400, 40);
+    /// other HUD sizes untested on footage (ShadowGimmickTests draws the clip's frames there). Its right edge stops short of the
+    /// damage label (<see cref="RefShadowDealt"/>, x 1115): the app's own label, captured with 캡처 제외 off, failed every read in the
+    /// area (2026-11-12, 체력 in ~3.5 s steps). 15 characters popped 1.5× end near x 1080.</summary>
+    public static readonly PixelRect RefShadowNumber = new(760, 46, 352, 40);
     public static PixelRect ShadowNumber(Viewport vp, Fit fit) => FromTop(RefShadowNumber, vp, fit);
     /// <summary>The gimmick's fill bar under its number, inside its frame (x 638–1282, y 101–121 at 1080p HUD 110, the same video at
     /// 9:05 empty and 9:30 filling): OverlayTextWindow draws the boss's HP and lines in it (user, 2026-11-05). Follows the HUD and the
@@ -348,6 +350,17 @@ public static class Geometry
     /// the name's line (RefBossName's rows). Follows the HUD and the resolution from the top centre like the name.</summary>
     public static readonly PixelRect RefBossHpLabel = new(1025, 32, 320, 30);
     public static PixelRect BossHpLabel(Viewport vp, Fit fit) => FromTop(RefBossHpLabel, vp, fit);
+    /// <summary>About a character between the name's end and the HP label (user, 2026-11-12), in reference px.</summary>
+    const double BossHpLabelGap = 12;
+    /// <summary>The HP label placed after the name's red text (<paramref name="nameRight"/>, screen px; BossName.TextEnd), on the name's
+    /// line: outside the name's read, wherever the name ends (boss-label-name.plan.md). Kept inside the viewport for a long name.
+    /// Follows the HUD and the resolution like the name.</summary>
+    public static PixelRect BossHpLabelAfter(Viewport vp, Fit fit, int nameRight)
+    {
+        var r = BossHpLabel(vp, fit);
+        int x = nameRight + (int)Math.Round(BossHpLabelGap * Scale(vp, fit));
+        return r with { X = Math.Min(x, vp.X + vp.Width - r.Width) };
+    }
     public static PixelRect BossBar(Viewport vp, Fit fit) => FromTop(RefBossBar, vp, fit);
     public static PixelRect BossCount(Viewport vp, Fit fit) => FromTop(RefBossCount, vp, fit);
     public static PixelRect BossHpText(Viewport vp, Fit fit) => FromTop(RefBossHpText, vp, fit);

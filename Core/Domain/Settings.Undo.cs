@@ -12,6 +12,7 @@ public sealed partial class Settings
         nameof(FirstRunDone), nameof(Updates), nameof(Characters), nameof(ActiveCharacter), nameof(Cores), nameof(StackSkills),
         nameof(SubclassHistory), nameof(SeenSupport), nameof(RailSeen), nameof(Fits), nameof(DetectedScreen), nameof(Adjusts),
         nameof(Homework),   // characters read from the game and picks raised by clears
+        nameof(BuffUnlockKey),   // the install's, not an option: undo and [Test] never relock it
     ];
 
     /// <summary>설정's undo: the live object, which the windows hold, takes <paramref name="other"/>'s values — every public
@@ -30,6 +31,9 @@ public sealed partial class Settings
         foreach (var (id, learned, pending) in learnedHp.Where(g => g.LearnedHp is not null || g.PendingHp is not null))
             (Raids.Gate(id).LearnedHp, Raids.Gate(id).PendingHp) = (learned, pending);
         for (int i = 0; i < Math.Min(shots.Count, Profiles.Count); i++) Profiles[i].Shot = shots[i];
+        // The window spot came with other's character (PlaceKey); the active character is the live one: put its spot on,
+        // or leaving 테스트 모드 saved "no character" with a 직업각인's spot on screen, put to 기본's at the next start.
+        SyncPlace();
     }
 
     /// <summary>자동's choice. 던전 needs the dungeon read, which is the meter's: turned on if off, without its window.</summary>

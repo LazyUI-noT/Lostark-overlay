@@ -24,8 +24,9 @@
             </Border>
             <Grid x:Name="CanvasPage" Grid.Column="1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="400" />
+                    <!-- The inspector gives up to 100 px at narrow widths (min 1000: canvas 388 → about 470), 400 from about 1250. -->
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" MinWidth="300" MaxWidth="400" />
                 </Grid.ColumnDefinitions>
                 <DockPanel>
                     <WrapPanel x:Name="CanvasTools" DockPanel.Dock="Top" Margin="12,8,12,8" />

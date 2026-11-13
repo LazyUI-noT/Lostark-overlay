@@ -23,6 +23,18 @@ public sealed class EditorView(double scale, double offsetX, double offsetY)
 
     public void Pan(double dx, double dy) => (OffsetX, OffsetY) = (OffsetX + dx, OffsetY + dy);
 
+    /// <summary>Pans just enough that the world rect (<paramref name="x"/>, <paramref name="y"/>, <paramref name="w"/>,
+    /// <paramref name="h"/>) lies <paramref name="margin"/> inside a <paramref name="viewW"/> × <paramref name="viewH"/> view; one
+    /// larger than the view keeps its top-left in.</summary>
+    public void PanInto(double x, double y, double w, double h, double viewW, double viewH, double margin)
+    {
+        static double Shift(double lo, double hi, double size) =>
+            lo < 0 || hi - lo > size ? -lo : hi > size ? Math.Max(size - hi, -lo) : 0;
+        var (l, t) = ToView(x, y);
+        var (r, b) = ToView(x + w, y + h);
+        Pan(Shift(l - margin, r + margin, viewW), Shift(t - margin, b + margin, viewH));
+    }
+
     /// <summary>원래 크기: 100%, the screen at the game's own size, around view point (<paramref name="x"/>, <paramref name="y"/>).</summary>
     public void ActualSize(double x, double y) => ZoomAt(x, y, 1 / Scale);
 

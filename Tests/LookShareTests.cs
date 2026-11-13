@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>The 모든 배치에 적용 mark's line under each look group (display-split.plan.md, step 4).</summary>
+/// <summary>The 모든 위치 프로필에 적용 mark's line under each look group (display-split.plan.md, step 4).</summary>
 public class LookShareTests
 {
     [Fact]
@@ -10,7 +10,7 @@ public class LookShareTests
     {
         var line = LookShare.Status(LookGroup.버프막대, shared: true, activeProfile: 2);
 
-        Assert.StartsWith("배치 1–5가 같은 값을 씁니다", line);
+        Assert.StartsWith("위치 프로필 1–5가 같은 값을 씁니다", line);
         Assert.Contains("움직임", line);
     }
 
@@ -19,7 +19,7 @@ public class LookShareTests
     {
         var line = LookShare.Status(LookGroup.암수, shared: false, activeProfile: 2);
 
-        Assert.StartsWith("배치 3의 값입니다", line);
+        Assert.StartsWith("위치 프로필 3의 값입니다", line);
     }
 
     [Fact]

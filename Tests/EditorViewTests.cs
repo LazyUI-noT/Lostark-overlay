@@ -119,4 +119,19 @@ public class EditorViewTests
         var buffs = WindowDefaults.Place(0, 1920, 1040, 200, 30, peer: -1, buffs: true);
         Assert.Equal(1040 - WindowDefaults.AboveBottom + WindowDefaults.BuffsBelow, buffs.Top);
     }
+
+    /// <summary>A window picked from the chips while it lies off the view: the view pans just enough to show it with a margin;
+    /// one already in view doesn't move it.</summary>
+    [Fact]
+    public void Panning_into_view_moves_only_as_far_as_needed()
+    {
+        var v = new EditorView(2, 0, 0);   // view 400 × 300 shows world 0..200 × 0..150
+        v.PanInto(-30, 10, 20, 20, 400, 300, margin: 5);   // off the left: its left edge lands 5 px in
+        Assert.Equal((5.0, 20.0), v.ToView(-30, 10));
+        v.PanInto(20, 20, 10, 10, 400, 300, margin: 5);   // well inside the view
+        Assert.Equal((5.0, 20.0), v.ToView(-30, 10));
+        var w = new EditorView(1, 0, 0);
+        w.PanInto(390, 290, 50, 50, 400, 300, margin: 5);   // off the bottom right: its far corner lands 5 px in
+        Assert.Equal((395.0, 295.0), w.ToView(440, 340));
+    }
 }

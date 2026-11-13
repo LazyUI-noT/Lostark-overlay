@@ -156,6 +156,13 @@ public sealed partial class OverlayCanvas
         foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && InScene(r));
     }
 
+    /// <summary>Whether the window is on in the real settings; mine is faint only when the skills and the gauge are both off.</summary>
+    bool WindowOn(OverlayRenderer r) =>
+        (IsOn?.Invoke(WindowPart(r)) ?? true) || r == _mine && (IsOn?.Invoke(OverlayPart.Gauge) ?? true);
+
+    /// <summary>A window is drawn when it applies (<paramref name="exists"/>) and is on, or off with 꺼진 창 shown.</summary>
+    Visibility Drawn(OverlayRenderer r, bool exists) => Shown(exists && (_showOff || WindowOn(r)));
+
     /// <summary>Windows off in the real settings: faint, outlined, named. Party windows: one name on the first.</summary>
     void ShowFaint(IEnumerable<OverlayRenderer> all)
     {
@@ -165,8 +172,7 @@ public sealed partial class OverlayCanvas
         foreach (var r in all)
         {
             var part = WindowPart(r);
-            bool on = IsOn?.Invoke(part) ?? true;
-            if (r == _mine) on |= IsOn?.Invoke(OverlayPart.Gauge) ?? true;   // faint only when the skills and the gauge are both off
+            bool on = WindowOn(r);
             r.Opacity = on ? 1 : FaintOpacity;
             if (on || r.Visibility != Visibility.Visible) continue;
             var (l, t, size) = (Canvas.GetLeft(r), Canvas.GetTop(r), r.DesiredSize);
@@ -182,8 +188,24 @@ public sealed partial class OverlayCanvas
             Add(new TextBlock
             {
                 Text = $" {name} · 꺼짐 ", Foreground = Brushes.White, FontSize = FaintFont * perView, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false,
-                Background = new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)),
+                Background = new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)), Tag = t,
             }, l, t - FaintFont * perView * 1.4);
+        }
+    }
+
+    /// <summary>The faint outlines and names at a new zoom: only their stroke, font and the name's lift change, so a wheel
+    /// tick doesn't rebuild them (<see cref="ShowFaint"/>).</summary>
+    void ZoomFaint()
+    {
+        double perView = 1 / (_v?.Scale ?? 1);
+        foreach (var e in _faint.Children)
+        {
+            if (e is Rectangle outline) outline.StrokeThickness = FaintStroke * perView;
+            else if (e is TextBlock { Tag: double t } name)
+            {
+                name.FontSize = FaintFont * perView;
+                Canvas.SetTop(name, t - FaintFont * perView * 1.4);
+            }
         }
     }
 

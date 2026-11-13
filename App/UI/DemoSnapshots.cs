@@ -66,10 +66,10 @@ public sealed class DemoSnapshots
         history.Add(Sec(timer), 1, rows);
         // 버프 분배 as a support would see it (the dealers only; "나" is a dealer here, so it is only for the look)
         IReadOnlyList<(ulong, string, double)> Split(params double[] s) => [(2, "민수", s[0]), (3, "지현", s[1]), (5, "철수", s[2])];
-        return new(rows, scope == MeterScope.나 ? null : MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
+        return BuffLock.Apply(new(rows, scope == MeterScope.나 ? null : MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
             BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)], Skill: MeterSkillShown,
             BossName: "고통의 마녀, 세르카 [나이트메어]",   // a long name: the header shortens it before the 비교 label
-            Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동));   // 비교: an earlier fight, a little behind
+            Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동)), Services.BuffUnlock.Locked);   // 비교: an earlier fight, a little behind
     }
 
     /// <summary>Two 전투 기록 fights for --records: four players, a phase change, my casts and buff windows; the second a

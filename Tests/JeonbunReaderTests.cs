@@ -9,6 +9,20 @@ namespace GaugeOverlay.Tests;
 /// flash behind the orange and purple cells.</summary>
 public sealed class JeonbunReaderTests
 {
+    [Fact]
+    public void Kth_of_counts_is_the_sorted_values_kth()
+    {
+        var rng = new Random(3);
+        for (int n = 1; n < 60; n++)
+        {
+            var values = Enumerable.Range(0, n).Select(_ => rng.Next(12)).ToArray();
+            var counts = new int[12];
+            foreach (int v in values) counts[v]++;
+            var sorted = values.Order().ToArray();
+            for (int k = 0; k < n; k++) Assert.Equal(sorted[k], JeonbunReader.KthOfCounts(counts, k));
+        }
+    }
+
     // Each crop's timer and cells as the game shows them ("–": nothing dealt yet).
     static readonly (string Timer, string[] Cells)[] Labels =
     [

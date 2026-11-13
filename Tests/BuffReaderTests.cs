@@ -98,6 +98,91 @@ public class BuffReaderTests
                 else Assert.True(got is null, $"{at}: false {got}");
             }
     }
+    // v1_1막_clear.mp4 (solo, so no party buff is up), HUD 110, buff 120%: the whole 14-box row at seven moments the reader
+    // once found 공증 or 뎀증 in an empty box over the scenery (structure 0.60–0.69, no frame), one of them a flash frame.
+    internal static readonly (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) V1Empty =
+        ("buffrow_v1empty", Fhd, new Fit(110), 120, new(354, 892, 493, 50));
+
+    /// <summary>The row as the engine reads it: <see cref="BuffReader.ReadRow"/> over the boxes inside the crop.</summary>
+    static BuffKind?[] Row(Image frame, (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) src, int count = Geometry.MaxBuffBoxCount)
+    {
+        var boxes = Geometry.BuffBoxes(src.Vp, src.Fit, src.Buff, count)
+            .Select(b => b.Icon with { X = b.Icon.X - src.Rect.X, Y = b.Icon.Y - src.Rect.Y })
+            .TakeWhile(r => r.X >= 0 && r.Right <= frame.Width).ToArray();
+        return BuffReader.ReadRow(boxes.Length, i => BuffReader.Framed(frame, boxes[i]), i => BuffReader.Read(frame, boxes[i]));
+    }
+
+    [Fact]
+    public void Empty_boxes_over_the_scenery_read_no_buff()
+    {
+        var f = Fixture.Load(V1Empty.Fixture);
+        var icons = Geometry.BuffBoxes(V1Empty.Vp, V1Empty.Fit, V1Empty.Buff, Geometry.MaxBuffBoxCount)
+            .Select(b => b.Icon with { X = b.Icon.X - V1Empty.Rect.X, Y = b.Icon.Y - V1Empty.Rect.Y }).ToArray();
+        for (int i = 0; i < f.Frames.Count; i++)
+        {
+            var frame = f.Frames[i];
+            // the old per-box read finds one here
+            Assert.True(icons.Any(r => BuffReader.Classify(frame, r) is not null), $"frame {i} ({f.Pts[i].TotalSeconds} s): no false read to guard");
+            var row = Row(frame, V1Empty);
+            Assert.True(row.All(k => k is null), $"frame {i} ({f.Pts[i].TotalSeconds} s): {string.Join(",", row)}");
+        }
+    }
+
+    [Theory]
+    [InlineData("buffrow_bg")]
+    [InlineData("buffrow_down")]
+    [InlineData("buffrow_wrong")]
+    public void The_row_read_keeps_every_labelled_buff(string fixture)
+    {
+        var (src, labels, step) = fixture switch
+        {
+            "buffrow_bg" => (Bg, BgLabels, 5),
+            "buffrow_down" => (Down, DownLabels, 10),
+            _ => (Bg with { Fixture = fixture }, WrongLabels, 5),
+        };
+        var f = Fixture.Load(src.Fixture);
+        for (int i = 0; i < labels.Length; i++)
+        {
+            var row = Row(f.Frames[i * step], src);
+            for (int b = 0; b < labels[i].Length; b++)
+                if (char.IsUpper(labels[i][b]))
+                    Assert.True(row[b] == Label(labels[i][b]), $"{fixture} frame {i * step} box {b} (label {labels[i][b]}): got {row[b]}");
+        }
+    }
+
+    [Theory]
+    [InlineData(0.62, true, true)]    // inside the framed run: the usual bar
+    [InlineData(0.69, false, false)]  // past it: an empty box's best (v1) is not enough
+    [InlineData(0.80, false, true)]   // past it: a frameless real icon (another player's 뎀증) still reads
+    public void A_box_past_the_framed_run_needs_a_closer_match(double structure, bool framed, bool kept)
+    {
+        var row = BuffReader.ReadRow(1, _ => framed, _ => (BuffKind.공증, structure));
+        Assert.Equal(kept ? BuffKind.공증 : null, row[0]);
+    }
+
+    [Fact]
+    public void An_unframed_box_between_framed_ones_is_read_at_the_usual_bar()
+    {
+        bool[] framed = [true, false, true, false, false];
+        var row = BuffReader.ReadRow(5, i => framed[i], i => (BuffKind.뎀증, 0.62));
+        Assert.Equal([BuffKind.뎀증, BuffKind.뎀증, BuffKind.뎀증, null, null], row);
+    }
+
+    /// <summary>F framed, - not; every box reads 뎀증 at 0.62 (passes the usual bar, not the past-the-run one).
+    /// K kept, . dropped. The walk stops at two unframed boxes in a row, so a framed box after them is past the run.</summary>
+    [Theory]
+    [InlineData("", "")]           // no boxes
+    [InlineData("---", "...")]     // nothing framed: the whole row needs the closer match
+    [InlineData("FFF", "KKK")]     // all framed: the usual bar everywhere
+    [InlineData("-F", "KK")]       // one gap at the start is passed
+    [InlineData("--F", "...")]     // two gaps end the walk before the framed box
+    [InlineData("F--F", "K...")]   // same in the middle: the later framed box is not credited
+    public void The_framed_run_decides_which_boxes_read_at_the_usual_bar(string framed, string kept)
+    {
+        var row = BuffReader.ReadRow(framed.Length, i => framed[i] == 'F', _ => (BuffKind.뎀증, 0.62));
+        Assert.Equal(kept.Select(c => c == 'K' ? BuffKind.뎀증 : (BuffKind?)null), row);
+    }
+
     /// <summary>Rewrites Core/Vision/BuffTemplates.cs from buff_gameplay frames where each icon is clean (no glare):
     /// 5 s (공증 box 0, 초각스피증 box 1, 뎀증 box 2) and 7 s (아덴피증 box 3), and the look-alikes from buff_wrong_detect. Runs only with GAUGE_BUILD_TEMPLATES=1.</summary>
     [Fact]

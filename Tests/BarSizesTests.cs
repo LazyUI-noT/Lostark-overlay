@@ -55,6 +55,34 @@ public class BarSizesTests
         Assert.Equal((1.0, 0.25), (BarSizes.Length(bar), BarSizes.Thickness(bar)));
     }
 
+    /// <summary>The fixed grid's bar dragged by its far end (내 오버레이): 길이 grows by as much as the end moved, as a share of
+    /// what is drawn, kept to what the slider offered.</summary>
+    [Fact]
+    public void An_end_drag_sets_a_bars_length()
+    {
+        Assert.Equal(0.75, BarSizes.LengthDragged(0.5, drawn: 40, full: 80, by: 20));
+        Assert.Equal(BarSizes.MaxLength, BarSizes.LengthDragged(0.5, drawn: 40, full: 80, by: 900));
+        Assert.Equal(BarSizes.MinLength, BarSizes.LengthDragged(0.5, drawn: 40, full: 80, by: -900));
+        Assert.Equal(0.5, BarSizes.LengthDragged(0.5, drawn: 40, full: 0, by: 10));
+    }
+
+    /// <summary>The drag stops a bar at 5 px drawn (user, 2026-11-13); one already shorter doesn't shrink or jump.</summary>
+    [Fact]
+    public void An_end_drag_stops_a_bar_at_five_pixels()
+    {
+        Assert.Equal(BarSizes.MinLength, BarSizes.LengthDragged(0.5, drawn: 100, full: 200, by: -98));   // 5 px would be 0.025: 길이's own floor comes first
+        Assert.Equal(0.5, BarSizes.LengthDragged(0.5, drawn: 4, full: 8, by: -2));
+        Assert.Equal(0.2, BarSizes.LengthDragged(0.8, drawn: 20, full: 25, by: -19));    // 20 px → 5 px
+    }
+
+    /// <summary>A bar drawn at the renderer's 2 px floor (길이 0.1 of 13 px is 1.3 px): its end follows the pointer from the
+    /// 2 px drawn, so the first move doesn't lag behind it (user, 2026-11-13).</summary>
+    [Fact]
+    public void An_end_drag_follows_the_pointer_from_a_floored_bar()
+    {
+        Assert.Equal(0.23, BarSizes.LengthDragged(0.1, drawn: 2, full: 13, by: 1));   // 3 px of 13
+    }
+
     [Fact]
     public void Debuff_boxes_stand_in_a_row_at_the_window_size_by_default()
     {

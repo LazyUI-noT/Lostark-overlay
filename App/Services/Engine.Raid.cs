@@ -36,13 +36,29 @@ public sealed partial class Engine
         _raidWaits = plan.ReadName;
         if (!plan.ReadCount && _raid is not null) { _raid = null; Publish(now); }
         if (!poll) return (null, null, null);
-        bool name = plan.ReadName && _presence.InDungeon(now) && Elapsed(now, _lastName, NameEvery);   // no boss to name outside a dungeon
+        // No boss to name outside a dungeon; the HP label (보스 체력 쉽게 보기) wants the name's end wherever the bar's HP is read.
+        bool name = (plan.ReadName && _presence.InDungeon(now) || LabelWantsName(config)) && Elapsed(now, _lastName, NameEvery);
         // The boss's max HP (raids.json "hp") recognises a gate exactly, with its difficulty: read with the name. Both the count
         // and the HP are read from the bar's whole text row (BossDigits.ReadBar), wherever a 21:9 or HUD size puts them.
         var row = Geometry.BossTextRow(_vp, _fit!);
         bool count = plan.ReadCount && _presence.InDungeon(now);   // 줄 수 only in a dungeon; cleared on leaving (StepPresence)
         return (name ? Geometry.BossName(_vp, _fit!) : null, count ? row : null, name ? row : null);
     }
+
+    /// <summary>The HP label is on and the bar's HP is read: it is placed after the name's end and shown only with a name
+    /// (boss-label-name.plan.md).</summary>
+    bool LabelWantsName(Config config) => config.Raids is { BossHpEasy: true, BossHpRead: true } && _bossHp.View is not null;
+
+    /// <summary>How long the last name end places the label: a name read every second, so a few missed steps keep it.</summary>
+    static readonly TimeSpan NameEndFor = TimeSpan.FromSeconds(2.5);
+    int? _nameRight;   // the name's red text ends here (screen px), null: no name in the last read
+    TimeSpan _nameRightAt = TimeSpan.MinValue;
+
+    /// <summary>The boss HP label after the name, or null with no name read lately (cutscene, HUD hidden, 대난투, before the first
+    /// read): it never sits where the name is read.</summary>
+    BossHpView? LabelBesideName(TimeSpan t) =>
+        _bossHp.View is { } v && _nameRight is { } right && t - _nameRightAt <= NameEndFor
+            ? v with { Label = Geometry.BossHpLabelAfter(_vp, _fit!, right) } : null;
 
     /// <summary>HP 변경 감지's picture: the HP text row each value new to this raid's list was read from. The first read is kept
     /// (an existing file is never replaced); HpCrops drops it once its row leaves the list.</summary>
@@ -74,9 +90,15 @@ public sealed partial class Engine
         var s = config.Raids!;
         var gates = HpChange.Effective(config.RaidGates ?? [], s, _hpLearn.Fight);
         double scale = Geometry.Scale(_vp, _fit!);
+        bool moved = false;
         if (name is not null)
         {
             _lastName = t;
+            var end = BossName.TextEnd(name, scale) is { } e ? Geometry.BossName(_vp, _fit!).X + e : (int?)null;
+            (moved, _nameRight, _nameRightAt) = (end != _nameRight, end, t);
+        }
+        if (name is not null && _raidWaits && _presence.InDungeon(t))   // recognition: a read for the label alone skips it
+        {
             long? maxHp = hp is null ? null : BossBar(hp).Hp?.Max;
             if (maxHp is not null) Saw(meter: false, boss: true, t);   // the HP text read here is the boss bar too
             var byHp = RaidData.ByHp(gates, maxHp);
@@ -124,7 +146,7 @@ public sealed partial class Engine
             bool glow = s.Glow && BarAlert.Glowing(_bar, s.GlowUntil, s.GlowSeconds, s.GlowBars, t);
             next = new(gate, _bar.Shown, glow);
         }
-        bool changed = next != _raid;
+        bool changed = next != _raid || moved;
         _raid = next;
         return changed;
     }
@@ -149,10 +171,11 @@ public sealed partial class Engine
             : _raidRec.Gate is null || Volatile.Read(ref _nameOcrMissed)
                 ? Elapsed(t, _lastNameOcr, Volatile.Read(ref _namePace).Every(maxHp) - NameEvery)   // the name is read every NameEvery
                 : Elapsed(t, _lastNameOcr, NameOcrKeepEvery));
-        if (due && Ocr.Value is not null && Interlocked.CompareExchange(ref _nameOcrBusy, 1, 0) == 0)
+        // Only the red name, never the whole strip (the app's own labels with 방송·캡처에서 숨김 off); no red name, no read.
+        if (due && Ocr.Value is not null && BossName.OcrStrip(name, scale) is { } copy
+            && Interlocked.CompareExchange(ref _nameOcrBusy, 1, 0) == 0)
         {
             _lastNameOcr = t;
-            var copy = name.Copy();   // the capture buffer is reused
             // The panel's raid and difficulty narrow the gates (종막 2-1 vs EX 2-1); a boss still of two goes to the one with a window on.
             var candidates = BossNameText.Candidates(gates, panel);
             var on = s.Gates.Where(g => g.Value.CountWindow).Select(g => g.Key)

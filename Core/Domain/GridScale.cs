@@ -68,8 +68,21 @@ public static class GridScale
     public static bool LabelsFit(double height, double width, double font, double labelWidth) =>
         height >= 4 * font && labelWidth <= width / 3;
 
-    /// <summary>A grid line's label in the game's units (조, 억 or 만) with at most one decimal and none for a whole step:
-    /// "5억", "2.5억", "1조".</summary>
+    /// <summary>The tops of a graph's end labels, for line ends <paramref name="ends"/> sorted top down: each
+    /// <paramref name="lift"/> above its end, kept <paramref name="gap"/> apart, none above <paramref name="top"/> or lower than
+    /// <paramref name="bottom"/> − <paramref name="lift"/>. Labels pushed past the bottom move up, those above with them, never above <paramref name="top"/> (too many to fit
+    /// overlap there instead of covering what's above the plot).</summary>
+    public static double[] Stack(IReadOnlyList<double> ends, double top, double bottom, double gap, double lift)
+    {
+        var y = new double[ends.Count];
+        double lowest = bottom - lift;
+        for (int i = 0; i < y.Length; i++) y[i] = Math.Max(i == 0 ? top : y[i - 1] + gap, Math.Min(ends[i] - lift, lowest));
+        for (int i = y.Length - 1; i >= 0; i--) y[i] = Math.Max(top, Math.Min(y[i], i == y.Length - 1 ? lowest : y[i + 1] - gap));
+        return y;
+    }
+
+    /// <summary>A DPS grid line's label, at most two decimals and none for a whole step:
+    /// "5억", "2.5억", "0.5억": DPS always in 억, never 만 or 조 (user, 2026-11-12).</summary>
     public static string Label(double v) =>
-        v >= 1e12 ? $"{v / 1e12:0.##}조" : v >= 1e8 ? $"{v / 1e8:0.##}억" : v >= 1e4 ? $"{v / 1e4:0.##}만" : $"{v:0}";
+        v == 0 ? "0" : (v / 1e8).ToString("#,0.##", System.Globalization.CultureInfo.InvariantCulture) + "억";
 }

@@ -59,4 +59,22 @@ public class ResampleTests
         var all = new PixelRect(0, 0, frame.Width, frame.Height);
         Assert.Equal(Old(frame, all, 1 / 1.1).Bgra, ImageOps.Resample(frame, all, 1 / 1.1).Bgra);
     }
+
+    [Fact]
+    public void Into_a_kept_buffer_of_the_right_size_it_writes_the_same_picture_there()
+    {
+        var frame = Fixture.Load("bitam_110").Frames[0];
+        var all = new PixelRect(0, 0, frame.Width, frame.Height);
+        var fresh = ImageOps.Resample(frame, all, 1 / 1.1);
+        var kept = new Image(fresh.Width, fresh.Height);
+        Array.Fill(kept.Bgra, (byte)99);   // last step's pixels: every byte is written over
+
+        Assert.Same(kept, ImageOps.Resample(frame, all, 1 / 1.1, kept));
+        Assert.Equal(fresh.Bgra, kept.Bgra);
+
+        var wrong = new Image(3, 3);
+        var made = ImageOps.Resample(frame, all, 1 / 1.1, wrong);
+        Assert.NotSame(wrong, made);
+        Assert.Equal(fresh.Bgra, made.Bgra);
+    }
 }

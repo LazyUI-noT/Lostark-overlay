@@ -1,7 +1,7 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>What a 모든 배치에 적용 mark says under it (display-split.plan.md, step 4): whether the look is one value for
-/// 배치 1–5 or the active 배치's own, and which settings it covers, since a card can mix them with ones that aren't looks.</summary>
+/// <summary>What a 모든 위치 프로필에 적용 mark says under it (display-split.plan.md, step 4): whether the look is one value for
+/// 위치 프로필 1–5 or the active one's own, and which settings it covers, since a card can mix them with ones that aren't looks.</summary>
 public static class LookShare
 {
     /// <summary>The settings <paramref name="look"/> covers, as the 설정 rows call them.</summary>
@@ -20,6 +20,6 @@ public static class LookShare
 
     /// <summary>The line under the mark; <paramref name="activeProfile"/> is 0-based.</summary>
     public static string Status(LookGroup look, bool shared, int activeProfile) => shared
-        ? $"배치 1–5가 같은 값을 씁니다: {Covers(look)}."
-        : $"배치 {activeProfile + 1}의 값입니다. 배치를 바꾸면 함께 바뀝니다: {Covers(look)}.";
+        ? $"위치 프로필 1–5가 같은 값을 씁니다: {Covers(look)}."
+        : $"위치 프로필 {activeProfile + 1}의 값입니다. 위치 프로필을 바꾸면 함께 바뀝니다: {Covers(look)}.";
 }

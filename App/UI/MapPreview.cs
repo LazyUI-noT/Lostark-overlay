@@ -33,7 +33,7 @@ internal static class MapPreview
         if (mark is { } d)
         {
             if (capture is not null) body.Children.Add(new Picture { Source = capture, MaxHeight = CaptureHeight, Margin = new(0, gif is null ? 0 : 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left });
-            body.Children.Add(new TextBlock { Text = Caption(d, capture is not null, now), FontSize = 12, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) });
+            body.Children.Add(UiBuild.Muted(new TextBlock { Text = Caption(d, capture is not null, now), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) }));
         }
         return Frame(body);
     }
@@ -47,8 +47,8 @@ internal static class MapPreview
         (picture.MaxHeight, picture.HorizontalAlignment, picture.Stretch) = (CaptureHeight, HorizontalAlignment.Left, Stretch.Uniform);
         body.Children.Add(picture);
         string state = mark is { Mark: DetectMark.Waiting } ? "아직 찾는 중" : mark is { } d ? Caption(d, true, now) : "";
-        body.Children.Add(new TextBlock { Text = "Live: 지금 화면 (1초에 2번)" + (state.Length > 0 ? $"\n{state}" : "")
-            + "\n누르면 접힌 상자는 펼쳐지고, 펼친 상자는 감지 화면으로 갑니다.", FontSize = 12, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) });
+        body.Children.Add(UiBuild.Muted(new TextBlock { Text = "Live: 지금 화면 (1초에 2번)" + (state.Length > 0 ? $"\n{state}" : "")
+            + "\n누르면 접힌 상자는 펼쳐지고, 펼친 상자는 감지 화면으로 갑니다.", FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 0) }));
         return Frame(body);
     }
 
@@ -79,7 +79,7 @@ internal static class MapPreview
         {
             var cell = new StackPanel { Margin = new(0, 0, TileGap, TileGap) };
             cell.Children.Add(new Picture { Source = tile.Picture, Width = tile.Picture.PixelWidth, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left });
-            if (label.Length > 0) cell.Children.Add(new TextBlock { Text = label, FontSize = 12, Opacity = 0.8, HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 4, 0, 0) });
+            if (label.Length > 0) cell.Children.Add(UiBuild.Muted(new TextBlock { Text = label, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 4, 0, 0) }));
             row.Children.Add(cell);
         }
         foreach (var (_, tile) in tiles) tile.Show(0);

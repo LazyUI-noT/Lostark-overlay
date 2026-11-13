@@ -60,7 +60,7 @@ static class BossBarExample
         return frame;
     }
 
-    static BitmapImage? Load(string file)
+    internal static BitmapImage? Load(string file)
     {
         try
         {

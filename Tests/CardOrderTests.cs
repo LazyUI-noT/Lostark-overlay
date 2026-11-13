@@ -233,6 +233,16 @@ public class CardOrderTabTests
         Assert.Equal([A, B, C], CardOrder.Move([A, B, C], "a", "a"));
         Assert.Equal([A, B, C], CardOrder.Move([A, B, C], "x", "a"));   // gone meanwhile
     }
+
+    [Fact]
+    public void A_character_moved_by_key_swaps_with_the_one_beside_it_and_stops_at_the_ends()
+    {
+        Assert.Equal([B, A, C], CardOrder.Nudge([A, B, C], "a", 1));
+        Assert.Equal([B, A, C], CardOrder.Nudge([A, B, C], "b", -1));
+        Assert.Equal([A, B, C], CardOrder.Nudge([A, B, C], "a", -1));   // first: nothing above
+        Assert.Equal([A, B, C], CardOrder.Nudge([A, B, C], "c", 1));    // last: nothing below
+        Assert.Equal([A, B, C], CardOrder.Nudge([A, B, C], "x", 1));    // gone meanwhile
+    }
 }
 
 /// <summary>The order follows a rename and survives odd saved data.</summary>

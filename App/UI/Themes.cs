@@ -60,6 +60,7 @@ public static class Themes
                 if (palette.Colors.TryGetValue(key, out var hex) && UiColor.TryParse(hex) is { } c)
                     window.Resources[brush] = new SolidColorBrush(c);
                 else window.Resources.Remove(brush);
+        FeatureMapView.SetTheme(window.Resources, theme == UiTheme.System ? AppsDark() : palette.Dark);
         window.FontFamily = Pretendard;
         root?.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
     }

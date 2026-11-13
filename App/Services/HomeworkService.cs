@@ -32,6 +32,9 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     /// <summary>The character, the list or the clears changed (UI thread): 설정 → 숙제 and 전투 기록 show it again.</summary>
     public event Action? Updated;
 
+    /// <summary>The game menu named the character now played (UI thread): App switches to its remembered 직업각인 (NameSwitch).</summary>
+    public event Action<HomeworkCharacter?>? CharacterRead;
+
     public IReadOnlyList<HomeworkClear> Clears() => clears.Load();
 
     IReadOnlyList<string> Known => [.. settings.Homework.Characters.Select(c => c.Name)];
@@ -287,8 +290,10 @@ public sealed class HomeworkService(Settings settings, IReadOnlyList<RaidGate> g
     {
         if (change is null) return;
         Trace.WriteLine($"[character] {change.Name ?? "캐릭터 불명"}{(change.BackfillFrom is { } from ? $" (불명 fights since {from:HH:mm} are its)" : "")}");
-        if (Learn()) settingsChanged();
+        // No Learn() here: the class shown is still the last character's, and a same-class alt would take its 직업각인.
+        // Playing learns once the class follows (NameSwitch, the skill bar).
         Updated?.Invoke();
+        if (change.Name is { } read) CharacterRead?.Invoke(settings.Homework.Find(read));
         if (change is { Name: { } name, BackfillFrom: { } since })
         {
             GiveFallback(name, since);

@@ -116,6 +116,7 @@ public sealed class SettingsStore(string path)
             else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
         (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
         s.Debuffs.BossCount = Math.Clamp(s.Debuffs.BossCount, 1, Vision.Geometry.MaxBossSlots);
+        s.Buffs.Migrate();   // per-bar 자동 → one 자동 (user, 2026-11-12)
         s.Buffs.Count = Math.Clamp(s.Buffs.Count, Vision.Geometry.MinBuffBoxCount, Vision.Geometry.MaxBuffBoxCount);   // a hand edit
         if (s.Debuffs.BossIconSize is < Vision.FitAdjust.MinBuffSize or > Vision.FitAdjust.MaxBuffSize) s.Debuffs.BossIconSize = Vision.Geometry.RefBossSize;
         s.Raids ??= new();

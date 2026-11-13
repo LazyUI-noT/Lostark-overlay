@@ -47,6 +47,29 @@ public class BossHpLabelTests
         Assert.InRange(dealt.Y + dealt.Height / 2, 71, 73);
     }
 
+    /// <summary>The label follows the name's red text with about a character's gap (boss-label-name.plan.md), on the name's line,
+    /// so the name read never sees it; scaled with the HUD and the resolution.</summary>
+    [Theory]
+    [InlineData(1920, 1080, 110, 1000, 1012)]   // 모르둠's name ends at 1000: the label at 1012, not at the fixed 1025
+    [InlineData(1920, 1080, 80, 900, 909)]   // HUD 80: a 9 px gap
+    [InlineData(3840, 2160, 110, 2000, 2024)]
+    public void The_label_starts_a_character_after_the_name(int w, int h, int hud, int nameRight, int x)
+    {
+        var (vp, fit) = (new Viewport(0, 0, w, h), new Fit(hud));
+        var label = Geometry.BossHpLabelAfter(vp, fit, nameRight);
+        Assert.Equal(x, label.X);
+        var name = Geometry.BossName(vp, fit);
+        var fixedAt = Geometry.BossHpLabel(vp, fit);
+        Assert.Equal((name.Y, fixedAt.Width, fixedAt.Height), (label.Y, label.Width, label.Height));
+    }
+
+    [Fact]
+    public void A_name_near_the_edge_keeps_the_label_on_screen()
+    {
+        var vp = new Viewport(0, 0, 1920, 1080);
+        Assert.Equal(1920, Geometry.BossHpLabelAfter(vp, new Fit(110), 1800).Right);
+    }
+
     [Fact]
     public void The_gimmicks_bar_text_is_lines_and_hp_or_hp_alone()
     {

@@ -51,6 +51,20 @@ sealed class TimelineView : FrameworkElement
     double Natural => _shown.Count * (BlockHeight + Gap) + AxisH;
     static readonly Color[] Compared = [Color.FromRgb(0xFF, 0x7A, 0x59), Color.FromRgb(0x4F, 0xD1, 0xC5), Color.FromRgb(0xB7, 0x94, 0xF4)];
     static readonly Color[] ImportedColours = [Color.FromRgb(0xE8, 0xC5, 0x47), Color.FromRgb(0xD4, 0xA3, 0x73), Color.FromRgb(0xF2, 0xE3, 0x94)];   // their own family
+    // Darker variants for a light card (3:1 or better on white and #F3F3F3); the dark theme keeps the yellows above.
+    static readonly Color[] ImportedColoursLight = [Color.FromRgb(0x7F, 0x6A, 0x00), Color.FromRgb(0x8A, 0x5A, 0x2B), Color.FromRgb(0x74, 0x65, 0x0F)];
+    // Dark text means a light card. Read when asked, so a theme switch shows from the first frame (review 2026-11-12).
+    bool _lightBg => TextElement.GetForeground(this) is SolidColorBrush { Color: var ink } && ink.R + ink.G + ink.B < 3 * 128;
+    static readonly Color[] ComparedLight = [.. Compared.Select(OnLight)];
+    Color[] OthersNow => _lightBg ? OthersLight : Others;
+    (Bomb Kind, Pen Glow, Pen Lit)[] BombsNow => _lightBg ? BombsLight : Bombs;
+
+    /// <summary>A dark card's line colour, darkened to 3:1 on the light card (Contrast.OnLight).</summary>
+    static Color OnLight(Color c)
+    {
+        var (r, g, b) = Contrast.OnLight(c.R, c.G, c.B);
+        return Color.FromRgb(r, g, b);
+    }
     IReadOnlyList<ComparedFight> _compared = [];
     IReadOnlyList<(double From, double To)> _unhittable = [];
     IReadOnlyList<BossHpBar> _bossHp = [];
@@ -64,7 +78,7 @@ sealed class TimelineView : FrameworkElement
     IReadOnlyList<FightRegion> _regions = [];   // the opened fight's (user, 2026-11-04): a compared fight's curves stay as they are
 
     /// <summary>A compared fight's colour: the imported ones in a family of their own.</summary>
-    Color ColourOf(int i) => _compared[i].Look == CompareLook.Imported ? ImportedColours[i % ImportedColours.Length] : Compared[i % Compared.Length];
+    Color ColourOf(int i) => _compared[i].Look == CompareLook.Imported ? (_lightBg ? ImportedColoursLight : ImportedColours)[i % ImportedColours.Length] : (_lightBg ? ComparedLight : Compared)[i % Compared.Length];
 
     /// <summary>A compared fight's DPS line (user, 2026-11-04): solid for the opened character's, dashed for my other characters',
     /// dotted for an imported one.</summary>
@@ -76,8 +90,13 @@ sealed class TimelineView : FrameworkElement
     };
     static readonly DashStyle OtherDash = Frozen(new DashStyle([6, 3], 0)), ImportedDash = Frozen(new DashStyle([0.5, 2.5], 0));
     /// <summary>The buffs' lines, and the 암수 line when a fight shown had 암수 on (every record the same, so 비교 lines up).</summary>
-    int Lanes => Buffs.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
-    static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, Color.FromRgb(0x9B, 0x6B, 0xFF)), BombPens(Bomb.빛암, Color.FromRgb(0xD8, 0xA8, 0xFF))];
+    int Lanes => BuffRows.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
+
+    /// <summary>The buff lanes drawn: all three, or under the buff lock no 초각스 피증 (BuffLock.TimelineKinds).</summary>
+    (BuffKind Kind, string Name, Color Color)[] BuffRows => [.. Buffs.Where(b => BuffLock.TimelineKinds(BuffLocked).Contains(b.Kind)).Select(b => _lightBg && b.Kind == BuffKind.아덴피증 ? b with { Color = AdenLight } : b)];
+    static readonly Color AmsuColour = Color.FromRgb(0x9B, 0x6B, 0xFF), BitamColour = Color.FromRgb(0xD8, 0xA8, 0xFF);
+    static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, AmsuColour), BombPens(Bomb.빛암, BitamColour)];
+    static readonly (Bomb Kind, Pen Glow, Pen Lit)[] BombsLight = [BombPens(Bomb.암수, OnLight(AmsuColour)), BombPens(Bomb.빛암, OnLight(BitamColour))];
 
     static (Bomb, Pen, Pen) BombPens(Bomb kind, Color c) =>
         (kind, Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, c.R, c.G, c.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }),
@@ -101,12 +120,14 @@ sealed class TimelineView : FrameworkElement
         (BuffKind.아덴피증, "아덴 피증", Color.FromRgb(0xF5, 0xC5, 0x42)),
         (BuffKind.초각스피증, "초각스 피증", Color.FromRgb(0x4A, 0x90, 0xE2)),
     ];
-    static readonly Color Mine = Color.FromRgb(0xFF, 0xC8, 0x3C);
+    static readonly Color MineDark = Color.FromRgb(0xFF, 0xC8, 0x3C), MineLight = Color.FromRgb(0x9A, 0x6B, 0x00), AdenLight = Color.FromRgb(0x9A, 0x73, 0x00);
+    Color Mine => _lightBg ? MineLight : MineDark;
     static readonly Color[] Others =
     [
         Color.FromRgb(0x5B, 0x8D, 0xEF), Color.FromRgb(0x5B, 0xD1, 0x8B), Color.FromRgb(0xE0, 0x6C, 0x75), Color.FromRgb(0xC6, 0x78, 0xDD),
         Color.FromRgb(0x56, 0xB6, 0xC2), Color.FromRgb(0xD1, 0x9A, 0x66), Color.FromRgb(0x98, 0xC3, 0x79),
     ];
+    static readonly Color[] OthersLight = [.. Others.Select(OnLight)];
     static readonly Pen PhasePen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(160, 0xE0, 0x60, 0x60))), 1) { DashStyle = DashStyles.Dash });
     static readonly DashStyle Dashed = Frozen(new DashStyle([4, 3], 0));
     const double TimeGap = 70;   // px between the time labels (and so the time lines)
@@ -120,7 +141,8 @@ sealed class TimelineView : FrameworkElement
     bool _movingLine, _dragged;
     double _curveTop, _skillTop, _buffTop, _dpsTop, _dmgTop, _bossTop = 1;
     const double TagH = 17, TagGap = 2, TagSample = 14, FlipAfter = 0.6, GrabLine = 6, DragStart = 3;
-    static readonly Pen PinnedPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))), 1.5));
+    static readonly Pen PinnedPenDark = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))), 1.5)), PinnedPenLight = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromRgb(0, 0, 0))), 1.5));
+    Pen PinnedPen => _lightBg ? PinnedPenLight : PinnedPenDark;
     double? _hover;   // the cursor's x while over the view and not dragging: values at that second
 
     public TimelineView() => (Focusable, ClipToBounds, Cursor) = (true, true, Cursors.SizeWE);
@@ -171,6 +193,9 @@ sealed class TimelineView : FrameworkElement
 
     /// <summary>버프 적용률 isn't off (MeterSettings.BuffShare): the buff lines show their %.</summary>
     public bool BuffShareShown { get; set; } = true;
+
+    /// <summary>The buff lock (BuffLock): 공증's % capped at 85, 아덴 피증 with no % and only 10 min after the fight, no 초각스 피증.</summary>
+    public bool BuffLocked { get; set; }
 
     /// <summary>The opened fight is a 4-man raid: each buff line shows the party's share too (Timeline.PartyBuffShare).</summary>
     public bool SmallParty { get; set; }
@@ -234,7 +259,7 @@ sealed class TimelineView : FrameworkElement
         var players = Timeline.DpsAverages(r, seen);
         var colours = new Dictionary<string, Color>();
         int other = 0;
-        foreach (var (name, _) in players) colours[name] = name == r.Me ? Mine : Others[other++ % Others.Length];
+        foreach (var (name, _) in players) colours[name] = name == r.Me ? Mine : OthersNow[other++ % Others.Length];
         Text(dc, "평균 DPS", new(0, y + 2), 11, fg, opacity: 0.7);
         double lx = LabelW;
         foreach (var (name, dps) in players)
@@ -242,7 +267,7 @@ sealed class TimelineView : FrameworkElement
             // Mine also has my share of the boss's damage over the fight (내 몫, as the list shows it).
             string share = name == r.Me && r.MyShare is { } s ? $" · 기여 {s * 100:0.0}%" : "";
             dc.DrawRectangle(Frozen(new SolidColorBrush(colours[name])), null, new(lx, y + 5, 8, 8));
-            lx += 11 + Text(dc, $"{name} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg, bold: name == r.Me) + 12;
+            lx += 11 + Text(dc, $"{name} {AmountText.Dps(dps)}{share}", new(lx + 11, y + 1), 11, fg, bold: name == r.Me) + 12;
         }
         for (int i = 0; i < _compared.Count; i++)   // the fights compared: who and when, my average DPS and share
         {
@@ -251,7 +276,7 @@ sealed class TimelineView : FrameworkElement
             double dps = Timeline.DpsAverages(c, cSeen).FirstOrDefault(p => p.Name == c.Me).Dps;
             string share = c.MyShare is { } s ? $" · 기여 {s * 100:0.0}%" : "";
             dc.DrawRectangle(Frozen(new SolidColorBrush(ColourOf(i))), null, new(lx, y + 5, 8, 8));
-            lx += 11 + Text(dc, $"{label} {Amount(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
+            lx += 11 + Text(dc, $"{label} {AmountText.Dps(dps)}{share}", new(lx + 11, y + 1), 11, fg) + 12;
         }
         y += LegendH;
         DrawRegions(dc, r, offset, y, bottom, fg);
@@ -294,11 +319,11 @@ sealed class TimelineView : FrameworkElement
             Centred(region.Name, 1, 12, fg, bold: true);
             if (region.Players.FirstOrDefault(p => p.Name == r.Me) is { } mine)
             {
-                string full = $"{Amount(mine.Damage)} · DPS {Amount(mine.Dps)}";   // a narrow region drops the word, not the number
+                string full = $"{AmountText.Damage(mine.Damage)} · DPS {AmountText.Dps(mine.Dps)}";   // a narrow region drops the word, not the number
                 bool fits = Format(full, 11 * _font, gold, false, 2000).WidthIncludingTrailingWhitespace <= x1 - x0 - 6;
-                Centred(fits ? full : $"{Amount(mine.Damage)} · {Amount(mine.Dps)}", 16, 11, gold);
+                Centred(fits ? full : $"{AmountText.Damage(mine.Damage)} · {AmountText.Dps(mine.Dps)}", 16, 11, gold);
             }
-            Centred($"{Clock(region.To - region.From)} · {(region.BossTaken is { } boss ? $"보스 {Amount(boss)}" : "보스 HP ???")}", 31, 10, faint);
+            Centred($"{Clock(region.To - region.From)} · {(region.BossTaken is { } boss ? $"보스 {AmountText.Damage(boss)}" : "보스 HP ???")}", 31, 10, faint);
         }
         dc.Pop();
     }
@@ -432,7 +457,7 @@ sealed class TimelineView : FrameworkElement
             if (damage) Line(dc, near.Select(s => new Point(X(s.T, at), y + _curveH - 4 - (_curveH - 8) * s.Damage / dmgTop)), new Pen(brush, dmgWidth) { DashStyle = Dashed });
         }
         foreach (var g in r.Samples.GroupBy(s => s.Name).Where(g => g.Key != r.Me && Shows(g.Key)))
-            Curves(g, offset, seen, colours.GetValueOrDefault(g.Key, Others[0]), 1.2, 1, comparing ? 0.35 : 1);
+            Curves(g, offset, seen, colours.GetValueOrDefault(g.Key, OthersNow[0]), 1.2, 1, comparing ? 0.35 : 1);
         for (int i = 0; i < _compared.Count; i++)
         {
             var (c, cOffset, look, _) = _compared[i];
@@ -509,18 +534,22 @@ sealed class TimelineView : FrameworkElement
         {
             double x0 = Math.Max(LabelW, X(from, offset)), x1 = Math.Min(LabelW + PlotW, X(to, offset));
             if (x1 <= x0) continue;
-            dc.DrawRectangle(Faint(fg, 0.10).Brush, null, new Rect(x0, y, x1 - x0, Buffs.Length * BuffH));
+            dc.DrawRectangle(Faint(fg, 0.10).Brush, null, new Rect(x0, y, x1 - x0, BuffRows.Length * BuffH));
             if (x1 - x0 >= LeftOutLabelW) Text(dc, "제외", new(x0 + 2, y), 9, fg, opacity: 0.6, width: x1 - x0 - 2);
         }
-        foreach (var (kind, name, color) in Buffs)
+        var now = DateTime.Now;
+        foreach (var (kind, name, color) in BuffRows)
         {
             double cy = y + BuffH / 2;
-            double whole = Timeline.BuffShare(r, kind, new TimeWindow(0, r.Duration));
-            Text(dc, BuffShareShown ? $"{name} {whole * 100:0}%" + (zoomed ? $" ({Timeline.BuffShare(r, kind, seen) * 100:0}%)" : "") : name, new(0, y), 11, fg);
+            bool lineShown = BuffLock.LineShown(kind, BuffLocked, r, now), percent = BuffShareShown && BuffLock.PercentShown(kind, BuffLocked);
+            string Share(TimeWindow w) => BuffLock.Figure(Timeline.BuffShare(r, kind, w), BuffLocked);
+            Text(dc, !lineShown ? $"{name} (10분 뒤)" : percent ? $"{name} {Share(new TimeWindow(0, r.Duration))}" + (zoomed ? $" ({Share(seen)})" : "") : name,
+                new(0, y), 11, fg, opacity: lineShown ? 1 : 0.6);
             // A 4-man raid: the party's share (the boss HP lost under it) at the line's right end, for the window shown.
-            if (BuffShareShown && SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
-                Text(dc, $"파티 {party * 100:0}%", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
+            if (percent && SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
+                Text(dc, $"파티 {BuffLock.Figure(party, BuffLocked)}", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
             dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
+            if (!lineShown) { y += BuffH; continue; }
             var glow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, color.R, color.G, color.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
             var lit = Frozen(new Pen(Frozen(new SolidColorBrush(color)), 4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
             foreach (var (from, to, _) in spans.Where(s => s.Kind == kind))
@@ -549,7 +578,7 @@ sealed class TimelineView : FrameworkElement
         {
             double x0 = Math.Max(LabelW, X(from, offset)), x1 = Math.Min(LabelW + PlotW, X(to, offset));
             if (x1 <= x0) continue;
-            var (_, glow, lit) = Bombs.First(b => b.Kind == kind);
+            var (_, glow, lit) = BombsNow.First(b => b.Kind == kind);
             dc.DrawLine(glow, new(x0, cy), new(x1, cy));
             dc.DrawLine(lit, new(x0, cy), new(x1, cy));
         }
@@ -557,7 +586,8 @@ sealed class TimelineView : FrameworkElement
 
     static readonly Brush TipBack = Frozen(new SolidColorBrush(Color.FromArgb(235, 0x16, 0x18, 0x20)));
     static readonly Brush TipText = Frozen(new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xF0)));
-    static readonly Pen CrossPen = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(150, 0xFF, 0xFF, 0xFF))), 1));
+    static readonly Pen CrossPenDark = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(150, 0xFF, 0xFF, 0xFF))), 1)), CrossPenLight = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(150, 0, 0, 0))), 1));
+    Pen CrossPen => _lightBg ? CrossPenLight : CrossPenDark;
 
     enum TagLine { None, Solid, Dashed }
 
@@ -580,7 +610,7 @@ sealed class TimelineView : FrameworkElement
         }
         foreach (var g in r.Samples.GroupBy(s => s.Name).Where(g => Shows(g.Key)).OrderBy(g => g.Key != r.Me))
             if (g.LastOrDefault(s => s.T <= t) is { } s)
-                Figures(g.Key == r.Me ? "" : $"{g.Key} ", s, Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, Others[0]))));
+                Figures(g.Key == r.Me ? "" : $"{g.Key} ", s, Frozen(new SolidColorBrush(colours.GetValueOrDefault(g.Key, OthersNow[0]))));
         for (int i = 0; i < _compared.Count; i++)   // the fights compared, at the same second on their own clocks
         {
             var (c, cOffset, _, label) = _compared[i];
@@ -622,14 +652,15 @@ sealed class TimelineView : FrameworkElement
         string Named(SlotId s) => faces?.GetValueOrDefault(s)?.Skill?.Name ?? r.Skills?.GetValueOrDefault(s)?.Name ?? SlotName(s);
         if (under.Count > 0) DrawTag(dc, hx, _skillTop + SkillH / 2, new(0, string.Join(", ", under.Select(i => Named((SlotId)casts[i].What))), TipText), flip);
         var spans = Timeline.BuffSpans(r);
-        for (int i = 0; i < Buffs.Length; i++)
+        var rows = BuffRows;
+        for (int i = 0; i < rows.Length; i++)
         {
-            var (kind, name, color) = Buffs[i];
-            if (spans.Any(b => b.Kind == kind && b.From <= t && t < b.To))
+            var (kind, name, color) = rows[i];
+            if (BuffLock.LineShown(kind, BuffLocked, r, DateTime.Now) && spans.Any(b => b.Kind == kind && b.From <= t && t < b.To))
                 DrawTag(dc, hx, _buffTop + i * BuffH + BuffH / 2, new(0, name, Frozen(new SolidColorBrush(color))), flip);
         }
         if (r.AmsuOn && Timeline.AmsuSpans(r).FirstOrDefault(s => s.From <= t && t < s.To) is { To: > 0 } bomb)
-            DrawTag(dc, hx, _buffTop + Buffs.Length * BuffH + BuffH / 2, new(0, bomb.Kind.ToString(), Bombs.First(b => b.Kind == bomb.Kind).Lit.Brush), flip);
+            DrawTag(dc, hx, _buffTop + rows.Length * BuffH + BuffH / 2, new(0, bomb.Kind.ToString(), BombsNow.First(b => b.Kind == bomb.Kind).Lit.Brush), flip);
     }
 
     void DrawTag(DrawingContext dc, double hx, double y, LineTag tag, bool flip)
@@ -649,7 +680,7 @@ sealed class TimelineView : FrameworkElement
         if (_regions.LastOrDefault(x => x.From <= t) is not { } region) return;
         var lines = new List<(string Text, Brush Brush)> { ($"{region.Name} 구간 ({Clock(region.To - region.From)})", TipText) };
         foreach (var p in region.Players.Where(p => Shows(p.Name)))
-            lines.Add(($"{p.Name}  구간 피해량 {BossHpGraph.AmountText((long)p.Damage)} · DPS {BossHpGraph.AmountText((long)p.Dps)}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(p.Name, Others[0])))));
+            lines.Add(($"{p.Name}  구간 피해량 {BossHpGraph.AmountText((long)p.Damage)} · DPS {BossHpGraph.AmountText((long)p.Dps)}", Frozen(new SolidColorBrush(colours.GetValueOrDefault(p.Name, OthersNow[0])))));
         var texts = lines.Select(l => Format(l.Text, 11 * _font, l.Brush, false, 400 * _font)).ToList();
         double lineH = 16 * _font, w = texts.Max(f => f.WidthIncludingTrailingWhitespace) + 16, h = texts.Count * lineH + 10;
         double x = flip ? hx + 8 : hx - 8 - w;
@@ -697,7 +728,7 @@ sealed class TimelineView : FrameworkElement
         {
             double v = k * step, gy = y + _curveH - 4 - (_curveH - 8) * v / top;
             dc.DrawLine(grid, new(LabelW, gy), new(LabelW + PlotW, gy));
-            string label = k == 0 ? "0" : GridScale.Label(v) + suffix;
+            string label = k == 0 ? "0" : (suffix.Length > 0 ? GridScale.Label(v) : AmountText.Damage(v)) + suffix;   // DPS in 억, 피해량 as damage
             if (right) Text(dc, label, new(LabelW + PlotW + 4, gy - 7), 10, fg, opacity: 0.6, width: RightW - 4);
             else Text(dc, label, new(0, gy - 7), 10, fg, opacity: 0.6, width: LabelW - 6, right: true);
         }
@@ -713,8 +744,6 @@ sealed class TimelineView : FrameworkElement
 
     static string Clock(double seconds) => $"{(int)seconds / 60}:{(int)seconds % 60:00}";
 
-    /// <summary>An amount in the game's units: 조 (10^12), 억 (10^8) or 만 (10^4), as the 전투 분석기 writes them.</summary>
-    internal static string Amount(double v) => v >= 1e12 ? $"{v / 1e12:0.0}조" : v >= 1e8 ? $"{v / 1e8:0.0}억" : v >= 1e4 ? $"{v / 1e4:0.0}만" : $"{v:0}";
 
     /// <summary>A cast's name in the hover box: the skill's key (Q, W…), as the lane shows it.</summary>
     static readonly Brush ChipNormal = Frozen(new SolidColorBrush(Color.FromRgb(0x6B, 0x70, 0x78))),

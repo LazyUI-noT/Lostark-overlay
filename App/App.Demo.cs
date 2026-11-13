@@ -57,6 +57,8 @@ public partial class App
         if (settingsFile is not null && int.TryParse(args.FirstOrDefault(a => a.StartsWith("--profile=", StringComparison.Ordinal))?["--profile=".Length..], out int profile))
             settings.SwitchProfile(profile - 1);
         string? Flag(string name) => args.FirstOrDefault(a => a.StartsWith($"--{name}="))?[(name.Length + 3)..];
+        BuffUnlock.Start(settings);
+        BuffUnlock.Forced = Flag("buff-lock") switch { "on" => true, "off" => false, _ => null };   // screenshots of either look
         // 쿨 진행 표시 is per class: the flags set 기본 and every 개별 class, as an older file's global value moves.
         IEnumerable<MineProfile> Mines() => settings.Classes.Where(e => e.Key == ClassProfiles.Template || e.Value.Own).Select(e => e.Value.Mine)
             .Prepend(ClassProfiles.Edit(settings, ClassProfiles.Template).Mine).Distinct();
@@ -205,9 +207,11 @@ public partial class App
         if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut" }.Any(f => Flag(f) is not null))
             _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"));
         if (Flag("hp-table") is { } hpScroll) _settingsWindow.DemoHpTable(hpScroll);
+        if (Flag("raid-open") is { } raidOpen) _settingsWindow.DemoRaidOpen(raidOpen, Flag("raid-scroll"));
         if (args.Contains("--resources")) _settingsWindow.DemoResources();
         if (args.Contains("--map-hover-test")) _settingsWindow.DemoHoverTest();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
+        if (args.Contains("--hide-off")) _settingsWindow.DemoHideOff();   // 내 오버레이's 꺼진 창 off
         if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare", view == "run");   // with --records: open | compare | run (a fight joined from its files)
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
@@ -222,8 +226,10 @@ public partial class App
         }
         if (args.Contains("--edit")) SetEditMode(true);
         // As a click on the preview: the box's (or with "plate", 창 전체's) options in the inspector.
-        if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.Inspect(new("Skills", picked, null));
+        if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.Inspect(new(picked >= FreeLayout.FirstBuff ? "BuffBar" : "Skills", picked, null));
         else if (Flag("pick") == "plate") _settingsWindow.Inspect(new("Plate", null, null));
+        else if (Flag("pick") is "Judgment" or "Amsu" or "Raid") _settingsWindow.Inspect(new(Flag("pick")!, null, null));   // a window picked whole: its outline handles
+        else if (Flag("pick") == "copy") _settingsWindow.ShowCopy();   // the 복사 page
         if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);
         if (args.Contains("--join")) Dispatcher.BeginInvoke(() => JoinDialog.Ask(settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--token")) Dispatcher.BeginInvoke(() => TokenDialog.ShowToken("demo-token-1234567890abcdef", settings.Party.HostPort, settings.Theme), DispatcherPriority.ApplicationIdle);

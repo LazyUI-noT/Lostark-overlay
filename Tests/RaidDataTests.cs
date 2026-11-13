@@ -128,14 +128,12 @@ public class RaidDataTests
     }
 
     [Fact]
-    public void Ex_gates_list_their_esther_skills()
+    public void Both_2_3_gates_are_hidden_and_follow_their_2_2()
     {
         var gates = RaidData.Load(Profiles);
-        var g23 = RaidData.Find(gates, "final-ex-g2-3")!;
-        Assert.Equal(["공아만 3칸", "공아만 1칸", "히든 아만 3칸"], g23.Esthers.Select(e => e.Name));
-        Assert.Equal((3779.0, (int?)10), (g23.Esthers[2].Damage["EX 나이트메어"], g23.Esthers[2].At));
-        Assert.Equal(5, RaidData.Find(gates, "final-ex-g2-1")!.Esthers.Count);
-        Assert.Empty(RaidData.Find(gates, "act3-g3")!.Esthers);
+        Assert.Equal([("final-g2-3", "final-g2-2"), ("final-ex-g2-3", "final-ex-g2-2")],
+            gates.Where(g => g.Hidden).Select(g => (g.Id, g.After!)));
+        Assert.Empty(RaidData.Find(gates, "final-ex-g2-3")!.Hp);
         Assert.Equal([new GateShield(305, 10)], RaidData.Find(gates, "final-ex-g2-2")!.Shields);   // 2-2's shield: +10 bars at 305
         Assert.Equal([new GateShield(305, 10)], RaidData.Find(gates, "final-g2-2")!.Shields);
     }

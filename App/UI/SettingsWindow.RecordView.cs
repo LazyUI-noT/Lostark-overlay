@@ -76,7 +76,7 @@ public partial class SettingsWindow
         text.Children.Add(new TextBlock { Text = $"{whose}{result}{r.StartedAt:MM-dd HH:mm}", FontWeight = isOpened ? FontWeights.SemiBold : FontWeights.Normal });
         // [logo] raid [difficulty] (user, 2026-11-10); a long raid name shortens, the capsule stays
         var logo = RaidBadgeView.Of(r.Gate, null, size: 10);
-        var gate = new TextBlock { Text = r.Gate ?? "알 수 없음", FontSize = 11, Opacity = 0.75, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        var gate = Muted(new TextBlock { Text = r.Gate ?? "알 수 없음", FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
         var difficulty = RaidBadgeView.Of(null, r.Difficulty, size: 10);
         difficulty.Margin = new(6, 0, 0, 0);
         var line = new Grid { HorizontalAlignment = HorizontalAlignment.Left };
@@ -127,6 +127,7 @@ public partial class SettingsWindow
         // A 4-man gate (by the fight's boss HP, else its name): the party's buff share too. Set before Keys, which redraws.
         var r = opened.Record;
         _timeline.BuffShareShown = _s.Meter.BuffShare() != ThreeWay.끄기;
+        _timeline.BuffLocked = Services.BuffUnlock.Locked;
         _timeline.SmallParty = (RaidData.ByHp(RaidGates, BossBook.FightHp(r.Boss))?.Gate ?? RaidGates.FirstOrDefault(g => RaidData.Label(g) == r.Gate))?.SmallParty == true;
         _timeline.Keys = _s.Keys;
         _timeline.UseIcons = _useIcons ?? _hasIcons;
@@ -237,7 +238,7 @@ public partial class SettingsWindow
         if (picked.Count == 1)
         {
             if (Timeline.AmsuGain(first.Record) is var (mine, all, share))   // 10.35% of the damage done while a bomb was up
-                bar.Children.Add(BarText($"암수 이득: 내 {TimelineView.Amount(mine)} ({share * 100:0.0}%) · 전체 {TimelineView.Amount(all)}"));
+                bar.Children.Add(BarText($"암수 이득: 내 {AmountText.Damage(mine)} ({share * 100:0.0}%) · 전체 {AmountText.Damage(all)}"));
             if (!IsImported(first.File)) actions.Children.Add(KeepButton(first.File, first.Record.Kept, new(0, 0, 12, 0)));   // imported: kept for good, no 보관 (as in the list)
             if (MeterCompareButton(first.File, first.Record, new(0, 0, 12, 0)) is { } meter) actions.Children.Add(meter);
         }
@@ -347,7 +348,7 @@ public partial class SettingsWindow
         {
             SkillRegister.Go => null,
             SkillRegister.SetClassFirst => "이 전투에는 클래스가 없습니다. 전투 기록 목록에서 이 전투의 편집을 눌러 클래스와 직업각인을 정한 뒤 스킬 등록을 누르세요.",
-            SkillRegister.PlayThatCharacter => $"이 전투의 캐릭터({character})로 게임에 접속해, 스킬을 쓸 수 있는 곳에서 일반스킬이 모두 준비됐을 때 여기의 스킬 등록을 누르세요. 캐릭터 → 스킬창의 스킬 등록이나 트레이 메뉴에서도 됩니다.",
+            SkillRegister.PlayThatCharacter => $"이 전투의 캐릭터({character})로 게임에 접속해, 스킬을 쓸 수 있는 곳에서 일반스킬이 모두 준비됐을 때 여기의 스킬 등록을 누르세요. 화면·인식 → 스킬창 맞추기의 스킬 등록이나 트레이 메뉴에서도 됩니다.",
             _ => $"게임이 켜져 있을 때 등록합니다. 이 전투의 캐릭터({character})로 접속해, 일반스킬이 모두 준비됐을 때 스킬 등록을 누르세요.",
         };
         if (_registerNote is null) SkillsSubmitRequested?.Invoke();   // the result comes back through SetSkillsResult

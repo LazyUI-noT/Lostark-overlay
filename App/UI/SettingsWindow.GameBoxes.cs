@@ -39,7 +39,7 @@ public partial class SettingsWindow
                 break;
             case "g-font":
                 p.Children.Add(Field("데미지 폰트 크기 (%)", FontSizeCombo()));
-                p.Children.Add(Small("게임 설정의 데미지 폰트 크기와 같게 맞춰 주세요. 단심이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다."));
+                p.Children.Add(Small("게임 설정의 데미지 폰트 크기와 같게 맞추세요. 단심이 캐릭터 위의 '심판' 글자를 읽을 때 씁니다."));
                 break;
             default: return null;
         }
@@ -71,7 +71,7 @@ public partial class SettingsWindow
         var refit = new Button { Content = "스킬창 맞추기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 6, 0, 2), Padding = new(10, 3, 10, 3) };
         refit.Click += (_, _) => RefitRequested?.Invoke();
         p.Children.Add(refit);
-        p.Children.Add(Small("누를 때만 맞춥니다. 스스로 다시 맞추지 않습니다. 스킬을 쓸 수 있는 곳에서 쿨타임이 끝난 채로 서서 누르세요."));
+        p.Children.Add(Small("누를 때만 맞춥니다. 스킬을 쓸 수 있는 곳에서 쿨타임이 끝난 채로 서서 누르세요."));
     }
 
     void HudBody(StackPanel p)

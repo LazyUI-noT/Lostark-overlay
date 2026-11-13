@@ -27,6 +27,38 @@ public class FitAdjustTests
     }
 
     [Fact]
+    public void Arrow_moves_and_ctrl_arrow_sizes_up_on_right_and_up_down_on_left_and_down()
+    {
+        var a = Session();
+        Assert.Equal(a.Move(AdjustPart.버프, -1, 0), a.Arrow(AdjustPart.버프, -1, 0, resize: false));
+        Assert.Equal(a.BuffSize + 1, a.Arrow(AdjustPart.버프, 0, -1, resize: true).BuffSize);
+        Assert.Equal(a.BuffSize - 10, a.Arrow(AdjustPart.디버프, -10, 0, resize: true).BuffSize);
+        var bar = a.RectOf(AdjustPart.스킬창);
+        var wider = a.Arrow(AdjustPart.스킬창, 10, 0, resize: true).RectOf(AdjustPart.스킬창);
+        Assert.InRange(wider.Width - bar.Width, 8, 12);
+        Assert.InRange((double)wider.Height / wider.Width, (double)bar.Height / bar.Width - 0.01, (double)bar.Height / bar.Width + 0.01);   // ratio kept
+        var panel = a.Arrow(AdjustPart.전분, 0, 20, resize: true).Panel;
+        Assert.Equal(a.Panel.Width - 20, panel.Width);
+    }
+
+    [Fact]
+    public void Guides_sit_inside_their_part_and_follow_it()
+    {
+        var a = Session();
+        foreach (var part in new[] { AdjustPart.스킬창, AdjustPart.버프, AdjustPart.디버프, AdjustPart.보스 })
+        {
+            var r = a.RectOf(part);
+            var guides = a.Guides(part);
+            Assert.NotEmpty(guides);
+            Assert.All(guides, g => Assert.True(g.X1 >= r.X - 1 && g.X2 <= r.Right + 1 && g.Y1 >= r.Y - 1 && g.Y2 <= r.Bottom + 1, $"{part} {g} outside {r}"));
+            var moved = a.Move(part, 5, 3).Guides(part);
+            Assert.Equal(guides[0].X1 + 5, moved[0].X1);
+        }
+        Assert.Equal(SlotInfo.All.Length * 4, a.Guides(AdjustPart.스킬창).Count);
+        Assert.Empty(a.Guides(AdjustPart.전분));
+    }
+
+    [Fact]
     public void Moving_the_bar_leaves_the_boss_row()
     {
         var a = Session();

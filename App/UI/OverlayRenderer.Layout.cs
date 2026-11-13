@@ -27,6 +27,7 @@ public sealed partial class OverlayRenderer
         public Point CellOrigin;            // where cell (0, 0) is drawn
         public (double X, double Y) Scale;  // DIP per cell unit
         public bool Free;                   // laid out from cells (FreeLayout), not the fixed grid
+        public double BarFull;              // the fixed grid's buff bar at 길이 1, before the 2 px floor and rounding
         public bool Peer;
         public string? Name, Number;
         public Point NameAt, NumberAt;
@@ -182,6 +183,7 @@ public sealed partial class OverlayRenderer
             // the plate (buff_example2: 뎀증 초각 아덴 공증).
             double tall = Math.Max(bottom - top - Pad, colH);
             bottom = top + Pad + tall;
+            l.BarFull = tall;
             double bx = plateX;
             foreach (var k in buffs)   // a shorter bar stands on the bottom edge
             {
@@ -196,6 +198,7 @@ public sealed partial class OverlayRenderer
             // window (가로) one to a row, top to bottom. A row is as tall as its thicker bar. Closing up like the columns.
             int perRow = BuffsOnly ? 1 : 2;
             double full = (right - x0 - (perRow - 1) * Gap) / perRow, barH = FreeLayout.BuffHeight * bh / Box, y = bottom + Gap;
+            l.BarFull = full;
             for (int i = 0; i < buffs.Count; i += perRow)
             {
                 var row = buffs.Skip(i).Take(perRow).ToList();

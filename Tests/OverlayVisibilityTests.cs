@@ -7,8 +7,8 @@ namespace GaugeOverlay.Tests;
 public class OverlayVisibilityTests
 {
     static bool Show(bool edit = false, OverlayShow mode = OverlayShow.자동, bool own = false, bool game = true, bool hud = true,
-        bool hideWithoutHud = false, bool firstRun = true, OverlayAuto? auto = null, bool dungeon = false) =>
-        OverlayVisibility.Show(edit, mode, own, game, hud, auto ?? (hideWithoutHud ? OverlayAuto.스킬창 : OverlayAuto.게임앞), dungeon, firstRun);
+        bool hideWithoutHud = false, bool firstRun = true, OverlayAuto? auto = null, bool dungeon = false, bool canvas = false) =>
+        OverlayVisibility.Show(edit, mode, own, game, hud, auto ?? (hideWithoutHud ? OverlayAuto.스킬창 : OverlayAuto.게임앞), dungeon, firstRun, canvas);
 
     [Fact]
     public void 던전_shows_only_in_a_dungeon_with_the_game_in_front()
@@ -16,6 +16,30 @@ public class OverlayVisibilityTests
         Assert.True(Show(auto: OverlayAuto.던전, dungeon: true));
         Assert.False(Show(auto: OverlayAuto.던전, dungeon: false));
         Assert.True(Show(auto: OverlayAuto.던전, dungeon: false, own: true, game: false));   // 설정 in front
+    }
+
+    [Theory]
+    [InlineData(OverlayShow.자동, true, false)]
+    [InlineData(OverlayShow.항상, false, true)]
+    [InlineData(OverlayShow.항상, true, false)]
+    public void On_the_canvas_page_the_canvas_draws_the_windows_so_the_real_ones_hide(OverlayShow mode, bool own, bool game)
+    {
+        Assert.False(Show(mode: mode, own: own, game: game, canvas: true));
+        Assert.True(Show(mode: mode, own: own, game: game, canvas: false));   // any other page: the normal rules
+    }
+
+    [Fact]
+    public void Edit_mode_shows_them_on_the_canvas_page_too_to_be_dragged()
+    {
+        Assert.True(Show(edit: true, canvas: true));
+        Assert.True(Show(edit: true, mode: OverlayShow.끄기, canvas: true));
+    }
+
+    [Fact]
+    public void The_canvas_page_hides_nothing_when_they_were_hidden_anyway()
+    {
+        Assert.False(Show(mode: OverlayShow.끄기, canvas: false));
+        Assert.False(Show(mode: OverlayShow.끄기, canvas: true));
     }
 
     [Fact]

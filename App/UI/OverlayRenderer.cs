@@ -79,7 +79,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     bool _classWarning;
 
     /// <summary>Boxes that hide on cooldown (쿨타임 중 숨기기) are drawn faint instead, so they can be seen and picked:
-    /// the layout editor, edit mode and sample previews.</summary>
+    /// the layout editor, edit mode and sample previews. These also draw 자동 buff bars as in a raid.</summary>
     public bool ShowHidden { get; set; }
 
     /// <summary>The settings object the user edits; read on every frame.</summary>
@@ -104,6 +104,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     readonly Dictionary<double, Pen> _linePens = [];
     readonly Dictionary<Color, Pen> _glowPens = [];   // 계속 빛남 테두리, per colour
     double _lastFrame;
+    bool _frameAsked;   // the next draw was asked by a loop frame (perf counts)
 
     readonly Dictionary<SlotId, ImageSource> _icons = [], _targetIcons = [];
 
@@ -157,11 +158,32 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <paramref name="frozenAt"/> pins slot time (sample data in edit mode).</summary>
     public void Update(Player? player, TimeSpan? frozenAt = null)
     {
+        // The same data again (an empty party slot's null, a member's last message): nothing shown changes. A moving window
+        // still draws from its loop; settings come through Refresh (status/decisions.md, "Overlay redraws"). ~30/s for 3
+        // empty party windows before (perf-trace).
+        if (frozenAt is null && _frozenAt is null && ReferenceEquals(player, _player)) return;
+        // A still window whose part of the snapshot is the same as last drawn: nothing it shows changes (9/s each before).
+        if (!_loop && frozenAt is null && _frozenAt is null && player is not null && _player is not null
+            && SameDrawn(player.Snapshot, _player.Snapshot)) { _player = player; return; }
         if ((frozenAt is null) != (_frozenAt is null)) { _boxes.Clear(); _gauges.Clear(); _changed.Clear(); _barColors.Clear(); }
         _player = player;
         _frozenAt = frozenAt;
+        // 초당 그리기 횟수 caps every draw: while the loop runs, its next frame draws the new snapshot (up to one frame
+        // later). Drawing it at once too was ~9 extra draws a second over the setting (43.6/s at 30, perf-trace).
+        if (_loop && frozenAt is null) { InvalidateMeasure(); return; }
         Refresh();
     }
+
+    /// <summary>The window draws exactly these fields of the snapshot (and the settings, which come through
+    /// <see cref="Refresh"/>), so equal ones draw the same picture while nothing moves. A part that shows the time must
+    /// set the moving flags. 미터기 창: App builds MeterView once per meter status (1-2/s), each row's class included.
+    /// Windows without a check (yours, 버프, party) draw every new snapshot. status/decisions.md, "Overlay redraws".</summary>
+    bool SameDrawn(Snapshot a, Snapshot b) =>
+        MeterOnly ? ReferenceEquals(a.MeterView, b.MeterView)
+        : DebuffsOnly ? Equals(a.Debuffs, b.Debuffs)
+        : JudgmentOnly ? Equals(a.Judgment, b.Judgment)
+        : AmsuOnly ? Equals(a.Amsu, b.Amsu) && a.AmsuTimed == b.AmsuTimed
+        : RaidOnly && Equals(a.Raid, b.Raid);
 
     /// <summary>Call after <see cref="Settings"/> changed.</summary>
     public void Refresh()
@@ -269,6 +291,9 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>True when drawn from a free layout; <see cref="Anchor"/> means a different point in each kind.</summary>
     public bool IsFree => _layout?.Free == true;
 
+    /// <summary>The fixed grid's buff bar drawn at 길이 1 (0: none drawn): what an end drag measures 길이 against.</summary>
+    public double BarFull => _layout?.BarFull ?? 0;
+
     /// <summary>The parts drawn now (the boxes a dragged one snaps to).</summary>
     public IEnumerable<Part> DrawnParts => _layout is not { } l ? []
         : l.Boxes.Select(b => (Part)b.Key).Concat(l.Gauge is null ? [] : [Part.게이지]);
@@ -301,9 +326,12 @@ public sealed partial class OverlayRenderer : FrameworkElement
         // 초당 그리기 횟수: one rate for every moving part; a slow fade alone at most 15 (DrawSteps).
         _frameMs = Math.Max(MinFrameMs, DrawSteps.FrameMs(Settings.DrawsPerSecond, fadeOnly: !_animating && !_moving));
         SetLoop(_moving || _animating || _blinking);
-        Services.Perf.AddCpu(DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
-            : BuffsOnly ? "그리기: 버프 창" : "그리기: 스킬 · 파티 창",
-            Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
+        string part = DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+            : BuffsOnly ? "그리기: 버프 창" : Peer >= 0 ? "그리기: 파티 창" : "그리기: 스킬 창";
+        Services.Perf.AddCpu(part, Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
+        Services.Perf.Count(part);   // draws a second, per window (perf-trace)
+        if (!_frameAsked) Services.Perf.Count(part + " · 루프 밖");   // drawn for another reason than a loop frame
+        _frameAsked = false;
     }
 
     void DrawPlayer(DrawingContext dc, PlayerLayout l, TimeSpan now, double ms, bool reduced)
@@ -367,7 +395,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
             {
                 var kind = (BuffKind)(key - (int)FreeLayout.FirstBuff);
                 var st = s.Buffs.IsDefaultOrEmpty ? null : s.Buffs[(int)kind];
-                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true } || Settings.Buffs.OutOfRaid(kind, s.Presence.InDungeon(now)),
+                // A preview (ShowHidden) draws as in a raid: a 자동 bar full, not faint (user, 2026-11-12: 위치 조정 too).
+                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true } || !ShowHidden && Settings.Buffs.OutOfRaid(s.Presence.InDungeon(now)),
                     () => DrawBuff(dc, r, c, st, Settings.Buffs.Of(kind).ShowLabel, Settings.Buffs.EndFlash(kind), now, reduced));
                 continue;
             }
@@ -661,6 +690,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         double t = ((RenderingEventArgs)e).RenderingTime.TotalMilliseconds;
         if (t - _lastFrame < _frameMs - 1.5) return;
         _lastFrame = t;
+        _frameAsked = true;
         InvalidateVisual();
     }
 

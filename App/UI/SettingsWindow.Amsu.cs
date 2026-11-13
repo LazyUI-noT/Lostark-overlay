@@ -15,12 +15,8 @@ public partial class SettingsWindow
         p.Children.Add(DefaultedCheck(Check("암흑수류탄 읽기", a.On, v => a.On = v, () => { Changed(); Dispatcher.BeginInvoke(FillAmsu); },
             "보스 체력바 아래 디버프 줄에서 읽습니다."), s => s.Amsu.On, (s, v) => s.Amsu.On = v));
         if (!a.On) return;
-        // The same setting as 버프/디버프 → 디버프's, which shows only while a gate's 디버프 창 is on (user, 2026-11-01: none here).
-        p.Children.Add(HelpRow("게임의 타겟 UI 버프 크기 (보스) (%)", "게임 설정의 타겟 UI 버프 크기와 같게 맞춰 주세요. 보스 체력바 아래 디버프 줄을 이 크기로 읽습니다.",
-            BossSizeCombo()));
-        p.Children.Add(Defaulted(SliderRow("타겟 UI 버프 읽을 칸 수", 1, Core.Vision.Geometry.MaxBossSlots, _s.Debuffs.BossCount, 1, v => BossCountText((int)v), v => _s.Debuffs.BossCount = (int)Math.Round(v), Changed, BossCountNote),
-            s => s.Debuffs.BossCount, (s, v) => s.Debuffs.BossCount = v));
-        p.Children.Add(Note("타겟 UI 버프 크기(보스)를 게임과 같게 맞추세요. 100% 이상이면 남은 시간까지 읽습니다(1080p 기준, 21:9 강제처럼 화면이 낮으면 더 크게). 그보다 작으면 폭탄이 걸린 동안 아이콘만 보여 주고, 1080p에서 80%(21:9 강제는 90%)보다 작으면 읽지 않습니다. 디버프가 많아 '+N'으로 밀려나면 마지막에 읽은 시간부터 흐리게 계속 셉니다."));
+        // The in-game sizes live in 화면·인식 → 게임 설정 값 (user, 2026-11-12).
+        p.Children.Add(Note("타겟 UI 버프 크기(보스)는 화면·인식 → 게임 설정 값에서 게임과 같게 맞추세요. 읽을 칸 수도 그곳에 있습니다. 100% 이상이면 남은 시간까지 읽습니다(1080p 기준, 21:9 강제처럼 화면이 낮으면 더 크게). 그보다 작으면 폭탄이 걸린 동안 아이콘만 보여 주고, 1080p에서 80%(21:9 강제는 90%)보다 작으면 읽지 않습니다. 디버프가 많아 '+N'으로 밀려나면 마지막에 읽은 시간부터 흐리게 계속 셉니다."));
 
         p.Children.Add(Defaulted(HelpRow("읽기 빈도", "높음: 자주 읽어서 시간이 바로 맞습니다. 낮음: 폭탄이 없을 땐 1초마다 찾고, 찾으면 1초 동안 시간을 맞춘 뒤 3초 남을 때까지 1초마다만 확인합니다. 다른 사람이 다시 던져도 1초 안에 맞춰집니다. 암흑수류탄을 켠 뒤 프레임이 떨어지면 낮음을 써 보세요. 100% 미만에서는 시간을 읽지 않아서, 낮음으로 둬도 높음처럼 읽습니다.",
             EnumCombo([(AmsuRate.높음, "높음 (정확)"), (AmsuRate.낮음, "낮음 (가벼움)")], a.Rate, v => a.Rate = v)), s => s.Amsu.Rate, (s, v) => s.Amsu.Rate = v));
@@ -39,13 +35,8 @@ public partial class SettingsWindow
             v => a.WarnSeconds = (int)Math.Round(v), Changed), s => s.Amsu.WarnSeconds, (s, v) => s.Amsu.WarnSeconds = v));
         if (a.WarnSeconds > 0) p.Children.Add(Defaulted(ColorRow(Label("경고 색"), a.WarnColor, v => a.WarnColor = v, swatch: false),
             s => s.Amsu.WarnColor, (s, v) => s.Amsu.WarnColor = v));
-        p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, a.Height, 0.05, v => $"{v * 100:0}%", v => a.Height = v, Changed),
-            s => s.Amsu.Height, (s, v) => s.Amsu.Height = v));
-        if (a.Look is AmsuLook.막대 or AmsuLook.세로막대)
-            p.Children.Add(Defaulted(SliderRow("막대 길이", ClassProfiles.MinScale, ClassProfiles.MaxScale, a.Width, 0.05, v => $"{v * 100:0}%", v => a.Width = v, Changed),
-                s => s.Amsu.Width, (s, v) => s.Amsu.Width = v));
         p.Children.Add(Defaulted(SliderRow("불투명도", AmsuSettings.MinOpacity, 1, a.Opacity, 0.05, v => $"{v * 100:0}%", v => a.Opacity = v, Changed),
             s => s.Amsu.Opacity, (s, v) => s.Amsu.Opacity = v));
-        p.Children.Add(Note("편집 모드에서 암수 창을 끌어 옮기고, 모서리를 끌어 크기를 바꿀 수도 있습니다."));
+        p.Children.Add(Note("크기는 내 오버레이 화면에서 암수 창을 눌러 윤곽의 흰 점을 끌어 바꿉니다. 모서리는 비율을 지키고, 막대 모양에서는 오른쪽·아래 점이 너비·높이를 따로 바꿉니다. Ctrl+화살표로 1px씩 바꿀 수도 있습니다."));
     }
 }

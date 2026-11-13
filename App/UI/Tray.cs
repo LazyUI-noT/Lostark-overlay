@@ -68,8 +68,8 @@ public sealed class Tray : IDisposable
         // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
         _test.DropDownItems.Add(_testFront);
         _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
-        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"배치 {i + 1}", () => ProfileChosen?.Invoke(i)))];
-        _profiles = new ToolStripMenuItem("배치");
+        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"위치 프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
+        _profiles = new ToolStripMenuItem("위치 프로필");
         _profiles.DropDownItems.AddRange(_profileItems);
         _parts = new ToolStripMenuItem("기능 맵");
         foreach (var (part, name) in PartNames)

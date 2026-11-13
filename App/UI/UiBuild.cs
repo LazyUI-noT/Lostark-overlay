@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -17,6 +18,45 @@ internal static class UiBuild
 
     /// <summary>A key field's Tag while it waits for a key: the window's own shortcuts (Ctrl+Z, Ctrl+F) leave the key to it.</summary>
     internal const string Capturing = "capturing";
+
+    /// <summary>A real button drawn by its content alone, for parts drawn by hand (기능 맵's switches, 숙제's chips): Tab, Space and
+    /// Narrator work and the look stays as drawn. A click that rebuilds the page gives focus back to the new control with the
+    /// same <paramref name="key"/>, so a keyboard user stays where they were (audit 2026-11-12).</summary>
+    internal static T Bare<T>(object look, string name, string key) where T : ButtonBase, new()
+    {
+        var b = new T { Template = BareLook, OverridesDefaultStyle = true, Content = look, Cursor = Cursors.Hand };
+        System.Windows.Automation.AutomationProperties.SetName(b, name);
+        b.Click += (_, _) => { if (b.IsKeyboardFocused) FocusAfterRebuild(key); else _refocus = null; };   // added first: runs before the click's own rebuild
+        if (key == _refocus)
+            b.Loaded += (_, _) =>
+            {
+                if (_refocus != key) return;
+                _refocus = null;
+                b.Focus();
+            };
+        return b;
+    }
+
+    /// <summary>For a rebuild started by a key, not a click: the control made next with <paramref name="key"/> takes the focus.</summary>
+    /// The key lasts until the app is idle: a rebuild's Loaded runs before that, and a click that rebuilds nothing (a lit
+    /// segment, Space on ≡) doesn't leave it to steal focus from a later rebuild. So the rebuild must run above idle
+    /// (synchronously or BeginInvoke at Normal, as the map and 숙제 do); one queued at Background or lower loses the focus.
+    internal static void FocusAfterRebuild(string key)
+    {
+        _refocus = key;
+        Application.Current.Dispatcher.BeginInvoke(
+            () => { if (_refocus == key) _refocus = null; }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    // ponytail: one key for the whole app, as only the focused control can set it.
+    static string? _refocus;
+    static readonly ControlTemplate BareLook = Sealed(new ControlTemplate(typeof(ButtonBase)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) });
+
+    static ControlTemplate Sealed(ControlTemplate t)
+    {
+        t.Seal();
+        return t;
+    }
 
     /// <summary>The focused element is a key field waiting for a key.</summary>
     internal static bool KeyFieldCapturing() => Keyboard.FocusedElement is Button { Tag: Capturing };
@@ -118,13 +158,25 @@ internal static class UiBuild
 
     internal static TextBlock Note(string text)
     {
-        var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new(0, 0, 0, 10) };
+        var note = Muted(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 10) });
         CardStack.SetBreak(note, true);   // a status line, not a setting: it stands between the cards
         return note;
     }
 
-    internal static TextBlock Label(string text, double opacity = 1) =>
-        new() { Text = text, VerticalAlignment = VerticalAlignment.Center, Opacity = opacity, TextWrapping = TextWrapping.Wrap };
+    /// <summary>Secondary text in the theme's muted colour (TextFillColorSecondaryBrush), not faded by opacity: its contrast then
+    /// doesn't depend on the background (impeccable audit, 2026-11-12). Themes.cs sets the palette's Muted on that key.</summary>
+    internal static TextBlock Muted(TextBlock t)
+    {
+        t.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
+        return t;
+    }
+
+    /// <summary>A row label; an <paramref name="opacity"/> below 1 means secondary text (<see cref="Muted"/>).</summary>
+    internal static TextBlock Label(string text, double opacity = 1)
+    {
+        var label = new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        return opacity < 1 ? Muted(label) : label;
+    }
 
     /// <summary>A row label with its ? saying what the row does.</summary>
     internal static TextBlock Described(string label, string description) => HelpLabel(label, description);

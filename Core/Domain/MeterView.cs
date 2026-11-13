@@ -1,11 +1,12 @@
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>What the meter window draws: the rows (by MeterMath), 기타 (null: hidden or under the dash rule), the boss figure,
-/// the 전분 timer and whether it runs, whether the panel is read at all ("전분 없음" when not), and each row's history.</summary>
+/// the 전분 timer and whether it runs, whether the panel is read at all ("전분 없음" when not), and each row's history.
+/// <see cref="BuffLocked"/>: the buff rows were cut to 공증 and its figure is capped (<see cref="BuffLock"/>).</summary>
 public sealed record MeterView(IReadOnlyList<MeterRow> Rows, double? Other, long BossTaken, int? Timer, bool Running, bool PanelFound,
     MeterHistory History, IReadOnlyList<double>? BuffCover = null, bool ShowBuffBars = true,
     IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>>? BuffSplit = null, string? BossName = null,
-    IReadOnlyList<double>? BuffParty = null, MeterSkillLine? Skill = null, MeterGhost? Ghost = null)
+    IReadOnlyList<double>? BuffParty = null, MeterSkillLine? Skill = null, MeterGhost? Ghost = null, bool BuffLocked = false)
 {
     /// <summary>The header's right side: the boss's name (else "보스"), then my share of its damage, else the boss damage.
     /// Apart, so a long name can be shortened and the figure after it kept.</summary>

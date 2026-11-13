@@ -21,6 +21,14 @@ public sealed class Image(int width, int height, byte[] bgra)
 
     public Image Copy() => new(Width, Height, (byte[])Bgra.Clone());
 
+    /// <summary>This image's pixels in <paramref name="into"/> when it has the same size (no new buffer), else a new copy.</summary>
+    public Image CopyInto(Image? into)
+    {
+        if (into is null || into.Width != Width || into.Height != Height) return Copy();
+        Bgra.CopyTo(into.Bgra, 0);
+        return into;
+    }
+
     /// <summary>A copy of <paramref name="r"/>, clipped to the image (empty when it lies outside).</summary>
     public Image Crop(PixelRect r)
     {

@@ -35,6 +35,13 @@ public class BossNameTextTests
     }
 
     [Fact]
+    public void A_hidden_2_3_never_ties_with_its_2_2_by_name()
+    {
+        var hard = BossNameText.Candidates(Gates, new DungeonInfo(DungeonKind.Raid, "최후의 날", "하드"));
+        Assert.Equal("final-g2-2", BossNameText.Match(["죽음의 현신, 카제로스"], hard));   // 하드 2-3 has the same boss
+    }
+
+    [Fact]
     public void The_dungeon_panel_narrows_the_gates_to_its_raid_and_difficulty()
     {
         var ex = BossNameText.Candidates(Gates, new DungeonInfo(DungeonKind.Raid, "최후의 날", "EX 나이트메어"));

@@ -72,7 +72,7 @@ public partial class SettingsWindow
         p.Children.Add(DefaultedCheck(
             Check("전투 기록", m.Record, v => m.Record = v, Changed, "전투를 기록해 설정 → 타임라인에 남깁니다. 개수는 그곳에서 정합니다."), s => s.Meter.Record, (s, v) => s.Meter.Record = v));
         p.Children.Add(DefaultedCheck(Check("내 피해량 보내기", m.Send, v => m.Send = v, () => { Changed(); FillSend(); },
-            "켜면 1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 파티원의 수치도 못 받습니다. 보내는 사람만 남의 수치를 볼 수 있습니다. 파티 → 보내기·받기에도 같은 스위치가 있습니다."), s => s.Meter.Send, (s, v) => s.Meter.Send = v));
+            "켜면 1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 보내는 사람만 파티원의 수치를 받습니다. 파티 공유 → 보내기·받기에도 같은 스위치가 있습니다."), s => s.Meter.Send, (s, v) => s.Meter.Send = v));
         if (m.Send) p.Children.Add(DefaultedCheck(Check("파티원 피해량 받기", m.Receive, v => m.Receive = v, Changed,
             "끄면 파티원의 수치를 미터기와 타임라인에 쓰지 않고, 내 수치는 계속 보냅니다. 받으려면 내 피해량 보내기도 켜져 있어야 합니다."), s => s.Meter.Receive, (s, v) => s.Meter.Receive = v));
         if (!m.On) return;
@@ -104,19 +104,18 @@ public partial class SettingsWindow
         p.Children.Add(Defaulted(ColorRow(Label("기타"), m.OtherColor ?? "#6B7280", v => m.OtherColor = v, swatch: false), s => s.Meter.OtherColor, (s, v) => s.Meter.OtherColor = v));
         p.Children.Add(Defaulted(ColorRow(Label("배경"), m.Background, v => m.Background = v, swatch: false), s => s.Meter.Background, (s, v) => s.Meter.Background = v));
         p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.Opacity = v, Changed), s => s.Meter.Opacity, (s, v) => s.Meter.Opacity = v));
-        p.Children.Add(Defaulted(SliderRow("크기", ClassProfiles.MinScale, ClassProfiles.MaxScale, m.Width, 0.05, v => $"{v * 100:0}%", v => (m.Width, m.Height) = (v, v), Changed),
-            s => (s.Meter.Width, s.Meter.Height), (s, v) => (s.Meter.Width, s.Meter.Height) = v));
+        p.Children.Add(Note("크기는 편집 모드에서 미터기 창의 오른쪽 아래 모서리를 끌어 바꿉니다."));
 
         p.Children.Add(SubHeading("읽기"));
         p.Children.Add(Defaulted(SliderRow("보스 체력 읽기 주기", MeterSettings.MinHpEvery, MeterSettings.MaxHpEvery, m.HpEvery, 0.1, v => $"{v:0.0}초",
             v => m.HpEvery = MeterSettings.ClampHpEvery(v), Changed,
-            "보스 체력을 몇 초마다 읽을지 정합니다. 짧을수록 보스 체력 바가 사라지거나 보스가 처치된 순간을 빨리 알아채지만 CPU를 조금 더 씁니다. 전분은 그대로 1초마다 읽습니다. 대난투 중에는 0.2초보다 느려지지 않습니다. 기본 0.5초."),
+            "보스 체력을 몇 초마다 읽을지 정합니다. 짧을수록 보스 체력바가 사라지거나 보스가 처치된 순간을 빨리 알아채지만 CPU를 조금 더 씁니다. 전분은 그대로 1초마다 읽습니다. 대난투 중에는 0.2초보다 느려지지 않습니다. 기본 0.5초."),
             s => s.Meter.HpEvery, (s, v) => s.Meter.HpEvery = v));
 
-        p.Children.Add(SubHeading("전분 위치", "전분 창이 화면 어디에 있는지입니다. 미터기가 켜져 있으면 전투 중에 알아서 찾아 게임 화면 크기마다 저장하고, 전분 창을 옮기면 다시 찾습니다. 위치 조정에서 끌어 옮기거나 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
+        p.Children.Add(SubHeading("전분 위치", "미터기가 켜져 있으면 전투 중에 전분 창을 알아서 찾아 게임 화면 크기마다 저장하고, 창을 옮기면 다시 찾습니다. 위치 조정에서 끌어 옮기거나 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
         if (GameArea?.Invoke() is not { } key)
         {
-            p.Children.Add(Note("스킬창을 먼저 맞춰 주세요. 전분 위치는 게임 화면 크기마다 저장됩니다."));
+            p.Children.Add(Note("스킬창을 먼저 맞추세요. 전분 위치는 게임 화면 크기마다 저장됩니다."));
             return;
         }
         var r = m.Panels.TryGetValue(key, out var saved) ? saved : new PixelRect(0, 0, 0, 0);

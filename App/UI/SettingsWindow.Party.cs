@@ -76,7 +76,7 @@ public partial class SettingsWindow
     {
         var party = _s.Party;
         p.Children.Add(Heading("참가 요청"));
-        p.Children.Add(Check("참가 승인제", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜 두면 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터는 묻지 않습니다. 끄면 토큰이 있는 사람은 누구나 참가합니다."));
+        p.Children.Add(Check("참가 승인제", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜면, 내가 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터 묻지 않습니다. 끄면 참가 코드가 있는 사람은 누구나 참가합니다."));
         if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰 기기", Label("없음", 0.7)));
         foreach (var trusted in party.TrustedDevices.ToList())
         {

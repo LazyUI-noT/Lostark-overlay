@@ -236,6 +236,23 @@ $pts = [regex]::Matches($log, 'pts_time:([0-9.]+)') | ForEach-Object { [double]$
   ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM (Join-Path $out 'buffrow_b80.json')
 Write-Host "buffrow_b80  $($pts.Count) frame(s)"
 
+# buffrow_v1empty: v1_1막_clear.mp4 (solo 발키리 해방자, 1920×1080, HUD 110, buff 120%), the whole 14-box row, one frame at
+# each time the reader once found a party buff in an empty box over the scenery (no party buff is ever up in this clip):
+# frame K of the 0.3 s span from S, as a 60 fps scan found them (55.983 s: the flash frame, every frame band gone).
+$v1 = Join-Path $ref 'video-test/videos/v1_1막_clear.mp4'
+$r = @(354, 892, 493, 50)
+$spans = @(@(29.10, 16), @(50.60, 17), @(55.85, 8), @(55.85, 16), @(85.60, 15), @(89.85, 15), @(159.85, 13))
+$times = @($spans | ForEach-Object { [math]::Round($_[0] + $_[1] / 60.0, 3) })
+$bin = Join-Path $out 'buffrow_v1empty.bgra'
+Remove-Item $bin -ErrorAction SilentlyContinue
+foreach ($sp in $spans) {
+  & ffmpeg -v error -y -ss $sp[0] -t 0.3 -i $v1 -vf "format=bgra,crop=$($r[2]):$($r[3]):$($r[0]):$($r[1]),select=eq(n\,$($sp[1]))" -frames:v 1 -f rawvideo -pix_fmt bgra "$bin.part"
+  $s = [IO.File]::Open($bin, 'Append'); $s.Write([IO.File]::ReadAllBytes("$bin.part")); $s.Close(); Remove-Item "$bin.part"
+}
+[ordered]@{ source = 'v1_1막_clear.mp4'; slot = 'buffs'; hud = 110; rect = $r; width = $r[2]; height = $r[3]; pts = $times } |
+  ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM (Join-Path $out 'buffrow_v1empty.json')
+Write-Host "buffrow_v1empty  $($times.Count) frame(s)"
+
 # 발키리 Z and C (round icons under the orb, not at the 아덴1/아덴2 spots): buff_gameplay.mp4 and buff_wrong_detect.mp4
 # (해방자, HUD 110), whole clips at 2 fps. Lit about 150–160 luminance in the middle of the icon, dark (not enough
 # resource) about 57–60.

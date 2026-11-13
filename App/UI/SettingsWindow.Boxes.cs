@@ -50,7 +50,7 @@ public partial class SettingsWindow
         p.Children.Add(rows);
 
         if (_plate) PlateRows(rows);
-        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과를, 칸 사이의 배경판을 누르면 창 전체의 옵션을 바꿀 수 있습니다."));
+        else if (_box is not { } part) rows.Children.Add(Note("화면에서 칸을 누르면 그 칸의 색과 효과를, 칸 사이의 배경판을 누르면 창 전체의 옵션을 바꿉니다."));
         else if (BoxOptions.Of(part, BoxAdenSlots) is var (slot, g)) SlotRows(rows, cls, slot, g);
         else if (part >= FreeLayout.FirstBuff) BuffBarRows(rows, (BuffKind)(part - FreeLayout.FirstBuff));
         else if (part == Part.변화)
@@ -144,7 +144,7 @@ public partial class SettingsWindow
         var fx = Fx();
         bool icons = false, ownIcons = ShownClass == ActiveOrTemplate;   // 아이콘 다시 읽기 reads the character's
         var reread = new Button { Content = "아이콘 다시 읽기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(24, 4, 0, 4) };
-        var rereadNote = HelpMark("아이콘은 직업각인마다 저장됩니다. 화면에서 다시 읽는 건 저장된 아이콘이 없는 칸이 있을 때뿐이라, 스킬을 바꿨다면 이 버튼으로 모든 칸을 다시 읽으세요.");
+        var rereadNote = HelpMark("아이콘은 직업각인마다 저장되고, 저장된 아이콘이 없는 칸만 화면에서 다시 읽습니다. 스킬을 바꿨다면 이 버튼으로 모든 칸을 다시 읽으세요.");
         var playNote = Note("아이콘은 그 직업각인으로 플레이할 때 읽습니다. 아이콘 다시 읽기는 지금 플레이 중인 캐릭터를 편집할 때만 쓸 수 있습니다.");
         void ShowIconRows()
         {
@@ -186,6 +186,7 @@ public partial class SettingsWindow
             ColorRow(Label("색"), i.Color, v => b.Edit(k).Color = v, swatch: false), .. BuffSizeSliders(k)]);
         more.Visibility = Shown(i.Visible);
         p.Children.Add(Row("표시", BuffShowCombo(k, on => more.Visibility = Shown(on)), BuffHideHere(k)));
+        p.Children.Add(Row("모든 버프", BuffAutoCheck()));
         p.Children.Add(more);
     }
 
@@ -209,23 +210,28 @@ public partial class SettingsWindow
         });
     }
 
-    /// <summary>A buff bar's 표시: 끄기, 켜기, 자동. <paramref name="shown"/> hears whether the bar's other rows apply.</summary>
+    /// <summary>A buff bar's 표시: 끄기 or 켜기 (자동 is the page's one switch, <see cref="BuffAutoCheck"/>).
+    /// <paramref name="shown"/> hears whether the bar's other rows apply.</summary>
     ComboBox BuffShowCombo(BuffKind k, Action<bool> shown)
     {
         var combo = Combo();
         combo.MinWidth = 150;
-        combo.ItemsSource = new[] { "끄기", "켜기", "자동 (레이드 안에서만)" };
-        combo.SelectedIndex = (int)_s.Buffs.Of(k).Show;
-        combo.ToolTip = "자동: 전분이나 보스 체력바가 보일 때(컷신 중에도)만 막대를 보여 줍니다. 막대가 숨어도 다른 막대는 움직이지 않고, 편집 모드와 미리보기에서는 흐리게 보입니다.";
+        combo.ItemsSource = new[] { "끄기", "켜기" };
+        combo.SelectedIndex = _s.Buffs.Of(k).Visible ? 1 : 0;
         combo.SelectionChanged += (_, _) =>
         {
             if (combo.SelectedIndex < 0) return;
-            _s.Buffs.Edit(k).Show = (BuffShow)combo.SelectedIndex;
-            shown(combo.SelectedIndex != (int)BuffShow.끄기);
+            _s.Buffs.Edit(k).Visible = combo.SelectedIndex == 1;
+            shown(combo.SelectedIndex == 1);
             Changed();
         };
         return combo;
     }
+
+    /// <summary>자동 for every buff bar (user, 2026-11-12): on, the 켜기 bars show only in a raid.</summary>
+    CheckBox BuffAutoCheck() => Check("자동 (레이드 안에서만 표시)", _s.Buffs.RaidOnly, v => _s.Buffs.RaidOnly = v, Changed,
+        "켜면 켜기로 둔 버프 막대를 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 줍니다. 끄면 (자동 끄기) 늘 보여 줍니다. " +
+        "막대가 숨어도 다른 막대는 움직이지 않고, 미리보기와 위치 조정에서는 레이드 안처럼 보입니다. 버프 줄은 어느 쪽이든 읽습니다 (미터기 버프 적용률).");
 
     void PlateRows(Panel p)
     {

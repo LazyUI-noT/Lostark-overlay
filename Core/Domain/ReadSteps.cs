@@ -25,6 +25,20 @@ public static class ReadSteps
     /// runs on its step though its last frame came a little after that step's slot (up to a frame: 7–17 ms).</summary>
     public static TimeSpan Slack(int perSecond) => Every(perSecond) / 2;
 
+    /// <summary>Between steps the loop sleeps at most this long: a cooldown's end still shows within it (under a 60 Hz frame).
+    /// It used to sleep 1 ms, about 500 loop turns a second for 20 reads (perf-trace, 2026-11-12).</summary>
+    public static readonly TimeSpan IdleMax = TimeSpan.FromMilliseconds(10);
+
+    /// <summary>How long the loop sleeps at <paramref name="now"/> with no step due: until the next step's slot, at most
+    /// <see cref="IdleMax"/>, at least 1 ms.</summary>
+    public static TimeSpan Idle(TimeSpan last, int perSecond, TimeSpan now)
+    {
+        var floor = TimeSpan.FromMilliseconds(1);
+        if (last == TimeSpan.MinValue) return floor;
+        var left = last + Every(perSecond) - now;
+        return left < floor ? floor : left > IdleMax ? IdleMax : left;
+    }
+
     /// <summary>Whether a step is due at <paramref name="now"/> after the slot <paramref name="last"/> (MinValue: never).</summary>
     public static bool Due(TimeSpan last, int perSecond, TimeSpan now) => last == TimeSpan.MinValue || now - last >= Every(perSecond);
 }

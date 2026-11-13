@@ -131,7 +131,7 @@ public static class AmsuReader
         var filled = new List<SlotAt>();
         if (y < 0 || y + Icon > r.Height || last < 0) return new(filled, false, false);
         // Each column's checks are asked for many times over (the frame-line checks go back and forth): each is worked out once.
-        var map = new DebuffReader.FrameMap(r);   // every window's frame colours from one pass over the strip (icon-gates 1a)
+        using var map = new DebuffReader.FrameMap(r);   // every window's frame colours from one pass over the strip (icon-gates 1a)
         var reds = new double?[r.Width];
         var lines = new bool?[r.Width + 1];
         var borders = new bool?[r.Width + 1];
@@ -217,6 +217,7 @@ public static class AmsuReader
 
     static readonly int[] Kinds = [.. Enumerable.Range(0, Thumbs.Length).Where(k => Thumbs[k] is not null)];
     static readonly float[][] KindThumbs = [.. Kinds.Select(k => Thumbs[k]!)];
+    static readonly BuffReader.Centred[] KindCentred = [.. KindThumbs.Select(BuffReader.Centred.Of)];
     static readonly double[] KindHues = [.. Kinds.Select(k => Hues[k])];
 
     /// <summary>Each template's structure score and hue distance on <paramref name="icon"/> (reference px), in <see cref="Kinds"/> order.</summary>
@@ -242,6 +243,7 @@ public static class AmsuReader
         var boxes = new double[]?[w * (2 * s + 1)];
         var hues = new double?[boxes.Length];
         var thumb = new float[BuffReader.ThumbLength];   // one per slot: a local function can't hold a stack span
+        var centred = new double[BuffReader.ThumbLength];
         int Slot(int dx, int dy) => (dy + s) * w + dx + span;
         PixelRect RectAt(int dx, int dy) => inner with { X = inner.X + dx, Y = inner.Y + dy };
         double[]? Box(int dx, int dy)   // each kind's score in the box dx from inner.X (−span…span), dy from inner.Y; null off the image
@@ -252,8 +254,9 @@ public static class AmsuReader
             if (box is null)
             {
                 sums.Thumb(rect, thumb);
+                double squares = BuffReader.Centre(thumb, centred);
                 box = new double[KindThumbs.Length];
-                for (int k = 0; k < box.Length; k++) box[k] = BuffReader.ChannelNcc(thumb, KindThumbs[k]);
+                for (int k = 0; k < box.Length; k++) box[k] = BuffReader.ChannelNcc(centred, squares, KindCentred[k]);
             }
             return box;
         }

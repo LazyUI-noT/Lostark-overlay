@@ -108,7 +108,7 @@ public partial class SettingsWindow
     /// <summary>The search box and its results, at the top of the rail.</summary>
     void BuildSearch()
     {
-        var hint = new TextBlock { Text = "설정 검색   Ctrl+F", Opacity = 0.55, IsHitTestVisible = false, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var hint = Muted(new TextBlock { Text = "설정 검색   Ctrl+F", IsHitTestVisible = false, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         System.Windows.Automation.AutomationProperties.SetName(_search, "설정 검색");
         _search.TextChanged += (_, _) => { hint.Visibility = Shown(_search.Text.Length == 0); ShowResults(); };
         _search.PreviewKeyDown += (_, e) =>
@@ -163,7 +163,7 @@ public partial class SettingsWindow
             Children =
             {
                 new TextBlock { Text = e.Label, TextWrapping = TextWrapping.Wrap },
-                new TextBlock { Text = e.Path, Opacity = 0.65, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                Muted(new TextBlock { Text = e.Path, FontSize = 12, TextWrapping = TextWrapping.Wrap }),
             },
         };
         var row = new DockPanel();

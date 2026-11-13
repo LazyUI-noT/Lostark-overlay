@@ -38,7 +38,7 @@ public partial class SettingsWindow
     void FillScreenBox()
     {
         var facts = ScreenSummary.Of(_s, _gameRunning);
-        var refit = new Button { Content = "맞추기", Margin = new(8, 0, 0, 0), Padding = new(6, 0, 6, 0), ToolTip = "화면·인식 → 스킬창을 엽니다." };
+        var refit = new Button { Content = "맞추기", Margin = new(8, 0, 0, 0), Padding = new(6, 0, 6, 0), ToolTip = "화면·인식 → 스킬창 맞추기를 엽니다." };
         refit.Click += (_, _) => Go(AreaFit);
         var rows = new (string Name, FrameworkElement Value)[]
         {

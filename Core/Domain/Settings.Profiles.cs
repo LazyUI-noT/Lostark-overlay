@@ -33,7 +33,7 @@ public sealed partial class Settings
         ActiveProfile = index;
     }
 
-    /// <summary>The 모든 배치에 적용 mark of <paramref name="look"/>. On: the live (active 배치's) value is the shared one.
+    /// <summary>The 모든 위치 프로필에 적용 mark of <paramref name="look"/>. On: the live (active 배치's) value is the shared one.
     /// Off: every 배치 starts from it, then keeps its own.</summary>
     public void ShareLook(LookGroup look, bool shared)
     {
@@ -57,19 +57,24 @@ public sealed partial class Settings
 
     /// <summary>The one-time notice after an older file's 배치 were merged (<see cref="MergedLooks"/>); null when none differed.</summary>
     public string? MergedLooksNotice() => MergedLooks.Count == 0 ? null
-        : $"오버레이 배치마다 달랐던 설정을 지금 배치({ActiveProfile + 1})의 값으로 맞췄습니다: {string.Join(", ", MergedLooks)}.\n\n"
-          + "이제 이 설정들은 모든 배치에 같게 적용됩니다. 배치마다 따로 두려면 설정에서 그 항목의 '모든 배치에 적용'을 끄세요.";
+        : $"위치 프로필마다 달랐던 설정을 지금 위치 프로필({ActiveProfile + 1})의 값으로 맞췄습니다: {string.Join(", ", MergedLooks)}.\n\n"
+          + "이제 이 설정들은 모든 위치 프로필에 같게 적용됩니다. 위치 프로필마다 따로 두려면 설정에서 그 항목의 '모든 위치 프로필에 적용'을 끄세요.";
 
-    /// <summary>배치 복사: the active profile, as it is now, into <paramref name="to"/>, all but the screenshot, which
+    /// <summary>위치 프로필 복사: the active profile, as it is now, into <paramref name="to"/>, all but the screenshot, which
     /// <paramref name="to"/> keeps. The active or a missing profile changes nothing (false).</summary>
-    public bool CopyProfile(int to)
+    public bool CopyProfile(int to) => CopyProfile(ActiveProfile, to);
+
+    /// <summary>위치 프로필 <paramref name="from"/> (as it is now, the active one included) into <paramref name="to"/>, all but the
+    /// screenshot, which <paramref name="to"/> keeps. Into the active one it is put on screen at once. The same or a missing
+    /// profile changes nothing (false).</summary>
+    public bool CopyProfile(int from, int to)
     {
-        if (to == ActiveProfile || to < 0 || to >= Profiles.Count || ActiveProfile < 0 || ActiveProfile >= Profiles.Count) return false;
-        var from = Profiles[ActiveProfile];
-        from.CaptureFrom(this);
-        var copy = JsonSerializer.Deserialize<OverlayProfile>(JsonSerializer.SerializeToUtf8Bytes(from, Data.SettingsStore.Json), Data.SettingsStore.Json)!;
+        if (from == to || from < 0 || from >= Profiles.Count || to < 0 || to >= Profiles.Count) return false;
+        if (from == ActiveProfile) Profiles[from].CaptureFrom(this);
+        var copy = JsonSerializer.Deserialize<OverlayProfile>(JsonSerializer.SerializeToUtf8Bytes(Profiles[from], Data.SettingsStore.Json), Data.SettingsStore.Json)!;
         copy.Shot = Profiles[to].Shot;
         Profiles[to] = copy;
+        if (to == ActiveProfile) copy.ApplyTo(this);
         return true;
     }
 }

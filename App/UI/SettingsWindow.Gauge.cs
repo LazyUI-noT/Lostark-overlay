@@ -24,9 +24,9 @@ public partial class SettingsWindow
     {
         var g = _s.Gauge;
         var p = new CardStack();
-        p.Children.Add(Heading("아덴 게이지", first: true, help: "아덴 게이지를 추적하는 직업각인이면 오버레이 위쪽에 막대로 표시됩니다."));
+        p.Children.Add(Heading("아덴 게이지", first: true, help: "아덴 게이지를 읽는 직업각인은 오버레이 위쪽에 막대로 보여 줍니다."));
         if (!(_chars.ActiveClass is { } cls && _chars.Active is { } c && cls.Subclasses.GetValueOrDefault(c.Subclass) is not null))
-            p.Children.Add(Note("현재 직업각인은 아덴 게이지를 읽지 않습니다."));
+            p.Children.Add(Note("지금 직업각인은 아덴 게이지를 읽지 않습니다."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
         p.Children.Add(ShareMark(LookGroup.게이지, FillGauge));

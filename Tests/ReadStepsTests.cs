@@ -26,6 +26,17 @@ public sealed class ReadStepsTests
         Assert.True(ReadSteps.Due(Ms(0), 10, Ms(100)));
     }
 
+    [Theory]
+    [InlineData(0, 20, 1, 10)]     // 49 ms to the next step: the idle cap
+    [InlineData(0, 20, 45, 5)]     // 5 ms left
+    [InlineData(0, 20, 50, 1)]     // due now (the caller steps first): never less than 1 ms
+    [InlineData(0, 20, 70, 1)]     // late
+    public void Idle_sleeps_until_the_next_step_at_most_the_cap(double last, int perSecond, double now, double sleep) =>
+        Assert.Equal(Ms(sleep), ReadSteps.Idle(Ms(last), perSecond, Ms(now)));
+
+    [Fact]
+    public void Idle_before_any_step_is_the_shortest_sleep() => Assert.Equal(Ms(1), ReadSteps.Idle(TimeSpan.MinValue, 20, Ms(0)));
+
     [Fact]
     public void An_out_of_range_value_paces_at_its_clamped_rate() => Assert.Equal(ReadSteps.Every(30), ReadSteps.Every(500));
 

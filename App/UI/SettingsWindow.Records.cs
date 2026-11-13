@@ -22,7 +22,7 @@ public partial class SettingsWindow
     const string AreaRecords = "타임라인";
     const string TestChip = RecordCharacter.TestClass;   // the 테스트 모드 fights' chip, "[Test]" (user, 2026-11-05): no character is named that
     const string TestKey = "test/";   // a test record's key in the list (_opened, _compare): its own file names may repeat the game's
-    const string RecordsLead = "DPS 미터기가 따라간 전투를 저장합니다. 캐릭터마다 최근 기록을 정한 개수까지 남기고 오래된 것부터 지웁니다. 보관한 기록도 최근 개수에 들고, 밀려나도 보관 탭에 남습니다. 밀려난 기록과 삭제한 기록은 휴지통으로 가고, 휴지통은 매주 정한 시각에 비워집니다." +
+    const string RecordsLead = "DPS 미터기가 따라간 전투를 저장합니다. 캐릭터마다 최근 기록을 정한 개수까지 남기고 오래된 것부터 지웁니다. 보관한 기록도 최근 개수에 들고, 밀려나도 보관 탭에 남습니다. 밀려난 기록과 삭제한 기록은 휴지통으로 가고, 휴지통은 매주 정한 시각에 비워집니다. " +
         "캐릭터마다 따로 저장합니다(ESC 게임 메뉴에서 이름을 읽기 전에는 '캐릭터 불명'). 기록을 열면 파티원 모두의 DPS · 누적 피해, 내 스킬 사용, 내 공증 · 아덴 피증 · 초각스 피증 구간, 페이즈 경계를 시간 순으로 볼 수 있습니다. 휠이나 +/−로 확대하고, 끌거나 ←/→로 옮깁니다." +
         "\n\n레이드·던전에서 기록합니다(가디언 토벌 제외). 콘텐츠 이름을 못 읽으면 '알 수 없음'으로 저장되고, 줄의 편집에서 콘텐츠 · 난이도 · 결과 · 클래스를 고칠 수 있습니다." +
         "\n\n전분이 새로 시작되면 앞 전투를 저장합니다. 새 보스가 같으면(재도전) 실패, 다르면(다음 관문) 클리어입니다." +
@@ -298,7 +298,7 @@ public partial class SettingsWindow
         keptTab.Checked += (_, _) => SetKeptTab(true);
         row.Children.Add(autoTab);
         row.Children.Add(keptTab);
-        row.Children.Add(new TextBlock { Text = "정렬", Margin = new(18, 0, 6, 6), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 });
+        row.Children.Add(Muted(new TextBlock { Text = "정렬", Margin = new(18, 0, 6, 6), VerticalAlignment = VerticalAlignment.Center }));
         foreach (var (byRaid, text) in new[] { (false, "날짜순"), (true, "레이드순") })
         {
             var sort = Toggle(text, "recordSort", _s.RecordSortByRaid == byRaid);
@@ -388,7 +388,7 @@ public partial class SettingsWindow
     /// <summary>A fight's two lines (when, raid, length; whose and my numbers), the same in the list and the 휴지통.</summary>
     StackPanel RecordText(string file, FightRecord r, bool inBin = false)
     {
-        string share = (r.MyShare is { } s ? $"{s * 100:0.0}%" : "–") + (Timeline.MyDps(r) is { } dps ? $" · DPS {TimelineView.Amount(dps)}" : "")
+        string share = (r.MyShare is { } s ? $"{s * 100:0.0}%" : "–") + (Timeline.MyDps(r) is { } dps ? $" · DPS {AmountText.Dps(dps)}" : "")
             + (ClassProfiles.WindowsOf(_s, RecordCharacter.ClassOf(r)).TimelineSkill is { } pick ? $" · {SlotKeyName(pick)} {RateOf(r, pick)}" : "");   // the timeline's pick (user, 2026-11-09)
         var text = new StackPanel
         {

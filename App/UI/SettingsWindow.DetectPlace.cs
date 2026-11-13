@@ -44,6 +44,56 @@ public partial class SettingsWindow
         _detectScreen.MouseMove += PlaceDrag;
         _detectScreen.MouseLeftButtonUp += (_, _) => _detectScreen.ReleaseMouseCapture();
         _detectScreen.LostMouseCapture += (_, _) => PlaceLetGo();   // also a dialog or Alt+Tab mid-drag
+        (_detectScreen.Focusable, _detectScreen.FocusVisualStyle) = (true, null);   // a press takes the keys: the picked box's frame shows it
+        _detectScreen.PreviewKeyDown += PlaceKey;
+    }
+
+    /// <summary>The picked box after a press: arrows move it 1 px (Shift 10), Ctrl+arrows size it in its own shape (→ ↑ bigger).
+    /// A press, held as long as it repeats, is one step 되돌리기 goes back over.</summary>
+    void PlaceKey(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
+        (int dx, int dy) = e.Key switch { Key.Left => (-1, 0), Key.Right => (1, 0), Key.Up => (0, -1), Key.Down => (0, 1), _ => (0, 0) };
+        if ((dx, dy) == (0, 0) || _placeDrag is not null || _place is not { } a || _detectPicked is not { } id || DetectPlace.PartOf(id) is not { } part) return;
+        int step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1;
+        var next = a.Arrow(part, dx * step, dy * step, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        e.Handled = true;   // also at a wall: the arrow never moves the page's focus or scroll
+        if (next == a) return;
+        if (!e.IsRepeat) _placeHistory = _placeHistory.After(a, next);   // a held key: one step, back to before the press
+        PlaceChange(next);
+    }
+
+    /// <summary>An example of a well-placed box per part, cut from 1080p footage with the same lines drawn (App/Assets/examples).</summary>
+    static readonly Dictionary<AdjustPart, (string File, string Text)> PlaceExamples = new()
+    {
+        [AdjustPart.스킬창] = ("place-skillbar.png", "각 스킬 아이콘이 가는 네모 안에 꼭 맞게 들어가도록 맞춥니다."),
+        [AdjustPart.버프] = ("place-buffs.png", "아이콘은 세로선 사이 칸마다 하나씩, 가로선 위에 오고 남은 시간 글자는 가로선 아래에 오게 맞춥니다."),
+        [AdjustPart.디버프] = ("place-debuffs.png", "버프 줄과 같습니다: 아이콘은 칸마다 하나씩 가로선 위에, 남은 시간은 그 아래에 옵니다."),
+        [AdjustPart.보스] = ("place-boss.png", "세로선이 위의 \"모든 면역 / 관통 면역\" 글자의 / 에 오게 맞춥니다. 디버프 아이콘은 그 오른쪽 줄 안에 들어옵니다."),
+        [AdjustPart.전분] = ("place-jeonbun.png", "전투 분석기 창 전체(시간 줄부터 숫자 줄까지)가 칸 안에 꼭 맞게 들어오도록 맞춥니다."),
+    };
+    readonly StackPanel _placeExample = new() { Margin = new(0, 8, 0, 0) };
+    AdjustPart? _placeExampleShown;
+
+    /// <summary>The picked box's example while it can be placed.</summary>
+    void ShowPlaceExample()
+    {
+        AdjustPart? part = _detectPicked is { } id ? DetectPlace.PartOf(id) : null;
+        if (part == _placeExampleShown) return;
+        _placeExampleShown = part;
+        _placeExample.Children.Clear();
+        if (part is not { } p || !PlaceExamples.TryGetValue(p, out var ex) || BossBarExample.Load(ex.File) is not { } picture) return;
+        _placeExample.Children.Add(new TextBlock { Text = "예시: " + ex.Text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 4) });
+        _placeExample.Children.Add(new System.Windows.Controls.Image { Source = picture, MaxWidth = 560, MaxHeight = 160, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left });
+    }
+
+    /// <summary>Where the icons go inside a placed box (<see cref="FitAdjust.Guides"/>), thin in its colour.</summary>
+    void AddGuides(AdjustPart part, Color colour, PixelRect screen)
+    {
+        if (_place is not { } a) return;
+        var brush = new SolidColorBrush(Color.FromArgb(0xB0, colour.R, colour.G, colour.B));
+        foreach (var (x1, y1, x2, y2) in a.Guides(part))
+            _detectScreen.Children.Add(new Line { X1 = x1 - screen.X, Y1 = y1 - screen.Y, X2 = x2 - screen.X, Y2 = y2 - screen.Y, Stroke = brush, StrokeThickness = Px(1), IsHitTestVisible = false });
     }
 
     /// <summary>A box's name and map colour; the debuff row has no map box.</summary>
@@ -112,6 +162,7 @@ public partial class SettingsWindow
         }
         if (a.PartAt(_detectShown.X + at.X, _detectShown.Y + at.Y, Px(HandleTolerance)) is not { } hit) return;
         (_detectPicked, _placeNote, _placeDrag) = (DetectPlace.Movable[(int)hit.Part], "", (a, hit.Part, hit.Corner, OnHost(e)));
+        _detectScreen.Focus();
         _detectScreen.CaptureMouse();
         DrawDetect();
     }
@@ -121,6 +172,7 @@ public partial class SettingsWindow
     void PlacePressBeforeSession(string id, AdjustPart part, Point at)
     {
         (_detectPicked, _placeNote, _placePress) = (id, "", (part, at));
+        _detectScreen.Focus();
         _detectScreen.CaptureMouse();
         if (!_placeWanted)
         {
@@ -200,7 +252,7 @@ public partial class SettingsWindow
         if (_placeNote != "") return "\n" + _placeNote;
         if (_place is { } a)
             return (a.Changed ? "\n아직 저장되지 않았습니다. 적용을 누르지 않고 이 화면을 나가면 옮긴 자리는 사라집니다." : "")
-                + "\n옮기는 중입니다. 칸을 끌어 옮기고, 칸 모서리의 흰 점을 끌어 크기를 바꿉니다. 초록 칸은 지금 읽히는 칸입니다. 전분은 게임에서 전투 분석기를 열어 둔 채로 맞추세요. 아무것도 안 보이는 칸은 틀린 게 아니라 색이 없을 뿐입니다. "
+                + "\n옮기는 중입니다. 칸을 끌어 옮기고, 칸 모서리의 흰 점을 끌어 크기를 바꿉니다. 누른 칸은 화살표 키로 1px씩(Shift 10px) 옮기고, Ctrl+화살표로 모양을 유지한 채 크기를 바꿉니다(→↑ 크게, ←↓ 작게). 칸 안의 가는 선은 아이콘이 들어갈 자리이니, 아이콘이 선 안에 맞게 들어가도록 맞추세요. 초록 칸은 지금 읽히는 칸입니다. 전분은 게임에서 전투 분석기를 열어 둔 채로 맞추세요. 아무것도 안 보이는 칸은 틀린 게 아니라 색이 없을 뿐입니다. "
                 + $"버프가 사라졌다면 Live를 켜고 일시정지로 그림을 멈춘 뒤 맞추세요. 되돌리기(Ctrl+Z)는 {PlaceHistory.MaxSteps}번까지 한 번씩 되돌리고, 처음으로는 처음 자리로 돌아갑니다. 적용하면 저장하고, 그만두기는 저장하지 않고 원래 자리로 돌아갑니다.";
         if (_placeWanted) return "\n게임 화면을 찾는 중입니다. 위치 조정 화면이 열려 있으면 먼저 닫아 주세요.";
         return _detectPicked is not { } id ? ""

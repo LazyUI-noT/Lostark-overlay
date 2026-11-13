@@ -99,6 +99,34 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
         _ => BossTo(BossPercent + step),
     };
 
+    /// <summary>An arrow key on a picked part, <paramref name="dx"/>/<paramref name="dy"/> its direction times the step: a move, or with
+    /// <paramref name="resize"/> (Ctrl) a size step in the part's own shape (<see cref="Resize"/>), → and ↑ bigger, ← and ↓ smaller.</summary>
+    public FitAdjust Arrow(AdjustPart part, int dx, int dy, bool resize) => resize ? Resize(part, dx - dy) : Move(part, dx, dy);
+
+    /// <summary>The lines inside a part where its icons belong, in screen pixels: the bar's slot outlines, the buff and debuff rows'
+    /// box edges and the line between icons and timers, the boss row's slash. None for the 전분 box.</summary>
+    public IReadOnlyList<(int X1, int Y1, int X2, int Y2)> Guides(AdjustPart part)
+    {
+        var r = RectOf(part);
+        switch (part)
+        {
+            case AdjustPart.스킬창:
+                return [.. SlotInfo.All.Select(s => Geometry.Slot(s, Vp, Current)).SelectMany(s => new[]
+                {
+                    (s.X, s.Y, s.Right, s.Y), (s.X, s.Bottom, s.Right, s.Bottom), (s.X, s.Y, s.X, s.Bottom), (s.Right, s.Y, s.Right, s.Bottom),
+                })];
+            case AdjustPart.버프 or AdjustPart.디버프:
+                var boxes = part == AdjustPart.버프 ? Geometry.BuffBoxes(Vp, Current, BuffSize, BuffCount) : Geometry.DebuffBoxes(Vp, Current, BuffSize);
+                var (columns, iconBottom) = Geometry.RowGrid(boxes);
+                return [.. columns.Select(x => (x, r.Y, x, r.Bottom)).Append((r.X, iconBottom, r.Right, iconBottom))];
+            case AdjustPart.보스:
+                int axis = (int)Math.Round(r.X + Geometry.BossAxis * Geometry.BossScale(Vp, Current, BossGameSize));
+                return [(axis, r.Y, axis, r.Bottom)];
+            default:
+                return [];
+        }
+    }
+
     /// <summary>A part's size handle, on the edge a size change moves: the bar's bottom-left (its left edge follows the pointer),
     /// the buff row's bottom-left (it keeps its right end and grows left), the debuff and boss rows' and the 전분 box's bottom-right.</summary>
     public (int X, int Y) Handle(AdjustPart part) => RectOf(part) is var r && part is AdjustPart.스킬창 or AdjustPart.버프 ? (r.X, r.Bottom) : (r.Right, r.Bottom);

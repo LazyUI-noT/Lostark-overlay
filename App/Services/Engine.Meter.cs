@@ -22,6 +22,9 @@ public sealed partial class Engine
     TimeSpan _lastMeter = TimeSpan.MinValue, _lastBossHp = TimeSpan.MinValue, _lastSearch = TimeSpan.MinValue;
     int _panelMisses;
     (string Key, PixelRect Rect)? _foundPanel;   // found here, until the settings carry it
+    const int AnySizeEvery = 4;   // 테스트 모드: the measuring search on every 4th search that misses (12 s)
+    int _searches;
+    double? _measuredScale;   // 테스트 모드: the panel's size last found, tried first next time
 
     /// <summary>A 전분 spot found for a game-area size (the key of MeterPanels); on the engine thread.</summary>
     public event Action<string, PixelRect>? MeterPanelFound;
@@ -64,16 +67,24 @@ public sealed partial class Engine
     {
         _lastSearch = now;
         var area = new PixelRect(_vp.X, _vp.Y, _vp.Width, _vp.Height);
-        foreach (double scale in new[] { 1.0, _vp.Height / 1080.0 }.Distinct())
-            if (JeonbunFinder.Find(img, scale) is { } r)
-            {
-                var spot = new PixelRect(area.X + r.X, area.Y + r.Y, r.Width, r.Height);
-                string key = Geometry.ViewportKey(_vp);
-                (_foundPanel, _panelMisses) = ((key, spot), 0);
-                Trace.WriteLine($"[meter] 전분 found at {spot} ({key}, scale {scale:0.##})");
-                MeterPanelFound?.Invoke(key, spot);
-                return;
-            }
+        // 테스트 모드 (user, 2026-11-12): a cropped or zoomed video shows the panel at a size the picture's height doesn't give,
+        // so its size is measured when the usual two miss, and tried first after. Measuring costs 15–60 ms on most frames, up
+        // to 400 on a busy one (serka-g1-90s) and 700 on a Discord stream (discord_전분_sample.png), so it runs on every
+        // AnySizeEvery-th search that misses only.
+        double?[] sizes = [1.0, _vp.Height / 1080.0, _testMode ? _measuredScale : null];
+        var found = sizes.OfType<double>().Distinct().Select(s => JeonbunFinder.Find(img, s)).FirstOrDefault(r => r is not null);
+        if (found is null && _testMode && _searches++ % AnySizeEvery == 0)
+            found = JeonbunFinder.FindAnySize(img);
+        if (found is { } r)
+        {
+            if (_testMode) _measuredScale = r.Width / JeonbunReader.RefW;
+            var spot = new PixelRect(area.X + r.X, area.Y + r.Y, r.Width, r.Height);
+            string key = Geometry.ViewportKey(_vp);
+            (_foundPanel, _panelMisses) = ((key, spot), 0);
+            Trace.WriteLine($"[meter] 전분 found at {spot} ({key}, scale {r.Width / JeonbunReader.RefW:0.##})");
+            MeterPanelFound?.Invoke(key, spot);
+            return;
+        }
         Trace.WriteLine($"[meter] 전분 search: not on screen ({area})");
     }
 

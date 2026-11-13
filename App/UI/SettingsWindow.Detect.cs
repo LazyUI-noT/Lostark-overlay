@@ -61,12 +61,14 @@ public partial class SettingsWindow
         Detach(_detectScreen);
         Detach(_detectTools);
         Detach(_detectDetail);
+        Detach(_placeExample);
         Detach(_diag);
         var host = new Viewbox { Child = _detectScreen, Stretch = Stretch.Uniform, MaxHeight = 560, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
         CardStack.SetBreak(host, true);
         p.Children.Add(host);
         p.Children.Add(_detectTools);
         p.Children.Add(_detectDetail);
+        p.Children.Add(_placeExample);
         p.Children.Add(_diag);
         _detectDrawn = "";
         DrawDetect();
@@ -143,7 +145,11 @@ public partial class SettingsWindow
             frame.MouseLeftButtonUp += (_, _) => { _detectPicked = id; _placeNote = ""; DrawDetect(); };
             _detectScreen.Children.Add(frame);
             _detectScreen.Children.Add(label);
-            if (movable && DetectPlace.PartOf(id) is { } part) AddHandle(part, colour, screen);
+            if (movable && DetectPlace.PartOf(id) is { } part)
+            {
+                AddGuides(part, colour, screen);
+                AddHandle(part, colour, screen);
+            }
         }
         DrawTools();
     }
@@ -153,6 +159,7 @@ public partial class SettingsWindow
     {
         _detectTools.Children.Clear();
         _detectDetail.Text = DetectDetail() + PlaceLine();
+        ShowPlaceExample();
         _diag.ShowOnly(_detectPicked is { } shown ? DetectPlace.TableOf(shown) : null);
         DiagnosticsMaybeChanged();
         if (_detectPicked is not { } id || !ShownAreas().ContainsKey(id)) return;
@@ -197,7 +204,7 @@ public partial class SettingsWindow
         if (_detectPicked is not { } id || LookOf(id) is not { } box) return "칸을 누르면 그 기능의 결과가 여기 나옵니다.";
         var where = ShownAreas().TryGetValue(id, out var a) ? $"{a.Width}×{a.Height} @ ({a.X}, {a.Y})" : "자리 없음";
         if (id == DetectPlace.DebuffRow) return $"{box.Title}: 내 디버프가 뜨는 줄입니다. 읽는 자리 {where}.";
-        if (_detect.GetValueOrDefault(id) is not { } d) return $"{box.Title}: 꺼져 있습니다. 읽는 위치 {where}.";
+        if (_detect.GetValueOrDefault(id) is not { } d) return $"{box.Title}: 꺼져 있습니다. 읽는 자리 {where}.";
         string what = d.Mark switch { DetectMark.Concrete => "감지됨", DetectMark.Failed => "읽어야 하는데 못 읽음", _ => "아직 찾는 중" };
         return $"{box.Title}: {what} ({FeatureMapView.Ago(_detectAt - d.At)}부터). 읽는 자리 {where}." + (d.Why is { } why ? $" {why}" : "");
     }

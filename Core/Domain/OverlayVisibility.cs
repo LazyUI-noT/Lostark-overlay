@@ -10,13 +10,15 @@ public enum OverlayAuto { 게임앞, 스킬창, 던전 }
 /// <summary>When the overlay windows are on screen.</summary>
 public static class OverlayVisibility
 {
-    /// <summary>Edit mode always shows them. Otherwise <paramref name="mode"/> decides: 자동 shows them while the game or one of
+    /// <summary>Edit mode always shows them. With 설정's 내 오버레이 page shown (<paramref name="canvasShown"/>) the canvas draws
+    /// them, so the real ones hide (no double display); on any other page 설정 acts as if closed. Otherwise <paramref name="mode"/> decides: 자동 shows them while the game or one of
     /// the app's own windows (설정) is in front, whether or not the game runs; 항상 over any app. With the game in front they wait
     /// for the first run; 자동 follows <paramref name="auto"/>, 항상 doesn't.</summary>
     public static bool Show(bool editMode, OverlayShow mode, bool ownForeground, bool gameForeground, bool hudVisible,
-        OverlayAuto auto, bool inDungeon, bool firstRunDone)
+        OverlayAuto auto, bool inDungeon, bool firstRunDone, bool canvasShown = false)
     {
         if (editMode) return true;
+        if (canvasShown) return false;
         if (mode == OverlayShow.끄기) return false;
         if (gameForeground) return firstRunDone && (mode == OverlayShow.항상 || auto switch
         {

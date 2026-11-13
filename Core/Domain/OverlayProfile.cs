@@ -22,7 +22,7 @@ public sealed class BarSize
     public double Length { get; set; } = 1;
 }
 
-/// <summary>A look a 모든 배치에 적용 mark covers (<see cref="Settings.SharedLooks"/>): window spots and sizes are always per
+/// <summary>A look a 모든 위치 프로필에 적용 mark covers (<see cref="Settings.SharedLooks"/>): window spots and sizes are always per
 /// 배치. What each covers, as the 설정 page says it: <see cref="LookShare.Covers"/>; keep it in step with <c>TakeLook</c>.</summary>
 public enum LookGroup { 판, 스킬칸, 게이지, 버프막대, 미터기, 암수, 단심 }
 

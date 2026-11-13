@@ -15,11 +15,11 @@ public static class ImageOps
     }
 
     /// <summary><paramref name="r"/> of <paramref name="img"/> scaled by <paramref name="f"/> (bilinear; pixels past the
-    /// edge repeat it).</summary>
-    public static Image Resample(Image img, PixelRect r, double f)
+    /// edge repeat it). Written into <paramref name="into"/> when it has the result's size (every byte is written), else a new image.</summary>
+    public static Image Resample(Image img, PixelRect r, double f, Image? into = null)
     {
         int w = Math.Max(1, (int)Math.Round(r.Width * f)), h = Math.Max(1, (int)Math.Round(r.Height * f));
-        var dst = new Image(w, h);
+        var dst = into is not null && into.Width == w && into.Height == h ? into : new Image(w, h);
         // Each column's source pixels and weight once (the same values the per-pixel sum used: the picture is unchanged).
         var x0s = new int[w];
         var x1s = new int[w];

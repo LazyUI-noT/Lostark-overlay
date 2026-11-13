@@ -23,6 +23,7 @@ public partial class App
 
         var store = new SettingsStore(SettingsStore.DefaultPath);
         var settings = store.Load(out bool wasReset);
+        BuffUnlock.Start(settings);
         var testStore = new SettingsStore(SettingsStore.TestPath);
         Settings? normalSettings = null;
         var debounce = new SaveDebounce();
@@ -37,7 +38,7 @@ public partial class App
         // 대난투 체력: one switch for every raid with 대난투 (from 0.19); a file with the per-raid ones keeps its meaning.
         if (settings.Raids.MigrateShadowHp(raidGates)) debounce.Changed(Clock.Now());
         IReadOnlyList<FightHp> fightHp = [];   // the values this raid uses (Engine.FightHpChanged)
-        // The gates with learned and this raid's HP values: what RaidData.ByHp and HiddenHp name a boss by.
+        // The gates with learned and this raid's HP values: what RaidData.ByHp and HiddenHp (2-2 → 2-3) name a boss by.
         IReadOnlyList<RaidGate> HpGates() => HpChange.Effective(raidGates, settings.Raids, fightHp);
         // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
         if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
@@ -93,7 +94,8 @@ public partial class App
         (MeterStatus? From, MeterView? View) meterView = (null, null);   // built once per engine meter step (1 Hz)
         var recorder = new FightRecorder();   // 전투 기록: the fight the meter follows
         (string? compareKey, MeterGhost? compareGhost) = (null, null);   // the meter's 비교 (CompareGhost)
-        HiddenHpState? hidden = null;   // 종막 EX 2-3: its HP shows ???, estimated from the party's damage
+        ShareTrack? hiddenShare = null;   // 2-2 under way: my share of the HP its bar lost
+        HiddenHpState? hidden = null;   // 종막 2-3: its HP shows ???, estimated from my damage and that share
         var hiddenBar = BarCountState.None;
         RaidStatus? hiddenStatus = null;   // the 줄 수 창 while it is estimated
         var records = new RecordStore(RecordStore.DefaultDir);
@@ -204,6 +206,15 @@ public partial class App
         new DispatcherTimer(TimeSpan.FromMinutes(1), DispatcherPriority.Background, (_, _) => EmptyBins(), Dispatcher).Start();
         _settingsWindow.Homework = homework;
         homework.Updated += _settingsWindow.HomeworkUpdated;
+        homework.CharacterRead += read =>   // 편집 중 and the boxes follow the character, also when the skill bar's class check is unsure
+        {
+            if (settings.ClassDetect == ClassDetectMode.끄기 || NameSwitch.Target(read, settings.ActiveCharacter) is not { } to) return;
+            if (characters.Classes.FirstOrDefault(c => c.Name == to.Class) is not { } cls || !cls.Subclasses.ContainsKey(to.Subclass)) return;
+            characters.Pick(cls.Family, to.Class, to.Subclass);
+            _settingsWindow.Reload();
+            _tray.Notify($"캐릭터를 {Josa.By(Settings.CharacterKey(to.Class, to.Subclass))} 바꿨습니다.");
+            OnSettingsChanged();
+        };
         _settingsWindow.ApiLookups = api;
         api.Updated += _settingsWindow.ApiUpdated;
         // 숙제's fallback: with the meter or 전투 기록 off, or the 전분 panel closed and no fight being recorded, the boss bar alone decides
@@ -461,13 +472,13 @@ public partial class App
             // A 4-man raid (the gate by its HP, else the one recognised; any guardian raid): the buffs' party share too.
             bool small = (RaidData.ByHp(HpGates(), status.Boss.Max)?.Gate ?? RaidData.Find(raidGates, _raidSeen))?.SmallParty == true
                 || latest?.Dungeon?.Kind == DungeonKind.Guardian;
-            var view = MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small, latest?.Daenantu == true)
+            var view = BuffLock.Apply(MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small, latest?.Daenantu == true), BuffUnlock.Locked)
                 with { BossName = HeaderBoss(status.Boss.Max), Skill = MeterSkill.Line(settings, ClassProfiles.ActiveKey(settings), meterHistory, status.Clock.Timer, s => KeyNames.OfSlot(settings, s)),
                     Ghost = CompareGhost(status.Boss.Max) };
             long bossTaken = view.BossTaken;
             recordAgain = () => RecordStep(status, role, samples, me, myParty, bossTaken);
             recordAgain();
-            StepHidden(status, Everyone(status, role, samples, me, myParty), myParty);
+            StepHidden(status, role);
             return view;
         }
 
@@ -480,42 +491,25 @@ public partial class App
             return all;
         }
 
-        // 종막 EX 2-3's estimated HP (HiddenHp) into the 줄 수 창, while its gate's 줄 수 창 is on: "≈62% 1.2조", glowing at its % alerts.
-        void StepHidden(MeterStatus status, List<MeterSample> all, int myParty)
+        // 종막 2-3's estimated HP (HiddenHp) into the 줄 수 창, while its gate's 줄 수 창 is on: "≈45% / 70% · 1.2조", glowing at
+        // its HP % left alerts. The share comes from 2-2 (its gate by HP, else 자동 인식: 하드 2-2 has no HP in the data).
+        void StepHidden(MeterStatus status, MeterRole role)
         {
             var r = settings.Raids;
-            var gates = HpGates();
-            foreach (var (gateId, p, assist) in HiddenHp.Calibration(gates, status, all))   // 2-1 cleared: its 조력 피해량 per party
-            {
-                var target = r.Gate(gateId);
-                if (Math.Abs((p == 1 ? target.Assist1 : target.Assist2) - assist) < 0.05) continue;
-                if (p == 1) target.Assist1 = assist; else target.Assist2 = assist;
-                Trace.WriteLine($"[raid] {gateId}: 2-1 조력 피해량 {p}파티 {assist:0.#}억");
-                Save(now: false);
-                _settingsWindow.RefreshRaid();
-            }
-            // The ??? gate this fight may reach (its row's figures): the one under way, else any (only EX 2-3 is one).
-            var gate23 = hidden?.Gate ?? gates.FirstOrDefault(g => g.HiddenHp.Count > 0);
-            var row = gate23 is null ? null : r.Gates.GetValueOrDefault(gate23.Id);
-            // The 조력 비율: what 2-1 shows (both parties' figures and its 에스더 plan) at this difficulty (2-2's HP gives it), else the user's.
-            double share = gate23 is null ? r.AssistShare
-                : HiddenHp.Share(gates, gate23, hidden?.Difficulty ?? RaidData.ByHp(gates, status.Boss.Max)?.Difficulty, r);
-            var options = new HiddenHpOptions(share, r.OtherParty, row?.Esthers ?? [], row?.Assist1 ?? 0, row?.Assist2 ?? 0);
             var now = Clock.Now();
+            hiddenShare = HiddenHp.Track(hiddenShare, status, role, now);
             var was = hidden;
-            hidden = HiddenHp.Step(hidden, gates, status,
-                HiddenHp.RaidDamage(all, myParty, share, r.OtherParty, options.Assist1, options.Assist2), options, now);
-            if (was is null != hidden is null) Trace.WriteLine(hidden is { } on ? $"[raid] {on.Gate.Id} ({on.Difficulty}): HP estimated" : "[raid] HP estimate ended");
+            hidden = HiddenHp.Step(hidden, HpGates(), RaidData.Find(raidGates, _raidSeen), status, hiddenShare, role, now);
+            if (was is null != hidden is null)
+                Trace.WriteLine(hidden is { } on ? $"[raid] {on.Gate.Id}: HP estimated, max {on.Max / 1e8:0}억, 2-2 share {(on.Share is { } s ? $"{s * 100:0.0}%" : "none")}" : "[raid] HP estimate ended");
             if (hidden is not { } est || !r.CountOn(est.Gate.Id))
             {
                 (hiddenStatus, hiddenBar) = (null, BarCountState.None);
                 return;
             }
-            hiddenBar = BarAlert.Update(hiddenBar, (int)Math.Ceiling(est.Percent), now, BarAlert.Thresholds(r.AlertsOf(est.Gate), r.OffsetOf(est.Gate.Id)));
+            hiddenBar = BarAlert.Update(hiddenBar, (int)Math.Ceiling(est.LeftPercent), now, BarAlert.Thresholds(r.AlertsOf(est.Gate), r.OffsetOf(est.Gate.Id)));
             bool glow = r.Glow && BarAlert.Glowing(hiddenBar, r.GlowUntil, r.GlowSeconds, r.GlowBars, now);
-            string left = est.Left >= 1_000_000_000_000 ? $"{est.Left / 1e12:0.00}조" : $"{est.Left / 1e8:0}억";
-            string gimmick = est.Phase is GimmickPhase.Waiting or GimmickPhase.Paused ? " · 25% 대기" : "";   // at 25%: waiting for the 10% jump
-            hiddenStatus = new RaidStatus(est.Gate, null, glow, est.Base is null ? "≈?" : $"≈{est.Percent:0}% {left}{gimmick}");
+            hiddenStatus = new RaidStatus(est.Gate, null, glow, HiddenHp.Label(est, status.Panel, role));
         }
 
         // 전투 기록's second: everyone's figures (mine from this PC, as the meter shows them) and who is in the fight.
@@ -736,11 +730,30 @@ public partial class App
         void OnSettingsChanged() { Configure(); Save(now: false); }
 
         // Engine → UI (engine thread → dispatcher).
+        // Delay from a frame's capture to the UI (perf: [perf] 지연). The WPF frame is the next System.Windows.Media.CompositionTarget.Rendering,
+        // where WPF lays out and hands the drawings to its render thread; the screen adds that thread's work and DWM's vblank.
+        TimeSpan? frameAt = null;
+        void OnFrame(object? sender, EventArgs e)
+        {
+            System.Windows.Media.CompositionTarget.Rendering -= OnFrame;
+            if (frameAt is { } at) Perf.Delay("캡처→WPF 프레임", (Clock.Now() - at).TotalMilliseconds);
+            frameAt = null;
+        }
         engine.SnapshotReady += s =>
         {
             latest = s;
             if (Interlocked.Exchange(ref pending, 1) == 0)
-                Dispatcher.BeginInvoke(() => { Interlocked.Exchange(ref pending, 0); Perf.Run("앱 처리 (미터 · 기록 · 파티 보내기)", Draw); });
+                Dispatcher.BeginInvoke(() =>
+                {
+                    Interlocked.Exchange(ref pending, 0);
+                    var at = latest?.At;
+                    if (at is { } a) Perf.Delay("캡처→UI", (Clock.Now() - a).TotalMilliseconds);
+                    Perf.Run("앱 처리 (미터 · 기록 · 파티 보내기)", Draw);
+                    if (at is not { } b) return;
+                    Perf.Delay("캡처→그리기 끝", (Clock.Now() - b).TotalMilliseconds);
+                    if (frameAt is null) System.Windows.Media.CompositionTarget.Rendering += OnFrame;
+                    frameAt = b;
+                });
         };
         engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() => { _tray.SetGameRunning(running); _settingsWindow.SetGameRunning(running); if (running) ApplyDisplay(); });
         engine.RaidRecognised += id => Dispatcher.BeginInvoke(() =>
@@ -773,7 +786,7 @@ public partial class App
         });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
-            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 준비된 상태에서 설정 → 스킬창 → 스킬창 맞추기를 눌러 주세요.", kind: NoticeKind.Problem);
+            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 준비된 상태에서 설정 → 화면·인식 → 스킬창 다시 맞추기를 누르세요.", kind: NoticeKind.Problem);
         });
         engine.FitFinished += (vp, fit, message, detected, test, canRevert) => Dispatcher.BeginInvoke(() =>
         {
@@ -1139,14 +1152,14 @@ public partial class App
         ShowWhatsNew();
         ShowMergedLooks();
 
-        // An older file's 배치 that differed in a look now share the active one's (display-split.plan.md): said once,
+        // An older file's 위치 프로필 that differed in a look now share the active one's (display-split.plan.md): said once,
         // saved at once so the next start doesn't merge again.
         void ShowMergedLooks()
         {
             if (settings.MergedLooksNotice() is not { } notice) return;
             settings.MergedLooks = [];
             Save(now: true);
-            Dispatcher.BeginInvoke(() => MessageBox.Show(notice, "GaugeOverlay 오버레이 배치", MessageBoxButton.OK, MessageBoxImage.Information),
+            Dispatcher.BeginInvoke(() => MessageBox.Show(notice, "GaugeOverlay 위치 프로필", MessageBoxButton.OK, MessageBoxImage.Information),
                 DispatcherPriority.ApplicationIdle);
         }
 

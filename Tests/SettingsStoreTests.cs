@@ -27,6 +27,24 @@ public sealed class SettingsStoreTests : IDisposable
         return s;
     }
 
+    [Fact]
+    public void The_buff_unlock_key_is_kept_and_survives_전체_초기화()
+    {
+        var s = new Settings { FirstRunDone = true, BuffUnlockKey = "abc_-" };
+        SettingsResets.All(s);
+        new SettingsStore(FilePath).Save(s);
+        Assert.Equal("abc_-", new SettingsStore(FilePath).Load(out _).BuffUnlockKey);
+    }
+
+    [Fact]
+    public void Undo_and_test_mode_keep_the_buff_unlock_key()
+    {
+        var s = new Settings { BuffUnlockKey = "key" };
+        s.CopyFrom(new Settings());
+        s.SwapIn(new Settings());
+        Assert.Equal("key", s.BuffUnlockKey);
+    }
+
     [Theory]
     [InlineData("""{"Buffs":{"Count":99},"Debuffs":{"BossIconSize":999}}""", 14, 120)]
     [InlineData("""{"Buffs":{"Count":0},"Debuffs":{"BossIconSize":10}}""", 1, 120)]

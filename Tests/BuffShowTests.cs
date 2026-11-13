@@ -4,68 +4,79 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>A buff bar's 표시: 끄기, 켜기, 자동 (only in a raid: the in-game meter or a boss bar seen, RaidPresence).</summary>
+/// <summary>A buff bar is 끄기 or 켜기; one 자동 for every bar shows them only in a raid (the in-game meter or a boss bar
+/// seen, RaidPresence) (user, 2026-11-12).</summary>
 public class BuffShowTests
 {
     [Fact]
     public void A_bar_is_on_by_default_and_a_settings_file_from_before_stays_as_it_was()
     {
-        Assert.Equal(BuffShow.켜기, new BuffSettings().Of(BuffKind.공증).Show);
+        Assert.True(new BuffSettings().Of(BuffKind.공증).Visible);
+        Assert.False(new BuffSettings().RaidOnly);
 
         var old = JsonSerializer.Deserialize<BuffIndicator>("""{"Visible":false}""", SettingsStore.Json)!;
-        Assert.Equal(BuffShow.끄기, old.Show);
-        var on = JsonSerializer.Deserialize<BuffIndicator>("""{"Visible":true}""", SettingsStore.Json)!;
-        Assert.Equal(BuffShow.켜기, on.Show);
+        Assert.False(old.Visible);
+    }
+
+    [Fact]
+    public void 자동_hides_a_bar_only_outside_a_raid()
+    {
+        var b = new BuffSettings { RaidOnly = true };
+
+        Assert.True(b.OutOfRaid(inDungeon: false));
+        Assert.False(b.OutOfRaid(inDungeon: true));
+        Assert.False(new BuffSettings().OutOfRaid(inDungeon: false));   // 자동 끄기
+    }
+
+    [Fact]
+    public void Where_the_player_is_only_needs_watching_with_자동_and_a_bar_shown()
+    {
+        var b = new BuffSettings();
+        Assert.False(b.AnyInRaidOnly);
+
+        b.RaidOnly = true;
+        Assert.True(b.AnyInRaidOnly);
+
+        foreach (var k in Enum.GetValues<BuffKind>()) b.Edit(k).Visible = false;
+        Assert.False(b.AnyInRaidOnly);
     }
 
     [Theory]
-    [InlineData(BuffShow.끄기, false, false)]
-    [InlineData(BuffShow.켜기, true, false)]
-    [InlineData(BuffShow.자동, true, true)]
-    public void Each_mode_is_kept_in_the_saved_properties(BuffShow show, bool visible, bool inRaidOnly)
+    [InlineData("""{"Indicators":{"공증":{"InRaidOnly":true}}}""", true)]
+    [InlineData("""{"Indicators":{"공증":{"Visible":false,"InRaidOnly":true}}}""", true)]
+    [InlineData("""{"Indicators":{"공증":{"Visible":true}}}""", false)]
+    [InlineData("""{"RaidOnly":false,"Indicators":{"공증":{"InRaidOnly":true}}}""", true)]
+    public void An_older_file_with_any_bar_on_자동_turns_자동_on_for_all(string json, bool raidOnly)
     {
-        var i = new BuffIndicator { Show = show };
-        Assert.Equal((visible, inRaidOnly), (i.Visible, i.InRaidOnly));
+        var b = JsonSerializer.Deserialize<BuffSettings>(json, SettingsStore.Json)!;
 
-        var back = JsonSerializer.Deserialize<BuffIndicator>(JsonSerializer.Serialize(i, SettingsStore.Json), SettingsStore.Json)!;
-        Assert.Equal(show, back.Show);
+        b.Migrate();
+
+        Assert.Equal(raidOnly, b.RaidOnly);
+        Assert.False(b.Of(BuffKind.공증).InRaidOnly);   // moved, so a later 자동 끄기 sticks
     }
 
     [Fact]
-    public void Only_a_자동_bar_outside_a_raid_is_out_of_raid()
+    public void Loading_a_settings_file_moves_the_old_per_bar_자동()
     {
-        var b = new BuffSettings();
-        b.Edit(BuffKind.공증).Show = BuffShow.자동;
+        var s = JsonSerializer.Deserialize<Settings>("""{"Buffs":{"Indicators":{"아덴피증":{"InRaidOnly":true}}}}""", SettingsStore.Json)!;
 
-        Assert.True(b.OutOfRaid(BuffKind.공증, inDungeon: false));
-        Assert.False(b.OutOfRaid(BuffKind.공증, inDungeon: true));
-        Assert.False(b.OutOfRaid(BuffKind.뎀증, inDungeon: false));   // 켜기
+        SettingsStore.Normalize(s);
+
+        Assert.True(s.Buffs.RaidOnly);
     }
 
     [Fact]
-    public void Where_the_player_is_only_needs_watching_for_a_자동_bar_that_is_shown()
-    {
-        var b = new BuffSettings();
-        Assert.False(b.AnyInRaidOnly);
-
-        b.Edit(BuffKind.공증).Show = BuffShow.자동;
-        Assert.True(b.AnyInRaidOnly);
-
-        b.Edit(BuffKind.공증).Visible = false;   // the tray's 표시 off
-        Assert.False(b.AnyInRaidOnly);
-    }
-
-    [Fact]
-    public void The_tray_off_and_on_brings_자동_back()
+    public void The_tray_off_and_on_keeps_자동()
     {
         var s = new Settings();
-        s.Buffs.Edit(BuffKind.공증).Show = BuffShow.자동;
+        s.Buffs.RaidOnly = true;
 
         TrayToggles.Show(s, OverlayPart.Buffs, false);   // hidden for the character played; 자동 is everyone's and stays
-        Assert.Equal(BuffShow.자동, s.Buffs.Of(BuffKind.공증).Show);
+        Assert.True(s.Buffs.RaidOnly);
         Assert.False(ClassProfiles.BuffShown(s, BuffKind.공증));
 
         TrayToggles.Show(s, OverlayPart.Buffs, true);
-        Assert.Equal(BuffShow.자동, s.Buffs.Of(BuffKind.공증).Show);
+        Assert.True(s.Buffs.RaidOnly);
     }
 }

@@ -52,6 +52,62 @@ public sealed class JeonbunFinderTests
     [Fact]
     public void A_screen_without_the_panel_finds_nothing() => Assert.Null(JeonbunFinder.Find(new Image(1280, 720), 1.0));
 
+    // 테스트 모드: a cropped or zoomed video shows the panel at a size the screen's height doesn't give (user, 2026-11-12).
+    // A real frame's corner (serka-g1-90s at 20 s): the panel at (128, 67) with the game scene around it. Pasted crops on a
+    // flat screen won't do: there a crop too large still reads, in real frames none does.
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.33)]   // a 1440×810 crop of a 1080p video shown at 1920×1080
+    [InlineData(1.6)]
+    [InlineData(0.8)]
+    public void A_panel_at_any_size_is_found_by_measuring_it(double f)
+    {
+        var scene = Fixture.Load("jeonbun_scene").Frames[0];
+        var screen = ImageOps.Resample(scene, new PixelRect(0, 0, scene.Width, scene.Height), f);
+        var found = JeonbunFinder.FindAnySize(screen);
+        Assert.NotNull(found);
+        Assert.InRange(found!.Value.X, 128 * f - 3, 128 * f + 3);
+        Assert.InRange(found.Value.Y, 67 * f - 3, 67 * f + 3);
+        Assert.InRange(found.Value.Width, 470 * f * 0.98, 470 * f * 1.02);
+        if (f >= 1)   // at 0.8 (376 px) the text is too small for the reader, the finder still places it
+            Assert.Equal(208, JeonbunReader.ReadSoft(ImageOps.Crop(screen, found.Value))?.Timer);   // 03:28, read as 테스트 모드 reads
+    }
+
+    // The same frame at its own size: the green cell starts a pixel above where the text puts it, and the crop that high
+    // doesn't read; the finder tries a pixel or two down.
+    [Fact]
+    public void The_usual_size_finds_a_panel_whose_cell_sits_a_pixel_high()
+    {
+        var found = JeonbunFinder.Find(Fixture.Load("jeonbun_scene").Frames[0], 1.0);
+        Assert.NotNull(found);
+        Assert.InRange(found!.Value.Y, 67, 69);
+    }
+
+    // A Discord stream (discord_전분_sample.png): blur loses the green cell's '8' and pales the timer, so nothing reads in
+    // full, but the panel's frame (timer, titles, green row) shows. Pasted on a dark screen, and alone, 12 px from the screen's right edge (the larger sizes measured run past it).
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void A_streamed_panel_is_found_by_its_frame(int edge)
+    {
+        var scene = Fixture.Load("jeonbun_discord").Frames[0];
+        var screen = edge == 1 ? scene : Screen(scene, 300, 200);
+        int x0 = edge == 1 ? 0 : 300, y0 = edge == 1 ? 0 : 200;
+        Assert.Null(JeonbunFinder.Find(screen, 1.0));
+        var found = JeonbunFinder.FindAnySize(screen);
+        Assert.NotNull(found);
+        Assert.InRange(found!.Value.X, x0 + 118 - 3, x0 + 118 + 3);
+        Assert.InRange(found.Value.Y, y0 + 91 - 3, y0 + 91 + 3);
+        Assert.InRange(found.Value.Width, 470 * 0.97, 470 * 1.03);
+    }
+
+    [Fact]
+    public void The_usual_size_misses_a_zoomed_panel() =>
+        Assert.Null(JeonbunFinder.Find(ImageOps.Resample(Fixture.Load("jeonbun_scene").Frames[0], new PixelRect(0, 0, 600, 260), 1.33), 1.0));
+
+    [Fact]
+    public void Any_size_finds_nothing_on_a_screen_without_the_panel() => Assert.Null(JeonbunFinder.FindAnySize(new Image(1280, 720)));
+
     // Is the in-game meter at its saved spot (no digits read): its green first cell, in the first row or (before the first hit,
     // under the "이전 기록을 선택하여…" line) the second. Gates the dungeon read (meter-gating.plan.md).
     [Theory]

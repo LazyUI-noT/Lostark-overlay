@@ -137,6 +137,14 @@ public static class CardOrder
         return moved;
     }
 
+    /// <summary>≡ by keys (Alt+↑/↓): <paramref name="name"/> swaps with the character <paramref name="by"/> places away; at an end, or
+    /// gone meanwhile, the list stays as it is. A new list.</summary>
+    public static List<HomeworkCharacter> Nudge(IReadOnlyList<HomeworkCharacter> list, string name, int by)
+    {
+        int from = list.ToList().FindIndex(c => c.Name == name), to = from + by;
+        return from < 0 || to < 0 || to >= list.Count ? [.. list] : Move(list, name, list[to].Name);
+    }
+
     static IEnumerable<int> Windows(IReadOnlyList<string> order)
     {
         for (int o = 0; o <= order.Count; o += RowCards) yield return o;

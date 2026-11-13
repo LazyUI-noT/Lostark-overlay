@@ -71,7 +71,7 @@ public partial class SettingsWindow
         _update.IsEnabled = !busy;
         _update.Content = busy ? "업데이트 받는 중…" : _release is { } r ? UpdateLabel(r) : "업데이트 확인";
         _update.ToolTip = !busy && _release is { } b && UpdateCheck.BreaksParty(b.Version, Updater.Current)
-            ? "큰 업데이트입니다. 업데이트하면 이전 버전을 쓰는 파티원과 공유 방을 함께 쓸 수 없으니, 파티원도 모두 업데이트해야 합니다." : null;
+            ? "큰 업데이트입니다. 이전 버전을 쓰는 파티원과는 공유 방을 함께 쓸 수 없으니, 파티원도 모두 업데이트하세요." : null;
     }
 
     /// <summary>"vX 받기", with a yellow warning triangle in front when the update changes A or B of A.B.x (user, 2026-10-13).</summary>
@@ -136,7 +136,7 @@ public partial class SettingsWindow
             new(AreaApi, "로스트아크 오픈 API 키를 넣으면 캐릭터 정보를 서버에서 직접 받아 옵니다.", (AreaApi, _secApi)),
             new(AreaPerformance, "화면을 읽고 오버레이를 그리는 횟수입니다. 프레임이 떨어지면 낮춰 보세요.", (AreaPerformance, _secPerformance)),
             new(AreaWarnings, "작업 전에 묻는 경고와 Windows 알림을 켜고 끕니다.", (AreaWarnings, _secWarnings)),
-            new(AreaApp, "화면 테마, 업데이트, 전체 초기화입니다.", (AreaApp, _secApp)),
+            new(AreaApp, "화면 테마, 업데이트, 전체 초기화, 버프 잠금입니다.", (AreaApp, _secApp)),
         ];
         _area = _areas.First(a => a.Name == AreaShow);
 
@@ -174,7 +174,7 @@ public partial class SettingsWindow
         _secApp.Children.Add(_navNote);
         _secApp.Children.Add(ResetButton("전체 초기화",
             "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
-            + "캐릭터, 오버레이 배치(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
+            + "캐릭터, 위치 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
         _update.Click += (_, _) =>
         {
@@ -193,9 +193,10 @@ public partial class SettingsWindow
             (_update.IsEnabled, _update.Content) = (false, "확인 중…");
             CheckRequested?.Invoke();
         });
-        channel.ToolTip = "베타: 새 기능을 먼저 씁니다. 문제가 있으면 안정으로 바꿔 안정 버전으로 돌아갈 수 있습니다(설정 파일은 백업됩니다).";
+        channel.ToolTip = "베타: 새 기능을 먼저 씁니다. 문제가 생기면 안정으로 바꿔 돌아갈 수 있습니다(설정 파일은 백업됩니다).";
         _secApp.Children.Add(Wrap(Label("업데이트 채널"), channel));
         _secApp.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
+        BuildBuffLock();
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
@@ -297,6 +298,12 @@ public partial class SettingsWindow
 
     string? _shownArea;
 
+    /// <summary>The 내 오버레이 canvas is on screen (설정 open, on that page): it draws the overlay windows, so the real ones hide.</summary>
+    public bool CanvasShown => IsVisible && _area.Name == AreaOverlay && _canvas is not null;
+
+    /// <summary>The page changed, so <see cref="CanvasShown"/> may be new (the window opening or closing raises IsVisibleChanged).</summary>
+    public event Action? CanvasShownChanged;
+
     void ShowArea()
     {
         // 즐겨찾기 edits through its own copies of the rows: the sections show the new values only once rebuilt
@@ -307,6 +314,7 @@ public partial class SettingsWindow
         bool canvas = _area.Name == AreaOverlay && _canvas is not null;
         CanvasPage.Visibility = Shown(canvas);
         SectionPage.Visibility = Shown(!canvas);
+        CanvasShownChanged?.Invoke();
         if (canvas) { RefreshInspector(); RefreshRailOrbs(); return; }
         StopPlay();
         if (_area.Name == AreaFavorites) FillFavorites();

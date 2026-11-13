@@ -119,7 +119,9 @@ public sealed partial class OverlayRenderer
             if (d.Lightning is null && duel.Stage != DuelStage.None) DrawDuelist(dc, bolt, duel, ms, reduced, Font(bolt));
             else if (d.Lightning is { } l)
             {
-                _animating |= !reduced;   // keeps the render loop running for the flash and the countdown
+                // The loop runs for the flash, and for the countdown under reduced motion too (a still window isn't redrawn
+                // for an unchanged snapshot, status/decisions.md "Overlay redraws"), as 결투자's does.
+                _animating |= !reduced || l.Seconds(now) is not null;
                 // Yellow with a black number, then black with a yellow one; steady yellow under reduced motion.
                 bool bright = reduced || ms % FlashMs < FlashMs / 2;
                 dc.DrawRectangle(Solid(bright ? LightningColor : Colors.Black), null, bolt);

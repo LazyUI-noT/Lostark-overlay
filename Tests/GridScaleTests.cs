@@ -6,6 +6,23 @@ namespace GaugeOverlay.Tests;
 /// the first line at or above the peak; time lines as fine as the labels allow.</summary>
 public class GridScaleTests
 {
+    // The 선그래프's end labels (name + current DPS). In 최근 1분 every line under my scale ends on the plot's bottom edge, and
+    // stacked down from there their labels ran out of the window (user's check, 2026-11-12).
+    [Fact]
+    public void Stacked_labels_stay_inside_the_plot()
+    {
+        var y = GridScale.Stack([30, 100, 100, 100, 100], top: 0, bottom: 100, gap: 12, lift: 13);
+        Assert.Equal([17, 51, 63, 75, 87], y);   // the last at bottom − lift, the four on the edge above it, 12 apart
+    }
+
+    [Fact]
+    public void Labels_that_cannot_all_fit_never_rise_above_the_plot() =>
+        Assert.True(GridScale.Stack([40, 50, 50, 50, 50], top: 0, bottom: 50, gap: 12, lift: 13)[0] >= 0);
+
+    [Fact]
+    public void Labels_with_room_sit_just_above_their_line_ends() =>
+        Assert.Equal([7, 47], GridScale.Stack([20, 60], top: 0, bottom: 100, gap: 12, lift: 13));
+
     [Theory]
     [InlineData(1.37e9, 5e8, 1.5e9)]      // 13.7억/초 → 5억 steps to 15억 (3 lines)
     [InlineData(2.9e9, 1e9, 3e9)]         // 29억 → 10억 steps to 30억
@@ -63,9 +80,10 @@ public class GridScaleTests
     [Theory]
     [InlineData(5e8, "5억")]
     [InlineData(2.5e8, "2.5억")]
-    [InlineData(1e12, "1조")]
-    [InlineData(8e11, "8000억")]
+    [InlineData(5e7, "0.5억")]
+    [InlineData(2.5e7, "0.25억")]
+    [InlineData(1e12, "10,000억")]
     [InlineData(0, "0")]
-    public void Labels_read_in_the_game_units_without_a_needless_decimal(double value, string label) =>
+    public void Dps_scale_labels_are_always_in_eok_without_a_needless_decimal(double value, string label) =>
         Assert.Equal(label, GridScale.Label(value));
 }

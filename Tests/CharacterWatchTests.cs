@@ -188,3 +188,35 @@ public class CharacterWatchTests
         Assert.Null(CharacterWatch.Start(Started).Playing("가디언나이트", "드레드로어", roster, Started).Change);
     }
 }
+
+/// <summary>편집 중 follows the character read (user, 2026-11-12): a name read switches to the 직업각인 remembered for it.</summary>
+public class NameSwitchTests
+{
+    static HomeworkCharacter Known(string? cls, string? sub) => new() { Name = "살살", ClassName = cls, Subclass = sub };
+
+    [Fact]
+    public void A_name_with_a_remembered_직업각인_switches_to_it()
+    {
+        Assert.Equal(("워로드", "고독한기사"), NameSwitch.Target(Known("워로드", "고독한기사"), "바드 · 진실된 용맹"));
+    }
+
+    [Fact]
+    public void The_character_already_active_needs_no_switch()
+    {
+        Assert.Null(NameSwitch.Target(Known("워로드", "고독한기사"), "워로드 · 고독한기사"));
+    }
+
+    [Fact]
+    public void A_name_without_a_remembered_직업각인_keeps_the_character()
+    {
+        Assert.Null(NameSwitch.Target(Known("워로드", null), "바드 · 진실된 용맹"));
+        Assert.Null(NameSwitch.Target(Known(null, "고독한기사"), "바드 · 진실된 용맹"));
+        Assert.Null(NameSwitch.Target(null, "바드 · 진실된 용맹"));
+    }
+
+    [Fact]
+    public void From_기본_a_remembered_name_switches()
+    {
+        Assert.Equal(("워로드", "고독한기사"), NameSwitch.Target(Known("워로드", "고독한기사"), null));
+    }
+}

@@ -34,12 +34,23 @@ public sealed class BuffSettings : IWindowPlace
     /// 공증 and 아덴 피증.</summary>
     public bool EndFlash(BuffKind kind) => Of(kind).EndFlash ?? kind is BuffKind.공증 or BuffKind.아덴피증;
 
-    /// <summary>A bar on 자동 while the player isn't in a raid (RaidPresence: the in-game meter or a boss bar seen): not drawn, its
-    /// place kept.</summary>
-    public bool OutOfRaid(BuffKind kind, bool inDungeon) => Of(kind).InRaidOnly && !inDungeon;
+    /// <summary>자동 (user, 2026-11-12): every shown bar only in a raid; off (자동 끄기), always. One switch for all bars; the
+    /// buff row is read either way (the meter's 버프 적용률).</summary>
+    public bool RaidOnly { get; set; }
 
-    /// <summary>A bar shown on 자동: the engine must watch where the player is, even with the overlay's meter off.</summary>
-    public bool AnyInRaidOnly => Enum.GetValues<BuffKind>().Any(k => Of(k).Show == BuffShow.자동);
+    /// <summary>A bar while 자동 is on and the player isn't in a raid (RaidPresence: the in-game meter or a boss bar seen): not
+    /// drawn, its place kept.</summary>
+    public bool OutOfRaid(bool inDungeon) => RaidOnly && !inDungeon;
+
+    /// <summary>자동 with a bar shown: the engine must watch where the player is, even with the overlay's meter off.</summary>
+    public bool AnyInRaidOnly => RaidOnly && Enum.GetValues<BuffKind>().Any(k => Of(k).Visible);
+
+    /// <summary>An older file kept 자동 per bar: any bar on it turns <see cref="RaidOnly"/> on, and the bar's own flag is cleared.</summary>
+    public void Migrate()
+    {
+        foreach (var i in Indicators.Values.Where(i => i.InRaidOnly))
+            (RaidOnly, i.InRaidOnly) = (true, false);
+    }
 
     /// <summary>The indicator to change, added from the default the first time.</summary>
     public BuffIndicator Edit(BuffKind kind) =>
@@ -52,22 +63,13 @@ public sealed class BuffSettings : IWindowPlace
 }
 
 
-/// <summary>A buff bar's 표시 (user, 2026-11-04). 자동: only in a raid; the buff row is read either way (the meter's 버프 적용률).</summary>
-public enum BuffShow { 끄기, 켜기, 자동 }
-
 public sealed class BuffIndicator
 {
-    /// <summary>표시. With every indicator off the buff row isn't read at all.</summary>
+    /// <summary>표시: 켜기 or 끄기 (자동 is <see cref="BuffSettings.RaidOnly"/>, for every bar). With every indicator off the buff
+    /// row isn't read at all.</summary>
     public bool Visible { get; set; } = true;
-    /// <summary>자동, with <see cref="Visible"/> on. Apart from it so the tray's 표시 off and on keeps it, and older files read as 켜기.</summary>
+    /// <summary>The per-bar 자동 of files before 2026-11-12, read once by <see cref="BuffSettings.Migrate"/> and then false.</summary>
     public bool InRaidOnly { get; set; }
-    /// <summary>The two above as the one choice 설정 offers.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public BuffShow Show
-    {
-        get => !Visible ? BuffShow.끄기 : InRaidOnly ? BuffShow.자동 : BuffShow.켜기;
-        set => (Visible, InRaidOnly) = (value != BuffShow.끄기, value == BuffShow.자동);
-    }
     /// <summary>시간 표시: the "6s" label on the bar.</summary>
     public bool ShowLabel { get; set; } = true;
     public string Color { get; set; } = "";   // BuffSettings.Default sets it
