@@ -133,13 +133,6 @@ public sealed class HomeworkRenameTests : IDisposable
     }
 
     [Fact]
-    public void A_card_misread_of_jeopsok_jung_is_no_character()
-    {
-        Assert.Null(Homework.NewFromCard("접솝중", []));
-        Assert.Null(Homework.NewFromCard("집속중", []));
-    }
-
-    [Fact]
     public void A_merge_shows_the_character_when_either_was_shown_and_keeps_the_latest_clear()
     {
         var hw = List(new HomeworkCharacter { Name = "a1", Hidden = true }, new HomeworkCharacter { Name = "a2" });
@@ -150,18 +143,6 @@ public sealed class HomeworkRenameTests : IDisposable
         HomeworkClear[] clears = [new("a1", "act4", "노말", early), new("a2", "act4", "하드", early.AddHours(1)), new("a1", "serka", "하드", early)];
         Assert.Equal([new HomeworkClear("a1", "act4", "하드", early.AddHours(1)), new HomeworkClear("a1", "serka", "하드", early)],
             Homework.RenameClears(clears, "a2", "a1"));
-    }
-
-    [Fact]
-    public void A_card_name_is_new_only_when_it_is_near_no_listed_name()
-    {
-        string[] known = ["밟키리", "너무아파요살살"];
-
-        Assert.Equal("바드바드", Homework.NewFromCard("바드바드", known));
-        Assert.Null(Homework.NewFromCard("밝기리", known));   // a misread of a listed one
-        Assert.Null(Homework.NewFromCard("밟키리", known));
-        Assert.Null(Homework.NewFromCard("", known));   // the card being played (접속 중) or a gap
-        Assert.Null(Homework.NewFromCard("1791.66", known));   // not a name
     }
 
     [Fact]

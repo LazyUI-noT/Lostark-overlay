@@ -29,7 +29,7 @@ public partial class SettingsWindow
         canvas.Play.Auto = () => PreviewPlayer.Gauge(_s, _chars, PreviewTarget);   // ▶ plays a fight on its own; a click still uses a box
         canvas.Selected += ShowInspector;
         canvas.GestureStarted += RecordStep;
-        canvas.Changed += () => { ResetBaseline(); SettingsChanged?.Invoke(); LayoutChanged?.Invoke(); };
+        canvas.Changed += () => { KeepCopy(); ResetBaseline(); SettingsChanged?.Invoke(); LayoutChanged?.Invoke(); };
         canvas.Note += text => { if (text is not null) _canvasNote.Text = text; else ShowCanvasNote(); };
         CanvasHost.Child = WithScreenBox(canvas);
         InspectorHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
@@ -138,12 +138,14 @@ public partial class SettingsWindow
         {
             Text = box?.Kind switch
             {
-                "Skills" => $"색과 효과: {ClassName(ShownClass)}에만 · 칸 모양: {BadgeText()}",
-                "Plate" => $"쿨 진행·남은 쿨: {ClassName(ShownClass)}에만 · 나머지: {BadgeText()}",
-                "BuffBar" => $"프로필 {_s.ActiveProfile + 1}의 모든 직업각인에 적용",   // 버프 막대 is one per profile (user, 2026-11-13)
-                "Gauge" => $"프로필 {_s.ActiveProfile + 1}의 {ClassName(ShownClass)}에만 적용",   // 게이지 is per profile · class since 0.23 (user, 2026-11-13)
-                _ when ClassScoped(box) => $"{ClassName(ShownClass)}에만 적용",
-                // Looks and spots are per profile · played class (class-profiles.plan.md A), the same text as the badge.
+                // The chip's text (편집 중's 직업각인, edit-follows-pick.plan.md); what isn't in a profile says so after it.
+                "Skills" => $"{BadgeText()}에 적용 · {SkillColorsNote}",
+                "Plate" => $"{BadgeText()}에 적용 · 쿨 진행과 남은 쿨은 프로필과 상관없이 직업각인마다 저장됩니다.",
+                "BuffBar" => $"{ProfileBadge.ProfileText(_s.ActiveProfile)}: 모든 직업각인에 적용",   // 버프 막대 is one per profile (user, 2026-11-13)
+                "Party" => $"자리: {ProfileBadge.ProfileText(_s.ActiveProfile)} · 모양: 클래스마다 저장",
+                // 줄 수 창's look and 디버프 숨김 are one per profile (user, 2026-11-14); the windows' spots stay per 직업각인.
+                "Raid" => $"자리: {BadgeText()} · 모양: {ProfileBadge.ProfileText(_s.ActiveProfile)}",
+                "Debuff" => $"자리와 칸 크기: {BadgeText()} · 없을 때 숨김: {ProfileBadge.ProfileText(_s.ActiveProfile)}",
                 _ => $"{BadgeText()}에 적용",
             },
             Opacity = 0.75, TextWrapping = TextWrapping.Wrap,
@@ -188,8 +190,8 @@ public partial class SettingsWindow
     /// every row has its own ↺ (버프 막대, 디버프, 단심: decisions.md, "Row rule").</summary>
     Button? FooterReset(CanvasBox? box) => box?.Kind switch
     {
-        null or "Plate" or "Skills" => ResetButton("기본값", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 배경판 색은 남습니다.", () => SettingsResets.Display(_s)),
-        "Gauge" => ResetButton("기본값", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(_s)),
+        null or "Plate" or "Skills" => ResetButton("기본값", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 배경판 색은 남습니다.", () => SettingsResets.Display(Target)),   // 편집 중's look
+        "Gauge" => ResetButton("기본값", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(Target)),
         _ => null,
     };
 

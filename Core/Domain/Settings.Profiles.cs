@@ -22,6 +22,83 @@ public sealed partial class Settings
         return true;
     }
 
+    /// <summary>What 설정 edits for 편집 중 = <paramref name="key"/> (edit-follows-pick.plan.md): null when it is the played
+    /// 직업각인 (edit the live values), else a copy of these settings holding <paramref name="key"/>'s places and looks in the
+    /// active profile (기본 = <see cref="ClassProfiles.Template"/> or null: the shared ones). Hand edits back with
+    /// <see cref="KeepEdit"/>.</summary>
+    public Settings? EditTarget(string? key)
+    {
+        key = EntryKey(key);
+        if (key == PlaceKey || ActiveProfile < 0 || ActiveProfile >= Profiles.Count) return null;
+        var profile = Profiles[ActiveProfile];
+        profile.Keep(PlaceKey, this);   // unkept live edits first, so the copy shows what is stored
+        var target = Data.SettingsStore.Copy(this);
+        profile.EntryOf(key).ApplyTo(target);
+        // Not in an entry, so 설정 edits them on the live settings: one per profile (버프 막대, 파티원 창) or per class (칸 옵션,
+        // 게이지 막대). Shared, the copy's canvas draws and drags those edits.
+        (target.Buffs, target.Party, target.Classes, target.GaugeBars) = (Buffs, Party, Classes, GaugeBars);
+        return target;
+    }
+
+    /// <summary>Stores <paramref name="target"/>'s places and looks as <paramref name="key"/>'s in the active profile. The
+    /// party windows and 버프 막대 stay the live ones (설정 edits those on these settings). Editing 기본 while the played
+    /// 직업각인 follows it puts the change on screen too.</summary>
+    public void KeepEdit(string? key, Settings target)
+    {
+        key = EntryKey(key);
+        if (ActiveProfile < 0 || ActiveProfile >= Profiles.Count) return;
+        if (key == PlaceKey)
+        {
+            // The class became the played one since the copy was made: its edit goes on screen, not lost.
+            OwnEntry(target).ApplyTo(this);
+            return;
+        }
+        var profile = Profiles[ActiveProfile];
+        profile.Keep(PlaceKey, this);
+        bool liveFollows = key is null && profile.EntryOf(PlaceKey) == profile;
+        profile.KeepEdit(key, target, this);
+        if (liveFollows) profile.ApplyTo(this);
+    }
+
+    static string? EntryKey(string? key) => key is ClassProfiles.Template ? null : key;
+
+    /// <summary><paramref name="target"/>'s places and looks, with the one-per-profile ones (버프 막대, 줄 수 창, 디버프 숨김)
+    /// taken from these live settings, which 설정 edits.</summary>
+    ProfileEntry OwnEntry(Settings target)
+    {
+        var (own, live) = (new ProfileEntry(), new ProfileEntry());
+        own.CaptureFrom(target);
+        live.CaptureFrom(this);
+        own.TakeProfileWide(live);
+        return own;
+    }
+
+    /// <summary>Brings what 설정 edits on these live settings (타이머 크기, 미터기 수치, 줄 수 창, 디버프 숨김 …) into
+    /// <paramref name="target"/> (<see cref="EditTarget"/>), so the canvas drawing it shows them; its own places and looks
+    /// stay. In place: 설정's rows hold <paramref name="target"/>'s objects (암수, 단심, 디버프 칸).</summary>
+    /// <remarks>ponytail: copies only plain values of the windows' settings; a live-only list or dictionary stays as the
+    /// copy had it (none is drawn from the copy today).</remarks>
+    public void MirrorLive(Settings target)
+    {
+        var own = OwnEntry(target);
+        CopyPlain(Overlay, target.Overlay);
+        CopyPlain(Meter, target.Meter);
+        CopyPlain(Raids, target.Raids);
+        CopyPlain(Debuffs, target.Debuffs);
+        CopyPlain(Gauge, target.Gauge);
+        var (amsu, judgment, boxes) = (target.Amsu, target.Judgment, target.Debuffs.Boxes);
+        own.ApplyTo(target);
+        (target.Amsu, target.Judgment, target.Debuffs.Boxes) = (amsu, judgment, boxes);   // the same values, the rows' objects
+    }
+
+    static void CopyPlain<T>(T from, T to) where T : class
+    {
+        foreach (var p in typeof(T).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            if (p is { CanRead: true, CanWrite: true } && p.GetIndexParameters().Length == 0
+                && (p.PropertyType.IsValueType || p.PropertyType == typeof(string)))
+                p.SetValue(to, p.GetValue(from));
+    }
+
     /// <summary>Keeps the current places, looks and 게이지 bars in the active profile and puts back <paramref name="index"/>'s
     /// for the played class. The same or a missing profile changes nothing.</summary>
     public void SwitchProfile(int index)

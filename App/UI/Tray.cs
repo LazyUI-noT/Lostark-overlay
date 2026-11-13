@@ -293,7 +293,7 @@ public sealed class Tray : IDisposable
         none.Click += (_, _) => DefaultPicked?.Invoke();
         _character.DropDownItems.Add(none);
         var starred = tree.SelectMany(f => f.Classes.SelectMany(c => c.Subclasses.Select(sub => (f.Family, c.Class, Sub: sub))))
-            .Where(x => favorites.Contains(x.Class) || favorites.Contains($"{x.Class} · {x.Sub}")).ToList();
+            .Where(x => ClassPicker.Starred(Settings.CharacterKey(x.Class, x.Sub), favorites)).ToList();
         if (starred.Count > 0) _character.DropDownItems.Add(new ToolStripSeparator());
         foreach (var (family, cls, sub) in starred)
         {
@@ -306,10 +306,10 @@ public sealed class Tray : IDisposable
             _character.DropDownItems.Add(new ToolStripSeparator());
             foreach (var (cls, subs) in classes)
             {
-                var c = new ToolStripMenuItem(cls) { Checked = active?.StartsWith($"{cls} · ", StringComparison.Ordinal) == true };
+                var c = new ToolStripMenuItem(favorites.Contains(cls) ? $"★ {cls}" : cls) { Checked = active?.StartsWith($"{cls} · ", StringComparison.Ordinal) == true };
                 foreach (var sub in subs)
                 {
-                    var s = new ToolStripMenuItem(sub) { Checked = active == $"{cls} · {sub}" };
+                    var s = new ToolStripMenuItem(ClassPicker.Starred(Settings.CharacterKey(cls, sub), favorites) ? $"★ {sub}" : sub) { Checked = active == $"{cls} · {sub}" };
                     s.Click += (_, _) => CharacterPicked?.Invoke(family, cls, sub);
                     c.DropDownItems.Add(s);
                 }

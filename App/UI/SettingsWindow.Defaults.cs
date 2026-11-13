@@ -14,9 +14,11 @@ public partial class SettingsWindow
     readonly List<(FormRow Row, Action Refresh)> _rowMarks = [];
 
     /// <summary>Marks <paramref name="row"/> (a <see cref="FormRow"/> from Row, SliderRow, ColorRow …) with the row rule.
-    /// <paramref name="get"/> reads the one value the row sets; <paramref name="set"/> writes it.</summary>
-    UIElement Defaulted<T>(UIElement row, Func<Settings, T> get, Action<Settings, T> set)
+    /// <paramref name="get"/> reads the one value the row sets; <paramref name="set"/> writes it, on <paramref name="on"/>
+    /// (a look row: <see cref="Target"/>) or the live settings.</summary>
+    UIElement Defaulted<T>(UIElement row, Func<Settings, T> get, Action<Settings, T> set, Settings? on = null)
     {
+        var s = on ?? _s;
         if (row is not FormRow form) return row;
         var dot = new Run();
         dot.SetResourceReference(TextElement.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
@@ -25,7 +27,8 @@ public partial class SettingsWindow
         reset.Click += (_, _) =>
         {
             RecordStep();   // BuildAll moves the baseline past the reset: the state before it must be a step now
-            RowDefault.Reset(_s, get, set);
+            RowDefault.Reset(s, get, set);
+            KeepCopy();   // before BuildAll takes a new copy from the profile
             BuildAll();
             Changed();
         };
@@ -33,7 +36,7 @@ public partial class SettingsWindow
 
         void Refresh()
         {
-            bool differs = RowDefault.Differs(_s, get);
+            bool differs = RowDefault.Differs(s, get);
             dot.Text = differs ? " ●" : "";
             reset.Visibility = differs ? Visibility.Visible : Visibility.Hidden;   // Hidden, not Collapsed: the row doesn't jump
         }
@@ -43,7 +46,8 @@ public partial class SettingsWindow
     }
 
     /// <summary>A check box as its own row under the row rule: no label, the dot after its words, the ↺ at the row's end.</summary>
-    UIElement DefaultedCheck(CheckBox check, Func<Settings, bool> get, Action<Settings, bool> set) => Defaulted(Row("", check), get, set);
+    UIElement DefaultedCheck(CheckBox check, Func<Settings, bool> get, Action<Settings, bool> set, Settings? on = null) =>
+        Defaulted(Row("", check), get, set, on);
 
     /// <summary>After any change: every row's mark follows its value, on hidden pages too (ShowBody detaches those, so
     /// "still in the window" can't tell a dropped row).</summary>

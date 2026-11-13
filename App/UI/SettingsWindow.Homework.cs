@@ -60,8 +60,8 @@ public partial class SettingsWindow
         var clears = hw.Clears();
         var shown = CardOrder.TabOrder(_s.Homework.Characters, _s.Homework.Order, _s.Homework.FollowGameOrder).Where(c => !c.Hidden).ToList();
         p.Children.Add(Note(shown.Count == 0
-            ? "아직 읽은 캐릭터가 없습니다. 게임에서 ESC → 다른 캐릭터 바로 접속을 열면 칸의 캐릭터를 모두 읽습니다. 아래에서 직접 추가해도 됩니다."
-            : "다른 캐릭터 바로 접속 창을 열면 목록에 없는 캐릭터를 추가합니다. 칸의 작은 글씨는 잘못 읽힐 수 있으니 이름을 고치세요. 그 칸을 누르면 큰 글씨 이름으로 바뀝니다."));
+            ? "아직 캐릭터가 없습니다. 로아 API에 키를 넣으면 원정대를 불러옵니다. 아래 캐릭터 추가로 직접 넣어도 됩니다."
+            : "캐릭터는 로아 API 원정대나 아래 캐릭터 추가로만 늘어납니다. 게임 메뉴에서 읽은 이름은 가장 가까운 캐릭터로 맞춥니다. 잘못 생긴 캐릭터는 삭제하세요."));
         foreach (var c in shown) p.Children.Add(CharacterCard(hw, c, clears));
         p.Children.Add(AddCharacterRow(hw));
         if (_s.Homework.Characters.Where(c => c.Hidden).ToList() is { Count: > 0 } hidden) p.Children.Add(HiddenRow(hidden));
@@ -183,6 +183,15 @@ public partial class SettingsWindow
         var hide = new Button { Content = "숨기기", Margin = new(12, 0, 0, 0) };
         hide.Click += (_, _) => { c.Hidden = true; Changed(); FillHomework(); };
         head.Children.Add(hide);
+        var delete = new Button { Content = "삭제", Margin = new(8, 0, 0, 0), ToolTip = "잘못 읽혀 생긴 캐릭터를 목록에서 지웁니다." };
+        delete.Click += (_, _) =>
+        {
+            string ask = $"{Josa.Object(c.Name)} 숙제 목록에서 지울까요? 클리어와 전투 기록은 그대로 둡니다.\n로아 API 원정대에 있는 캐릭터는 다음 조회 때 다시 들어옵니다. 이 페이지에서만 감추려면 숨기기를 쓰세요.";
+            if (MessageBox.Show(this, ask, AreaHomework, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+            hw.Delete(c);
+            FillHomework();
+        };
+        head.Children.Add(delete);
         card.Children.Add(head);
         for (int i = 0; i < c.Picks.Count; i++) card.Children.Add(PickRow(hw, c, i, clears));
         if (c.Picks.Count < HomeworkCharacter.MaxPicks && hw.Raids.Count > 0)

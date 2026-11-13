@@ -127,8 +127,9 @@ public partial class SettingsWindow
         // A 4-man gate (by the fight's boss HP, else its name): the party's buff share too. Set before Keys, which redraws.
         var r = opened.Record;
         _timeline.BuffShareShown = _s.Meter.BuffShare() != ThreeWay.끄기;
-        _timeline.BuffLocked = Services.BuffUnlock.Locked;
-        _timeline.SmallParty = (RaidData.ByHp(RaidGates, BossBook.FightHp(r.Boss))?.Gate ?? RaidGates.FirstOrDefault(g => RaidData.Label(g) == r.Gate))?.SmallParty == true;
+        var named = RaidGates.FirstOrDefault(g => RaidData.Label(g) == r.Gate);
+        _timeline.BuffCap = Services.BuffUnlock.Locked ? BuffLock.CapFor(RaidGates, BuffCaps, BossBook.FightHp(r.Boss), named, r.Difficulty) : null;
+        _timeline.SmallParty = (RaidData.ByHp(RaidGates, BossBook.FightHp(r.Boss))?.Gate ?? named)?.SmallParty == true;
         _timeline.Keys = _s.Keys;
         _timeline.UseIcons = _useIcons ?? _hasIcons;
         _timeline.FontScale = Math.Clamp(_s.RecordFontPercent, Settings.MinRecordFont, Settings.MaxRecordFont) / 100.0;

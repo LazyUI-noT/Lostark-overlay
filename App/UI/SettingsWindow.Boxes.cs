@@ -56,7 +56,7 @@ public partial class SettingsWindow
         else if (part == Part.변화)
         {
             rows.Children.Add(Heading("초각스"));
-            rows.Children.Add(ColorRow(Label("색"), _s.Overlay.AwakeningChangedColor, v => _s.Overlay.AwakeningChangedColor = v, swatch: false, warnDark: true));
+            rows.Children.Add(ColorRow(Label("색"), Target.Overlay.AwakeningChangedColor, v => Target.Overlay.AwakeningChangedColor = v, swatch: false, warnDark: true));
         }
     }
 
@@ -130,7 +130,7 @@ public partial class SettingsWindow
             countColour!.Visibility = Shown(AnyCounts(Fx(), aden));
         }, Changed));
         p.Children.Add(hold = Check("사용 후 3초 유지", fx.Holds(slot, g), v => BoxOptions.SetHeldCount(Fx(), slot, g, v, only, aden), Changed));
-        p.Children.Add(countColour = ColorRow(Label("경과 초 색 (전체 칸)"), _s.Overlay.ReadyCountColor, v => _s.Overlay.ReadyCountColor = v, swatch: false));
+        p.Children.Add(countColour = ColorRow(Label("경과 초 색 (전체 칸)"), Target.Overlay.ReadyCountColor, v => Target.Overlay.ReadyCountColor = v, swatch: false));
         hold.Visibility = Shown(fx.Counts(slot, g));
         countColour.Visibility = Shown(AnyCounts(fx, aden));
         p.Children.Add(Check("쿨 돌기 0.9초 전 깜빡임", fx.EndFlashes(slot, g), v => BoxOptions.SetEndFlash(Fx(), slot, g, v, only, aden), Changed));

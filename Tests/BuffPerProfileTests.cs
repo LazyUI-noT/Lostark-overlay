@@ -52,6 +52,24 @@ public class BuffPerProfileTests
     }
 
     [Fact]
+    public void Raid_count_look_and_debuff_hide_are_shared_by_every_class_in_a_profile()
+    {
+        // 줄 수 창 and 디버프 숨김 are one per profile like 버프 막대 (user, 2026-11-14).
+        var s = Playing(Lone);
+        s.Overlay.Left = 100;   // Lone becomes its own entry
+        (s.Raids.Background, s.Raids.Opacity, s.Raids.Glow, s.Debuffs.HideWhenEmpty) = ("#123456", 0.4, false, true);
+        Go(s, Combat);
+        s.Overlay.Left = 500;   // Combat too
+
+        Assert.Equal(("#123456", 0.4, false, true), (s.Raids.Background, s.Raids.Opacity, s.Raids.Glow, s.Debuffs.HideWhenEmpty));
+        (s.Raids.Background, s.Debuffs.HideWhenEmpty) = ("#654321", false);
+        Go(s, Lone);
+
+        Assert.Equal(("#654321", false), (s.Raids.Background, s.Debuffs.HideWhenEmpty));
+        Assert.Equal(100, s.Overlay.Left);   // the skill window's spot is still the class's
+    }
+
+    [Fact]
     public void Another_profile_keeps_its_own_buff_settings()
     {
         var s = Playing(Lone);
@@ -118,15 +136,15 @@ public class BuffPerProfileTests
     }
 
     [Fact]
-    public void TakeBuffs_survives_null_values_from_a_hand_edited_file()
+    public void TakeProfileWide_survives_null_values_from_a_hand_edited_file()
     {
         var from = new ProfileEntry { Buffs = null!, BuffBars = new() { [BuffKind.공증] = null! } };
         var to = new ProfileEntry();
 
-        to.TakeBuffs(from);
+        to.TakeProfileWide(from);
 
         Assert.NotNull(to.Buffs);
         Assert.NotNull(to.BuffBars[BuffKind.공증]);
-        new ProfileEntry { BuffBars = null! }.TakeBuffs(new ProfileEntry { BuffBars = null! });
+        new ProfileEntry { BuffBars = null! }.TakeProfileWide(new ProfileEntry { BuffBars = null! });
     }
 }

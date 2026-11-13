@@ -10,8 +10,15 @@ namespace GaugeOverlay.Core.Data;
 public sealed record RaidGate(string Id, string Raid, string Gate, IReadOnlyList<string> Bosses, IReadOnlyList<int> Alerts, Raid DebuffRaid,
     IReadOnlyDictionary<string, long>? HpByDifficulty = null, string? After = null, bool Hidden = false,
     string? Tab = null, IReadOnlyList<GateShield>? ShieldList = null,
-    int Players = 8, int? Lines = null)
+    int Players = 8, int? Lines = null,
+    IReadOnlyDictionary<string, int>? LevelByDifficulty = null, IReadOnlyDictionary<string, int?>? BuffCapByDifficulty = null)
 {
+    /// <summary>Each difficulty's entry item level ("하드" → 1730); 싱글 and 매칭 use 노말's (<see cref="BuffLock.CapFor"/>).</summary>
+    public IReadOnlyDictionary<string, int> Levels => LevelByDifficulty ?? new Dictionary<string, int>();
+
+    /// <summary>A difficulty's buff-lock cap in %, over the level bands ("나이트메어" → 90); null: no lock in that fight.</summary>
+    public IReadOnlyDictionary<string, int?> BuffCaps => BuffCapByDifficulty ?? new Dictionary<string, int?>();
+
     /// <summary>4-man (세르카, 구원의 종탑; user 2026-11-04): the boss HP lost is the party's damage (MeterView BuffParty).</summary>
     public bool SmallParty => Players <= 4;
 
@@ -44,15 +51,32 @@ public static class RaidData
     {
         try
         {
-            var path = Path.Combine(profilesDir, FileName);
-            if (!File.Exists(path)) return [];
-            var file = JsonSerializer.Deserialize<FileDto>(File.ReadAllText(path), Json);
+            var file = Read(profilesDir);
             return [.. (file?.Gates ?? []).Where(g => !string.IsNullOrWhiteSpace(g.Id)).Select(g => new RaidGate(
                 g.Id!, g.Raid ?? "", g.Gate ?? "", g.Bosses ?? [], [.. (g.Alerts ?? []).Distinct().OrderDescending()],
                 Enum.TryParse<Raid>(g.DebuffRaid, out var r) ? r : Domain.Raid.없음, g.Hp, g.After, g.Hidden, g.Tab,
-                g.Shields?.Where(x => x.At > 0 && x.Lines > 0).Select(x => new GateShield(x.At, x.Lines)).ToList(), g.Players is > 0 ? g.Players.Value : 8, g.Lines is > 0 ? g.Lines : null))];
+                g.Shields?.Where(x => x.At > 0 && x.Lines > 0).Select(x => new GateShield(x.At, x.Lines)).ToList(), g.Players is > 0 ? g.Players.Value : 8, g.Lines is > 0 ? g.Lines : null,
+                g.Levels, g.BuffCap))];
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return []; }
+    }
+
+    /// <summary>The buff lock's level bands (raids.json "buffCaps"); 85% for every fight when the file or the entry is missing.</summary>
+    public static BuffCapRules LoadBuffCaps(string profilesDir)
+    {
+        try
+        {
+            var caps = Read(profilesDir)?.BuffCaps;
+            return caps is null ? BuffCapRules.Default : new(caps.Default is > 0 and <= 100 ? caps.Default.Value : BuffCapRules.Default.Fallback,
+                [.. (caps.Bands ?? []).Where(b => b.Cap is > 0 and <= 100).OrderBy(b => b.UpTo).Select(b => new BuffBand(b.UpTo, b.Cap))]);
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return BuffCapRules.Default; }
+    }
+
+    static FileDto? Read(string profilesDir)
+    {
+        var path = Path.Combine(profilesDir, FileName);
+        return File.Exists(path) ? JsonSerializer.Deserialize<FileDto>(File.ReadAllText(path), Json) : null;
     }
 
     /// <summary>A fingerprint of the shipped raids.json (16 hex digits of its SHA-256), "" when there is no file. A new or changed
@@ -94,8 +118,11 @@ public static class RaidData
 
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
-    sealed record FileDto(List<GateDto>? Gates);
+    sealed record FileDto(List<GateDto>? Gates, BuffCapsDto? BuffCaps);
+    sealed record BuffCapsDto(int? Default, List<BandDto>? Bands);
+    sealed record BandDto(int UpTo, int Cap);
     sealed record GateDto(string? Id, string? Raid, string? Gate, List<string>? Bosses, List<int>? Alerts, string? DebuffRaid, Dictionary<string, long>? Hp,
-        string? After, bool Hidden, string? Tab, List<ShieldDto>? Shields, int? Players, int? Lines);
+        string? After, bool Hidden, string? Tab, List<ShieldDto>? Shields, int? Players, int? Lines,
+        Dictionary<string, int>? Levels, Dictionary<string, int?>? BuffCap);
     sealed record ShieldDto(int At, int Lines);
 }

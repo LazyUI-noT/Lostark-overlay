@@ -112,7 +112,7 @@ public sealed partial class OverlayCanvas
     {
         _part = part;
         _startCells = new(Boxes(r).Layout ?? r.CellsAsDrawn());
-        var moving = resize && _s.Overlay.LayoutLinkSizes ? FreeLayout.Linked(part).Parts : [part];
+        var moving = resize && LinkSizes ? FreeLayout.Linked(part).Parts : [part];
         _still = r.DrawnParts.Where(q => !moving.Contains(q)).Cast<Part?>().FirstOrDefault();
         if (_still is { } p && OnCanvas(r, p) is { } at0) _stillAt = at0;
         else _still = null;
@@ -161,7 +161,7 @@ public sealed partial class OverlayCanvas
                 break;
             default:
                 MoveBox(r, dx, dy, resize: _drag == Drag.BoxSize,
-                    snap: _s.Overlay.LayoutSnap && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift));
+                    snap: Snap && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift));
                 Changed?.Invoke();
                 return;
         }
@@ -180,7 +180,7 @@ public sealed partial class OverlayCanvas
             var (fx, fy) = BarSizes.DragFactors(cell, BarSizes.Length(bar), BarSizes.Thickness(bar));
             scale = (scale.X * fx, scale.Y * fy);
         }
-        Boxes(r).Layout = FreeLayout.Drag(_startCells, r.DrawnParts, _part, dx, dy, scale, resize, snap, link: _s.Overlay.LayoutLinkSizes);
+        Boxes(r).Layout = FreeLayout.Drag(_startCells, r.DrawnParts, _part, dx, dy, scale, resize, snap, link: LinkSizes);
         Relayout();
         KeepStill(r);
     }
@@ -241,7 +241,7 @@ public sealed partial class OverlayCanvas
         if (r.Peer >= 0) return;   // a member's size is its class's
         if (_picked?.Part is { } part && MovesBox(r) && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
-            var sized = _s.Overlay.LayoutLinkSizes ? FreeLayout.Linked(part).Parts : [part];   // linked sizes all grow
+            var sized = LinkSizes ? FreeLayout.Linked(part).Parts : [part];   // linked sizes all grow
             var before = sized.Select(p => (p, OnCanvasRect(r, p))).ToList();
             StartBoxDrag(r, part, resize: true);
             MoveBox(r, -dx, -dy, resize: true, snap: false);

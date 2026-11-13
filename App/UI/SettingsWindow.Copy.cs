@@ -62,10 +62,11 @@ public partial class SettingsWindow
     void FillClassCopy(Panel p)
     {
         string from = CopyFrom;
-        var fromPick = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), from, v => _copyFrom = v);
+        var fromPick = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), from, v => _copyFrom = v, _s.FavoriteClasses);
         p.Children.Add(Row("가져올 설정", fromPick, PickSearch(fromPick, "가져올 설정"), Label("쪽"), SideCombo(_copyFromMembers, v => _copyFromMembers = v)));
 
-        var to = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, ClassPicker.CopyFavorites(_s.FavoriteClasses, _s.Characters)).Prepend(AllClasses), _copyTo, v => _copyTo = v);
+        var toFavorites = ClassPicker.CopyFavorites(_s.FavoriteClasses, _s.Characters);
+        var to = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, toFavorites).Prepend(AllClasses), _copyTo, v => _copyTo = v, toFavorites);
         string? Target() => _copyTo == AllClasses ? null : _copyTo;
         var copy = CopyButton("복사",
             () => ClassPicker.CopyRefusal(_copyParts, from, _copyFromMembers, Target(), _copyToMembers, _chars.Classes),

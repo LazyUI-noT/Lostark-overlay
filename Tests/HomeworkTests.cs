@@ -341,15 +341,6 @@ public class HomeworkTests
 
         Assert.Equal("검지관절브레이커", Homework.CardOwner(card, listed));
         Assert.Null(Homework.SureOwner(card, listed));   // level alone: its level goes there, a class (kept for good) doesn't
-        Assert.Null(Homework.NewFromCard(card, listed, current: null));
-    }
-
-    [Fact]
-    public void A_new_alt_at_the_played_characters_level_is_still_new()
-    {
-        // The played character's card shows 접속 중, so no grid card is its: it can't own one (review, 2026-11-08).
-        IReadOnlyList<HomeworkCharacter> listed = [LvClass("밝키리", 1640, null)];
-        Assert.Equal("바드바드", Homework.NewFromCard(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1640), listed, current: "밝키리"));
     }
 
     [Fact]
@@ -358,7 +349,6 @@ public class HomeworkTests
         IReadOnlyList<HomeworkCharacter> listed = [LvClass("도화G", 1640, "도화가"), LvClass("공과여우와티라노", 1640, "환수사"), LvClass("배럭3호봉", 1701, "블래스터")];
         Assert.Null(Homework.CardOwner(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1640), listed));   // two at 1640
         Assert.Null(Homework.CardOwner(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1701), listed));   // 1701 is a 블래스터
-        Assert.Equal("바드바드", Homework.NewFromCard(new MenuCard("바드바드", "바드", 0, 0, 245, 0, 1701), listed, current: null));
     }
 
     [Fact]

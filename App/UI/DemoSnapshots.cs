@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using GaugeOverlay.App.Services;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
@@ -12,6 +14,10 @@ public sealed class DemoSnapshots
     /// <summary>--meter-skill=name: the meter's 스킬 사용 횟수 line ("none": no data).</summary>
     public static MeterSkillLine? MeterSkillShown { get; set; }
     static readonly SlotId[] Aden = [SlotId.아덴2];
+
+    /// <summary>The demo meter's boss is 세르카 [나이트메어]: the buff lock's cap for it (raids.json).</summary>
+    static readonly double? DemoBuffCap = BuffLock.CapFor(RaidData.Find(RaidData.Load(CharacterService.DefaultProfilesDir), "serka-g2"), "나이트메어",
+        RaidData.LoadBuffCaps(CharacterService.DefaultProfilesDir));
     readonly TimeSpan _origin = Clock.Now();
     readonly bool _duelist;
     readonly (double Left, bool Seen)? _amsu;   // --amsu: a bomb held at this many seconds
@@ -69,7 +75,7 @@ public sealed class DemoSnapshots
         return BuffLock.Apply(new(rows, scope == MeterScope.나 ? null : MeterMath.Other(rows, Boss), Boss, timer, true, true, history, [0.97, 0.80, 0.42],
             BuffSplit: [Split(0.42, 0.31, 0.27), Split(0.38, 0.36, 0.26), Split(0.29, 0.51, 0.20)], Skill: MeterSkillShown,
             BossName: "고통의 마녀, 세르카 [나이트메어]",   // a long name: the header shortens it before the 비교 label
-            Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동)), Services.BuffUnlock.Locked);   // 비교: an earlier fight, a little behind
+            Ghost: new([.. Enumerable.Range(1, timer).Select(t => (Sec(t), (long)(Boss * 0.27 / timer * (0.9 + 0.1 * Math.Sin(t / 5.0)))))], MeterCompare.Kind.자동)), Services.BuffUnlock.Locked ? DemoBuffCap : null);   // 비교: an earlier fight, a little behind
     }
 
     /// <summary>Two 전투 기록 fights for --records: four players, a phase change, my casts and buff windows; the second a

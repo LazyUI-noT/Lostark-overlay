@@ -38,10 +38,17 @@ public static class ProfileBadge
         return SectionHomes.Any(h => h.Area == area && (h.Section is null || h.Section == section)) ? BadgeAt.Section : BadgeAt.None;
     }
 
-    /// <summary>"프로필 2 · 블래스터 · 포격 모드", or "프로필 2 · 기본" when no class is known. <paramref name="activeProfile"/> is 0-based.</summary>
-    public static string Text(int activeProfile, string? classLabel) =>
-        $"{ProfileText(activeProfile)} · {(string.IsNullOrWhiteSpace(classLabel) ? "기본" : classLabel)}";
+    /// <summary>"프로필 2 · 포격 모드" for 편집 중 = "블래스터 · 포격 모드" (the 직업각인 only, edit-follows-pick.plan.md), "프로필 2 · 기본"
+    /// for 기본. <paramref name="activeProfile"/> is 0-based.</summary>
+    public static string Text(int activeProfile, string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return $"프로필 {activeProfile + 1} · 기본";
+        int sep = key.LastIndexOf(Separator, StringComparison.Ordinal);
+        return $"프로필 {activeProfile + 1} · {(sep < 0 ? key : key[(sep + Separator.Length)..])}";
+    }
 
-    /// <summary>"프로필 2": the badge of a setting shared by every class in the profile (버프 막대, user 2026-11-13).</summary>
-    public static string ProfileText(int activeProfile) => $"프로필 {activeProfile + 1}";
+    const string Separator = " · ";
+
+    /// <summary>"프로필 2 공통": the badge of a setting every 직업각인 in the profile shares (버프 막대, 파티원 창 자리).</summary>
+    public static string ProfileText(int activeProfile) => $"프로필 {activeProfile + 1} 공통";
 }

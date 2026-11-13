@@ -50,7 +50,9 @@ public sealed partial class Settings
         // 버프 막대 is one per profile: it reaches every class of the target, so 되돌리기 puts the profile's buff fields back
         // (only those: other edits made after the copy stay).
         var buffs = r.Looks.Contains(LookGroup.버프막대);
-        var buffsBefore = buffs ? Bytes<ProfileEntry>(to) : null;
+        var raid = r.Looks.Contains(LookGroup.줄수창);   // the 줄 수 창 likewise (user, 2026-11-14)
+        var hide = r.Looks.Contains(LookGroup.디버프);   // 디버프 숨김 likewise (user, 2026-11-14)
+        var wideBefore = buffs || raid || hide ? Bytes<ProfileEntry>(to) : null;
         to.Classes ??= [];
         to.GaugeBars ??= [];
         CopyUndo undo;
@@ -67,11 +69,10 @@ public sealed partial class Settings
         }
         TakeLooks(target, source, r.Looks);
         if (toClass is not null) to.PutEntry(toClass, target);
-        if (buffs)
-        {
-            if (target != to) to.TakeBuffs(target);
-            to.ShareBuffs();
-        }
+        if (buffs && target != to) to.TakeBuffs(target);
+        if (raid && target != to) to.TakeRaid(target);
+        if (hide && target != to) to.TakeDebuffHide(target);
+        if (buffs || raid || hide) to.ShareProfileWide();
         if (classOnly)
         {
             var bars = from.GaugeBars?.GetValueOrDefault(GaugeKeyOf(fromClass!));
@@ -81,7 +82,7 @@ public sealed partial class Settings
             if (from.Aden?.GetValueOrDefault(ClassProfiles.ShownKey(s, fromClass!)) is { } adenShow) to.Aden![shown] = adenShow;
             else to.Aden!.Remove(shown);
         }
-        return undo with { BuffsBefore = buffsBefore };
+        return undo with { BuffsBefore = buffs ? wideBefore : null, RaidBefore = raid ? wideBefore : null, DebuffHideBefore = hide ? wideBefore : null };
     }
 
     /// <summary>The chosen looks of <paramref name="source"/> into <paramref name="target"/> (via a scratch <see cref="Settings"/>,
@@ -108,11 +109,10 @@ public sealed partial class Settings
     {
         if (u.Profile < 0 || u.Profile >= Profiles.Count) return false;
         var p = Profiles[u.Profile];
-        if (u.ClassKey == ProfileCopy.SharedKey)
-        {
-            if (u.Profile == ActiveProfile) KeepLive(p);
-            p.RestoreShared(Read<ProfileEntry>(u.Before)!);
-        }
+        if (u.ClassKey is not null && u.Profile == ActiveProfile) KeepLive(p);
+        // 버프 막대, the 줄 수 창 and 디버프 숨김 are one per profile: an undo that didn't copy them keeps today's (edits after the copy stay).
+        var wideNow = u.ClassKey is null ? null : Read<ProfileEntry>(Bytes<ProfileEntry>(p));
+        if (u.ClassKey == ProfileCopy.SharedKey) p.RestoreShared(Read<ProfileEntry>(u.Before)!);
         else if (u.ClassKey is null)
         {
             var restored = Read<OverlayProfile>(u.Before)!;
@@ -121,7 +121,6 @@ public sealed partial class Settings
         }
         else
         {
-            if (u.Profile == ActiveProfile) KeepLive(p);
             p.Classes ??= [];
             if (Read<ProfileEntry?>(u.Before) is { } entry) p.PutEntry(u.ClassKey, entry);
             else
@@ -143,11 +142,13 @@ public sealed partial class Settings
                 else p.Aden.Remove(shown);
             }
         }
-        if (u.BuffsBefore is not null && Read<ProfileEntry>(u.BuffsBefore) is { } buffs)
+        if (wideNow is not null)
         {
-            p.TakeBuffs(buffs);
-            p.ShareBuffs();
+            p.TakeBuffs(u.BuffsBefore is { } buffs ? Read<ProfileEntry>(buffs)! : wideNow);
+            p.TakeRaid(u.RaidBefore is { } raid ? Read<ProfileEntry>(raid)! : wideNow);
+            p.TakeDebuffHide(u.DebuffHideBefore is { } hide ? Read<ProfileEntry>(hide)! : wideNow);
         }
+        p.ShareProfileWide();
         if (u.Profile == ActiveProfile) PutOn(p);
         return true;
     }

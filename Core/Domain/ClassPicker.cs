@@ -12,11 +12,12 @@ public static class ClassPicker
 
     /// <summary><paramref name="entries"/> with the ★ ones first (a class name stars all its 직업각인), each group in its
     /// own order. Favourites not in the list change nothing.</summary>
-    public static IReadOnlyList<string> FavoritesFirst(IReadOnlyList<string> entries, IReadOnlyCollection<string> favorites)
-    {
-        bool Starred(string e) => favorites.Contains(e) || (ClassProfiles.Parent(e) is { } p && p != ClassProfiles.Template && favorites.Contains(p));
-        return [.. entries.Where(Starred), .. entries.Where(e => !Starred(e))];
-    }
+    public static IReadOnlyList<string> FavoritesFirst(IReadOnlyList<string> entries, IReadOnlyCollection<string> favorites) =>
+        [.. entries.Where(e => Starred(e, favorites)), .. entries.Where(e => !Starred(e, favorites))];
+
+    /// <summary>An entry ("클래스 · 직업각인", or a class alone) is ★: starred itself, or its class is; 기본 never.</summary>
+    public static bool Starred(string entry, IReadOnlyCollection<string> favorites) =>
+        entry != ClassProfiles.Template && (favorites.Contains(entry) || (ClassProfiles.Parent(entry) is { } p && p != ClassProfiles.Template && favorites.Contains(p)));
 
     /// <summary>편집 중 typed into (user, 2026-11-12): <paramref name="shown"/> (an entry's text, "클래스 · 직업각인") has every
     /// word of <paramref name="typed"/>, case and spaces ignored, so the class or the 직업각인 alone finds it.</summary>

@@ -4,7 +4,7 @@ using static GaugeOverlay.App.UI.UiBuild;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>내 오버레이 → 줄 수 (class-profiles.plan.md E): the 줄 수 창's 켜기, glow and look, kept per profile · class
+/// <summary>내 오버레이 → 줄 수 (class-profiles.plan.md E): the 줄 수 창's 켜기, glow and look, one per profile, the same for every class in it (user, 2026-11-14)
 /// (<see cref="RaidShow"/>, <see cref="RaidLooks"/>). What is per raid (gates, 빛날 줄 수, ± 줄) stays in 레이드.</summary>
 public partial class SettingsWindow
 {

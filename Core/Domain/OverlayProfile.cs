@@ -75,11 +75,11 @@ public sealed class OverlayProfile : ProfileEntry
     public void Keep(string? key, Settings s)
     {
         KeepParty(s);
-        if (key is null) { CaptureFrom(s); ShareBuffs(); return; }
+        if (key is null) { CaptureFrom(s); ShareProfileWide(); return; }
         var entry = new ProfileEntry();
         entry.CaptureFrom(s);
-        TakeBuffs(entry);
-        ShareBuffs();
+        TakeProfileWide(entry);
+        ShareProfileWide();
         Classes ??= [];
         if (SameAsShared(entry))
         {
@@ -87,6 +87,18 @@ public sealed class OverlayProfile : ProfileEntry
             SubclassPlaces.Remove(key);
         }
         else (Classes[key], SubclassPlaces[key]) = (entry, WindowPlace.Of(entry.Overlay));
+    }
+
+    /// <summary><see cref="Keep"/> from 설정's copy (<see cref="Settings.EditTarget"/>): the party windows and 버프 막대 are
+    /// taken from <paramref name="live"/>, never the copy's older ones.</summary>
+    internal void KeepEdit(string? key, Settings edited, Settings live)
+    {
+        var buffs = new ProfileEntry();
+        buffs.CaptureFrom(live);
+        Keep(key, edited);
+        KeepParty(live);
+        TakeProfileWide(buffs);
+        ShareProfileWide();
     }
 
     bool SameAsShared(ProfileEntry entry) =>
@@ -130,14 +142,14 @@ public sealed class OverlayProfile : ProfileEntry
         Aden ??= AdenShow.Snapshot(s.Classes);
         foreach (var (key, e) in Classes.ToList())
             if (e is null) Classes.Remove(key); else e.Fill(s);
-        ShareBuffs();   // a file from before 버프 막대 was one per profile: the shared one's
+        ShareProfileWide();   // a file from before 버프 막대 / 줄 수 창 / 디버프 숨김 were one per profile: the shared one's (the live, played class's wins at the next keep)
     }
 
-    /// <summary>버프 막대 is one per profile (user, 2026-11-13): every class entry holds the shared entry's, so whatever reads an
-    /// entry (apply, 복사, the split migration) sees the profile's.</summary>
-    internal void ShareBuffs()
+    /// <summary>버프 막대, the 줄 수 창 and 디버프 숨김 are one per profile (<see cref="ProfileEntry.TakeProfileWide"/>): every class
+    /// entry holds the shared entry's, so whatever reads an entry (apply, 복사, the split migration) sees the profile's.</summary>
+    internal void ShareProfileWide()
     {
-        foreach (var e in Classes?.Values ?? Enumerable.Empty<ProfileEntry>()) e.TakeBuffs(this);
+        foreach (var e in Classes?.Values ?? Enumerable.Empty<ProfileEntry>()) e.TakeProfileWide(this);
     }
 
     /// <summary>Puts <paramref name="shared"/>'s places and looks back as this profile's shared entry; the classes, 게이지 bars,
@@ -241,7 +253,7 @@ public sealed record RaidLooks(string Background, double Opacity)
     public void To(RaidSettings r) => (r.Background, r.Opacity) = (Background, Opacity);
 }
 
-/// <summary>The 줄 수 창's 켜기, 빛날 때만 표시 and glow rules kept per profile · class (class-profiles.plan.md E). The live
+/// <summary>The 줄 수 창's 켜기, 빛날 때만 표시 and glow rules, one per profile (user, 2026-11-14; was per profile · class). The live
 /// values stay in <see cref="RaidSettings"/>, which the reads, the tray and the 기능 맵 use.</summary>
 /// <remarks>The defaults are <see cref="RaidSettings"/>'s: a field missing from the file (a hand edit, "RaidShow": {}) reads as
 /// today's default, never as false (the count read off).</remarks>

@@ -23,6 +23,20 @@ public partial class SettingsWindow
     IReadOnlyList<ClassInfo>? _entriesFor;
     IReadOnlyList<string> _entries = [];
     string? _iconsKey;   // the target whose icons are loaded
+    Settings? _copy;
+
+    /// <summary>What the per-직업각인 look rows edit (edit-follows-pick.plan.md): 편집 중's copy in the active profile
+    /// (<see cref="Settings.EditTarget"/>) when it isn't the played 직업각인, else the live settings. Global and per-profile
+    /// rows keep editing <see cref="_s"/>.</summary>
+    Settings Target => _copy ?? _s;
+
+    /// <summary>Stores an edit made through <see cref="Target"/> as 편집 중's entry; the live settings need nothing.</summary>
+    void KeepCopy()
+    {
+        if (_copy is null) return;
+        _s.KeepEdit(ShownClass, _copy);
+        _s.MirrorLive(_copy);   // a live-only edit (타이머 크기, 줄 수 창 …) shows on the canvas drawing the copy
+    }
 
     /// <summary>The 편집 중 list, rebuilt only when the class list is another one.</summary>
     IReadOnlyList<string> PickerEntries
@@ -33,6 +47,12 @@ public partial class SettingsWindow
             return _entries;
         }
     }
+
+    /// <summary>편집 중's pick as a class and 직업각인 (null for 기본, or a class the profiles don't list): the per-직업각인 options
+    /// (단심, 아덴 게이지 막대) edit this one, not the character's (user, 2026-11-13).</summary>
+    (ClassInfo Class, string Sub)? ShownSubclass =>
+        _chars.Classes.SelectMany(c => c.Subclasses.Keys.Select(sub => (Class: c, Sub: sub)))
+            .Where(x => Settings.CharacterKey(x.Class.Name, x.Sub) == ShownClass).Select(x => ((ClassInfo, string)?)x).FirstOrDefault();
 
     /// <summary>The entry the 칸 옵션 edit: the pick (null = 기본).</summary>
     string? BoxKey => ShownClass == ClassProfiles.Template ? null : ShownClass;
@@ -48,9 +68,10 @@ public partial class SettingsWindow
         _classShown = key;
         ResetBaseline();
         RefreshPick();
+        RefreshBadges();
         Dispatcher.BeginInvoke(() =>
         {
-            FillClassSections(); FillBox(); RefreshInspector();
+            FillClassSections(); FillBox(); FillDisplay(); FillMeter(); FillGauge(); RefreshInspector();   // FillDisplay: 칸 모양, 단심, 암수; FillMeter: its look
             _pickCombo?.Focus();   // the rebuild replaced the combo the keyboard was on
         });
     }
@@ -61,11 +82,13 @@ public partial class SettingsWindow
     void RefreshPick(bool reloadIcons = false)
     {
         PreviewTarget = PreviewTarget.Decide(ShownClass, ClassProfiles.ActiveKey(_s), _chars.Classes);
+        _copy = _s.EditTarget(ShownClass);
         if (PreviewTarget?.Key != _iconsKey || reloadIcons)
         {
             _iconsKey = PreviewTarget?.Key;
             PreviewIcons = PreviewTarget is { } t ? _iconStore.Load(t.Class, t.Subclass) : new Dictionary<SlotId, Image>();
         }
         _canvas?.SetTarget(PreviewTarget);
+        _canvas?.SetEdit(Target);   // its windows' spots and sizes are 편집 중's too
     }
 }

@@ -203,6 +203,14 @@ public class ClassPickerTests
     public void A_favourite_직업각인_moves_only_that_entry() =>
         Assert.Equal([Lone, "", "바드 · 진실된 용기", Combat, "바드 · 절실한 구원"], ClassPicker.FavoritesFirst(Picked, [Lone]));
 
+    [Theory]
+    [InlineData("바드 · 진실된 용기", true)]    // its class is starred
+    [InlineData("워로드 · 고독한기사", true)]   // starred itself
+    [InlineData("워로드 · 전투태세", false)]
+    [InlineData("", false)]                     // 기본 never
+    public void An_entry_is_starred_by_itself_or_its_class(string entry, bool expected) =>
+        Assert.Equal(expected, ClassPicker.Starred(entry, ["바드", Lone]));
+
     [Fact]
     public void An_unknown_favourite_changes_nothing() =>
         Assert.Equal(Picked, ClassPicker.FavoritesFirst(Picked, ["없는 클래스", "바드 · 없는 각인"]));

@@ -52,6 +52,7 @@ public partial class SettingsWindow
     void FillMeter()
     {
         var m = _s.Meter;
+        var look = Target.Meter;   // 편집 중's look (MeterLooks, 막대 불투명도); the rest is global (m)
         void Again() => Dispatcher.BeginInvoke(FillMeter);
         var p = Refill(_secMeter, AreaMeter, "보스가 받은 피해 중 각자의 몫(딜러 딜지분, 서포터 찬조)을 전분(전투 분석기)이 기록을 시작한 때부터 보여 줍니다. " +
             "파티원 몫은 나와 그 파티원이 모두 '내 피해량 보내기'를 켜야 보입니다. 같은 보스 수치로 나누기 때문에 누구 화면에서나 숫자가 같습니다.");
@@ -66,9 +67,9 @@ public partial class SettingsWindow
         p.Children.Add(HelpRow("버프 적용률", "내 피해 중 공증 · 아덴 피증 · 초각스 피증이 켜져 있을 때 넣은 비율입니다(전분의 유효율과는 다른 값). 버프 줄을 읽어야 나옵니다. 표시 안 함: 미터기 창에는 없고 타임라인에만 나옵니다. 끄기: 둘 다 없습니다. 미터기를 끄거나 숨기면 고를 수 있는 값이 줄고, 다시 켜면 전에 고른 값으로 돌아옵니다.",
             BuffShareCombo(m, Again)));
         if (m.BuffShare() == ThreeWay.켜기)   // the bars show only then (OverlayRenderer.BuffBarsShown)
-            p.Children.Add(Defaulted(SliderRow("막대 불투명도", MeterSettings.MinOpacity, 1, m.BarOpacity ?? m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.BarOpacity = v, Changed,
+            p.Children.Add(Defaulted(SliderRow("막대 불투명도", MeterSettings.MinOpacity, 1, look.BarOpacity ?? look.Opacity, 0.05, v => $"{v * 100:0}%", v => look.BarOpacity = v, Changed,
                 $"버프 적용률 막대 세 개의 불투명도입니다. 미터기 창의 불투명도와 따로 정합니다."),
-                s => s.Meter.BarOpacity, (s, v) => s.Meter.BarOpacity = v));
+                s => s.Meter.BarOpacity, (s, v) => s.Meter.BarOpacity = v, Target));
         p.Children.Add(DefaultedCheck(
             Check("전투 기록", m.Record, v => m.Record = v, Changed, "전투를 기록해 설정 → 타임라인에 남깁니다. 개수는 그곳에서 정합니다."), s => s.Meter.Record, (s, v) => s.Meter.Record = v));
         p.Children.Add(DefaultedCheck(Check("내 피해량 보내기", m.Send, v => m.Send = v, () => { Changed(); FillSend(); },
@@ -83,27 +84,29 @@ public partial class SettingsWindow
         p.Children.Add(Defaulted(Row("수치", EnumCombo([(MeterValue.지분, "딜지분 · 찬조 %"), (MeterValue.피해량, "피해량 (억)"), (MeterValue.DPS, "DPS (억)")], m.Value, v => m.Value = v)),
             s => s.Meter.Value, (s, v) => s.Meter.Value = v));
         p.Children.Add(Defaulted(Row("표시 방식", EnumCombo([(MeterLook.행, "행"), (MeterLook.세로막대, "세로 막대"), (MeterLook.선그래프, "선 그래프"), (MeterLook.한줄막대, "한 줄 막대"),
-            (MeterLook.파티비교, "파티 비교 (공대 · 1·2파티)")], m.Look, v => { m.Look = v; Again(); })), s => s.Meter.Look, (s, v) => s.Meter.Look = v));
+            (MeterLook.파티비교, "파티 비교 (공대 · 1·2파티)")], look.Look, v => { look.Look = v; Again(); })), s => s.Meter.Look, (s, v) => s.Meter.Look = v, Target));
         p.Children.Add(Defaulted(HelpRow("그래프 범위", "전체: 전분이 기록을 시작한 때부터 그립니다. 최근 1분: 전분 시간으로 마지막 1분만 그리고 지난 기록은 밀려납니다. 그래프만 바뀌고 행의 숫자는 그대로입니다.",
             EnumCombo([(MeterRange.전체, "전체"), (MeterRange.최근1분, "최근 1분")], m.Range, v => m.Range = v)), s => s.Meter.Range, (s, v) => s.Meter.Range = v));
+        // DPS 그래프 is a look (편집 중's), 서포터 · 기타 are global: two rows, each with its own ↺.
+        p.Children.Add(DefaultedCheck(Check("DPS 그래프", look.Graph, v => look.Graph = v, Changed, "행 아래에 시간에 따른 DPS를 그립니다. 혼자여도 내 선이 그려집니다."),
+            s => s.Meter.Graph, (s, v) => s.Meter.Graph = v, Target));
         p.Children.Add(Defaulted(Row("",
-            Check("DPS 그래프", m.Graph, v => m.Graph = v, Changed, "행 아래에 시간에 따른 DPS를 그립니다. 혼자여도 내 선이 그려집니다."),
             Check("서포터 · 찬조", m.Support, v => m.Support = v, Changed),
             Check("기타", m.Other, v => m.Other = v, Changed, "보스가 받은 피해 중 보이는 딜러 몫이 아닌 나머지입니다.")),
-            s => (s.Meter.Graph, s.Meter.Support, s.Meter.Other), (s, v) => (s.Meter.Graph, s.Meter.Support, s.Meter.Other) = v));
-        if (m.ShownLook == MeterLook.파티비교)
+            s => (s.Meter.Support, s.Meter.Other), (s, v) => (s.Meter.Support, s.Meter.Other) = v));
+        if (look.Look == MeterLook.파티비교 && m.Scope is not (MeterScope.나 or MeterScope.파티))   // MeterSettings.ShownLook over both
             p.Children.Add(DefaultedCheck(Check("% 로 비교", m.CompareAsShare, v => m.CompareAsShare = v, Changed, "끄면 피해량으로 비교합니다."), s => s.Meter.CompareAsShare, (s, v) => s.Meter.CompareAsShare = v));
 
         MeterSkillRows(p, m, Again);
 
         p.Children.Add(SubHeading("색과 창"));
         // A null colour is the default (the fallback shown here): ↺ puts the null back.
-        p.Children.Add(Defaulted(ColorRow(Label("내 막대"), m.MyColor ?? "#FFC83C", v => m.MyColor = v, swatch: false), s => s.Meter.MyColor, (s, v) => s.Meter.MyColor = v));
-        p.Children.Add(Defaulted(ColorRow(Label("딜러"), m.DealerColor ?? "#5B8DEF", v => m.DealerColor = v, swatch: false), s => s.Meter.DealerColor, (s, v) => s.Meter.DealerColor = v));
-        p.Children.Add(Defaulted(ColorRow(Label("서포터"), m.SupportColor ?? "#5BD18B", v => m.SupportColor = v, swatch: false), s => s.Meter.SupportColor, (s, v) => s.Meter.SupportColor = v));
-        p.Children.Add(Defaulted(ColorRow(Label("기타"), m.OtherColor ?? "#6B7280", v => m.OtherColor = v, swatch: false), s => s.Meter.OtherColor, (s, v) => s.Meter.OtherColor = v));
-        p.Children.Add(Defaulted(ColorRow(Label("배경"), m.Background, v => m.Background = v, swatch: false), s => s.Meter.Background, (s, v) => s.Meter.Background = v));
-        p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, m.Opacity, 0.05, v => $"{v * 100:0}%", v => m.Opacity = v, Changed), s => s.Meter.Opacity, (s, v) => s.Meter.Opacity = v));
+        p.Children.Add(Defaulted(ColorRow(Label("내 막대"), look.MyColor ?? "#FFC83C", v => look.MyColor = v, swatch: false), s => s.Meter.MyColor, (s, v) => s.Meter.MyColor = v, Target));
+        p.Children.Add(Defaulted(ColorRow(Label("딜러"), look.DealerColor ?? "#5B8DEF", v => look.DealerColor = v, swatch: false), s => s.Meter.DealerColor, (s, v) => s.Meter.DealerColor = v, Target));
+        p.Children.Add(Defaulted(ColorRow(Label("서포터"), look.SupportColor ?? "#5BD18B", v => look.SupportColor = v, swatch: false), s => s.Meter.SupportColor, (s, v) => s.Meter.SupportColor = v, Target));
+        p.Children.Add(Defaulted(ColorRow(Label("기타"), look.OtherColor ?? "#6B7280", v => look.OtherColor = v, swatch: false), s => s.Meter.OtherColor, (s, v) => s.Meter.OtherColor = v, Target));
+        p.Children.Add(Defaulted(ColorRow(Label("배경"), look.Background, v => look.Background = v, swatch: false), s => s.Meter.Background, (s, v) => s.Meter.Background = v, Target));
+        p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, look.Opacity, 0.05, v => $"{v * 100:0}%", v => look.Opacity = v, Changed), s => s.Meter.Opacity, (s, v) => s.Meter.Opacity = v, Target));
         p.Children.Add(Note("크기는 편집 모드에서 미터기 창의 오른쪽 아래 모서리를 끌어 바꿉니다."));
 
         p.Children.Add(SubHeading("읽기"));

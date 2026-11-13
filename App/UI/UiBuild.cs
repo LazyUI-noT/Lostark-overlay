@@ -296,4 +296,32 @@ internal static class UiBuild
         Report?.Invoke(label.Trim(), help, row, () => SliderRow(label, min, max, value, step, format, set, changed, help));
         return row;
     }
+
+    /// <summary>A picker's item drawn with a yellow ★ before it when <paramref name="starred"/> says so (user, 2026-11-13): set as
+    /// an item's ContentTemplate or a combo's ItemTemplate; the closed combo shows it too. The item itself stays its plain text.</summary>
+    public static DataTemplate StarTemplate(Func<string, bool> starred)
+    {
+        var row = new FrameworkElementFactory(typeof(StackPanel));
+        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        var star = new FrameworkElementFactory(typeof(TextBlock));
+        star.SetValue(TextBlock.TextProperty, "★ ");
+        star.SetResourceReference(TextBlock.ForegroundProperty, "SystemFillColorCautionBrush");
+        star.SetBinding(UIElement.VisibilityProperty, new System.Windows.Data.Binding { Converter = new StarShown(starred) });
+        var name = new FrameworkElementFactory(typeof(TextBlock));
+        name.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
+        row.AppendChild(star);
+        row.AppendChild(name);
+        var t = new DataTemplate { VisualTree = row };
+        t.Seal();
+        return t;
+    }
+
+    sealed class StarShown(Func<string, bool> starred) : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+            value is string s && starred(s) ? Visibility.Visible : Visibility.Collapsed;
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
 }

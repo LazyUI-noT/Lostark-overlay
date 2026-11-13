@@ -85,8 +85,17 @@ public class ProfileEntry
         (GaugePlace, GaugeUpright) = (WindowPlace.Of(s.Gauge), s.Gauge.Upright);
     }
 
+    /// <summary>What is one per profile, not per 직업각인: 버프 막대, the 줄 수 창 and 디버프 숨김, as <paramref name="from"/>'s
+    /// (<see cref="OverlayProfile.ShareProfileWide"/>).</summary>
+    internal void TakeProfileWide(ProfileEntry from)
+    {
+        TakeBuffs(from);
+        TakeRaid(from);
+        TakeDebuffHide(from);
+    }
+
     /// <summary>버프 막대 is one per profile (user, 2026-11-13): <paramref name="from"/>'s 합쳐서 / 따로, 세로, window, bar sizes and
-    /// look, as copies (<see cref="OverlayProfile.ShareBuffs"/>).</summary>
+    /// look, as copies (<see cref="OverlayProfile.ShareProfileWide"/>).</summary>
     internal void TakeBuffs(ProfileEntry from)
     {
         // Nulls only come from a hand-edited file; this runs at every load, so they read as defaults instead of throwing.
@@ -94,6 +103,13 @@ public class ProfileEntry
         BuffBars = (from.BuffBars ?? []).ToDictionary(b => b.Key, b => b.Value is { } size ? new BarSize { Thickness = size.Thickness, Length = size.Length } : new BarSize());
         BuffLook = from.BuffLook is { } look ? look with { Bars = new(look.Bars) } : null;
     }
+
+    /// <summary>The 줄 수 창 is one per profile (user, 2026-11-14): <paramref name="from"/>'s 켜기, 빛날 때만 표시, glow rules, 배경 색
+    /// and 불투명도 (records: shared safely; <see cref="OverlayProfile.ShareProfileWide"/>).</summary>
+    internal void TakeRaid(ProfileEntry from) => (RaidLook, RaidShow) = (from.RaidLook, from.RaidShow);
+
+    /// <summary>디버프 없을 때 숨김 is one per profile (user, 2026-11-14); the debuff window's spot and 칸 크기 stay per 직업각인.</summary>
+    internal void TakeDebuffHide(ProfileEntry from) => DebuffHideWhenEmpty = from.DebuffHideWhenEmpty;
 
     protected static List<DebuffBox> CopyBoxes(List<DebuffBox> boxes) => [.. boxes.Select(b => new DebuffBox { Width = b.Width, Height = b.Height })];
 

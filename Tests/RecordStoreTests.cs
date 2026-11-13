@@ -34,12 +34,13 @@ public sealed class RecordStoreTests : IDisposable
     [Fact]
     public void Changed_moves_on_save_and_delete()
     {
-        long empty = Store.Changed;
-        var file = Store.Save(R(0));
-        long saved = Store.Changed;
-        Store.Delete(file);
+        var store = Store;   // one store: its edit count is what moves when the folder's write time doesn't
+        long empty = store.Changed;
+        var file = store.Save(R(0));
+        long saved = store.Changed;
+        store.Delete(file);
         Assert.NotEqual(empty, saved);
-        Assert.NotEqual(saved, Store.Changed);
+        Assert.NotEqual(saved, store.Changed);
     }
 
     [Fact]

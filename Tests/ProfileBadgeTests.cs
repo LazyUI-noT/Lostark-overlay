@@ -39,17 +39,18 @@ public class ProfileBadgeTests
     }
 
     [Fact]
-    public void Text_names_class_when_known()
+    public void Text_names_the_edited_subclass_only()
     {
-        Assert.Equal("프로필 2 · 블래스터 · 포격 모드", ProfileBadge.Text(1, "블래스터 · 포격 모드"));
+        Assert.Equal("프로필 2 · 포격 모드", ProfileBadge.Text(1, "블래스터 · 포격 모드"));
         Assert.Equal("프로필 1 · 기본", ProfileBadge.Text(0, null));
-        Assert.Equal("프로필 1 · 기본", ProfileBadge.Text(0, ""));
+        Assert.Equal("프로필 1 · 기본", ProfileBadge.Text(0, ClassProfiles.Template));
+        Assert.Equal("프로필 1 · 블래스터", ProfileBadge.Text(0, "블래스터"));   // a class without a 직업각인
     }
 
     [Fact]
-    public void ProfileText_names_only_the_profile()
+    public void ProfileText_names_the_profile_as_shared()
     {
-        Assert.Equal("프로필 3", ProfileBadge.ProfileText(2));
+        Assert.Equal("프로필 3 공통", ProfileBadge.ProfileText(2));
     }
 
     [Fact]

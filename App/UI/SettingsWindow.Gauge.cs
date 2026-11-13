@@ -22,23 +22,26 @@ public partial class SettingsWindow
 
     UIElement GaugePanel()
     {
-        var g = _s.Gauge;
+        var g = Target.Gauge;   // 편집 중's look; 읽기 방식 is global (_s)
         var p = new CardStack();
-        p.Children.Add(CardBadge(LookGroup.게이지));   // covers the switch and the look below it
-        if (!(_chars.ActiveClass is { } cls && _chars.Active is { } c && cls.Subclasses.GetValueOrDefault(c.Subclass) is not null))
-            p.Children.Add(Note("지금 직업각인은 아덴 게이지를 읽지 않습니다."));
-        else if (_chars.Gauge is null)
-            p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
+        p.Children.Add(SwitchBadge());   // 합쳐서 / 따로 is one per profile (프로필 N 공통): its chip first, then 편집 중's look
         p.Children.Add(ApartRow());   // outside the look group: 모든 프로필에 적용 doesn't copy it
+        p.Children.Add(CardBadge(LookGroup.게이지));
+        // 편집 중's 직업각인 (ShownSubclass), not the character's.
+        // 기본 has no 직업각인 to read for: BarRows says so.
+        if (ShownClass != ClassProfiles.Template && !(ShownSubclass is { } shown && shown.Class.Subclasses.GetValueOrDefault(shown.Sub) is not null))
+            p.Children.Add(Note("이 직업각인은 아덴 게이지를 읽지 않습니다."));
+        else if (ShownClass == ActiveOrTemplate && _chars.Gauge is null)
+            p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
         foreach (var e in ApartOnly(Defaulted(HelpRow("세로", "막대를 세워 아래에서 위로 채웁니다. 구분선도 가로로 눕습니다.", Check("세로", g.Upright, v => g.Upright = v, Changed)),
-            s => s.Gauge.Upright, (s, v) => s.Gauge.Upright = v), "합쳐서에서는 가로로 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
+            s => s.Gauge.Upright, (s, v) => s.Gauge.Upright = v, Target), "합쳐서에서는 가로로 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
         if (_s.Apart) p.Children.Add(Note("길이와 두께: 화면에서 테두리를 끌거나 Ctrl+화살표로 바꿉니다."));
         p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));
         p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));
         p.Children.Add(SliderRow("불투명도", 0.2, 1, g.Opacity, 0.05, v => $"{v * 100:0}%", v => g.Opacity = v, Changed));
         p.Children.Add(HelpRow("읽기 방식", "기본: 같은 값이 5번 연속 읽혀야 바뀝니다. 작은 상승: 조금 오른 값은 2번만 같아도 바뀝니다. 스킬별 예측 (베타): " + "스킬마다 게이지가 얼마나 차는지 배워서, 그만큼 오른 값은 2번만 같아도 바로 바뀝니다. 스킬마다 10번쯤 쓰면 작동합니다. 아덴스킬로 쓰는 양은 클래스 규칙대로 바로 바뀝니다. 스킬창의 스킬을 바꿨으면 배운 값을 지우세요(안 지워도 30번쯤 쓰면 맞춰집니다).", EnumCombo([(GaugeReadMode.Agreed, "기본 (5번 연속 일치하면 반영)"), (GaugeReadMode.SteadyRise, "작은 상승은 2번 일치하면 반영"),
-            (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], g.ReadMode, v => g.ReadMode = v)));
+            (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], _s.Gauge.ReadMode, v => _s.Gauge.ReadMode = v)));
         // Shown for every reading: gains learned under 스킬별 예측 stay saved after switching to another reading, and are used again on
         // switching back.
         var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 8),
@@ -53,14 +56,12 @@ public partial class SettingsWindow
     /// Only for a class picked: 기본 has no 직업각인, so it has no 막대.</summary>
     void BarRows(Panel p)
     {
-        if (_chars.Active is not { } a)
+        if (ShownSubclass is not { } picked)
         {
-            p.Children.Add(Note("막대 설정은 클래스·직업각인을 고르면 나옵니다."));
+            p.Children.Add(Note("막대 설정은 편집 중에서 직업각인을 고르면 나옵니다."));
             return;
         }
-        var shown = _chars.Classes.SelectMany(k => k.Subclasses.Select(sc => (Class: k.Name, Sub: sc.Key, Rule: sc.Value)))
-            .FirstOrDefault(x => x.Class == a.Class && x.Sub == a.Subclass);
-        if (shown.Class is null) return;   // a class the profiles don't know
+        var shown = (Class: picked.Class.Name, picked.Sub, Rule: picked.Class.Subclasses[picked.Sub]);
         p.Children.Add(Heading($"막대 ({shown.Class} · {shown.Sub})", help: shown.Rule is null
             ? "이 직업각인은 아직 게이지 기본값이 없습니다. 구분선과 색은 지금 정할 수 있고, 빛나는 조건은 클래스 정보가 추가되면 정해집니다."
             : "구분선은 게이지를 나누는 위치(%)입니다. 언제 빛나는지는 클래스마다 정해져 있고, 여기서는 켜고 끄기와 방식만 바꿉니다."));

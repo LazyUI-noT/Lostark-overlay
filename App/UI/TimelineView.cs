@@ -194,8 +194,11 @@ sealed class TimelineView : FrameworkElement
     /// <summary>버프 적용률 isn't off (MeterSettings.BuffShare): the buff lines show their %.</summary>
     public bool BuffShareShown { get; set; } = true;
 
-    /// <summary>The buff lock (BuffLock): 공증's % capped at 85, 아덴 피증 with no % and only 10 min after the fight, no 초각스 피증.</summary>
-    public bool BuffLocked { get; set; }
+    /// <summary>The buff lock's cap for the opened fight (BuffLock.CapFor; null: unlocked): 공증's % capped at it, 아덴 피증 with no %
+    /// and only 10 min after the fight, no 초각스 피증.</summary>
+    public double? BuffCap { get; set; }
+
+    bool BuffLocked => BuffCap is not null;
 
     /// <summary>The opened fight is a 4-man raid: each buff line shows the party's share too (Timeline.PartyBuffShare).</summary>
     public bool SmallParty { get; set; }
@@ -542,12 +545,12 @@ sealed class TimelineView : FrameworkElement
         {
             double cy = y + BuffH / 2;
             bool lineShown = BuffLock.LineShown(kind, BuffLocked, r, now), percent = BuffShareShown && BuffLock.PercentShown(kind, BuffLocked);
-            string Share(TimeWindow w) => BuffLock.Figure(Timeline.BuffShare(r, kind, w), BuffLocked);
+            string Share(TimeWindow w) => BuffLock.Figure(Timeline.BuffShare(r, kind, w), BuffCap);
             Text(dc, !lineShown ? $"{name} (10분 뒤)" : percent ? $"{name} {Share(new TimeWindow(0, r.Duration))}" + (zoomed ? $" ({Share(seen)})" : "") : name,
                 new(0, y), 11, fg, opacity: lineShown ? 1 : 0.6);
             // A 4-man raid: the party's share (the boss HP lost under it) at the line's right end, for the window shown.
             if (percent && SmallParty && Timeline.PartyBuffShare(r, kind, zoomed ? seen : new TimeWindow(0, r.Duration)) is { } party)
-                Text(dc, $"파티 {BuffLock.Figure(party, BuffLocked)}", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
+                Text(dc, $"파티 {BuffLock.Figure(party, BuffCap)}", new(LabelW + PlotW + 4, y), 10, fg, opacity: 0.8, width: RightW - 4);
             dc.DrawLine(track, new(LabelW, cy), new(LabelW + PlotW, cy));
             if (!lineShown) { y += BuffH; continue; }
             var glow = Frozen(new Pen(Frozen(new SolidColorBrush(Color.FromArgb(70, color.R, color.G, color.B))), 9) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });

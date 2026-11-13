@@ -283,20 +283,34 @@ public static class Homework
         return true;
     }
 
-    /// <summary>A grid card's small name when it is a character not listed yet: a name (<see cref="CharacterName.Clean"/>) near no
-    /// listed one (<see cref="CharacterName.Nearest"/>, which takes "밝기리" for a listed "밟키리"); else null. The caller votes it
-    /// twice alike and lists it <see cref="HomeworkCharacter.FromCard"/>.</summary>
-    /// <summary>A grid card's character when not listed yet: no listed character but <paramref name="current"/> owns the card
-    /// (<see cref="CardOwner"/>: the played one's card shows 접속 중, not a name), and its name is near none.</summary>
-    public static string? NewFromCard(MenuCard card, IReadOnlyList<HomeworkCharacter> characters, string? current) =>
-        CardOwner(card, [.. characters.Where(c => c.Name != current)]) is null ? NewFromCard(card.Name, [.. characters.Select(c => c.Name)]) : null;
+    /// <summary>The listed character a big name read is (user, 2026-11-13: a read never lists a new one; only a hand or the API
+    /// does): the nearest in reach (<see cref="CharacterName.Near"/>), even a same-kind swap (밟기리 is 밟키리); names as near go by
+    /// <paramref name="className"/>, then <paramref name="level"/> (<see cref="Fit"/>). Null when none is near or that leaves two:
+    /// 캐릭터 불명, no clear kept.</summary>
+    public static string? NameOwner(string read, IReadOnlyList<HomeworkCharacter> characters, string? className, int? level)
+    {
+        var near = CharacterName.Near(read, characters.Select(c => c.Name));
+        if (near.Count == 0) return null;
+        int best = near.Min(x => x.Distance);
+        var left = near.Where(x => x.Distance == best).Select(x => characters.First(c => c.Name == x.Name)).ToList();
+        if (className is not null) left = Narrow(left, c => c.ClassName == className);
+        if (level is not null && left.Min(c => Fit(c.ItemLevel, level)) is var fit && fit < NoFit) left = Narrow(left, c => Fit(c.ItemLevel, level) == fit);
+        return left.Count == 1 ? left[0].Name : null;
+    }
 
-    /// <summary>The name alone (<see cref="NewFromCard(MenuCard, IReadOnlyList{HomeworkCharacter}, string?)"/> also asks whose card it is).</summary>
-    public static string? NewFromCard(string read, IReadOnlyList<string> known) =>
-        CharacterName.Clean(read) is { } name && CharacterName.Nearest(name, known) is null && CharacterName.Nearest(name, [PlayingMark]) is null ? name : null;
+    /// <summary>Those that fit, when two or more are left and any fits; else all of them.</summary>
+    static List<HomeworkCharacter> Narrow(List<HomeworkCharacter> left, Func<HomeworkCharacter, bool> fits) =>
+        left.Count > 1 && left.Where(fits).ToList() is { Count: > 0 } fit ? fit : left;
 
-    /// <summary>What the played card shows where its name would be ("접속 중", spaces dropped): a misread of it is no character.</summary>
-    const string PlayingMark = "접속중";
+    /// <summary>A character deleted on 설정 → 숙제 (a misread row): off the list, its card place unlearned. Its clears and fights
+    /// keep its name. False when it isn't listed.</summary>
+    public static bool Remove(HomeworkSettings hw, string name)
+    {
+        if (hw.Find(name) is not { } c) return false;
+        hw.Characters.Remove(c);
+        hw.Order = [.. hw.Order.Select(n => n == name ? "" : n)];   // a new list: the save thread reads it
+        return true;
+    }
 
     public const int AutoPicks = 3, MaxLevelStep = 60;
 

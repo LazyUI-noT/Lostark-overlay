@@ -18,6 +18,7 @@ public partial class SettingsWindow
     const string AreaRaid = "레이드";
     readonly CardStack _secRaid = new();
     static readonly IReadOnlyList<RaidGate> RaidGates = RaidData.Load(CharacterService.DefaultProfilesDir);
+    static readonly BuffCapRules BuffCaps = RaidData.LoadBuffCaps(CharacterService.DefaultProfilesDir);
     string? _raidSeen;
     string? _raidSeenDifficulty;   // the dungeon panel's difficulty when the gate was recognised (지금 인식's capsule)
     string? _raidTab;   // the tab shown (카제로스 레이드 …); null: the recognised gate's, else the first
@@ -88,12 +89,12 @@ public partial class SettingsWindow
         return box;
     }
 
-    /// <summary>The 줄 수 창 row's state line, under the profile · class badge (the switch is per profile · class).</summary>
+    /// <summary>The 줄 수 창 row's state line, under the 프로필 N 공통 badge (the switch is one per profile, user 2026-11-14).</summary>
     UIElement CountState(bool on)
     {
         var state = Label(on ? "켜짐 (빛나기와 모양은 내 오버레이 → 줄 수)" : "꺼짐: 아래 관문 설정은 남고 흐리게 보입니다", 0.7);
         if (ProfileBadge.Of(AreaRaid, option: ProfileBadge.RaidCountNote) != BadgeAt.Option) return state;
-        var chip = ProfileBadgeChip();
+        var chip = ProfileBadgeChip(profileOnly: true);
         ((FrameworkElement)chip).Margin = new(0, 0, 0, 4);
         return Stack(chip, state);
     }
@@ -105,8 +106,8 @@ public partial class SettingsWindow
         var p = Refill(_secRaid, "레이드", "보스 체력바 위의 이름으로 레이드·관문을 인식하고, 체력바 오른쪽 끝의 줄 수(예: X 494)를 줄 수 창에 따로 보여 줍니다. " +
             "정한 줄 수가 되면 창이 빛납니다. 인식하지 못한 보스에는 아무것도 띄우지 않습니다.");
 
-        // The main 줄 수 switch gates every gate's own 줄 수 창 below; it lives with the window on 내 오버레이 (per profile ·
-        // class, class-profiles.plan.md E), shown here with a way there, as 버프/디버프 shows the 디버프 창's state.
+        // The main 줄 수 switch gates every gate's own 줄 수 창 below; it lives with the window on 내 오버레이 (one per profile since
+        // 2026-11-14), shown here with a way there, as 버프/디버프 shows the 디버프 창's state.
         var toCount = new Button { Content = "줄 수 창 열기", Margin = new(0, 2, 0, 2) };
         toCount.Click += (_, _) => ShowRaidCount();
         p.Children.Add(Row("줄 수 창", CountState(r.CountEnabled), toCount));
@@ -244,13 +245,14 @@ public partial class SettingsWindow
     /// 레이아웃 편집기's 칸 옵션.</summary>
     UIElement[] DebuffSizeSliders(int i, string prefix = "")
     {
-        var box = _s.Debuffs.Box(i);
+        var t = Target;   // per 직업각인: 편집 중's sizes
+        var box = t.Debuffs.Box(i);
         // Peek, not Box, in the getters: reading must not add an entry (Box adds one the first time).
         DebuffBox Peek(Settings s) => s.Debuffs.Boxes.ElementAtOrDefault(i) ?? new();
-        return [Defaulted(SliderRow(prefix + "너비", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Width, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Width = v, Changed),
-                s => Peek(s).Width, (s, v) => s.Debuffs.Box(i).Width = v),
-            Defaulted(SliderRow(prefix + "높이", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Height, 0.1, v => $"{v * 100:0}%", v => _s.Debuffs.Box(i).Height = v, Changed),
-                s => Peek(s).Height, (s, v) => s.Debuffs.Box(i).Height = v)];
+        return [Defaulted(SliderRow(prefix + "너비", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Width, 0.1, v => $"{v * 100:0}%", v => t.Debuffs.Box(i).Width = v, Changed),
+                s => Peek(s).Width, (s, v) => s.Debuffs.Box(i).Width = v, on: t),
+            Defaulted(SliderRow(prefix + "높이", BarSizes.MinDebuff, BarSizes.MaxDebuff, box.Height, 0.1, v => $"{v * 100:0}%", v => t.Debuffs.Box(i).Height = v, Changed),
+                s => Peek(s).Height, (s, v) => s.Debuffs.Box(i).Height = v, on: t)];
     }
 
     /// <summary>A row with its example under it (BossBarExample), one child so the card's divider stays between rows, not inside one.</summary>

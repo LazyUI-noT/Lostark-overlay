@@ -135,7 +135,16 @@ public partial class SettingsWindow : Window
         BuildUndo();
         (GaugeBox.Visibility, GaugeBox.Margin) = (Visibility.Visible, new());   // the inspector pads it
         BuildCanvasPage();
-        IsVisibleChanged += (_, _) => { if (IsVisible) RefreshPick(reloadIcons: true); };   // its icons may have been read since
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) return;
+            // Opened: 편집 중 starts on the character's 직업각인 again (user, 2026-11-13), whatever was picked last time.
+            bool reset = _classShown is not null && _classShown != ClassProfiles.ActiveKey(_s);
+            if (reset) _classShown = null;
+            // Rows still bound to 편집 중's old copy would edit it after RefreshPick drops it: rebuild them.
+            if (reset || _copy is not null) BuildAll();
+            RefreshPick(reloadIcons: true);   // its icons may have been read since
+        };
         BuildAll();
         ShowArea();
     }
@@ -148,6 +157,7 @@ public partial class SettingsWindow : Window
 
     void Changed()
     {
+        KeepCopy();
         _canvas?.Relayout();
         PreviewChanged();
         RefreshRowMarks();
@@ -416,26 +426,28 @@ public partial class SettingsWindow : Window
         var o = _s.Overlay;
         var p = Refill(_secDisplay, "배경판");
         UIElement? opacityRow = null;   // 오버레이 표시 and 스킬창이 안 보이면 숨기기: 설정 → 기능 Map (FillShow)
-        p.Children.Add(Check("배경판", o.ShowPlate,
-            v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤에 깔리는 배경판입니다. 분리된 버프 창에는 배경판이 없습니다."));
-        p.Children.Add(opacityRow = SliderRow("배경판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
-        opacityRow.Visibility = Shown(o.ShowPlate);
+        var plate = Target.Overlay;   // 판 is 편집 중's look; 방송·캡처에서 숨김 is global (o)
+        p.Children.Add(Check("배경판", plate.ShowPlate,
+            v => { plate.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤에 깔리는 배경판입니다. 분리된 버프 창에는 배경판이 없습니다."));
+        p.Children.Add(opacityRow = SliderRow("배경판 불투명도", 0.3, 1, plate.Opacity, 0.05, v => $"{v * 100:0}%", v => plate.Opacity = v, Changed));
+        opacityRow.Visibility = Shown(plate.ShowPlate);
         p.Children.Add(Check("방송·캡처에서 숨김", o.ExcludeFromCapture, v => o.ExcludeFromCapture = v, Changed, "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다."));
 
         // 칸 모양: how every box shows its cooldown, 초각스, 금테 (the skill inspector)
         p = Refill(_secSkillLook, "칸 모양");
         p.Children.Add(CardBadge(LookGroup.스킬칸));
+        var box = Target.Overlay;   // 편집 중's look; 스킬창 읽기 is global (o)
         p.Children.Add(DefaultedCheck(Check("스킬창 읽기", o.SkillRead, v => o.SkillRead = v, Changed,
             "끄면 스킬 쿨을 읽지 않습니다. 쿨타임, 타임라인의 스킬 아이콘, 파티로 보내기가 모두 멈춥니다. 켜 둔 채 스킬 칸만 숨기면 타임라인에 쓰려고 계속 읽습니다."),
             s => s.Overlay.SkillRead, (s, v) => s.Overlay.SkillRead = v));
         CooldownLookRows(p);
-        p.Children.Add(Defaulted(ColorRow(Label("초각스 색"), o.AwakeningChangedColor, v => o.AwakeningChangedColor = v, swatch: false, warnDark: true),
-            s => s.Overlay.AwakeningChangedColor, (s, v) => s.Overlay.AwakeningChangedColor = v));
+        p.Children.Add(Defaulted(ColorRow(Label("초각스 색"), box.AwakeningChangedColor, v => box.AwakeningChangedColor = v, swatch: false, warnDark: true),
+            s => s.Overlay.AwakeningChangedColor, (s, v) => s.Overlay.AwakeningChangedColor = v, Target));
         p.Children.Add(Heading("금테 (게임 금색 테두리)", help: "게임에서 스킬 칸에 금색 테두리가 뜨면 오버레이의 그 칸에도 그립니다. 두께는 칸 안쪽으로 늘어나고, 0이면 그리지 않습니다. 칸 색이 금색과 비슷하면 스킬 칸의 색 항목에서 알려 줍니다."));
-        p.Children.Add(Defaulted(ColorRow(Label("금테 색"), o.GoldColor, v => { o.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false),   // their warnings
-            s => s.Overlay.GoldColor, (s, v) => s.Overlay.GoldColor = v));
-        p.Children.Add(Defaulted(SliderRow("금테 두께", 0, 8, o.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => o.GoldThickness = v, Changed),
-            s => s.Overlay.GoldThickness, (s, v) => s.Overlay.GoldThickness = v));
+        p.Children.Add(Defaulted(ColorRow(Label("금테 색"), box.GoldColor, v => { box.GoldColor = v; Dispatcher.BeginInvoke(FillClassSections); }, swatch: false),   // their warnings
+            s => s.Overlay.GoldColor, (s, v) => s.Overlay.GoldColor = v, Target));
+        p.Children.Add(Defaulted(SliderRow("금테 두께", 0, 8, box.GoldThickness, 0.5, v => v == 0 ? "끔" : $"{v:0.#} px", v => box.GoldThickness = v, Changed),
+            s => s.Overlay.GoldThickness, (s, v) => s.Overlay.GoldThickness = v, Target));
         FillBuffs();
         FillJudgment();
         FillAmsu();
@@ -446,8 +458,9 @@ public partial class SettingsWindow : Window
     void CooldownLookRows(Panel p)
     {
         var o = _s.Overlay;
-        p.Children.Add(Defaulted(SliderRow("불투명도", 0.2, 1, o.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => o.BoxOpacity = v, Changed),
-            s => s.Overlay.BoxOpacity, (s, v) => s.Overlay.BoxOpacity = v));
+        var box = Target.Overlay;   // 편집 중's look; 쿨 숫자 크기 is global (o)
+        p.Children.Add(Defaulted(SliderRow("불투명도", 0.2, 1, box.BoxOpacity, 0.05, v => $"{v * 100:0}%", v => box.BoxOpacity = v, Changed),
+            s => s.Overlay.BoxOpacity, (s, v) => s.Overlay.BoxOpacity = v, Target));
         double maxFont = Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(o.Width, o.Height));   // the box size is the editor's
         p.Children.Add(Defaulted(SliderRow("쿨 숫자 크기", OverlayRenderer.MinTimerFont, maxFont, Math.Min(o.TimerFont, maxFont),
             OverlayRenderer.TimerFontStep, v => $"{v:0.#}", v => o.TimerFont = v, Changed, "모든 클래스의 남은 쿨 숫자 크기입니다. 칸에 들어가는 크기보다 커지지 않습니다."),
@@ -601,6 +614,7 @@ public partial class SettingsWindow : Window
             b.Content = idle;
             RecordStep();   // BuildAll moves the baseline past the reset: the state before it must be a step now
             reset();
+            KeepCopy();   // a reset of 편집 중's copy, before BuildAll takes a new one
             BuildAll();
             Changed();
         };
@@ -624,7 +638,7 @@ public partial class SettingsWindow : Window
             var hex = UiColor.ToHex(c);
             var problems = new List<string>();
             if ((swatch || warnDark) && OverlayRenderer.Lightness(c) < MinLightness) problems.Add("어두운 색은 준비/대기 구분이 약해집니다");
-            if (warnGold && UiColor.TryParse(_s.Overlay.GoldColor) is not null && Core.Vision.ColorDistance.CloseTo(_s.Overlay.GoldColor, hex))
+            if (warnGold && UiColor.TryParse(Target.Overlay.GoldColor) is not null && Core.Vision.ColorDistance.CloseTo(Target.Overlay.GoldColor, hex))
                 problems.Add("금테와 비슷함: 금색 테두리가 잘 보이지 않을 수 있습니다");
             warn.Text = string.Join(" · ", problems);
             warn.Visibility = problems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -709,6 +723,9 @@ public partial class SettingsWindow : Window
         var cur = s.ActiveCharacter is { } k && s.Characters.TryGetValue(k, out var found) ? found : null;
         string? pickedClass = cur?.Class;
         bool sync = false;
+        // ★ favourites (user, 2026-11-13): a class starred itself; a 직업각인 starred, or its class.
+        cls.ItemTemplate = StarTemplate(c => s.FavoriteClasses.Contains(c));
+        sub.ItemTemplate = StarTemplate(v => pickedClass is { } c && ClassPicker.Starred(Settings.CharacterKey(c, v), s.FavoriteClasses));
 
         // 직업군 headings are items that can't be picked.
         var items = new List<object> { Default };

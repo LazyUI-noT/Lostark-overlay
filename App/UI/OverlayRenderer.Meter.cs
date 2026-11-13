@@ -350,11 +350,11 @@ public sealed partial class OverlayRenderer
     /// <summary>버프 적용률: the share of my damage dealt while each of my three buffs was on (TimelineView's colours); with two
     /// or more dealers sharing, 버프 분배 instead: each buff's bar is 100% of the damage dealt under it, split by dealer (who
     /// made the most of it). A note while the buff row isn't read (설정 → 버프 off). Under the buff lock: 공증's row only, its
-    /// figure and bar capped at 85% (BuffLock).</summary>
+    /// figure and bar capped at the fight's cap (BuffLock.CapFor).</summary>
     void MeterBuffBars(DrawingContext dc, Rect r, MeterView? v)
     {
         double each = r.Height / BuffBarCount, font = each * 0.75, label = r.Width * 0.3;
-        bool locked = v?.BuffLocked == true;
+        double? cap = v?.BuffCap;
         if (v?.BuffSplit is { } split) { MeterBuffSplit(dc, r, v, split, each, font, label); return; }
         // A 4-man raid: the party's share (boss HP lost under the buff) in brackets after mine; a support sees the party's alone.
         var party = v?.BuffParty;
@@ -368,9 +368,9 @@ public sealed partial class OverlayRenderer
             MeterText(dc, new(r.X, y), name, font, 0.8);
             var bar = new Rect(r.X + label, y + each * 0.15, Math.Max(0, r.Width - label - text), each * 0.7);
             dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, bar);
-            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * BuffLock.Bar(share, locked) });
-            string figure = !mine ? $"({BuffLock.Figure(share, locked)})"
-                : party is not null && i < party.Count ? $"{BuffLock.Figure(share, locked)} ({BuffLock.Figure(party[i], locked)})" : BuffLock.Figure(share, locked);
+            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * BuffLock.Bar(share, cap) });
+            string figure = !mine ? $"({BuffLock.Figure(share, cap)})"
+                : party is not null && i < party.Count ? $"{BuffLock.Figure(share, cap)} ({BuffLock.Figure(party[i], cap)})" : BuffLock.Figure(share, cap);
             MeterTextRight(dc, new(r.Right, y), figure, font, 0.9);
         }
     }

@@ -5,7 +5,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>줄 수 창 켜기, 빛날 때만 표시 and the glow rules per profile · class (class-profiles.plan.md E, phase 3).</summary>
+/// <summary>줄 수 창 켜기, 빛날 때만 표시 and the glow rules per profile (class-profiles.plan.md E; one per profile, not per class, since 2026-11-14).</summary>
 public class RaidShowTests
 {
     const string Lone = "워로드 · 고독한기사", Combat = "워로드 · 전투태세";
@@ -79,14 +79,12 @@ public class RaidShowTests
     }
 
     [Fact]
-    public void Class_switch_changes_count_read()
+    public void Class_switch_keeps_count_read()   // one per profile since 2026-11-14 (RaidPerProfileTests)
     {
         var s = Playing(Lone);
         (s.Raids.CountEnabled, s.Raids.GlowSeconds) = (false, 45);
 
         Go(s, Combat);
-        Assert.Equal((true, 20), (s.Raids.CountEnabled, s.Raids.GlowSeconds));   // the shared one
-        Go(s, Lone);
         Assert.Equal((false, 45), (s.Raids.CountEnabled, s.Raids.GlowSeconds));
     }
 

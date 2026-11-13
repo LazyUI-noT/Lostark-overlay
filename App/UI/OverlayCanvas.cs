@@ -27,7 +27,8 @@ public sealed partial class OverlayCanvas : Border
     /// <summary>Said when a box of a member drawn from a received layout is grabbed: it can't move.</summary>
     public const string ReceivedNote = "이 파티원은 보내 준 칸 배치 그대로 그려집니다. 직접 옮기려면 파티 공유 → 보내기·받기에서 '배치 받기'를 끄세요.";
 
-    readonly Settings _s;
+    readonly Settings _live;
+    Settings _s;   // what the windows draw and drags write: the live settings or 편집 중's copy (SetEdit)
     readonly CharacterService _chars;
     readonly Canvas _world = new();
     readonly System.Windows.Controls.Image _shot = new() { Stretch = Stretch.Fill };   // placed by ShowPicture
@@ -66,7 +67,7 @@ public sealed partial class OverlayCanvas : Border
     /// <param name="scene">설정 → 기능 Map's read-only scene (OverlayCanvas.Scene.cs): <paramref name="live"/> is then a copy.</param>
     public OverlayCanvas(Settings live, CharacterService chars, bool scene = false)
     {
-        (_s, _chars, _scene) = (live, chars, scene);
+        (_s, _live, _chars, _scene) = (live, live, chars, scene);
         ClipToBounds = true;
         Focusable = true;   // arrow keys nudge the pick
         Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x1B, 0x1F));
@@ -142,13 +143,13 @@ public sealed partial class OverlayCanvas : Border
 
     /// <summary>꺼진 창: windows that are off in 설정 are drawn faint (on), or not at all and not pickable (off). Not saved.</summary>
     public bool ShowOff { get => _showOff; set { _showOff = value; Relayout(); } }
-    public bool Snap { get => _s.Overlay.LayoutSnap; set => _s.Overlay.LayoutSnap = value; }
+    public bool Snap { get => _live.Overlay.LayoutSnap; set => _live.Overlay.LayoutSnap = value; }
 
     /// <summary>칸 하나씩: a drag, nudge or Ctrl+arrow on a 내 스킬창 box moves or sizes that box, not the window (<see cref="BoxDragRule"/>; not saved).</summary>
     public bool BoxesApart { get; set; }
 
     bool MovesBox(OverlayRenderer r) => BoxDragRule.MovesBox(r == _mine, BoxesApart);
-    public bool LinkSizes { get => _s.Overlay.LayoutLinkSizes; set => _s.Overlay.LayoutLinkSizes = value; }
+    public bool LinkSizes { get => _live.Overlay.LayoutLinkSizes; set => _live.Overlay.LayoutLinkSizes = value; }
 
     OverlayRenderer Renderer(int peer, bool buffs)
     {
@@ -167,6 +168,17 @@ public sealed partial class OverlayCanvas : Border
         _mine.SetTarget(target);
         _gauge.SetTarget(target);   // the gauge window draws the pick's bar too
         ShowSample();
+    }
+
+    /// <summary>Draws and drags the windows of <paramref name="target"/>: 편집 중's copy (<see cref="Settings.EditTarget"/>,
+    /// which shares the live 버프 막대 and party windows) or the live settings (edit-follows-pick.plan.md, phase 4).</summary>
+    public void SetEdit(Settings target)
+    {
+        if (ReferenceEquals(target, _s)) return;
+        ReleaseMouseCapture();   // a drag must not carry on into another 직업각인's spots
+        _s = target;
+        foreach (var r in _world.Children.OfType<OverlayRenderer>()) r.Settings = target;
+        Relayout();
     }
 
     /// <summary>Every box in a state worth judging (some ready, some cooling), frozen; again after the class changes.</summary>

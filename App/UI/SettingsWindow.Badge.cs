@@ -5,15 +5,16 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>The "프로필 N · 클래스" chip (user, 2026-11-13; <see cref="ProfileBadge"/>): one chip style, shown where
-/// <see cref="ProfileBadge.Of"/> says, refreshed whenever 설정 is rebuilt (a profile or class change). The class is the played
-/// 직업각인 (<see cref="ClassProfiles.LookKey"/>), also when 편집 중 shows another.</summary>
+/// <see cref="ProfileBadge.Of"/> says, refreshed whenever 설정 is rebuilt (a profile or class change) or 편집 중 changes. It
+/// names 편집 중's 직업각인, what 설정 edits (edit-follows-pick.plan.md), not the played one.</summary>
 public partial class SettingsWindow
 {
     const string CardBadgeTag = "ProfileBadge";
+    const string SkillColorsNote = "칸의 색과 효과는 프로필과 상관없이 직업각인마다 저장됩니다.";
     readonly List<(TextBlock Text, bool ProfileOnly)> _badgeTexts = [];
 
-    /// <summary>The badge text for the picked profile and the character played (null class → 기본).</summary>
-    string BadgeText() => ProfileBadge.Text(_s.ActiveProfile, ClassProfiles.LookKey(_s));
+    /// <summary>The badge text for the picked profile and 편집 중 (기본 → 기본).</summary>
+    string BadgeText() => ProfileBadge.Text(_s.ActiveProfile, ShownClass);
 
     string BadgeText(bool profileOnly) => profileOnly ? ProfileBadge.ProfileText(_s.ActiveProfile) : BadgeText();
 
@@ -26,7 +27,7 @@ public partial class SettingsWindow
         _badgeTexts.Add((text, profileOnly));
         var chip = new Border { CornerRadius = new(10), BorderThickness = new(1), Padding = new(10, 2, 10, 3), Child = text, HorizontalAlignment = HorizontalAlignment.Left,
             ToolTip = profileOnly ? "지금 편집하는 프로필입니다. 이 값은 이 프로필의 모든 직업각인이 같이 씁니다."
-                : "지금 편집하는 프로필과 플레이 중인 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
+                : "지금 편집하는 프로필과 편집 중 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
         chip.SetResourceReference(Border.BorderBrushProperty, "AccentTextFillColorPrimaryBrush");
         return chip;
     }
@@ -38,8 +39,9 @@ public partial class SettingsWindow
         var (area, section) = ProfileBadge.Home(look);
         if (ProfileBadge.Of(area, section) != BadgeAt.Section) return new Border();
         var chip = ProfileBadgeChip(profileOnly: look == LookGroup.버프막대);
-        var host = new Border { Child = chip, Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
-        return host;
+        // 스킬창: the boxes' 색과 효과 are the class's (Settings.Classes), not in any profile; one note says so (plan, phase 2).
+        UIElement child = look == LookGroup.스킬칸 ? UiBuild.Stack(chip, UiBuild.Note(SkillColorsNote)) : chip;
+        return new Border { Child = child, Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
     }
 
     /// <summary>The chips under <paramref name="element"/> shown (on a rail page) or hidden (the panel sits in the inspector,

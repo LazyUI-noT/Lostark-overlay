@@ -45,7 +45,7 @@ public partial class SettingsWindow
         string cls = ShownClass;
         _context.Children.Clear();
         _contextNotes.Children.Clear();
-        var pick = _pickCombo = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), cls, PickEntry);
+        var pick = _pickCombo = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), cls, PickEntry, _s.FavoriteClasses);
         pick.MinWidth = 220;
         AutomationProperties.SetName(pick, "편집 중");
         _context.Children.Add(Muted(new TextBlock { Text = "편집 중", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) }));
@@ -58,7 +58,7 @@ public partial class SettingsWindow
             bool starred = _s.FavoriteClasses.Contains(cls);
             var star = new Button { Content = starred ? "★" : "☆", MinWidth = 0, Padding = new(8, 2, 8, 2), Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = starred ? "즐겨찾기에서 빼기" : "즐겨찾는 직업각인: 목록과 트레이 메뉴의 맨 위에 둡니다" };
-            star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); };
+            star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); FillCharacter(); };   // 직업 인식's ★ too
             _context.Children.Add(star);
         }
         if (cls == ClassProfiles.Template)
@@ -234,11 +234,12 @@ public partial class SettingsWindow
         return c;
     }
 
-    /// <summary>An entry picker (기본 and 모든 클래스 named).</summary>
-    static ComboBox PickCombo(IEnumerable<string> classes, string value, Action<string> set)
+    /// <summary>An entry picker (기본 and 모든 클래스 named), the <paramref name="favorites"/> with a yellow ★ (<see cref="StarTemplate"/>).</summary>
+    static ComboBox PickCombo(IEnumerable<string> classes, string value, Action<string> set, IReadOnlyCollection<string> favorites)
     {
         var c = Combo();
-        c.ItemsSource = classes.Select(n => new ComboBoxItem { Content = n == AllClasses ? "모든 직업각인" : ClassName(n), Tag = n }).ToList();
+        var star = StarTemplate(n => ClassPicker.Starred(n, favorites));
+        c.ItemsSource = classes.Select(n => new ComboBoxItem { Content = n == AllClasses ? "모든 직업각인" : ClassName(n), Tag = n, ContentTemplate = star }).ToList();
         c.SelectedItem = c.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == value) ?? c.Items[0];
         c.SelectionChanged += (_, _) => { if (c.SelectedItem is ComboBoxItem { Tag: string v }) set(v); };
         return c;

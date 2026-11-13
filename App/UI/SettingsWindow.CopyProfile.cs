@@ -80,7 +80,7 @@ public partial class SettingsWindow
     /// <summary>A class picker with its 직업 검색, as 편집 중 has.</summary>
     UIElement[] ClassSide(string? current, Action<string> set, string name)
     {
-        var pick = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), current ?? ClassProfiles.Template, set);
+        var pick = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), current ?? ClassProfiles.Template, set, _s.FavoriteClasses);
         return [pick, PickSearch(pick, name)];
     }
 
@@ -111,6 +111,7 @@ public partial class SettingsWindow
         RecordStep();
         if (_s.Copy(r) is not { } undo) return "복사할 수 없습니다.";
         _lastCopy = undo;
+        if (r.ToProfile == _s.ActiveProfile) _copy = null;   // 편집 중's copy is stale: Changed must not keep it over the 복사 (Reload takes a new one)
         Changed();
         if (r.ToProfile == _s.ActiveProfile) ProfileOverwritten?.Invoke();
         return $"프로필 {r.ToProfile + 1}에 복사했습니다.";
@@ -127,6 +128,7 @@ public partial class SettingsWindow
             RecordStep();
             _profileCopyResult = _s.UndoCopy(undo) ? $"프로필 {undo.Profile + 1}을(를) 복사 전으로 되돌렸습니다." : "되돌릴 수 없습니다.";
             _lastCopy = null;
+            if (undo.Profile == _s.ActiveProfile) _copy = null;   // as RunProfileCopy
             Changed();
             if (undo.Profile == _s.ActiveProfile) ProfileOverwritten?.Invoke();
             refill();

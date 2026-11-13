@@ -31,6 +31,7 @@ public partial class App
         var raidGates = RaidData.Load(CharacterService.DefaultProfilesDir);   // 설정 → 레이드's gates and their boss names, read once
         var bossNames = BossName.LoadTemplates(CharacterService.DefaultProfilesDir, raidGates);
         _raidGates = raidGates;
+        var buffCaps = RaidData.LoadBuffCaps(CharacterService.DefaultProfilesDir);   // the buff lock's cap per raid
         // HP 변경 감지: a value raids.json now ships (or a newer one) replaces the learned one.
         if (HpChange.Prune(raidGates, settings.Raids)) debounce.Changed(Clock.Now());
         if (raidGates.Count > 0)   // no raids.json read: Found is empty, and every picture would go
@@ -480,7 +481,8 @@ public partial class App
             // A 4-man raid (the gate by its HP, else the one recognised; any guardian raid): the buffs' party share too.
             bool small = (RaidData.ByHp(HpGates(), status.Boss.Max)?.Gate ?? RaidData.Find(raidGates, _raidSeen))?.SmallParty == true
                 || latest?.Dungeon?.Kind == DungeonKind.Guardian;
-            var view = BuffLock.Apply(MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small, latest?.Daenantu == true), BuffUnlock.Locked)
+            var view = BuffLock.Apply(MeterView.Build(status, role, PartyName(), characters.ClassId, samples, me, host, settings.Meter, meterHistory, Clock.Now(), myParty, meterAlign, latest?.Buffs, small, latest?.Daenantu == true),
+                BuffUnlock.Locked ? BuffLock.CapFor(HpGates(), buffCaps, status.Boss.Max, RaidData.Find(raidGates, _raidSeen), latest?.Dungeon?.Difficulty) : null)
                 with { BossName = HeaderBoss(status.Boss.Max), Skill = MeterSkill.Line(settings, ClassProfiles.ActiveKey(settings), meterHistory, status.Clock.Timer, s => KeyNames.OfSlot(settings, s)),
                     Ghost = CompareGhost(status.Boss.Max) };
             long bossTaken = view.BossTaken;
