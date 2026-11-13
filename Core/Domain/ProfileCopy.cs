@@ -10,8 +10,9 @@ public sealed record CopyRequest(CopyMode Mode, int FromProfile, string? FromCla
     IReadOnlySet<LookGroup> Looks, bool ClassOnly);
 
 /// <summary>What 되돌리기 puts back: the whole profile (<paramref name="ClassKey"/> null: ① ③), the shared entry alone (<see cref="ProfileCopy.SharedKey"/>: ② into 기본) or one class's entry
-/// (and its 게이지 bars and 아덴 boxes when <paramref name="GaugeBefore"/> and <paramref name="AdenBefore"/> are set), as JSON; "null" JSON means it was absent.</summary>
-public sealed record CopyUndo(int Profile, string? ClassKey, byte[] Before, byte[]? GaugeBefore, byte[]? AdenBefore = null);
+/// (and its 게이지 bars and 아덴 boxes when <paramref name="GaugeBefore"/> and <paramref name="AdenBefore"/> are set), as JSON; "null" JSON means it was absent.
+/// <paramref name="BuffsBefore"/>: the profile's shared entry before a ② that carried 버프 막대, whose buff fields go back to every class.</summary>
+public sealed record CopyUndo(int Profile, string? ClassKey, byte[] Before, byte[]? GaugeBefore, byte[]? AdenBefore = null, byte[]? BuffsBefore = null);
 
 /// <summary>The rules and texts of 복사 (the work is <see cref="Settings.Copy"/>).</summary>
 public static class ProfileCopy

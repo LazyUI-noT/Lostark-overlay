@@ -85,6 +85,23 @@ public class BuffPerProfileTests
     }
 
     [Fact]
+    public void Undoing_a_buff_copy_keeps_edits_made_after_it()
+    {
+        var s = Playing(Lone);
+        s.Buffs.Edit(BuffKind.공증).Color = "#AAAAAA";
+        s.SwitchProfile(1);
+        Go(s, Combat);
+        var undo = s.Copy(new(CopyMode.ClassToClass, 0, Lone, 1, Lone, new HashSet<LookGroup> { LookGroup.버프막대 }, false));
+
+        s.Overlay.Left = 900;   // an edit after the copy, outside 버프 막대
+        Assert.True(s.UndoCopy(undo!));
+
+        Assert.Equal(900, s.Overlay.Left);
+        Assert.NotEqual("#AAAAAA", s.Buffs.Of(BuffKind.공증).Color);
+        Assert.All(s.Profiles[1].Entries(), e => Assert.NotEqual("#AAAAAA", e.BuffLook?.Bars.GetValueOrDefault(BuffKind.공증)?.Color));
+    }
+
+    [Fact]
     public void A_file_with_buffs_per_class_loads_with_the_profiles_shared_ones()
     {
         var s = new Settings();

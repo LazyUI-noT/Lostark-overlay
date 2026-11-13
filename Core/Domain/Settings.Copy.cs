@@ -47,9 +47,10 @@ public sealed partial class Settings
         var s = this;
         var source = from.EntryOf(fromClass);
         var classOnly = r.ClassOnly && ProfileCopy.ClassOnlyAllowed(r);
-        // 버프 막대 is one per profile: it reaches every class of the target, so 되돌리기 puts the whole profile back.
+        // 버프 막대 is one per profile: it reaches every class of the target, so 되돌리기 puts the profile's buff fields back
+        // (only those: other edits made after the copy stay).
         var buffs = r.Looks.Contains(LookGroup.버프막대);
-        var whole = buffs ? new CopyUndo(r.ToProfile, null, Bytes(to), null) : null;
+        var buffsBefore = buffs ? Bytes<ProfileEntry>(to) : null;
         to.Classes ??= [];
         to.GaugeBars ??= [];
         CopyUndo undo;
@@ -80,7 +81,7 @@ public sealed partial class Settings
             if (from.Aden?.GetValueOrDefault(ClassProfiles.ShownKey(s, fromClass!)) is { } adenShow) to.Aden![shown] = adenShow;
             else to.Aden!.Remove(shown);
         }
-        return whole ?? undo;
+        return undo with { BuffsBefore = buffsBefore };
     }
 
     /// <summary>The chosen looks of <paramref name="source"/> into <paramref name="target"/> (via a scratch <see cref="Settings"/>,
@@ -141,6 +142,11 @@ public sealed partial class Settings
                 if (Read<AdenShow?>(u.AdenBefore) is { } aden) p.Aden[shown] = aden;
                 else p.Aden.Remove(shown);
             }
+        }
+        if (u.BuffsBefore is not null && Read<ProfileEntry>(u.BuffsBefore) is { } buffs)
+        {
+            p.TakeBuffs(buffs);
+            p.ShareBuffs();
         }
         if (u.Profile == ActiveProfile) PutOn(p);
         return true;
