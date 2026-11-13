@@ -2,8 +2,16 @@ using System.Text.Json.Serialization;
 
 namespace GaugeOverlay.Core.Domain;
 
-public sealed class GaugeStyle
+/// <summary>The gauge's colours and 두께, and (under 따로) its own window: <see cref="Left"/>/<see cref="Top"/> NaN = never placed
+/// (drawn where the plate had it), <see cref="Width"/> the length scale, <see cref="Height"/> the thickness scale,
+/// <see cref="Upright"/> filling from the bottom (class-profiles.plan.md "합쳐서 / 따로").</summary>
+public sealed class GaugeStyle : IWindowPlace
 {
+    public double Left { get; set; } = double.NaN;
+    public double Top { get; set; } = double.NaN;
+    public double Width { get; set; } = 1.0;
+    public double Height { get; set; } = 1.0;
+    public bool Upright { get; set; }
     public string Fill { get; set; } = "#1E9BE6";
     public string Empty { get; set; } = "#3A3A3A";
     public double Thickness { get; set; } = 6;

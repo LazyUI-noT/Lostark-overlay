@@ -91,6 +91,7 @@ public partial class App : Application
     CharacterService _characters = null!;
     OverlayWindow _overlay = null!;
     OverlayWindow[] _peers = [];   // one per party slot
+    OverlayWindow _gauge = null!;  // 따로: your 아덴 게이지 on its own
     OverlayWindow _buffs = null!;  // 버프 막대 따로 두기: your buff bars on their own
     OverlayWindow _debuffs = null!;   // 디버프: the chosen raid's debuffs and the swap count
     OverlayWindow _judgment = null!;   // 단심 (설정 → 기타): 심판's cycle
@@ -105,7 +106,8 @@ public partial class App : Application
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
     string? _raidSeen;   // the gate 자동 인식 recognises now
     /// <summary>The windows besides yours that follow it: the party slots and the buff bars'.</summary>
-    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _debuffs, _judgment, _amsu, _raid, _meter];
+    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _meter];
+    bool AnyDragging => _overlay.Dragging || Others.Any(w => w.Dragging);
     SettingsWindow _settingsWindow = null!;
     AdjustLayer _layer = null!;
     Tray _tray = null!;
@@ -137,6 +139,7 @@ public partial class App : Application
         _overlay = new OverlayWindow(settings);
         _peers = [.. Enumerable.Range(0, Membership.PartySize - 1).Select(i => new OverlayWindow(settings, i))];
         _buffs = new OverlayWindow(settings, buffs: true);
+        _gauge = new OverlayWindow(settings, gauge: true);
         _debuffs = new OverlayWindow(settings, debuffs: true);
         _judgment = new OverlayWindow(settings, judgment: true);
         _amsu = new OverlayWindow(settings, amsu: true);
@@ -223,12 +226,12 @@ public partial class App : Application
     /// <summary>오버레이 프로필 (hotkey, tray): the windows go to that profile's spots and sizes, and it is saved.</summary>
     void SwitchProfile(int profile)
     {
-        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 위치 프로필을 씁니다. 끄면 전에 쓰던 위치 프로필로 돌아갑니다."); return; }
+        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 프로필을 씁니다. 끄면 전에 쓰던 프로필로 돌아갑니다."); return; }
         // mid-drag, the drop would land in the other profile's spots
-        if (profile == _settings.ActiveProfile || _overlay.Dragging || Others.Any(w => w.Dragging)) return;
+        if (profile == _settings.ActiveProfile || AnyDragging) return;
         _settings.SwitchProfile(profile);
         ApplyProfile();
-        _tray.Notify($"위치 프로필 {profile + 1}");
+        _tray.Notify($"프로필 {profile + 1}");
     }
 
     /// <summary>The windows go to the active profile's spots and sizes (after a switch, or a copy into it from 설정 → 복사).</summary>
@@ -336,6 +339,8 @@ public partial class App : Application
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
         _buffs.Visibility = _settings.Buffs.Detached ? _overlay.Visibility : Visibility.Hidden;
+        _gauge.Visibility = _settings.Apart ? _overlay.Visibility : Visibility.Hidden;
+        _gauge.PlaceAtHome(_overlay);
         _debuffs.Visibility = _settings.Raids.DebuffShown(_settings.Debuffs) ? _overlay.Visibility : Visibility.Hidden;
         bool placing = _overlay.EditMode;   // 편집 모드: shown to be placed, read or not (설정 places on its canvas)
         _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;

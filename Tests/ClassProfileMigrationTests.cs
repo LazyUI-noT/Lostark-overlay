@@ -257,7 +257,7 @@ public class ClassProfileMigrationTests
     static void Go(Settings s, string key)
     {
         s.ActiveCharacter = key;
-        s.SyncPlace();
+        s.SyncClass();
     }
 
     /// <summary>Old settings: 전투태세 is 개별 with its own spot (500) and 고독한기사 follows the class (100), in two 프로필.</summary>
@@ -266,7 +266,7 @@ public class ClassProfileMigrationTests
         var s = Playing(Lone);
         ClassProfiles.SetOwn(s, Combat, true);
         Place(s, 100, 1.0);
-        s.SyncPlace();
+        s.SyncClass();
         Go(s, Combat);
         Place(s, 500, 1.4);
         Go(s, Lone);
@@ -315,9 +315,9 @@ public class ClassProfileMigrationTests
     {
         var s = Playing(Lone);
         Place(s, 100, 1.0);
-        s.SyncPlace();
+        s.SyncClass();
         ClassProfileMigration.EnsureOwn(s, Shipped);
-        s.SyncPlace();
+        s.SyncClass();
         Assert.Equal((100, 1.0), Spot(s));
         Go(s, Combat);   // placed for the first time: starts where the window is
         Assert.Equal((100, 1.0), Spot(s));

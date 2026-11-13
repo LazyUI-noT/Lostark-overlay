@@ -115,4 +115,16 @@ public class SettingsResetsTests
         Assert.Empty(s.Debuffs.Boxes);
         Assert.Equal((true, 200, 50.0, 1.0), (s.Judgment.On("워로드 · 고독한 기사"), s.Judgment.FontSize, s.Judgment.Left, s.Judgment.Opacity));
     }
+
+    [Fact]
+    public void Gauge_reset_keeps_the_gauge_window_place_and_upright()
+    {
+        var s = new Settings();
+        (s.Gauge.Left, s.Gauge.Top, s.Gauge.Width, s.Gauge.Upright, s.Gauge.Fill) = (10, 20, 1.5, true, "#FF0000");
+
+        SettingsResets.Gauge(s);
+
+        Assert.Equal((10, 20, 1.5, true), (s.Gauge.Left, s.Gauge.Top, s.Gauge.Width, s.Gauge.Upright));
+        Assert.Equal(new GaugeStyle().Fill, s.Gauge.Fill);
+    }
 }

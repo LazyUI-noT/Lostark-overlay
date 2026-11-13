@@ -11,6 +11,7 @@ public static class SettingsPreview
     public static IReadOnlyList<OverlayPart> PartsOf(string area, string? section) => area switch
     {
         "스킬창" => [OverlayPart.Skills, OverlayPart.Gauge],
+        "아덴 게이지" => [OverlayPart.Gauge],
         "버프 줄" => [OverlayPart.Buffs],
         "단심" => [OverlayPart.Judgment],
         "암수" => [OverlayPart.Amsu],

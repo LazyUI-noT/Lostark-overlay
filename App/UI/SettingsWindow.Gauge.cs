@@ -24,12 +24,15 @@ public partial class SettingsWindow
     {
         var g = _s.Gauge;
         var p = new CardStack();
-        p.Children.Add(Heading("아덴 게이지", first: true, help: "아덴 게이지를 읽는 직업각인은 오버레이 위쪽에 막대로 보여 줍니다."));
+        p.Children.Add(CardBadge(LookGroup.게이지));   // covers the switch and the look below it
         if (!(_chars.ActiveClass is { } cls && _chars.Active is { } c && cls.Subclasses.GetValueOrDefault(c.Subclass) is not null))
             p.Children.Add(Note("지금 직업각인은 아덴 게이지를 읽지 않습니다."));
         else if (_chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
-        p.Children.Add(ShareMark(LookGroup.게이지, FillGauge));
+        p.Children.Add(ApartRow());   // outside the look group: 모든 프로필에 적용 doesn't copy it
+        foreach (var e in ApartOnly(Defaulted(HelpRow("세로", "막대를 세워 아래에서 위로 채웁니다. 구분선도 가로로 눕습니다.", Check("세로", g.Upright, v => g.Upright = v, Changed)),
+            s => s.Gauge.Upright, (s, v) => s.Gauge.Upright = v), "합쳐서에서는 가로로 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
+        if (_s.Apart) p.Children.Add(Note("길이와 두께: 화면에서 테두리를 끌거나 Ctrl+화살표로 바꿉니다."));
         p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));
         p.Children.Add(SliderRow("두께", 2, 16, g.Thickness, 1, v => $"{v:0} px", v => g.Thickness = v, Changed, "두꺼워지면 위쪽으로 늘어나고, 아래 칸의 위치는 그대로입니다."));

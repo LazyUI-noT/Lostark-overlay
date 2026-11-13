@@ -164,6 +164,7 @@ public partial class SettingsWindow : Window
         try { FillSections(); }
         finally { StopCollecting(); }
         ShowProfileButtons();
+        RefreshBadges();
         ShowCanvasShot();   // the profile may be another one
         _canvas?.Relayout();   // the windows as the settings now say (a raid picked in the tray, another profile)
         RefreshInspector();
@@ -181,6 +182,7 @@ public partial class SettingsWindow : Window
         FillFit();
         FillDetect();
         FillDisplay();
+        FillApart();
         Collect(GaugeBox);
         FillGauge();
         FillConnect();
@@ -192,6 +194,7 @@ public partial class SettingsWindow : Window
         FillApi();
         FillWarnings();
         FillRaid();
+        FillRaidCount();
         FillMeter();
         FillShow();
         FillScreens();
@@ -411,9 +414,8 @@ public partial class SettingsWindow : Window
     void FillDisplay()
     {
         var o = _s.Overlay;
-        var p = Refill(_secDisplay, "전체");
+        var p = Refill(_secDisplay, "배경판");
         UIElement? opacityRow = null;   // 오버레이 표시 and 스킬창이 안 보이면 숨기기: 설정 → 기능 Map (FillShow)
-        p.Children.Add(ShareMark(LookGroup.판, FillDisplay));
         p.Children.Add(Check("배경판", o.ShowPlate,
             v => { o.ShowPlate = v; opacityRow!.Visibility = Shown(v); }, Changed, "내 오버레이와 파티원 창 뒤에 깔리는 배경판입니다. 분리된 버프 창에는 배경판이 없습니다."));
         p.Children.Add(opacityRow = SliderRow("배경판 불투명도", 0.3, 1, o.Opacity, 0.05, v => $"{v * 100:0}%", v => o.Opacity = v, Changed));
@@ -422,7 +424,7 @@ public partial class SettingsWindow : Window
 
         // 칸 모양: how every box shows its cooldown, 초각스, 금테 (the skill inspector)
         p = Refill(_secSkillLook, "칸 모양");
-        p.Children.Add(ShareMark(LookGroup.스킬칸, FillDisplay));
+        p.Children.Add(CardBadge(LookGroup.스킬칸));
         p.Children.Add(DefaultedCheck(Check("스킬창 읽기", o.SkillRead, v => o.SkillRead = v, Changed,
             "끄면 스킬 쿨을 읽지 않습니다. 쿨타임, 타임라인의 스킬 아이콘, 파티로 보내기가 모두 멈춥니다. 켜 둔 채 스킬 칸만 숨기면 타임라인에 쓰려고 계속 읽습니다."),
             s => s.Overlay.SkillRead, (s, v) => s.Overlay.SkillRead = v));
@@ -472,6 +474,7 @@ public partial class SettingsWindow : Window
     {
         var b = _s.Buffs;
         var p = Refill(_secBuffs, "버프", "내 버프 줄에서 공증, 아덴 피증, 초각스 피증, 초각성기 뎀증을 찾아 남은 시간을 막대로 보여 줍니다. 파티원에게는 보내지 않습니다. 모두 끄면 버프 줄을 읽지 않습니다.");
+        p.Children.Add(CardBadge(LookGroup.버프막대));
         _buffHeads.Clear();
         _debuffHeads.Clear();
         p.Children.Add(Defaulted(HelpRow("모든 버프", "버프 막대 모두에 적용됩니다. 막대마다는 아래에서 켜기 / 끄기만 고릅니다.", BuffAutoCheck()),
@@ -482,9 +485,9 @@ public partial class SettingsWindow : Window
             "버프 줄 오른쪽 끝에서부터 몇 칸을 읽을지 정합니다. 이보다 왼쪽에 뜬 버프는 못 읽습니다. 버프가 많이 뜨면 늘리세요. 칸이 늘수록 CPU를 조금 더 씁니다. " +
             "게임은 한 줄에 들어가는 만큼만 그리고 나머지는 '+숫자' 아이콘으로 접습니다 (1080p 버프 크기 120%에서 10칸, 100%에서 14칸쯤). 그보다 많이 읽어도 더 찾지 못합니다."),
             s => s.Buffs.Count, (s, v) => s.Buffs.Count = v));
-        p.Children.Add(ShareMark(LookGroup.버프막대, FillBuffs));   // below the read row, which it doesn't cover (user, 2026-11-11)
-        p.Children.Add(Defaulted(HelpRow("위치", "분리된 창: 버프 막대가 오버레이 배경판에서 빠져 자기 창에 그려집니다. 편집 모드에서 그 창을 끌어 옮기거나 오른쪽 아래 모서리로 크기를 바꿉니다. " + "세로: 막대를 세워 옆으로 나란히 둡니다 (배경판과 함께면 배경판 왼쪽 바깥). 끄면 눕혀서 위아래로 쌓습니다 (배경판과 함께면 칸 아래에 두 개씩).", Check("분리 창", b.Detached, v => b.Detached = v, Changed), Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)),
-            s => (s.Buffs.Detached, s.Buffs.Side), (s, v) => (s.Buffs.Detached, s.Buffs.Side) = v));
+        p.Children.Add(ApartRow());
+        foreach (var e in ApartOnly(Defaulted(HelpRow("세로", "막대를 세워 옆으로 나란히 둡니다. 끄면 눕혀서 위아래로 쌓습니다.", Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)),
+            s => s.Buffs.Side, (s, v) => s.Buffs.Side = v), "합쳐서에서는 눕혀서 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
         p.Children.Add(Defaulted(Row("움직임", Check("유지시간 비례 감소", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")), s => s.Buffs.Drain, (s, v) => s.Buffs.Drain = v));
         p.Children.Add(Defaulted(Row("비었을 때", Check("끊긴 버프 막대 숨김", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
             "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 움직이지 않습니다. 편집 모드와 미리보기에서는 옮길 수 있게 흐리게 보입니다.")), s => s.Buffs.HideWhenEmpty, (s, v) => s.Buffs.HideWhenEmpty = v));
@@ -531,7 +534,7 @@ public partial class SettingsWindow : Window
         var b = _s.Buffs;
         var i = b.Of(k);
         // Of (not Edit) in the getters: it reads the shared defaults without adding an entry to them.
-        return [Defaulted(SliderRow(indent + "두께", BarSizes.MinThickness, BarSizes.MaxThickness, i.Thickness, 0.25, v => $"{v * 100:0}%", v => b.Edit(k).Thickness = v, Changed, "두께는 모든 위치 프로필에 적용됩니다. 막대 길이는 내 오버레이 화면에서 막대 끝(가로는 오른쪽, 세로는 위)을 끌어 바꿉니다. 자유 배치에서는 칸의 모서리를 끕니다."),
+        return [Defaulted(SliderRow(indent + "두께", BarSizes.MinThickness, BarSizes.MaxThickness, i.Thickness, 0.25, v => $"{v * 100:0}%", v => b.Edit(k).Thickness = v, Changed, "두께는 모든 프로필에 적용됩니다. 막대 길이는 내 오버레이 화면에서 막대 끝(가로는 오른쪽, 세로는 위)을 끌어 바꿉니다. 자유 배치에서는 칸의 모서리를 끕니다."),
                 s => s.Buffs.Of(k).Thickness, (s, v) => s.Buffs.Edit(k).Thickness = v)];
     }
 
@@ -578,10 +581,10 @@ public partial class SettingsWindow : Window
         (Func<string>, Action<string>)[] profiles = [(() => h.Profile1, v => h.Profile1 = v), (() => h.Profile2, v => h.Profile2 = v),
             (() => h.Profile3, v => h.Profile3 = v), (() => h.Profile4, v => h.Profile4 = v), (() => h.Profile5, v => h.Profile5 = v)];
         for (int i = 0; i < profiles.Length; i++)
-            p.Children.Add(Clearable($"위치 프로필 {i + 1}", $"Profile{i + 1}", profiles[i].Item1, profiles[i].Item2));
+            p.Children.Add(Clearable($"프로필 {i + 1}", $"Profile{i + 1}", profiles[i].Item1, profiles[i].Item2));
         p.Children.Add(clash);
         Mark();
-        p.Children.Add(ResetButton("기본값", "단축키를 기본값으로 되돌립니다. 위치 프로필 단축키는 지워집니다.", () => SettingsResets.Hotkeys(_s)));
+        p.Children.Add(ResetButton("기본값", "단축키를 기본값으로 되돌립니다. 프로필 단축키는 지워집니다.", () => SettingsResets.Hotkeys(_s)));
     }
 
     /// <summary>Inline two-step confirm (no modal): the first click relabels the button, a second click within

@@ -159,10 +159,11 @@ public class RaidSettingsTests
     public void The_windows_shown_follow_the_switches()
     {
         var s = new Settings();
-        Assert.False(s.Raids.CountShown());
+        Assert.True(s.Raids.CountShown());   // the main switch alone, no gate row needed
+        Assert.True(s.Raids.CountOn("act3-g3"));
         Assert.True(s.Raids.DebuffShown(s.Debuffs));   // 디버프 창 자동
-        s.Raids.Gate("act3-g3").CountWindow = true;
-        Assert.True(s.Raids.CountShown());
+        s.Raids.CountEnabled = false;
+        Assert.False(s.Raids.CountShown());
         s.Raids.DebuffsAuto = false;
         Assert.False(s.Raids.DebuffShown(s.Debuffs));
         s.Debuffs.Raid = Raid.모르둠;   // picked in the tray
@@ -180,6 +181,22 @@ public class RaidSettingsTests
         var back = RoundTrip(s).Raids;
         Assert.False(back.CountEnabled);
         Assert.True(back.Gate("act3-g3").CountWindow);
+    }
+
+    [Fact]
+    public void Only_when_glowing_hides_a_status_that_is_not_glowing()
+    {
+        var quiet = new RaidStatus(null, 700, false);
+        var glowing = quiet with { Glow = true };
+        var r = new RaidSettings();
+        Assert.Equal(quiet, r.Shown(quiet));   // off by default
+        r.OnlyWhenGlowing = true;
+        Assert.Null(r.Shown(quiet));
+        Assert.Equal(glowing, r.Shown(glowing));
+        Assert.Null(r.Shown(null));
+        Assert.True(RoundTrip(new Settings { Raids = r }).Raids.OnlyWhenGlowing);
+        r.Glow = false;   // 빛나기 off: nothing ever glows, so 빛날 때만 표시 (greyed out) must not hide the window
+        Assert.Equal(quiet, r.Shown(quiet));
     }
 
     [Fact]

@@ -68,8 +68,8 @@ public sealed class Tray : IDisposable
         // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
         _test.DropDownItems.Add(_testFront);
         _test.DropDownOpening += (_, _) => TestMenuOpening?.Invoke();
-        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"위치 프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
-        _profiles = new ToolStripMenuItem("위치 프로필");
+        _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
+        _profiles = new ToolStripMenuItem("프로필");
         _profiles.DropDownItems.AddRange(_profileItems);
         _parts = new ToolStripMenuItem("기능 맵");
         foreach (var (part, name) in PartNames)
@@ -179,8 +179,17 @@ public sealed class Tray : IDisposable
     /// <summary>Checkmark on the active 오버레이 프로필.</summary>
     public void SetProfile(int active)
     {
-        for (int i = 0; i < _profileItems.Length; i++) _profileItems[i].Checked = i == active;
+        for (int i = 0; i < _profileItems.Length; i++)
+        {
+            _profileItems[i].Checked = i == active;
+            _profileItems[i].Font = i == active ? (_boldFont ??= new Font(_menu.Font, FontStyle.Bold)) : _menu.Font;
+        }
+        _profile = active;
+        if (_icon is not null) { UpdateIcon(); _icon.Text = $"GaugeOverlay · 프로필 {active + 1}"; }
     }
+
+    int _profile;
+    Font? _boldFont;
 
     /// <summary>The 레이드 line: 자동 with what it recognises now (<paramref name="seen"/>, a gate id), or the gate picked by hand;
     /// the gates are listed under 자동 인식 the first time they are known.</summary>
@@ -322,12 +331,12 @@ public sealed class Tray : IDisposable
     void UpdateIcon()
     {
         var old = _icon.Icon;
-        _icon.Icon = Draw(SystemInformation.SmallIconSize.Width, !_gameRunning, _partyActive);
+        _icon.Icon = Draw(SystemInformation.SmallIconSize.Width, !_gameRunning, _partyActive, _profile + 1);
         old?.Dispose();
     }
 
     /// <summary>A tiny version of the overlay: 각성기 column, 2×2 skills, 아덴 column.</summary>
-    static Icon Draw(int n, bool dimmed, bool dot)
+    static Icon Draw(int n, bool dimmed, bool dot, int profile)
     {
         using var bmp = new Bitmap(n, n);
         using (var g = Graphics.FromImage(bmp))
@@ -344,6 +353,12 @@ public sealed class Tray : IDisposable
             Box(C(255, 107, 112), 5, 8.5f, 3, 4.5f);
             Box(C(110, 40, 44), 9, 8.5f, 3, 4.5f);
             Box(C(128, 152, 255), 13, 3, 2, 10);
+            // The picked profile's number, bottom left on a dark tile.
+            using (var tile = new SolidBrush(Color.FromArgb(235, 12, 13, 16)))
+                g.FillRectangle(tile, 0, 8 * u, 8 * u, 8 * u);
+            using (var font = new Font("Segoe UI", 8 * u * 0.9f, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var ink = new SolidBrush(dimmed ? Color.FromArgb(170, 170, 170) : Color.White))
+                g.DrawString(profile.ToString(), font, ink, -0.5f * u, 7.5f * u);
             if (dot)
             {
                 using var ring = new SolidBrush(Color.FromArgb(12, 13, 16));
@@ -372,6 +387,7 @@ public sealed class Tray : IDisposable
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemColors;
         _icon.Visible = false;
         _icon.Icon?.Dispose();
+        _boldFont?.Dispose();
         _icon.Dispose();
         _menu.Dispose();
         _bold.Dispose();

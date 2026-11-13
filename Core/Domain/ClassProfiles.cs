@@ -24,7 +24,8 @@ public enum CopyParts
     /// <summary>쿨 진행 표시 (style and direction together) and 남은 쿨 (초): 나 → 나 only, unticked by default.</summary>
     Progress = 32, Timer = 64,
     /// <summary>아덴: 아덴스킬, its two slots' 숨길 칸 and the 아덴 게이지, apart from <see cref="Display"/> (user, 2026-11-12), so
-    /// a 표시 copied from a class with no 아덴 doesn't turn it off everywhere. Unticked by default.</summary>
+    /// a 표시 copied from a class with no 아덴 doesn't turn it off everywhere. Unticked by default. It changes the active profile's boxes
+    /// (<see cref="OverlayProfile.Aden"/> keeps one set per profile); the 복사 page's 클래스 전용 copies them between profiles.</summary>
     Aden = 128,
 }
 
@@ -202,6 +203,17 @@ public static class ClassProfiles
     /// 개별, else its class; null with no class.</summary>
     public static string? ActiveKey(Settings s) =>
         s.ActiveCharacter is { } k && IsOwn(s, k) && ActiveClass(s) is not null && k.Contains(SubclassSeparator) ? k : ActiveClass(s);
+
+    /// <summary>The 클래스 · 직업각인 whose places and looks the active profile shows (<see cref="Settings.SyncClass"/>): the
+    /// active character's key when its class and 직업각인 are known, 개별 or not; else null (the profile's shared ones).</summary>
+    public static string? LookKey(Settings s) =>
+        s.ActiveCharacter is { } k && s.Characters.TryGetValue(k, out var c) && c.Class.Length > 0 && c.Subclass.Length > 0
+            ? Settings.CharacterKey(c.Class, c.Subclass) : null;
+
+    /// <summary>The key of the <see cref="ClassSettings"/> entry whose boxes <paramref name="classKey"/> draws: its own when 개별, else
+    /// its class's, else 기본.</summary>
+    public static string ShownKey(Settings s, string classKey) =>
+        IsOwn(s, classKey) ? classKey : Parent(classKey) is { } parent and not Template ? ShownKey(s, parent) : Template;
 
     /// <summary>What <paramref name="key"/> follows while not 개별: a 직업각인 its class, a class 기본; null for 기본.</summary>
     public static string? Parent(string? key) => key switch

@@ -57,7 +57,7 @@ public sealed class MeterSettings : IWindowPlace
     public string? OtherColor { get; set; }
     public string Background { get; set; } = "#CC101418";
     public double Opacity { get; set; } = 1.0;
-    /// <summary>버프 적용률 막대 투명도: the three bars', apart from <see cref="Opacity"/> (user, 2026-11-11); in 위치 프로필.
+    /// <summary>버프 적용률 막대 투명도: the three bars', apart from <see cref="Opacity"/> (user, 2026-11-11); in 프로필.
     /// Null in an older file: filled with <see cref="Opacity"/> at load, so the bars look as before.</summary>
     public double? BarOpacity { get; set; }
     public double Left { get; set; } = double.NaN;

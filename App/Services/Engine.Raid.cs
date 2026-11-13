@@ -144,7 +144,7 @@ public sealed partial class Engine
                 if (config.Debug) ExtraDebug?.Invoke(new("줄 수", count.Copy(), bar.Count?.ToString() ?? "?", _bar.Shown?.ToString() ?? "?"));
             }
             bool glow = s.Glow && BarAlert.Glowing(_bar, s.GlowUntil, s.GlowSeconds, s.GlowBars, t);
-            next = new(gate, _bar.Shown, glow);
+            next = s.Shown(new(gate, _bar.Shown, glow));   // 빛날 때만 표시 hides it, the count above keeps tracking
         }
         bool changed = next != _raid || moved;
         _raid = next;
@@ -178,7 +178,7 @@ public sealed partial class Engine
             _lastNameOcr = t;
             // The panel's raid and difficulty narrow the gates (종막 2-1 vs EX 2-1); a boss still of two goes to the one with a window on.
             var candidates = BossNameText.Candidates(gates, panel);
-            var on = s.Gates.Where(g => g.Value.CountWindow).Select(g => g.Key)
+            var on = (s.CountEnabled ? gates.Select(g => g.Id) : [])
                 .Concat(s.DebuffsAuto ? gates.Where(g => g.DebuffRaid != Raid.없음).Select(g => g.Id) : []).ToHashSet();
             _ = Task.Run(() => ReadNameOcr(copy, candidates, on, scale, t, maxHp));
         }

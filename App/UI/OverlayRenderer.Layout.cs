@@ -19,6 +19,7 @@ public sealed partial class OverlayRenderer
         public Rect Plate;                  // around everything drawn
         public List<(Rect Plate, int[] Keys)>? Split;   // yours, skills placed apart: a plate per group of boxes
         public Rect? Gauge;
+        public Rect? GaugeHome;             // 따로: where the gauge would be drawn on this plate (the gauge window's first spot)
         public GaugeBar? Bar;               // yours: splits, segment colours and glow (peers: the plain bar)
         public Appearance? Look;            // yours: the chosen cooldown colours (peers: dimmed automatically)
         public CooldownView Cooldown = new();   // 쿨 진행 표시 and 남은 쿨 (초): the class's (peers: your 나 of their class)
@@ -56,6 +57,7 @@ public sealed partial class OverlayRenderer
             var bars = ClassProfiles.Mine(Settings) with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false), Gauge = false, Layout = null };
             return LayoutPlayer(p, "buffs", BoxSize(Settings.Buffs.Width), BoxSize(Settings.Buffs.Height), 0, Bleed, bars, leadH: 0);
         }
+        if (Peer < 0 && GaugeOnly) return LayoutGauge(p);
         if (Peer < 0)
         {
             var mine = Target is { } t ? ClassProfiles.Mine(Settings, t.Key) : ClassProfiles.Mine(Settings);
@@ -63,10 +65,7 @@ public sealed partial class OverlayRenderer
                 mine = mine with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false) };
             var own = LayoutPlayer(p, "", BoxSize(mine.Width), BoxSize(mine.Height), 0, Bleed, mine, leadH: 0);
             if (own is not null) (own.Look, own.Cooldown) = (mine, mine.Cooldown);
-            var (barClass, barSub) = Target is { } picked ? (picked.Class, picked.Subclass)
-                : Settings.ActiveCharacter is { } k && Settings.Characters.TryGetValue(k, out var c) ? (c.Class, c.Subclass) : default;
-            if (own is not null && barClass is not null)
-                own.Bar = GaugeBar.Resolve(Settings, barClass, barSub!, Emblems.Class(p.Snapshot.ClassId)?.Subclasses.GetValueOrDefault(barSub!));
+            if (own is not null) own.Bar = ResolveBar(p);
             return own;
         }
 
@@ -121,14 +120,15 @@ public sealed partial class OverlayRenderer
         Color Col(SlotGroup g) => colors[g];
         Color SkillCol(SlotId id) => a.SlotColors?.GetValueOrDefault(id) is { } own ? Parse(own) : colors[SlotGroup.일반스킬];   // a 일반스킬's own colour
         // The gauge's thickness follows the box height, as it did the one size.
-        double gaugeH = a.Gauge && s.Gauge is not null ? Math.Max(2, Math.Round(Settings.Gauge.Thickness * bh / Box)) : 0;
-        if (a.Layout is { } cells) return LayoutCells(p, key, cells, a.Hidden, bw, bh, lead, top, Show, Col, SkillCol, gaugeH, leadH);
+        double homeH = a.Gauge && s.Gauge is not null ? SplitLayout.GaugeHeight(Settings.Gauge.Thickness, bh) : 0;
+        double gaugeH = GaugeApart ? 0 : homeH;   // 따로: the gauge has a window of its own, the plate keeps no strip for it
+        if (a.Layout is { } cells) return LayoutCells(p, key, cells, a.Hidden, bw, bh, lead, top, Show, Col, SkillCol, gaugeH, leadH, homeH);
         var hidden = a.Hidden;
 
         var l = new PlayerLayout(p, key, bh);
         // 버프 막대 위치 왼쪽 바깥: the bars take a strip left of the plate, which starts after it.
         var buffs = ShownBuffs(s);
-        bool side = Settings.Buffs.Side && buffs.Count > 0;
+        bool side = Settings.Buffs.Upright(Settings.Apart) && buffs.Count > 0;
         // Each bar's own 두께 and 길이 (BuffIndicator), clamped as the settings window offers them.
         double Thick(BuffKind k) => BarSizes.Thickness(Settings.Buffs.Of(k));
         double Long(BuffKind k) => BarSizes.Length(Settings.Buffs.Of(k));
@@ -211,13 +211,14 @@ public sealed partial class OverlayRenderer
             bottom = y - Gap;
         }
         l.Plate = new Rect(plateX, top, right + Pad - plateX, bottom + Pad - top);
+        if (GaugeApart && homeH > 0) l.GaugeHome = new Rect(x0, top + Pad - homeH - Gap, right - x0, homeH);
         return l;
     }
 
     /// <summary>The part drawn at <paramref name="at"/> (this element's coordinates) and its rectangle, or null.</summary>
     public (Part Part, Rect Rect)? PartAt(Point at)
     {
-        if (_layout is not { } l) return null;
+        if (_layout is not { } l || GaugeOnly) return null;   // the gauge window is picked whole
         for (int i = l.Boxes.Count - 1; i >= 0; i--)
             if (l.Boxes[i].Rect.Contains(at)) return ((Part)l.Boxes[i].Key, l.Boxes[i].Rect);
         return l.Gauge is { } g && g.Contains(at) ? (Part.게이지, g) : null;
@@ -242,7 +243,7 @@ public sealed partial class OverlayRenderer
         Cell ToCell(Rect r) => new((r.X - l.CellOrigin.X) / sx, (r.Y - l.CellOrigin.Y) / sy, r.Width / sx, r.Height / sy);
         foreach (var (k, r, _) in l.Boxes)
             cells[(Part)k] = (Part)k >= FreeLayout.FirstBuff && Settings.Buffs.Of((BuffKind)(k - (int)FreeLayout.FirstBuff)) is var bar
-                ? BarSizes.Unsized(ToCell(r), BarSizes.Length(bar), BarSizes.Thickness(bar), Settings.Buffs.Side)   // drawn at 길이 × 두께
+                ? BarSizes.Unsized(ToCell(r), BarSizes.Length(bar), BarSizes.Thickness(bar), Settings.Buffs.Upright(Settings.Apart))   // drawn at 길이 × 두께
                 : ToCell(r);
         if (l.Gauge is { } g) cells[Part.게이지] = ToCell(g);
         return cells;

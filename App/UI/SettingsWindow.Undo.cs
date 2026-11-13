@@ -69,6 +69,7 @@ public partial class SettingsWindow
         if (JsonSerializer.Deserialize<Settings>(target[(cut + 1)..], SettingsStore.Json) is not { } snapshot) return;
         _s.CopyFrom(snapshot);
         _lastChange = default;   // the next edit is a step of its own
+        _lastCopy = null;   // its snapshot no longer matches what the step put back
         string pick = target[..cut];
         (_classShown, _lastActive) = (pick == "" ? null : pick, ClassProfiles.ActiveKey(_s));   // BuildAll keeps the pick
         BuildAll();

@@ -1,7 +1,7 @@
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>The windows whose size is set by dragging their outline on 내 오버레이 (no slider).</summary>
-public enum SizedWindow { Judgment, Amsu, Raid, Meter }
+public enum SizedWindow { Judgment, Amsu, Raid, Meter, Gauge }
 
 /// <summary>What the window's Width/Height settings mean: <c>Two</c> sizes (단심 길이/두께, 암수 크기/막대 길이), one size kept in
 /// both (<c>Uniform</c>), or one size in <c>WidthOnly</c> / <c>HeightOnly</c>.</summary>
@@ -19,6 +19,7 @@ public static class WindowSizing
     {
         SizedWindow.Judgment => s.Judgment.Display == JudgmentDisplay.Bar ? SizeMode.Two : SizeMode.WidthOnly,
         SizedWindow.Amsu => s.Amsu.Look is AmsuLook.막대 or AmsuLook.세로막대 ? SizeMode.Two : SizeMode.HeightOnly,
+        SizedWindow.Gauge => SizeMode.Two,   // 길이 (Width) and 두께 (Height)
         _ => SizeMode.Uniform,
     };
 
@@ -54,7 +55,7 @@ public static class WindowSizing
     public static (double W, double H) ByKey(Settings s, SizedWindow w, (double W, double H) start, (double W, double H) plate, double dx, double dy) =>
         Swapped(s, w) ? Flip(ByKey(ModeOf(s, w), Flip(start), plate, dx, dy)) : ByKey(ModeOf(s, w), start, plate, dx, dy);
 
-    static bool Swapped(Settings s, SizedWindow w) => w == SizedWindow.Amsu && s.Amsu.Look == AmsuLook.세로막대;
+    static bool Swapped(Settings s, SizedWindow w) => w == SizedWindow.Amsu && s.Amsu.Look == AmsuLook.세로막대 || w == SizedWindow.Gauge && s.Gauge.Upright;
 
     static (double W, double H) Flip((double W, double H) v) => (v.H, v.W);
 

@@ -28,9 +28,9 @@ public partial class SettingsWindow
     UIElement ShotButtons()
     {
         Button Tool(string text, string? tip) => new() { Content = text, Margin = new(0, 2, 6, 2), ToolTip = tip };
-        var load = Tool("불러오기", "png, jpg, bmp 그림을 이 위치 프로필의 화면으로 씁니다.");
+        var load = Tool("불러오기", "png, jpg, bmp 그림을 이 프로필의 화면으로 씁니다.");
         var take = Tool("게임 화면 찍기", "3초 뒤 게임 화면을 찍습니다.");
-        var clear = Tool("지우기", "이 위치 프로필의 화면을 지우고 예시 화면으로 돌아갑니다.");
+        var clear = Tool("지우기", "이 프로필의 화면을 지우고 예시 화면으로 돌아갑니다.");
         load.Click += (_, _) => LoadShot();
         take.Click += async (_, _) => await Take();
         clear.Click += (_, _) => ClearShot();
@@ -54,13 +54,13 @@ public partial class SettingsWindow
         if (_pending is var (picture, area))
         {
             _canvas.ShowPicture(picture, area);
-            _canvasNote.Text = $"새 화면입니다. 덮어쓰기를 누르면 위치 프로필 {_s.ActiveProfile + 1}의 화면이 됩니다." + Relative(area);
+            _canvasNote.Text = $"새 화면입니다. 덮어쓰기를 누르면 프로필 {_s.ActiveProfile + 1}의 화면이 됩니다." + Relative(area);
             return;
         }
         if (SavedShot() is var (saved, shot))
         {
             _canvas.ShowPicture(saved, shot);
-            _canvasNote.Text = $"위치 프로필 {_s.ActiveProfile + 1}의 화면입니다." + Relative(shot);
+            _canvasNote.Text = $"프로필 {_s.ActiveProfile + 1}의 화면입니다." + Relative(shot);
             return;
         }
         _canvas.ShowSampleScreen();

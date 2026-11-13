@@ -7,13 +7,13 @@ using static GaugeOverlay.App.UI.UiBuild;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>복사 (settings-copy.plan.md): one page on 내 오버레이, opened from the 전체 view, for both kinds of copy: 위치 프로필 n → m,
+/// <summary>복사 (settings-copy.plan.md): one page on 내 오버레이, opened from the 전체 view, for both kinds of copy: 프로필 n → m,
 /// and 직업각인 (or 기본) A → B or → 모든 직업각인, 나 or 파티원. What may be copied is <see cref="ClassPicker"/>'s and
 /// <see cref="ClassProfiles.Copy"/>'s decision; this file only asks and shows. Both blocks are off in Test.</summary>
 public partial class SettingsWindow
 {
     const string AllClasses = "*";   // 복사 → 대상: every 직업각인 and the template
-    const string CopyHelp = "위치 프로필 복사는 창의 위치·크기, 버프 막대, 파티 창, '모든 위치 프로필에 적용'을 끈 설정을 덮어씁니다. 직업각인 복사는 고른 부분만 덮어씁니다. 크기는 파티원 설정에만 있습니다.";
+    const string CopyHelp = "프로필 복사는 고른 설정을 덮어쓰고, 바로 되돌릴 수 있습니다. 직업각인 복사는 고른 부분만 덮어씁니다. 크기는 파티원 설정에만 있습니다.";
     static readonly TimeSpan ConfirmWindow = TimeSpan.FromSeconds(5);
 
     readonly CardStack _secCopyLink = new();   // the 전체 view's way in
@@ -21,8 +21,7 @@ public partial class SettingsWindow
     bool _copyFromMembers, _copyToMembers = true;
     string? _copyFrom;               // 가져올 설정: null follows 편집 중
     string _copyTo = AllClasses;
-    string? _copyResult, _profileCopyResult;
-    int? _profileFrom, _profileTo;   // 위치 프로필 복사: null from = the active one, null to = the first other
+    string? _copyResult;
 
     /// <summary>The active profile's 설정 was overwritten by a copy: App puts the windows on its spots and sizes, as for a switch.</summary>
     public event Action? ProfileOverwritten;
@@ -32,42 +31,21 @@ public partial class SettingsWindow
     /// <summary>The 전체 view's 복사 card: a button to the page.</summary>
     void FillCopyLink()
     {
-        var p = Refill(_secCopyLink, "복사", "위치 프로필끼리, 또는 직업각인끼리 설정을 복사합니다.");
+        var p = Refill(_secCopyLink, "복사", "프로필끼리, 또는 직업각인끼리 설정을 복사합니다.");
         var open = new Button { Content = "복사 열기…", HorizontalAlignment = HorizontalAlignment.Left, ToolTip = CopyHelp };
         open.Click += (_, _) => ShowCopy();
         p.Children.Add(open);
     }
 
-    /// <summary>The page: block 1 (위치 프로필) and block 2 (직업각인 / 기본), both disabled in Test.</summary>
+    /// <summary>The page: block 1 (프로필) and block 2 (직업각인 / 기본), both disabled in Test.</summary>
     void FillCopyPage()
     {
-        var p = Refill(_secCopy, "위치 프로필 복사", CopyHelp);
+        var p = Refill(_secCopy, "프로필 복사", CopyHelp);
         p.IsEnabled = !_inTestProfile;
         if (_inTestProfile) p.Children.Add(Note("테스트 모드에서는 복사할 수 없습니다."));
         FillProfileCopy(p);
         p.Children.Add(Heading("직업각인 설정 복사"));
         FillClassCopy(p);
-    }
-
-    void FillProfileCopy(Panel p)
-    {
-        int from = _profileFrom ?? _s.ActiveProfile;
-        int to = _profileTo is { } t && t != from ? t : Enumerable.Range(0, OverlayProfile.Count).First(i => i != from);
-        void Refill() => Dispatcher.BeginInvoke(FillCopyPage);
-        var fromBox = ProfileCombo(Enumerable.Range(0, OverlayProfile.Count), from, v => { _profileFrom = v; Refill(); });
-        var toBox = ProfileCombo(Enumerable.Range(0, OverlayProfile.Count).Where(i => i != from), to, v => { _profileTo = v; Refill(); });   // itself: not offered
-        var copy = CopyButton("복사", () => null, () => ($"정말 위치 프로필 {to + 1}에 복사", $"{from}>{to}"), text => { _profileCopyResult = text; Refill(); }, () =>
-        {
-            RecordStep();
-            if (!_s.CopyProfile(from, to)) return $"위치 프로필 {from + 1}은(는) 복사할 수 없습니다.";
-            Changed();
-            if (to == _s.ActiveProfile) ProfileOverwritten?.Invoke();
-            return $"위치 프로필 {from + 1}의 설정을 위치 프로필 {to + 1}에 복사했습니다.";
-        });
-        copy.ToolTip = "그 위치 프로필의 화면(스크린샷)은 남습니다.";
-        p.Children.Add(Row("위치 프로필", fromBox, Label("→"), toBox, copy));
-        p.Children.Add(ConfirmNote("덮어쓰므로 한 번 더 눌러야 복사합니다."));
-        if (_profileCopyResult is { } result) p.Children.Add(Note(result));
     }
 
     static ComboBox ProfileCombo(IEnumerable<int> profiles, int value, Action<int> set)

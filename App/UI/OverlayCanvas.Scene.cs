@@ -66,7 +66,7 @@ public sealed partial class OverlayCanvas
     readonly Canvas _faint = new() { IsHitTestVisible = false };
 
     OverlayPart WindowPart(OverlayRenderer r) =>
-        r == _buffs ? OverlayPart.Buffs : r == _debuffs ? OverlayPart.Debuffs : r == _judgment ? OverlayPart.Judgment : r == _amsu ? OverlayPart.Amsu
+        r == _buffs ? OverlayPart.Buffs : r == _gauge ? OverlayPart.Gauge : r == _debuffs ? OverlayPart.Debuffs : r == _judgment ? OverlayPart.Judgment : r == _amsu ? OverlayPart.Amsu
         : r == _raid ? OverlayPart.BarCount : r == _meter ? OverlayPart.Meter : r.Peer >= 0 ? OverlayPart.Party : OverlayPart.Skills;
 
     /// <summary>My window draws three parts: the gauge, the buff bars (not detached) and the skill boxes.</summary>
@@ -102,13 +102,14 @@ public sealed partial class OverlayCanvas
     /// window (디버프, 단심, 암수) jumps to its next phase.</summary>
     void PlayClick(OverlayRenderer r, Point at)
     {
-        if ((r == _mine || r == _buffs) && r.PartAt(at)?.Part is { } part) Play.Click(part, PreviewPlayer.Gauge(_s, _chars));
+        if (r == _gauge) Play.Click(Part.게이지, PreviewPlayer.Gauge(_s, _chars));
+        else if ((r == _mine || r == _buffs) && r.PartAt(at)?.Part is { } part) Play.Click(part, PreviewPlayer.Gauge(_s, _chars));
         else Play.Skip(WindowPart(r));
     }
 
     /// <summary>What a click on <paramref name="r"/> does something to: my window and the buff window (their boxes) and the
     /// looping ones. The 미터기, 줄 수 창 and 파티원 창 only show the sample.</summary>
-    bool PlaysOnClick(OverlayRenderer r) => r == _mine || r == _buffs || r == _debuffs || r == _judgment || r == _amsu;
+    bool PlaysOnClick(OverlayRenderer r) => r == _mine || r == _buffs || r == _gauge || r == _debuffs || r == _judgment || r == _amsu;
 
     /// <summary>Space or Enter on a focused preview: each of its windows moves on, as a click would (the first skill box, the
     /// gauge, the first buff bar, a loop's next phase).</summary>
@@ -145,15 +146,15 @@ public sealed partial class OverlayCanvas
     /// <summary>Only these windows drawn (a 설정 page's preview, <see cref="SettingsPreview.PartsOf"/>); null: every window.</summary>
     public IReadOnlyCollection<OverlayPart>? Only { get; set; }
 
-    /// <summary>My window holds the skills, the gauge and the buff bars while they aren't detached.</summary>
+    /// <summary>My window holds the skills, the gauge and the buff bars while they aren't detached (합쳐서 / 따로).</summary>
     bool InScene(OverlayRenderer r) => Only is not { } only || (r == _mine
-        ? only.Contains(OverlayPart.Skills) || only.Contains(OverlayPart.Gauge) || only.Contains(OverlayPart.Buffs) && !_s.Buffs.Detached
+        ? only.Contains(OverlayPart.Skills) || only.Contains(OverlayPart.Gauge) && !_s.Apart || only.Contains(OverlayPart.Buffs) && !_s.Buffs.Detached
         : only.Contains(WindowPart(r)));
 
     /// <summary>Every window shown (the buffs' own window only while detached), before they are measured.</summary>
     void SceneVisibility(IEnumerable<OverlayRenderer> all)
     {
-        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && InScene(r));
+        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && (r != _gauge || _s.Apart) && InScene(r));
     }
 
     /// <summary>Whether the window is on in the real settings; mine is faint only when the skills and the gauge are both off.</summary>
@@ -174,9 +175,15 @@ public sealed partial class OverlayCanvas
             var part = WindowPart(r);
             bool on = WindowOn(r);
             r.Opacity = on ? 1 : FaintOpacity;
-            if (on || r.Visibility != Visibility.Visible) continue;
+            if (r.Visibility != Visibility.Visible) continue;
             var (l, t, size) = (Canvas.GetLeft(r), Canvas.GetTop(r), r.DesiredSize);
             double perView = 1 / (_v?.Scale ?? 1);   // view px to screen px at this zoom
+            if (on)
+            {
+                // The skill window is named while on too: users couldn't find 스킬창 in the picture (user, 2026-11-13).
+                if (r == _mine) AddName(" 스킬창 ", l, t, perView);
+                continue;
+            }
             var outline = new Rectangle
             {
                 Width = size.Width, Height = size.Height, Stroke = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)),
@@ -185,13 +192,17 @@ public sealed partial class OverlayCanvas
             Add(outline, l, t);
             if (r.Peer > 0) continue;
             string name = Tray.PartNames.First(n => n.Part == part).Name;
-            Add(new TextBlock
-            {
-                Text = $" {name} · 꺼짐 ", Foreground = Brushes.White, FontSize = FaintFont * perView, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false,
-                Background = new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)), Tag = t,
-            }, l, t - FaintFont * perView * 1.4);
+            AddName($" {name} · 꺼짐 ", l, t, perView);
         }
     }
+
+    /// <summary>A window's name just above its top-left corner (<see cref="ZoomFaint"/> keeps it there).</summary>
+    void AddName(string text, double l, double t, double perView) =>
+        Add(new TextBlock
+        {
+            Text = text, Foreground = Brushes.White, FontSize = FaintFont * perView, FontWeight = FontWeights.SemiBold, IsHitTestVisible = false,
+            Background = new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)), Tag = t,
+        }, l, t - FaintFont * perView * 1.4);
 
     /// <summary>The faint outlines and names at a new zoom: only their stroke, font and the name's lift change, so a wheel
     /// tick doesn't rebuild them (<see cref="ShowFaint"/>).</summary>

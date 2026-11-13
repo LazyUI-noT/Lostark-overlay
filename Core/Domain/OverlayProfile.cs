@@ -22,31 +22,23 @@ public sealed class BarSize
     public double Length { get; set; } = 1;
 }
 
-/// <summary>A look a 모든 위치 프로필에 적용 mark covers (<see cref="Settings.SharedLooks"/>): window spots and sizes are always per
-/// 배치. What each covers, as the 설정 page says it: <see cref="LookShare.Covers"/>; keep it in step with <c>TakeLook</c>.</summary>
-public enum LookGroup { 판, 스킬칸, 게이지, 버프막대, 미터기, 암수, 단심 }
+/// <summary>A look 모든 프로필에 적용 copies into every profile (<see cref="Settings.ApplyLookToAll"/>): window spots and sizes are
+/// never copied. What each covers, as the 설정 page says it: <see cref="LookShare.Covers"/>; the properties:
+/// <see cref="ProfileEntry.Looks"/>.</summary>
+public enum LookGroup { 판, 스킬칸, 게이지, 버프막대, 미터기, 암수, 단심, 디버프, 줄수창 }
 
-/// <summary>오버레이 프로필: the screenshot it was set up on (<see cref="Shot"/>) and where the windows go, their sizes and
-/// thicknesses, split or together, and plate colours, so a different in-game situation (another HUD spot, a bright or
-/// dark map) is one switch away. Colours of the boxes, effects and class layouts are not in it. A new profile holds the
-/// defaults.</summary>
-public sealed class OverlayProfile
+/// <summary>프로필 1–5 (user, 2026-11-13: everything on screen, not only spots): the screenshot it was set up on
+/// (<see cref="Shot"/>), every window's spot and size, and every look (<see cref="ProfileEntry"/>), so a different in-game
+/// situation (another HUD spot, a bright or dark map) is one switch away. Not in it: reads, the class's skill choices and box
+/// style, per-character on/off, party and data. A new profile holds the defaults.</summary>
+public sealed class OverlayProfile : ProfileEntry
 {
     public const int Count = 5;
 
-    public WindowPlace Overlay { get; set; } = new();
-    /// <summary>Your window's spot and size for each 직업각인 ("클래스 · 직업각인") placed in this profile;
-    /// <see cref="Overlay"/> is the one every other character uses (no listed 직업각인).</summary>
+    /// <summary>0.22's spot and size per 직업각인: here a mirror of each <see cref="Classes"/> entry's window, so 0.22 opening
+    /// a 0.23 file keeps them (read by <see cref="Migrate"/> only).</summary>
+    /// <remarks>ponytail: kept for the downgrade; drop once 0.22 is out of use.</remarks>
     public Dictionary<string, WindowPlace> SubclassPlaces { get; set; } = [];
-    public double Opacity { get; set; } = 0.9;
-    public string PlateColor { get; set; } = OverlaySettings.DefaultPlate;
-    public double GaugeThickness { get; set; } = 6;
-
-    public bool BuffsDetached { get; set; }
-    public bool BuffsSide { get; set; }
-    public WindowPlace Buffs { get; set; } = new();
-    /// <summary>Only the bars set; the rest are 1 × 1.</summary>
-    public Dictionary<BuffKind, BarSize> BuffBars { get; set; } = [];
 
     public bool PartyTogether { get; set; }
     public double BoundPartyLeft { get; set; } = double.NaN;
@@ -60,142 +52,130 @@ public sealed class OverlayProfile
     /// no screenshot, or one not of the game's screen (a backdrop only).</summary>
     public PixelRect? Shot { get; set; }
 
-    /// <summary>암수, 단심 (all their settings) and the meter's 버프 적용률 막대 투명도 (profile-looks.plan.md). Null in a file
-    /// from before them: <c>SettingsStore.Normalize</c> fills today's.</summary>
-    public AmsuSettings? Amsu { get; set; }
-    public JudgmentSettings? Judgment { get; set; }
-    public double? MeterBarOpacity { get; set; }
-    /// <summary>The meter window's look (null in an older file: filled with today's).</summary>
-    public MeterLooks? Meter { get; set; }
-    /// <summary>The buff bars' look, not their 표시 (null in an older file: filled with today's).</summary>
-    public BuffLooks? BuffLook { get; set; }
-    /// <summary>The skill boxes' look that isn't the class's (null in an older file: filled with today's).</summary>
-    public BoxLooks? Boxes { get; set; }
-    /// <summary>판 표시 (null in an older file: today's).</summary>
-    public bool? ShowPlate { get; set; }
-    /// <summary>The gauge's colours and 투명도; its 두께 is <see cref="GaugeThickness"/> (null in an older file: today's).</summary>
-    public GaugeLooks? GaugeLook { get; set; }
+    /// <summary>Each 클래스 · 직업각인's own places and looks in this profile (<see cref="Settings.CharacterKey"/>); a class not
+    /// here draws the shared ones (this profile's own, which 0.22 reads). Null in a 0.22 file (<see cref="Migrate"/>).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public Dictionary<string, ProfileEntry>? Classes { get; set; }
 
-    /// <summary>Takes the places now in <paramref name="s"/> (the screenshot is kept).</summary>
-    public void CaptureFrom(Settings s)
+    /// <summary>클래스 전용: this profile's 아덴 게이지 bars per <see cref="Data.GaugeBar.Key"/>. The active profile's live in
+    /// <see cref="Settings.GaugeBars"/> (stored here at a profile switch). Null in a 0.22 file (<see cref="Migrate"/>).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public Dictionary<string, GaugeBarSettings>? GaugeBars { get; set; }
+
+    /// <summary>클래스 전용: the 아덴1 / 아덴2 boxes per <see cref="Settings.Classes"/> key (<see cref="ClassProfiles.ShownKey"/>). The active
+    /// profile's live ones are in <see cref="Settings.Classes"/> (stored here at a profile switch). Null in a 0.22 file (<see cref="Migrate"/>).</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public Dictionary<string, AdenShow>? Aden { get; set; }
+
+    /// <summary><paramref name="key"/>'s entry, the shared one where it has none (or <paramref name="key"/> is null).</summary>
+    public ProfileEntry EntryOf(string? key) => key is not null && Classes?.TryGetValue(key, out var e) == true ? e : this;
+
+    /// <summary>Takes the places and looks now in <paramref name="s"/> as <paramref name="key"/>'s (null = the shared ones);
+    /// the screenshot is kept. A class whose values are the shared ones keeps no entry, so it follows later shared changes.</summary>
+    public void Keep(string? key, Settings s)
     {
-        KeepPlace(s.PlaceKey, s);
-        foreach (var look in Enum.GetValues<LookGroup>()) TakeLook(look, s);
-        (BuffsDetached, BuffsSide, Buffs) = (s.Buffs.Detached, s.Buffs.Side, WindowPlace.Of(s.Buffs));
-        BuffBars = s.Buffs.Indicators.ToDictionary(i => i.Key, i => new BarSize { Thickness = i.Value.Thickness, Length = i.Value.Length });
+        KeepParty(s);
+        if (key is null) { CaptureFrom(s); ShareBuffs(); return; }
+        var entry = new ProfileEntry();
+        entry.CaptureFrom(s);
+        TakeBuffs(entry);
+        ShareBuffs();
+        Classes ??= [];
+        if (SameAsShared(entry))
+        {
+            Classes.Remove(key);
+            SubclassPlaces.Remove(key);
+        }
+        else (Classes[key], SubclassPlaces[key]) = (entry, WindowPlace.Of(entry.Overlay));
+    }
+
+    bool SameAsShared(ProfileEntry entry) =>
+        JsonSerializer.SerializeToUtf8Bytes(entry, Compact).AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes<ProfileEntry>(this, Compact));
+
+    /// <summary>The file's options without indenting: <see cref="Keep"/> compares on every class change.</summary>
+    static readonly JsonSerializerOptions Compact = new(Data.SettingsStore.Json) { WriteIndented = false };
+
+    void KeepParty(Settings s)
+    {
         (PartyTogether, BoundPartyLeft, BoundPartyTop, PartyPlateColor) = (s.Party.Together, s.Party.Left, s.Party.Top, s.Party.PlateColor);
         PartySlots = [.. s.Party.ShowOthersBySlot.Select(d => new WindowPlace { Left = d.Left, Top = d.Top })];
     }
 
-    /// <summary><paramref name="look"/>'s stored values as text, to tell two 배치 apart.</summary>
-    internal string LookKey(LookGroup look) => look switch
+    /// <summary>0.22's keep, for the active profile of a 0.22 file (its live values were never stored): the looks into the
+    /// shared ones (one per profile then), the window's spot as <paramref name="key"/>'s.</summary>
+    internal void Keep022(string? key, Settings s)
     {
-        LookGroup.판 => $"{Opacity}|{PlateColor}|{ShowPlate}",
-        LookGroup.스킬칸 => $"{Boxes}",
-        LookGroup.게이지 => $"{GaugeThickness}|{GaugeLook}",
-        LookGroup.암수 => Unplaced(Amsu?.Copy()),
-        LookGroup.단심 => Unplaced(Judgment?.Copy()),
-        LookGroup.미터기 => $"{MeterBarOpacity}|{Meter}",
-        LookGroup.버프막대 => JsonSerializer.Serialize(BuffLook, Data.SettingsStore.Json),
-        _ => "",
-    };
-
-    /// <summary><paramref name="window"/> (a copy) as text without its spot and size, which are always the 배치's own.</summary>
-    static string Unplaced(IWindowPlace? window)
-    {
-        if (window is null) return "";
-        new WindowPlace().To(window);
-        return JsonSerializer.Serialize(window, window.GetType(), Data.SettingsStore.Json);
+        var shared = Overlay;
+        KeepParty(s);
+        CaptureFrom(s);
+        if (key is not null) (SubclassPlaces[key], Overlay) = (Overlay, shared);
     }
 
-    /// <summary>Takes <paramref name="look"/>'s values now in <paramref name="s"/> (copies, so later edits leave them).</summary>
-    internal void TakeLook(LookGroup look, Settings s)
+    /// <summary>A 0.22 file: each 직业각인 with a spot of its own (<see cref="SubclassPlaces"/>) becomes an entry holding the
+    /// profile's looks and that spot; the 게이지 bars, one for all profiles then, go into each. Hand-edited null entries
+    /// go. Idempotent.</summary>
+    internal void Migrate(Settings s)
     {
-        switch (look)
+        if (Classes is null)
         {
-            case LookGroup.판: (Opacity, PlateColor, ShowPlate) = (s.Overlay.Opacity, s.Overlay.PlateColor, s.Overlay.ShowPlate); break;
-            case LookGroup.스킬칸: Boxes = BoxLooks.Of(s.Overlay); break;
-            case LookGroup.게이지: (GaugeThickness, GaugeLook) = (s.Gauge.Thickness, GaugeLooks.Of(s.Gauge)); break;
-            case LookGroup.암수: Amsu = s.Amsu.Copy(); break;
-            case LookGroup.단심: Judgment = s.Judgment.Copy(); break;
-            // A null 막대 투명도 (↺) means the meter's: stored as that, or ApplyTo would skip it and keep the other 배치's.
-            case LookGroup.미터기: (MeterBarOpacity, Meter) = (s.Meter.BarOpacity ?? s.Meter.Opacity, MeterLooks.Of(s.Meter)); break;
-            case LookGroup.버프막대: BuffLook = BuffLooks.Of(s.Buffs); break;
+            Classes = [];
+            foreach (var (key, place) in SubclassPlaces.Where(kv => kv.Value is not null))
+            {
+                var entry = Clone(this);
+                entry.Overlay = WindowPlace.Of(place);
+                if (!SameAsShared(entry)) Classes[key] = entry;
+            }
         }
+        GaugeBars ??= CloneBars(s.GaugeBars);
+        Aden ??= AdenShow.Snapshot(s.Classes);
+        foreach (var (key, e) in Classes.ToList())
+            if (e is null) Classes.Remove(key); else e.Fill(s);
+        ShareBuffs();   // a file from before 버프 막대 was one per profile: the shared one's
     }
 
-    /// <summary>Stores your window's spot and size (in <paramref name="s"/>) as <paramref name="key"/>'s (null = the classes').</summary>
-    internal void KeepPlace(string? key, Settings s)
+    /// <summary>버프 막대 is one per profile (user, 2026-11-13): every class entry holds the shared entry's, so whatever reads an
+    /// entry (apply, 복사, the split migration) sees the profile's.</summary>
+    internal void ShareBuffs()
     {
-        if (key is null) Overlay = WindowPlace.Of(s.Overlay);
-        else SubclassPlaces[key] = WindowPlace.Of(s.Overlay);
+        foreach (var e in Classes?.Values ?? Enumerable.Empty<ProfileEntry>()) e.TakeBuffs(this);
     }
 
-    /// <summary><paramref name="key"/>'s spot and size, the classes' one where it has none yet.</summary>
-    internal WindowPlace PlaceOf(string? key) => key is not null && SubclassPlaces.TryGetValue(key, out var p) ? p : Overlay;
-
-    /// <summary>Puts this profile's places into <paramref name="s"/>, and its looks but the shared ones
-    /// (<see cref="Settings.SharedLooks"/>), which keep the live value.</summary>
-    public void ApplyTo(Settings s)
+    /// <summary>Puts <paramref name="shared"/>'s places and looks back as this profile's shared entry; the classes, 게이지 bars,
+    /// party windows and screenshot stay.</summary>
+    internal void RestoreShared(ProfileEntry shared)
     {
-        bool Own(LookGroup g) => s.SharedLooks?.Contains(g) != true;
-        PlaceOf(s.PlaceKey).To(s.Overlay);
-        if (Own(LookGroup.판)) (s.Overlay.Opacity, s.Overlay.PlateColor, s.Overlay.ShowPlate) = (Opacity, PlateColor, ShowPlate ?? s.Overlay.ShowPlate);
-        if (Own(LookGroup.스킬칸)) Boxes?.To(s.Overlay);
-        if (Own(LookGroup.게이지))
-        {
-            s.Gauge.Thickness = GaugeThickness;
-            GaugeLook?.To(s.Gauge);
-        }
-        Buffs.To(s.Buffs);
-        (s.Buffs.Detached, s.Buffs.Side) = (BuffsDetached, BuffsSide);
-        foreach (var kind in Enum.GetValues<BuffKind>())
-        {
-            if (!BuffBars.ContainsKey(kind) && !s.Buffs.Indicators.ContainsKey(kind)) continue;   // stays default
-            var size = BuffBars.GetValueOrDefault(kind) ?? new BarSize();
-            var bar = s.Buffs.Edit(kind);
-            (bar.Thickness, bar.Length) = (size.Thickness, size.Length);
-        }
+        foreach (var p in typeof(ProfileEntry).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            if (p is { CanRead: true, CanWrite: true }) p.SetValue(this, p.GetValue(shared));
+    }
+
+    internal static ProfileEntry CloneEntry(ProfileEntry e) => Clone(e);
+
+    /// <summary>Sets <paramref name="key"/>'s entry and the 0.22 mirror of its window spot.</summary>
+    internal void PutEntry(string key, ProfileEntry entry)
+    {
+        Classes ??= [];
+        (Classes[key], SubclassPlaces[key]) = (entry, WindowPlace.Of(entry.Overlay));
+    }
+
+    internal static ProfileEntry Clone(ProfileEntry e) =>
+        JsonSerializer.Deserialize<ProfileEntry>(JsonSerializer.SerializeToUtf8Bytes(e, Data.SettingsStore.Json), Data.SettingsStore.Json)!;
+
+    internal static Dictionary<string, GaugeBarSettings> CloneBars(Dictionary<string, GaugeBarSettings> bars) =>
+        JsonSerializer.Deserialize<Dictionary<string, GaugeBarSettings>>(JsonSerializer.SerializeToUtf8Bytes(bars, Data.SettingsStore.Json), Data.SettingsStore.Json)!;
+
+    /// <summary>The shared entry and every class's (what a look applied to all reaches).</summary>
+    internal IEnumerable<ProfileEntry> Entries() => Classes is null ? [this] : [this, .. Classes.Values];
+
+    /// <summary>Puts <paramref name="key"/>'s places and looks and the party windows into <paramref name="s"/>.</summary>
+    public void Apply(string? key, Settings s)
+    {
+        EntryOf(key).ApplyTo(s);
         (s.Party.Together, s.Party.Left, s.Party.Top, s.Party.PlateColor) = (PartyTogether, BoundPartyLeft, BoundPartyTop, PartyPlateColor);
         for (int i = 0; i < s.Party.ShowOthersBySlot.Count; i++)
         {
             var at = i < PartySlots.Count ? PartySlots[i] : new WindowPlace();
             (s.Party.ShowOthersBySlot[i].Left, s.Party.ShowOthersBySlot[i].Top) = (at.Left, at.Top);
         }
-        // Copies, so editing the live ones leaves this profile as stored until the next switch captures them.
-        // Shared or not, the 암수 and 단심 windows' spot and size are this 배치's.
-        if (Amsu is not null)
-        {
-            if (Own(LookGroup.암수)) s.Amsu = Amsu.Copy();
-            else WindowPlace.Of(Amsu).To(s.Amsu);
-        }
-        if (Judgment is not null)
-        {
-            if (Own(LookGroup.단심)) s.Judgment = Judgment.Copy();
-            else WindowPlace.Of(Judgment).To(s.Judgment);
-        }
-        if (MeterBarOpacity is not null && Own(LookGroup.미터기)) s.Meter.BarOpacity = MeterBarOpacity;
-        if (Meter is not null && Own(LookGroup.미터기)) Meter.To(s.Meter);
-        if (BuffLook is not null && Own(LookGroup.버프막대)) BuffLook.To(s.Buffs);
-    }
-
-    /// <summary>Hand edits back into range, and today's settings where the file has none (<c>SettingsStore.Normalize</c>).</summary>
-    internal void Fill(Settings s)
-    {
-        Amsu ??= s.Amsu.Copy();
-        Amsu.Clamp();
-        Judgment ??= s.Judgment.Copy();
-        Judgment.Clamp();
-        MeterBarOpacity = MeterSettings.ClampOpacity(MeterBarOpacity ?? s.Meter.BarOpacity ?? s.Meter.Opacity);
-        ShowPlate ??= s.Overlay.ShowPlate;
-        Boxes ??= BoxLooks.Of(s.Overlay);
-        Boxes = Boxes with { BoxOpacity = Math.Clamp(double.IsFinite(Boxes.BoxOpacity) ? Boxes.BoxOpacity : 1, 0, 1) };   // a hand edit
-        BuffLook ??= BuffLooks.Of(s.Buffs);
-        BuffLook = BuffLook with { Bars = BuffLook.Bars ?? [] };   // a hand edit
-        GaugeLook ??= GaugeLooks.Of(s.Gauge);
-        GaugeLook = GaugeLook with { Opacity = Math.Clamp(double.IsFinite(GaugeLook.Opacity) ? GaugeLook.Opacity : 1, 0, 1) };   // a hand edit
-        Meter ??= MeterLooks.Of(s.Meter);
-        Meter = Meter with { Opacity = MeterSettings.ClampOpacity(Meter.Opacity), Background = Meter.Background ?? s.Meter.Background };
     }
 }
 
@@ -251,4 +231,29 @@ public sealed record MeterLooks(MeterLook Look, bool Graph, string? My, string? 
 
     public void To(MeterSettings m) =>
         (m.Look, m.Graph, m.MyColor, m.DealerColor, m.SupportColor, m.OtherColor, m.Background, m.Opacity) = (Look, Graph, My, Dealer, Support, Other, Background, Opacity);
+}
+
+/// <summary>The 줄 수 창's look kept per profile: 배경 색, 불투명도.</summary>
+public sealed record RaidLooks(string Background, double Opacity)
+{
+    public static RaidLooks Of(RaidSettings r) => new(r.Background, r.Opacity);
+
+    public void To(RaidSettings r) => (r.Background, r.Opacity) = (Background, Opacity);
+}
+
+/// <summary>The 줄 수 창's 켜기, 빛날 때만 표시 and glow rules kept per profile · class (class-profiles.plan.md E). The live
+/// values stay in <see cref="RaidSettings"/>, which the reads, the tray and the 기능 맵 use.</summary>
+/// <remarks>The defaults are <see cref="RaidSettings"/>'s: a field missing from the file (a hand edit, "RaidShow": {}) reads as
+/// today's default, never as false (the count read off).</remarks>
+public sealed record RaidShow(bool CountEnabled = true, bool OnlyWhenGlowing = false, bool Glow = true, GlowUntil GlowUntil = GlowUntil.Seconds,
+    int GlowSeconds = 20, int GlowBars = 5)
+{
+    public static RaidShow Of(RaidSettings r) => new(r.CountEnabled, r.OnlyWhenGlowing, r.Glow, r.GlowUntil, r.GlowSeconds, r.GlowBars);
+
+    public void To(RaidSettings r) =>
+        (r.CountEnabled, r.OnlyWhenGlowing, r.Glow, r.GlowUntil, r.GlowSeconds, r.GlowBars) = (CountEnabled, OnlyWhenGlowing, Glow, GlowUntil, GlowSeconds, GlowBars);
+
+    /// <summary>Hand-edited numbers back into the sliders' range.</summary>
+    internal RaidShow Clamped() =>
+        this with { GlowSeconds = Math.Clamp(GlowSeconds, 1, RaidSettings.MaxGlowSeconds), GlowBars = Math.Clamp(GlowBars, 1, RaidSettings.MaxGlowBars) };
 }

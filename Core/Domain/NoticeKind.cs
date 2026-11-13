@@ -16,7 +16,7 @@ public static class Notices
 {
     public static readonly IReadOnlyList<(NoticeKind Kind, string Name, string Help)> All =
     [
-        (NoticeKind.Guide, "안내", "스킬창 맞추기 결과, 테스트 모드나 위치 프로필 전환처럼 앱이 한 일을 알려 줍니다."),
+        (NoticeKind.Guide, "안내", "스킬창 맞추기 결과, 테스트 모드나 프로필 전환처럼 앱이 한 일을 알려 줍니다."),
         (NoticeKind.Party, "파티", "공유 방 참가, 나가기, 거절, 내보내기를 알려 줍니다."),
         (NoticeKind.Problem, "문제", "오류, 맞춘 스킬창이 없을 때, 쓸 수 없는 단축키처럼 고쳐야 할 일을 알려 줍니다. 끄면 이런 문제는 로그 파일에만 남습니다."),
     ];

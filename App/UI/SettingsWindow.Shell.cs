@@ -16,7 +16,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     const string AreaOverlay = "내 오버레이", AreaCharacter = "직업 인식", AreaParty = "파티 공유", AreaFit = "화면·인식", AreaKeys = "키·단축키";
-    const string AreaApp = "테마·업데이트", AreaScreens = "표시할 화면", AreaSkills = "스킬창", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고", AreaPerformance = "시스템 성능";
+    const string AreaApp = "테마·업데이트", AreaScreens = "표시할 화면", AreaSkills = "스킬창", AreaGauge = "아덴 게이지", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고", AreaPerformance = "시스템 성능";
     /// <summary>A form's width at most: rows don't stretch across a wide window (user, 2026-11-05: long blocks sideways).</summary>
     const double FormMaxWidth = 620;
     const string SecFit = "스킬창 맞추기";   // not "스킬창": that is the rail's area for the boxes' look
@@ -121,7 +121,8 @@ public partial class SettingsWindow
             new(AreaOverlay, ""),
             new(AreaScreens, "오버레이를 띄울 모니터와 언제 보일지를 정합니다.", (AreaScreens, _secScreens)),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", (AreaCharacter, _secCharacter)),
-            new(AreaSkills, "스킬 칸을 켜고 끄고, 스킬마다 보이기와 색을 정합니다. 칸 모양은 모든 칸의 쿨 표시입니다.", ("내 스킬", _secSkillList), ("칸 모양", _secSkillLook)),
+            new(AreaSkills, "스킬 칸을 켜고 끄고, 스킬마다 보이기와 색을 정합니다. 칸 모양은 모든 칸의 쿨 표시입니다.", ("내 스킬", _secSkillList), ("칸 모양", _secSkillLook), ("창 구성", _secApart)),
+            new(AreaGauge, "아덴 게이지를 읽는 직업각인의 막대입니다. 따로로 하면 자기 창에 그려집니다.", (AreaGauge, GaugeBox)),
             new(AreaJudgment, "단죄·심판 룬의 심판 시간입니다.", (AreaJudgment, _secOther)),
             new(AreaBuffs, "내 버프 줄에서 찾아 남은 시간을 막대로 보여 줍니다.", (AreaBuffs, _secBuffs)),
             new(AreaAmsu, "보스에 걸린 암흑수류탄의 남은 시간입니다.", (AreaAmsu, _secAmsu)),
@@ -174,7 +175,7 @@ public partial class SettingsWindow
         _secApp.Children.Add(_navNote);
         _secApp.Children.Add(ResetButton("전체 초기화",
             "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
-            + "캐릭터, 위치 프로필(위치·크기), 창 위치, 배운 게이지 값과 테마는 남습니다.",
+            + "캐릭터, 프로필, 창 위치, 배운 게이지 값과 테마는 남습니다.",
             () => SettingsResets.All(_s)));
         _update.Click += (_, _) =>
         {
@@ -241,7 +242,7 @@ public partial class SettingsWindow
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA", [AreaPerformance] = "\uEC4A",
+        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaGauge] = "\uE790", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA", [AreaPerformance] = "\uEC4A",
     };
 
     /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name with
@@ -356,6 +357,7 @@ public partial class SettingsWindow
         Form.HorizontalAlignment = wide ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         Detach(panel);
         Form.Children.Add(panel);   // its own cards (CardStack)
+        ShowCardBadges(panel, true);
     }
 
     /// <summary>A thin line across, in the cards' stroke colour: under the section buttons, and between the parts of a section.</summary>

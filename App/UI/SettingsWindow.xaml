@@ -29,7 +29,8 @@
                     <ColumnDefinition Width="2*" MinWidth="300" MaxWidth="400" />
                 </Grid.ColumnDefinitions>
                 <DockPanel>
-                    <WrapPanel x:Name="CanvasTools" DockPanel.Dock="Top" Margin="12,8,12,8" />
+                    <StackPanel x:Name="CanvasBadgeHost" DockPanel.Dock="Top" Margin="12,10,12,0" Orientation="Horizontal" />
+                    <WrapPanel x:Name="CanvasTools" DockPanel.Dock="Top" Margin="12,6,12,8" />
                     <Border x:Name="CanvasHost" />
                 </DockPanel>
                 <Border x:Name="InspectorHost" Grid.Column="1" BorderThickness="1,0,0,0">

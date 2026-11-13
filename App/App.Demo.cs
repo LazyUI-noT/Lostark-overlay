@@ -74,7 +74,8 @@ public partial class App
         if (Enum.TryParse(Flag("theme"), out UiTheme theme)) settings.Theme = theme;
         if (args.Contains("--receive")) (settings.Party.ReceiveSize, settings.Party.ReceiveLayout) = (true, true);
         if (args.Contains("--side-buffs")) settings.Buffs.Side = true;
-        if (args.Contains("--detach-buffs")) settings.Buffs.Detached = true;
+        if (args.Contains("--detach-buffs") || args.Contains("--apart")) settings.Apart = true;   // 따로
+        if (args.Contains("--gauge-upright")) settings.Gauge.Upright = true;
         if (args.Contains("--debuffs") || args.Contains("--duelist"))
         {
             settings.Debuffs.Raid = Raid.모르둠;
@@ -93,7 +94,7 @@ public partial class App
                 (w.MeterSkill, w.MeterSkillName) = (SlotId.일반1, skill);
             }
         }
-        if (args.Contains("--raid")) (settings.Raids.Gate(RaidSettings.MordumGate).CountWindow, settings.Raids.Gate(RaidSettings.MordumGate).CountAuto) = (true, false);
+        if (args.Contains("--raid")) settings.Raids.Gate(RaidSettings.MordumGate).CountAuto = false;
         OverlayRenderer.DemoReducedMotion = args.Contains("--reduced");
         if (args.Contains("--bound-party")) settings.Party.Together = true;
         if (args.Contains("--glow"))
@@ -177,6 +178,8 @@ public partial class App
             if (!demo.TryNext(out var self, out var peers)) return;
             _overlay.Update(self);
             _buffs.Update(self);
+            _gauge.Update(self);
+            if (_settings.Apart) _gauge.PlaceAtHome(_overlay);
             _debuffs.Update(self);
             _judgment.Update(self);
             _amsu.Update(self);
@@ -227,9 +230,10 @@ public partial class App
         if (args.Contains("--edit")) SetEditMode(true);
         // As a click on the preview: the box's (or with "plate", 창 전체's) options in the inspector.
         if (Enum.TryParse(Flag("pick"), out Part picked)) _settingsWindow.Inspect(new(picked >= FreeLayout.FirstBuff ? "BuffBar" : "Skills", picked, null));
+        else if (Flag("pick") == "Gauge") _settingsWindow.Inspect(new("Gauge", Part.게이지, null));   // the gauge (its own window under 따로)
         else if (Flag("pick") == "plate") _settingsWindow.Inspect(new("Plate", null, null));
         else if (Flag("pick") is "Judgment" or "Amsu" or "Raid") _settingsWindow.Inspect(new(Flag("pick")!, null, null));   // a window picked whole: its outline handles
-        else if (Flag("pick") == "copy") _settingsWindow.ShowCopy();   // the 복사 page
+        else if (Flag("pick") == "copy") { _settingsWindow.ShowCopy(); if (Flag("copy-demo") is { } copyDemo) _settingsWindow.DemoCopy(copyDemo); }   // the 복사 page
         if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);
         if (args.Contains("--join")) Dispatcher.BeginInvoke(() => JoinDialog.Ask(settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--token")) Dispatcher.BeginInvoke(() => TokenDialog.ShowToken("demo-token-1234567890abcdef", settings.Party.HostPort, settings.Theme), DispatcherPriority.ApplicationIdle);
@@ -303,7 +307,7 @@ public partial class App
     {
         OverlayPart.Debuffs => [_debuffs], OverlayPart.Judgment => [_judgment], OverlayPart.Amsu => [_amsu],
         OverlayPart.BarCount => [_raid], OverlayPart.Meter => [_meter], OverlayPart.Party => [.. _peers],
-        _ => [_overlay, _buffs],
+        _ => [_overlay, _buffs, _gauge],
     };
 
     /// <summary>--homework-demo: 설정 → 숙제 with a character, three picks and a week's clears (one of them 확인필요), in a temp file.</summary>

@@ -2,79 +2,89 @@ using System.Text.Json;
 
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>오버레이 프로필 1–5 and the window spot kept per 직업각인.</summary>
+/// <summary>프로필 1–5, and inside each the places and looks per 클래스 · 직업각인 (class-profiles.plan.md).</summary>
 public sealed partial class Settings
 {
-    /// <summary>After the character changed: when the settings your boxes use (<see cref="ClassProfiles.ActiveKey"/>)
-    /// are a 직업각인's, or no longer are, keeps your window's spot and size for the one left (in the active profile) and
-    /// puts back the new one's; a 직업각인 placed for the first time starts where the window is. True when it changed.</summary>
-    public bool SyncPlace()
+    /// <summary>After the character changed: when the played 클래스 · 직업각인 (<see cref="ClassProfiles.LookKey"/>) is
+    /// another than the one the live values hold (<see cref="PlaceKey"/>), keeps them as that one's in the active profile and
+    /// puts the new one's on (the profile's shared ones where it has none). True when it changed.</summary>
+    public bool SyncClass()
     {
-        var key = ClassProfiles.ActiveKey(this) is { } k && ClassProfiles.Parent(k) is { } p && p != ClassProfiles.Template ? k : null;
+        var key = ClassProfiles.LookKey(this);
         if (key == PlaceKey) return false;
         if (ActiveProfile >= 0 && ActiveProfile < Profiles.Count)
         {
             var profile = Profiles[ActiveProfile];
-            bool placed = key is null || profile.SubclassPlaces.ContainsKey(key);
-            profile.KeepPlace(PlaceKey, this);
-            if (placed) profile.PlaceOf(key).To(Overlay);
+            profile.Keep(PlaceKey, this);
+            profile.EntryOf(key).ApplyTo(this);
         }
         PlaceKey = key;
         return true;
     }
 
-    /// <summary>Keeps the current places in the active profile and puts back <paramref name="index"/>'s. The same or a
-    /// missing profile changes nothing.</summary>
+    /// <summary>Keeps the current places, looks and 게이지 bars in the active profile and puts back <paramref name="index"/>'s
+    /// for the played class. The same or a missing profile changes nothing.</summary>
     public void SwitchProfile(int index)
     {
         if (index == ActiveProfile || index < 0 || index >= Profiles.Count) return;
-        if (ActiveProfile >= 0 && ActiveProfile < Profiles.Count) Profiles[ActiveProfile].CaptureFrom(this);
-        Profiles[index].ApplyTo(this);
+        if (ActiveProfile >= 0 && ActiveProfile < Profiles.Count) KeepLive(Profiles[ActiveProfile]);
+        PutOn(Profiles[index]);
         ActiveProfile = index;
     }
 
-    /// <summary>The 모든 위치 프로필에 적용 mark of <paramref name="look"/>. On: the live (active 배치's) value is the shared one.
-    /// Off: every 배치 starts from it, then keeps its own.</summary>
-    public void ShareLook(LookGroup look, bool shared)
+    void KeepLive(OverlayProfile p)
     {
-        SharedLooks ??= [];
-        if (shared) { SharedLooks.Add(look); return; }
-        if (!SharedLooks.Remove(look)) return;
-        foreach (var p in Profiles) p.TakeLook(look, this);
+        p.Keep(PlaceKey, this);
+        p.GaugeBars = OverlayProfile.CloneBars(GaugeBars);
+        p.Aden = AdenShow.Snapshot(Classes);
     }
 
-    /// <summary>The looks where another 배치 holds a value unlike the live (active) one.</summary>
-    internal List<LookGroup> DifferingLooks()
+    void PutOn(OverlayProfile p)
     {
-        var live = new OverlayProfile();
-        return [.. Enum.GetValues<LookGroup>().Where(g =>
-        {
-            live.TakeLook(g, this);
-            var key = live.LookKey(g);
-            return Profiles.Where((_, i) => i != ActiveProfile).Any(p => p.LookKey(g) != key);
-        })];
+        p.Apply(PlaceKey, this);
+        GaugeBars = OverlayProfile.CloneBars(p.GaugeBars ?? GaugeBars);   // none (a hand-built Settings): the live ones stay
+        if (p.Aden is not null) AdenShow.Apply(Classes, p.Aden);
     }
 
-    /// <summary>The one-time notice after an older file's 배치 were merged (<see cref="MergedLooks"/>); null when none differed.</summary>
-    public string? MergedLooksNotice() => MergedLooks.Count == 0 ? null
-        : $"위치 프로필마다 달랐던 설정을 지금 위치 프로필({ActiveProfile + 1})의 값으로 맞췄습니다: {string.Join(", ", MergedLooks)}.\n\n"
-          + "이제 이 설정들은 모든 위치 프로필에 같게 적용됩니다. 위치 프로필마다 따로 두려면 설정에서 그 항목의 '모든 위치 프로필에 적용'을 끄세요.";
+    /// <summary>모든 프로필에 적용: <paramref name="look"/>'s live value into every profile and every class in it, once (user,
+    /// 2026-11-13: a button, not a shared mark). Each keeps its own afterwards; window spots and sizes aren't touched.</summary>
+    public void ApplyLookToAll(LookGroup look)
+    {
+        foreach (var e in Profiles.SelectMany(p => p.Entries())) TakeLookKeepingSpot(e, look, this);
+    }
 
-    /// <summary>위치 프로필 복사: the active profile, as it is now, into <paramref name="to"/>, all but the screenshot, which
+    /// <summary>An older file's 모든 프로필에 적용 marks (<see cref="SharedLooks"/>): each marked look's live value goes into
+    /// every profile, as it showed in all of them, and nothing stays shared (<c>SettingsStore.Normalize</c>).</summary>
+    internal void UnshareLooks()
+    {
+        foreach (var look in SharedLooks ?? []) ApplyLookToAll(look);
+        SharedLooks = [];
+    }
+
+    /// <summary>A 0.22 file (<c>SettingsStore.Normalize</c>): its active profile takes the live values as 0.22 kept them (the
+    /// looks one per profile), then every profile's 직업각인 spots become class entries (<see cref="OverlayProfile.Migrate"/>).</summary>
+    internal void MigrateClasses()
+    {
+        if (ActiveProfile >= 0 && ActiveProfile < Profiles.Count && Profiles[ActiveProfile].Classes is null)
+            Profiles[ActiveProfile].Keep022(PlaceKey, this);
+        foreach (var p in Profiles) p.Migrate(this);
+    }
+
+    /// <summary>프로필 복사: the active profile, as it is now, into <paramref name="to"/>, all but the screenshot, which
     /// <paramref name="to"/> keeps. The active or a missing profile changes nothing (false).</summary>
     public bool CopyProfile(int to) => CopyProfile(ActiveProfile, to);
 
-    /// <summary>위치 프로필 <paramref name="from"/> (as it is now, the active one included) into <paramref name="to"/>, all but the
-    /// screenshot, which <paramref name="to"/> keeps. Into the active one it is put on screen at once. The same or a missing
-    /// profile changes nothing (false).</summary>
+    /// <summary>프로필 <paramref name="from"/> (as it is now, the active one included) into <paramref name="to"/>, every class's
+    /// entry and 게이지 bars too, all but the screenshot, which <paramref name="to"/> keeps. Into the active one it is put on
+    /// screen at once. The same or a missing profile changes nothing (false).</summary>
     public bool CopyProfile(int from, int to)
     {
         if (from == to || from < 0 || from >= Profiles.Count || to < 0 || to >= Profiles.Count) return false;
-        if (from == ActiveProfile) Profiles[from].CaptureFrom(this);
+        if (from == ActiveProfile) KeepLive(Profiles[from]);
         var copy = JsonSerializer.Deserialize<OverlayProfile>(JsonSerializer.SerializeToUtf8Bytes(Profiles[from], Data.SettingsStore.Json), Data.SettingsStore.Json)!;
         copy.Shot = Profiles[to].Shot;
         Profiles[to] = copy;
-        if (to == ActiveProfile) copy.ApplyTo(this);
+        if (to == ActiveProfile) PutOn(copy);
         return true;
     }
 }

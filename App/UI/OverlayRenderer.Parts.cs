@@ -11,18 +11,22 @@ namespace GaugeOverlay.App.UI;
 /// <summary>The smaller drawing pieces: the gauge bar, buff bars, ready counts, the end flash, the ready band, outlined text, faint hidden parts.</summary>
 public sealed partial class OverlayRenderer
 {
+    static Cell AsCell(Rect r) => new(r.X, r.Y, r.Width, r.Height);
+    static Rect AsRect(Cell c) => new(c.X, c.Y, c.W, c.H);
+
     /// <summary>Your gauge bar: each segment's fill in its colour, then one glow in the chosen style over the whole glowing
-    /// part (steady under reduced motion), then the split marks.</summary>
-    void DrawBar(DrawingContext dc, Rect g, string key, GaugeBar bar, Snapshot s, double v, double ms, bool reduced)
+    /// part (steady under reduced motion), then the split marks. <paramref name="upright"/> (the gauge window under 따로)
+    /// fills from the bottom; the direction maths is <see cref="GaugeAxis"/>.</summary>
+    void DrawBar(DrawingContext dc, Rect g, string key, GaugeBar bar, Snapshot s, double v, double ms, bool reduced, bool upright = false)
     {
         var segments = bar.Segments;
+        var cell = AsCell(g);
         // 색 단계 and the filling colour, eased: a section turning full fades gold → blue, the ramp deepens smoothly.
         var colors = Get(_barColors, key).Value([.. bar.ColorsAt(s.Gauge ?? 0).Select(Parse)], ms, reduced, ref _animating);
         for (int i = 0; i < segments.Count; i++)
         {
             var (from, to) = segments[i];
-            double end = Math.Min(to, v);
-            if (end > from) dc.DrawRectangle(Solid(colors[i]), null, new Rect(g.X + g.Width * from, g.Y, g.Width * (end - from), g.Height));
+            if (Math.Min(to, v) > from) dc.DrawRectangle(Solid(colors[i]), null, AsRect(GaugeAxis.Span(cell, from, Math.Min(to, v), upright)));
         }
         bool ready = bar.Glow?.Slot is { } slot && s[slot].Phase == SlotPhase.Ready;
         if (bar.GlowSpan(s.Gauge ?? 0, ready) is { } span && Math.Min(span.To, v) > span.From)
@@ -30,33 +34,31 @@ public sealed partial class OverlayRenderer
             // One glow over the whole glowing part, across the splits, not one per segment.
             if (!reduced && _frozenAt is null) _moving = true;
             double level = reduced ? 0.6 : GaugeBar.GlowLevel(ms, bar.Period);
-            var fill = new Rect(g.X + g.Width * span.From, g.Y, g.Width * (Math.Min(span.To, v) - span.From), g.Height);
+            var fill = GaugeAxis.Span(cell, span.From, Math.Min(span.To, v), upright);
             switch (bar.Style)
             {
                 case GlowStyle.Pulse:
                     dc.PushOpacity(GlowAlpha * level);
-                    dc.DrawRectangle(Brushes.White, null, fill);
+                    dc.DrawRectangle(Brushes.White, null, AsRect(fill));
                     dc.Pop();
                     break;
                 case GlowStyle.Outline:
                     dc.PushOpacity(0.4 + 0.6 * level);
-                    dc.DrawRectangle(null, GlowPen, new Rect(fill.X + 0.5, fill.Y + 0.5, Math.Max(0, fill.Width - 1), Math.Max(0, fill.Height - 1)));
+                    dc.DrawRectangle(null, GlowPen, new Rect(fill.X + 0.5, fill.Y + 0.5, Math.Max(0, fill.W - 1), Math.Max(0, fill.H - 1)));
                     dc.Pop();
                     break;
                 case GlowStyle.Shine:
                     double at = reduced ? 0.5 : ms / (Math.Max(0.1, bar.Period) * 1000) % 1;
-                    double w = Math.Max(2, fill.Width * 0.25), x = fill.X - w + (fill.Width + w) * at;
-                    double left = Math.Max(fill.X, x), right = Math.Min(fill.Right, x + w);   // the band cut to the fill
-                    if (right <= left) break;
+                    if (GaugeAxis.Sweep(fill, at, upright) is not { } band) break;   // the band cut to the fill
                     dc.PushOpacity(GlowAlpha);
-                    dc.DrawRectangle(Brushes.White, null, new Rect(left, fill.Y, right - left, fill.Height));
+                    dc.DrawRectangle(Brushes.White, null, AsRect(band));
                     dc.Pop();
                     break;
             }
         }
         var mark = Solid(Parse(bar.SplitColor));
         foreach (double split in bar.Splits)
-            dc.DrawRectangle(mark, null, new Rect(g.X + g.Width * split - bar.SplitThickness / 2, g.Y, bar.SplitThickness, g.Height));
+            dc.DrawRectangle(mark, null, AsRect(GaugeAxis.Mark(cell, split, bar.SplitThickness, upright)));
     }
 
     /// <summary>A 쿨 돈 뒤 지난 시간 number in the timer's place, in its own colour.</summary>

@@ -232,7 +232,6 @@ public partial class SettingsWindow
         var copy = JsonSerializer.Deserialize<Settings>(JsonSerializer.SerializeToUtf8Bytes(_s, SettingsStore.Json), SettingsStore.Json)!;
         foreach (var part in new[] { OverlayPart.Debuffs, OverlayPart.Judgment, OverlayPart.Amsu, OverlayPart.Meter, OverlayPart.BarCount, OverlayPart.Party })
             TrayToggles.Show(copy, part, true);
-        copy.Raids.Gate(RaidSettings.MordumGate).CountWindow = true;   // a 줄 수 창 to draw
         // 자동 buff bars: the renderer draws them as in a raid in every preview (OverlayRenderer.ShowHidden).
         return copy;
     }
@@ -246,14 +245,14 @@ public partial class SettingsWindow
         OverlayPart.Judgment => "지금 캐릭터의 단심 창입니다.",
         OverlayPart.Amsu => "보스에 걸린 암흑수류탄의 남은 시간입니다. 켜면 모든 보스에서 읽습니다.",
         OverlayPart.Meter => "끄면 창만 숨깁니다. 전투 기록에 쓰려고 계속 읽습니다. 읽기까지 끄려면 DPS 미터기에서 끄세요.",
-        OverlayPart.BarCount => "모든 레이드의 줄 수 읽기입니다. 관문마다 켠 줄 수 창 설정은 남습니다. 레이드 화면 맨 위 스위치와 같습니다.",
+        OverlayPart.BarCount => "모든 레이드의 줄 수 읽기입니다. 관문마다 켠 줄 수 창 설정은 남습니다. 내 오버레이 → 줄 수의 스위치와 같습니다.",
         OverlayPart.Party => "파티원 창 전부입니다. 공유 연결은 그대로입니다.",
         _ => null,
     };
 
     string? ShowNote(OverlayPart part) => part switch
     {
-        OverlayPart.BarCount => $"관문마다 켠 줄 수 창: {_s.Raids.Gates.Values.Count(g => g.CountWindow)}개",
+        OverlayPart.BarCount => _s.Raids.CountEnabled ? "모든 관문에서 켜짐" : "줄 수 읽기 꺼짐",
         OverlayPart.Judgment when _s.ActiveCharacter is null => "캐릭터를 고르면 켤 수 있습니다.",
         _ => null,
     };
@@ -267,7 +266,7 @@ public partial class SettingsWindow
         OverlayPart.Judgment => new(AreaOverlay, "단심", new("Judgment", null, null)),
         OverlayPart.Amsu => new(AreaOverlay, "암흑수류탄", new("Amsu", null, null)),
         OverlayPart.Meter => new(AreaMeter, AreaMeter, null),
-        OverlayPart.BarCount => new(AreaRaid, "레이드", null),
+        OverlayPart.BarCount => new(AreaOverlay, "줄 수 창", RaidCountBox),
         _ => new(AreaParty, SecMembers, null),
     };
 }

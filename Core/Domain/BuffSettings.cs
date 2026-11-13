@@ -28,6 +28,10 @@ public sealed class BuffSettings : IWindowPlace
     /// <summary>Only the indicators changed from <see cref="Default"/>; read through <see cref="Of"/>.</summary>
     public Dictionary<BuffKind, BuffIndicator> Indicators { get; set; } = [];
 
+    /// <summary>Whether the bars stand upright: <see cref="Side"/> only counts under 따로 (<paramref name="apart"/>); on the plate
+    /// (합쳐서) they lie flat and the value is kept.</summary>
+    public bool Upright(bool apart) => Side && apart;
+
     public BuffIndicator Of(BuffKind kind) => Indicators.GetValueOrDefault(kind) ?? Default(kind);
 
     /// <summary>마지막 1초 깜빡임: whether the bar flashes in its drain direction through its last second; unset, on for

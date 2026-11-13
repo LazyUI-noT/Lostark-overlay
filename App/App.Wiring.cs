@@ -42,6 +42,9 @@ public partial class App
         IReadOnlyList<RaidGate> HpGates() => HpChange.Effective(raidGates, settings.Raids, fightHp);
         // Every shipped 직업각인 has settings of its own (a new one starts from its class); saved by the debounced writer.
         if (ClassProfileMigration.EnsureOwn(settings, characters.Classes)) debounce.Changed(Clock.Now());
+        // 합쳐서 / 따로: a file from before it keeps its boxes still when the gauge leaves the plate (needs the classes that draw a gauge).
+        var gaugeKeys = characters.Support(slot => slot.ToString()).Where(r => r.Gauge is not null).Select(r => Settings.CharacterKey(r.Class, r.Subclass)).ToHashSet();
+        if (SplitLayout.Migrate(settings, gaugeKeys)) debounce.Changed(Clock.Now());
         // 설정 → 직업 인식 marks what was added since: the first run of a version with the list records what ships now.
         // Saved by the debounced writer (retries a locked file); unsaved, the next start just records it again.
         if (settings.SeenSupport is null)
@@ -247,6 +250,7 @@ public partial class App
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Trace.WriteLine($"[app] test settings not read: {ex.Message}"); }
             settings.SwapIn(test ?? SettingsStore.Copy(settings));
             ClassProfileMigration.EnsureOwn(settings, characters.Classes);
+            if (SplitLayout.Migrate(settings, gaugeKeys)) debounce.Changed(Clock.Now());   // a test file from before 0.23, as at start
             _settingsWindow.SettingsSwapped(test: true);
         }
         void LeaveTestSettings()
@@ -307,7 +311,7 @@ public partial class App
                 _tray.Notify(characters.ShownClass is { } shown
                     ? $"스킬창 가운데가 {Josa.By(shown)} 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
                     : $"초각스 아이콘이 고른 클래스({characters.ActiveClass?.Name})와 다릅니다. 클래스를 확인하세요. 게이지 예측은 멈췄습니다.", kind: NoticeKind.Problem);
-            _overlay.Renderer.ClassWarning = warn;
+            _overlay.Renderer.ClassWarning = _gauge.Renderer.ClassWarning = warn;
             // About 10 s of flashing with no fix: back to 기본, so a wrong class doesn't stay on.
             if (warn) { if (!wrongClassTimer.IsEnabled) wrongClassTimer.Start(); }
             else wrongClassTimer.Stop();
@@ -395,6 +399,9 @@ public partial class App
 
         void Configure()
         {
+            // First: the played class's looks and 줄 수 창 go to the party and the engine (class-profiles.plan.md, wiring fix).
+            // Mid-drag the drop would land in the other class's spots: retried at the next change.
+            if (!AnyDragging && settings.SyncClass()) { ApplyProfile(); return; }   // ApplyProfile's change runs Configure again
             if (settings.ActiveCharacter != colorsFor)
             {
                 colorsFor = settings.ActiveCharacter;
@@ -414,7 +421,6 @@ public partial class App
                 settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly, settings.Debuffs.BossCount,
                 HomeworkRead: !(settings.Meter.On && settings.Meter.Record), BossHpEvery: MeterSettings.ClampHpEvery(settings.Meter.HpEvery)));   // 숙제 without a recorded fight reads the bar itself
             engine.ReadBehind = settings.Screens.ReadBehind;
-            if (settings.SyncPlace()) { _overlay.Replace(); ApplyDisplay(); }   // a 직업각인 has its own spot and size
             ApplyUi();
             Draw();
         }
@@ -448,6 +454,8 @@ public partial class App
             }
             _overlay.Update(mine is not null ? new Player("", mine) : null);
             _buffs.Update(mine is not null ? new Player("", mine) : null);
+            _gauge.Update(mine is not null ? new Player("", mine) : null);
+            if (settings.Apart && mine?.Gauge is not null) _gauge.PlaceAtHome(_overlay);   // no gauge read: no home, skip the forced layout
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
             _judgment.Update(mine is not null ? new Player("", mine) : null);
             _amsu.Update(mine is not null ? new Player("", mine) : null);
@@ -509,7 +517,7 @@ public partial class App
             }
             hiddenBar = BarAlert.Update(hiddenBar, (int)Math.Ceiling(est.LeftPercent), now, BarAlert.Thresholds(r.AlertsOf(est.Gate), r.OffsetOf(est.Gate.Id)));
             bool glow = r.Glow && BarAlert.Glowing(hiddenBar, r.GlowUntil, r.GlowSeconds, r.GlowBars, now);
-            hiddenStatus = new RaidStatus(est.Gate, null, glow, HiddenHp.Label(est, status.Panel, role));
+            hiddenStatus = r.Shown(new RaidStatus(est.Gate, null, glow, HiddenHp.Label(est, status.Panel, role)));
         }
 
         // 전투 기록's second: everyone's figures (mine from this PC, as the meter shows them) and who is in the fight.
@@ -1150,18 +1158,6 @@ public partial class App
         };
         if (settings.Updates.Check) _ = CheckForUpdate();
         ShowWhatsNew();
-        ShowMergedLooks();
-
-        // An older file's 위치 프로필 that differed in a look now share the active one's (display-split.plan.md): said once,
-        // saved at once so the next start doesn't merge again.
-        void ShowMergedLooks()
-        {
-            if (settings.MergedLooksNotice() is not { } notice) return;
-            settings.MergedLooks = [];
-            Save(now: true);
-            Dispatcher.BeginInvoke(() => MessageBox.Show(notice, "GaugeOverlay 위치 프로필", MessageBoxButton.OK, MessageBoxImage.Information),
-                DispatcherPriority.ApplicationIdle);
-        }
 
         // Download, verify, swap and restart into the new version. Nothing may escape it, or the app goes down mid-update.
         async Task Install(Release release)

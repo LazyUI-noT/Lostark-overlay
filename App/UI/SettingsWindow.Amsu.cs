@@ -11,7 +11,7 @@ public partial class SettingsWindow
     {
         var a = _s.Amsu;
         var p = Refill(_secAmsu, "암흑수류탄", "보스에 걸린 암흑수류탄(20초)과 빛나는 암흑수류탄(25초) 중 오래 남은 쪽의 시간을 보여 줍니다. 내 화면에만 보입니다.");
-        p.Children.Add(ShareMark(LookGroup.암수, FillAmsu));
+        p.Children.Add(CardBadge(LookGroup.암수));
         p.Children.Add(DefaultedCheck(Check("암흑수류탄 읽기", a.On, v => a.On = v, () => { Changed(); Dispatcher.BeginInvoke(FillAmsu); },
             "보스 체력바 아래 디버프 줄에서 읽습니다."), s => s.Amsu.On, (s, v) => s.Amsu.On = v));
         if (!a.On) return;

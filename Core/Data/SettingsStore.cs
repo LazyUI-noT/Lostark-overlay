@@ -124,8 +124,8 @@ public sealed class SettingsStore(string path)
         s.Meter ??= new();
         s.Meter.Normalize();
         foreach (var p in s.Profiles) p.Fill(s);   // after 암수, 단심 and the meter are repaired: an older file's profiles take them
-        if (s.SharedLooks is null)   // an older file: every look is shared now, the notice names the ones that differed
-            (s.MergedLooks, s.SharedLooks) = (s.DifferingLooks(), [.. Enum.GetValues<LookGroup>()]);
+        s.UnshareLooks();   // an older file's 모든 위치 프로필에 적용 marks: their value into every profile, none shared now
+        s.MigrateClasses();   // a 0.22 file: its 직업각인 spots become class entries, its 게이지 bars every profile's (after the fill and marks: entries clone them)
         s.BossBook ??= [];
         s.MutedNotices ??= [];   // a hand edit: null
         if (s.RailSeen is not null) s.RailSeen = s.RailSeen.ToDictionary(kv => kv.Key, kv => kv.Value ?? []);   // a hand edit: a null list

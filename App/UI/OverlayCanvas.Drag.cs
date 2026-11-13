@@ -28,10 +28,10 @@ public sealed partial class OverlayCanvas
     (BuffKind Kind, Rect Rect, bool Upright) _bar;          // BarLength: the bar, as drawn when the drag began
     double _startLength, _barFull;                          // and its 길이 then, and its length drawn at 길이 1
 
-    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _amsu ? _s.Amsu : r == _raid ? _s.Raids : _s.Overlay;
+    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _gauge ? _s.Gauge : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _amsu ? _s.Amsu : r == _raid ? _s.Raids : _s.Overlay;
 
     /// <summary>The window sized by its outline here (null: its size is set elsewhere).</summary>
-    SizedWindow? Sizing(OverlayRenderer r) => r == _judgment ? SizedWindow.Judgment : r == _amsu ? SizedWindow.Amsu : r == _raid ? SizedWindow.Raid : null;
+    SizedWindow? Sizing(OverlayRenderer r) => r == _gauge ? SizedWindow.Gauge : r == _judgment ? SizedWindow.Judgment : r == _amsu ? SizedWindow.Amsu : r == _raid ? SizedWindow.Raid : null;
 
     /// <summary>The plate handle at <paramref name="at"/> (<paramref name="r"/>'s coordinates): the bottom-right corner on any window, the
     /// middle of the right and bottom edges where the window has two sizes.</summary>
@@ -211,7 +211,7 @@ public sealed partial class OverlayCanvas
             Changed?.Invoke();
             return;
         }
-        if (_pickedDebuff is null && _picked?.Part is { } part && r != _buffs && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_pickedDebuff is null && _picked?.Part is { } part && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
             StartBoxDrag(r, part, resize: false);
             MoveBox(r, dx, dy, resize: false, snap: false);
@@ -239,7 +239,7 @@ public sealed partial class OverlayCanvas
             return;
         }
         if (r.Peer >= 0) return;   // a member's size is its class's
-        if (_picked?.Part is { } part && r != _buffs && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_picked?.Part is { } part && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
         {
             var sized = _s.Overlay.LayoutLinkSizes ? FreeLayout.Linked(part).Parts : [part];   // linked sizes all grow
             var before = sized.Select(p => (p, OnCanvasRect(r, p))).ToList();
@@ -288,7 +288,7 @@ public sealed partial class OverlayCanvas
     {
         if (r.Peer >= 0 || r != _buffs && Boxes(r).Layout is not null || r.ShowsReceivedLayout || Previewing(r)) return null;
         if (r.PartAt(at) is not var (part, rect) || part < FreeLayout.FirstBuff) return null;
-        bool upright = _s.Buffs.Side;
+        bool upright = _s.Buffs.Upright(_s.Apart);
         double g = Math.Min(Grip / (_v?.Scale ?? 1), (upright ? rect.Height : rect.Width) / 2);
         return (upright ? at.Y <= rect.Top + g : at.X >= rect.Right - g) ? ((BuffKind)(part - FreeLayout.FirstBuff), rect, upright) : null;
     }
@@ -296,7 +296,7 @@ public sealed partial class OverlayCanvas
     /// <summary>The pointer is on a box's corner grip that a drag would resize.</summary>
     bool OverGrip(MouseEventArgs e)
     {
-        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r)) return false;
+        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _gauge || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r)) return false;
         var at = e.GetPosition(r);
         if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
         return r.PartAt(at) is var (_, rect) && InGrip(rect, at);

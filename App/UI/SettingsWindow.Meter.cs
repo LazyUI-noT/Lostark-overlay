@@ -55,7 +55,7 @@ public partial class SettingsWindow
         void Again() => Dispatcher.BeginInvoke(FillMeter);
         var p = Refill(_secMeter, AreaMeter, "보스가 받은 피해 중 각자의 몫(딜러 딜지분, 서포터 찬조)을 전분(전투 분석기)이 기록을 시작한 때부터 보여 줍니다. " +
             "파티원 몫은 나와 그 파티원이 모두 '내 피해량 보내기'를 켜야 보입니다. 같은 보스 수치로 나누기 때문에 누구 화면에서나 숫자가 같습니다.");
-        p.Children.Add(ShareMark(LookGroup.미터기, FillMeter));
+        p.Children.Add(CardBadge(LookGroup.미터기));
         p.Children.Add(HelpRow("미터기", "끄기: 아무것도 읽지 않습니다 (미터기 창, 전투 기록, 보내기 모두 멈춤). 표시 안 함: 창만 숨기고 전투 기록과 보내기는 계속합니다.",
             EnumCombo([(ThreeWay.끄기, "끄기"), (ThreeWay.표시안함, "표시 안 함"), (ThreeWay.켜기, "켜기")], m.Mode(), v => { m.SetMode(v); Again(); })));
         if (m.Mode() == ThreeWay.켜기)

@@ -17,7 +17,7 @@ public class FeatureMapTests
 
     [Fact]
     public void The_battle_overlay_group_holds_the_five_parts_in_order() =>
-        Assert.Equal(["직업 인식", "스킬창", "버프 줄", "단심", "암수"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
+        Assert.Equal(["직업 인식", "스킬창", "아덴 게이지", "버프 줄", "단심", "암수"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
 
     [Fact]
     public void The_raid_group_holds_the_meter_between_the_overlay_and_the_records()
@@ -57,6 +57,22 @@ public class FeatureMapTests
     [Fact]
     public void The_app_group_has_the_performance_tab() =>
         Assert.Equal(["키·단축키", "시스템 성능", "로아 API", "경고", "테마·업데이트"], FeatureMap.Rail[Group("앱")].Areas);
+
+    [Theory]
+    [InlineData("줄 수 읽기 (모든 레이드)")]
+    [InlineData("빛나기")]
+    [InlineData("빛날 때만 표시")]
+    [InlineData("빛나는 동안")]
+    [InlineData("초")]
+    [InlineData("줄")]
+    [InlineData("배경 색")]
+    [InlineData("불투명도")]
+    public void The_count_window_rows_starred_on_레이드_follow_them_to_the_inspector(string label) =>
+        Assert.Equal($"내 오버레이/줄 수 창/{label}", FeatureMap.MigrateSettingId($"레이드/레이드/{label}"));
+
+    [Fact]
+    public void A_gate_row_that_stayed_on_레이드_keeps_its_id() =>
+        Assert.Equal("레이드/레이드/줄 수 창", FeatureMap.MigrateSettingId("레이드/레이드/줄 수 창"));
 
     [Fact]
     public void The_two_rate_sliders_starred_on_the_fit_page_follow_them_to_the_performance_tab()

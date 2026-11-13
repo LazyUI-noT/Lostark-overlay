@@ -10,8 +10,9 @@ public static class ClassProfileMigration
     /// <summary>Makes the entry of every 직업각인 in <paramref name="classes"/> exist and own, holding what
     /// <see cref="ClassProfiles.Of"/> returns for it: its own values when it already is own (kept as they are), else a copy
     /// of what it followed (its class's, else 기본's; anything it kept from an earlier 개별 is not what it showed). The class
-    /// entries, 기본 and entries of classes or 직업각인 not in the list stay as they are. Window spots saved per 직업각인
-    /// carry over (<see cref="SeedPlaces"/>). Idempotent; true when something was added or changed.</summary>
+    /// entries, 기본 and entries of classes or 직업각인 not in the list stay as they are. Window spots and looks are per
+    /// 직업각인 whether 개별 or not (<see cref="Settings.SyncClass"/>), so nothing to carry over. Idempotent; true when
+    /// something was added or changed.</summary>
     public static bool EnsureOwn(Settings s, IEnumerable<ClassInfo> classes)
     {
         List<string> added = [];
@@ -25,7 +26,6 @@ public static class ClassProfileMigration
                 entry.Own = true;
                 added.Add(key);
             }
-        SeedPlaces(s, added);
         return added.Count > 0;
     }
 
@@ -41,18 +41,5 @@ public static class ClassProfileMigration
             if (key == ClassProfiles.Template || c is { Own: true } || !ClassProfiles.IsBare(c))
                 (c.Mine.CooldownStyle, c.Mine.FillFrom, c.Mine.ShowTimer) = (o.CooldownStyle, o.FillFrom, o.ShowTimer);
         s.CooldownLooksMoved = true;
-    }
-
-    /// <summary>A 직업각인 that followed its class stood at the class's spot and size. Where a 프로필 holds spots per 직업각인
-    /// (so the class's differs from the one now on screen), each newly own 직업각인 takes the class's, or it would start
-    /// where the window happens to be. A 프로필 with one spot for all needs nothing: a 직업각인 placed for the first time
-    /// starts where the window is (<see cref="Settings.SyncPlace"/>).</summary>
-    static void SeedPlaces(Settings s, List<string> added)
-    {
-        if (added.Count == 0) return;
-        if (s.ActiveProfile >= 0 && s.ActiveProfile < s.Profiles.Count) s.Profiles[s.ActiveProfile].KeepPlace(s.PlaceKey, s);   // the window's spot, as SyncPlace would store it
-        foreach (var profile in s.Profiles.Where(p => p.SubclassPlaces.Count > 0))
-            foreach (var key in added.Where(k => !profile.SubclassPlaces.ContainsKey(k)))
-                profile.SubclassPlaces[key] = WindowPlace.Of(profile.Overlay);
     }
 }

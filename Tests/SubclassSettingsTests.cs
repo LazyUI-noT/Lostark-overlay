@@ -3,8 +3,8 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.Tests;
 
 /// <summary>직업각인별 설정: a 직업각인 ("워로드 · 전투태세") turned 개별 has your boxes of its own (display, layout,
-/// colours, effects) and its own window spot and size per 프로필; off, it follows its class. Party members' boxes stay
-/// per class.</summary>
+/// colours, effects); off, it follows its class. Its window spot and size are its own per 프로필 either way
+/// (ClassLooksTests). Party members' boxes stay per class.</summary>
 public class SubclassSettingsTests
 {
     const string Warlord = "워로드", Lone = "워로드 · 고독한기사", Combat = "워로드 · 전투태세";
@@ -89,23 +89,22 @@ public class SubclassSettingsTests
     static void Place(Settings s, double left, double width) => (s.Overlay.Left, s.Overlay.Width) = (left, width);
 
     [Fact]
-    public void A_개별_직업각인_keeps_its_own_window_spot_and_size()
+    public void Each_직업각인_keeps_its_own_window_spot_and_size_개별_or_not()
     {
         var s = Playing(Lone);
-        ClassProfiles.SetOwn(s, Combat, true);
         Place(s, 100, 1.0);
-        Assert.False(s.SyncPlace());   // still the class's spot
+        Assert.True(s.SyncClass());   // 고독한기사's from now on (class-profiles.plan.md: per 직업각인, 개별 or not)
 
         s.ActiveCharacter = Combat;
-        Assert.True(s.SyncPlace());
+        Assert.True(s.SyncClass());
         Assert.Equal((100, 1.0), (s.Overlay.Left, s.Overlay.Width));   // first time: starts where the class's was
         Place(s, 500, 1.4);
 
         s.ActiveCharacter = Lone;
-        Assert.True(s.SyncPlace());
+        Assert.True(s.SyncClass());
         Assert.Equal((100, 1.0), (s.Overlay.Left, s.Overlay.Width));
         s.ActiveCharacter = Combat;
-        s.SyncPlace();
+        s.SyncClass();
         Assert.Equal((500, 1.4), (s.Overlay.Left, s.Overlay.Width));
     }
 
@@ -114,18 +113,18 @@ public class SubclassSettingsTests
     {
         var s = Playing(Combat);
         ClassProfiles.SetOwn(s, Combat, true);
-        s.SyncPlace();
+        s.SyncClass();
         Place(s, 500, 1.0);
         s.SwitchProfile(1);
         Place(s, 700, 1.0);   // profile 2's 전태 spot
         s.SwitchProfile(0);
         Assert.Equal(500, s.Overlay.Left);
         s.ActiveCharacter = Lone;
-        s.SyncPlace();
+        s.SyncClass();
         s.SwitchProfile(1);
         Assert.True(double.IsNaN(s.Overlay.Left));   // profile 2's class spot was never set
         s.ActiveCharacter = Combat;
-        s.SyncPlace();
+        s.SyncClass();
         Assert.Equal(700, s.Overlay.Left);
     }
 
@@ -138,9 +137,9 @@ public class SubclassSettingsTests
         ClassProfiles.SetOwn(normal, Lone, true);
         Place(normal, 300, 1.0);
         normal.ActiveCharacter = Combat;
-        normal.SyncPlace();
+        normal.SyncClass();
         normal.ActiveCharacter = Lone;
-        normal.SyncPlace();
+        normal.SyncClass();
         Place(normal, 825, 0.93);
 
         var live = Playing(Lone);
@@ -150,7 +149,7 @@ public class SubclassSettingsTests
         Assert.Null(live.PlaceKey);
         Assert.Equal((300, 1.0), (live.Overlay.Left, live.Overlay.Width));
         live.ActiveCharacter = Lone;
-        live.SyncPlace();
+        live.SyncClass();
         Assert.Equal((825, 0.93), (live.Overlay.Left, live.Overlay.Width));
     }
 
@@ -160,10 +159,10 @@ public class SubclassSettingsTests
         var normal = Playing(Lone);
         ClassProfiles.SetOwn(normal, Lone, true);
         Place(normal, 300, 1.0);
-        normal.SyncPlace();
+        normal.SyncClass();
         Place(normal, 825, 0.93);
         normal.ActiveCharacter = null;   // saved on the class spot, 고독한기사's kept
-        normal.SyncPlace();
+        normal.SyncClass();
 
         var live = Playing(Lone);
         live.SwapIn(normal);
@@ -173,15 +172,15 @@ public class SubclassSettingsTests
     }
 
     [Fact]
-    public void Turning_개별_off_puts_the_class_spot_back()
+    public void Turning_개별_off_keeps_the_직업각인_s_spot()
     {
         var s = Playing(Combat);
         Place(s, 100, 1.0);
         ClassProfiles.SetOwn(s, Combat, true);
-        s.SyncPlace();
+        s.SyncClass();
         Place(s, 500, 1.0);
-        ClassProfiles.SetOwn(s, Combat, false);
-        Assert.True(s.SyncPlace());
-        Assert.Equal(100, s.Overlay.Left);
+        ClassProfiles.SetOwn(s, Combat, false);   // 개별 is the boxes only (class-profiles.plan.md)
+        Assert.False(s.SyncClass());
+        Assert.Equal(500, s.Overlay.Left);
     }
 }

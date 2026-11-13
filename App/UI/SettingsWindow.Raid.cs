@@ -11,7 +11,8 @@ using static GaugeOverlay.App.UI.UiBuild;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>레이드 (spec § B): 자동 인식 or a gate picked by hand, one block per gate (줄 수 창 and 자동, its alert counts as
-/// chips, ± 줄 when per gate, 디버프 창 and 자동 with 예시 보기), the alert offset and glow, and the 줄 수 창's look.</summary>
+/// chips, ± 줄 when per gate, 디버프 창 and 자동 with 예시 보기) and the alert offset. The 줄 수 창's switch, glow and look are on
+/// 내 오버레이 → 줄 수 (<c>SettingsWindow.RaidCount.cs</c>), linked from the top row.</summary>
 public partial class SettingsWindow
 {
     const string AreaRaid = "레이드";
@@ -53,8 +54,7 @@ public partial class SettingsWindow
     {
         var r = _s.Raids;
         bool open = _raidOpen!.Contains(name);
-        int counts = gates.Count(g => r.Gates.GetValueOrDefault(g.Id)?.CountWindow == true);
-        string summary = r.CountEnabled ? $"줄 수 창 {counts}/{gates.Count}" : "줄 수 읽기 꺼짐";
+        string summary = r.CountEnabled ? "줄 수 창 켜짐" : "줄 수 읽기 꺼짐";
 
         var icons = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
         var chevron = new TextBlock { Text = open ? "" : "", FontFamily = icons, FontSize = 12, Margin = new(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -88,6 +88,16 @@ public partial class SettingsWindow
         return box;
     }
 
+    /// <summary>The 줄 수 창 row's state line, under the profile · class badge (the switch is per profile · class).</summary>
+    UIElement CountState(bool on)
+    {
+        var state = Label(on ? "켜짐 (빛나기와 모양은 내 오버레이 → 줄 수)" : "꺼짐: 아래 관문 설정은 남고 흐리게 보입니다", 0.7);
+        if (ProfileBadge.Of(AreaRaid, option: ProfileBadge.RaidCountNote) != BadgeAt.Option) return state;
+        var chip = ProfileBadgeChip();
+        ((FrameworkElement)chip).Margin = new(0, 0, 0, 4);
+        return Stack(chip, state);
+    }
+
     void FillRaid()
     {
         var r = _s.Raids;
@@ -95,11 +105,11 @@ public partial class SettingsWindow
         var p = Refill(_secRaid, "레이드", "보스 체력바 위의 이름으로 레이드·관문을 인식하고, 체력바 오른쪽 끝의 줄 수(예: X 494)를 줄 수 창에 따로 보여 줍니다. " +
             "정한 줄 수가 되면 창이 빛납니다. 인식하지 못한 보스에는 아무것도 띄우지 않습니다.");
 
-        // The main 줄 수 switch first: it gates every gate's own 줄 수 창 below, which stays as set.
-        p.Children.Add(DefaultedCheck(Check("줄 수 읽기 (모든 레이드)", r.CountEnabled, v => r.CountEnabled = v, () => { Changed(); Again(); },
-            "끄면 모든 레이드에서 줄 수(예: X 494)를 읽지 않고 줄 수 창을 숨깁니다. 관문마다 켜 둔 줄 수 창 설정은 남아서, 다시 켜면 돌아옵니다. " +
-            "디버프 창은 따르지 않습니다. 트레이 메뉴의 레이드에도 있습니다."), s => s.Raids.CountEnabled, (s, v) => s.Raids.CountEnabled = v));
-        if (!r.CountEnabled) p.Children.Add(Note("줄 수 읽기가 꺼져 있습니다. 아래 관문의 줄 수 창 설정은 지워지지 않았고, 다시 켜면 돌아옵니다."));
+        // The main 줄 수 switch gates every gate's own 줄 수 창 below; it lives with the window on 내 오버레이 (per profile ·
+        // class, class-profiles.plan.md E), shown here with a way there, as 버프/디버프 shows the 디버프 창's state.
+        var toCount = new Button { Content = "줄 수 창 열기", Margin = new(0, 2, 0, 2) };
+        toCount.Click += (_, _) => ShowRaidCount();
+        p.Children.Add(Row("줄 수 창", CountState(r.CountEnabled), toCount));
         // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시 → 디버프 창).
         p.Children.Add(DefaultedCheck(Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
             "켜면 디버프가 있는 레이드(3막 모르둠)에서 보스를 알아본 동안 디버프 창을 보여 줍니다. " +
@@ -150,20 +160,6 @@ public partial class SettingsWindow
         p.Children.Add(DefaultedCheck(Check("전 관문 공통", !r.OffsetPerGate, v => r.OffsetPerGate = !v, () => { Changed(); Again(); },
             "끄면 관문마다 ±줄을 따로 정합니다."), s => !s.Raids.OffsetPerGate, (s, v) => s.Raids.OffsetPerGate = !v));
         if (!r.OffsetPerGate) p.Children.Add(OffsetRow("± 줄", r.Offset, v => r.Offset = v));
-        p.Children.Add(DefaultedCheck(Check("빛나기", r.Glow, v => r.Glow = v, () => { Changed(); Again(); }), s => s.Raids.Glow, (s, v) => s.Raids.Glow = v));
-        if (r.Glow)
-        {
-            p.Children.Add(Defaulted(Row("빛나는 동안", EnumCombo([(GlowUntil.Seconds, "정한 초 동안"), (GlowUntil.Bars, "정한 줄만큼 지날 때까지")], r.GlowUntil,
-                v => { r.GlowUntil = v; Again(); })), s => s.Raids.GlowUntil, (s, v) => s.Raids.GlowUntil = v));
-            p.Children.Add(r.GlowUntil == GlowUntil.Seconds
-                ? Defaulted(SliderRow("초", 1, 120, r.GlowSeconds, 1, v => $"{v:0}초", v => r.GlowSeconds = (int)v, Changed), s => s.Raids.GlowSeconds, (s, v) => s.Raids.GlowSeconds = v)
-                : Defaulted(SliderRow("줄", 1, 50, r.GlowBars, 1, v => $"{v:0}줄", v => r.GlowBars = (int)v, Changed), s => s.Raids.GlowBars, (s, v) => s.Raids.GlowBars = v));
-        }
-
-        p.Children.Add(SubHeading("줄 수 창 모양"));
-        p.Children.Add(Defaulted(ColorRow(Label("배경 색"), r.Background, v => r.Background = v, swatch: false), s => s.Raids.Background, (s, v) => s.Raids.Background = v));
-        p.Children.Add(Defaulted(SliderRow("불투명도", 0.1, 1, r.Opacity, 0.05, v => $"{v * 100:0}%", v => r.Opacity = v, Changed), s => s.Raids.Opacity, (s, v) => s.Raids.Opacity = v));
-        p.Children.Add(Note("내 오버레이 화면(또는 편집 모드)에서 줄 수 창을 끌어 옮기고, 누른 뒤 윤곽의 모서리를 끌어 크기를 바꿉니다. Ctrl+화살표로 1px씩 바꿀 수도 있습니다."));
     }
 
     /// <summary>One gate: its 줄 수 창, alerts, own ± 줄 (per gate) and 디버프 창. Its row is added to the settings only when changed.</summary>
@@ -180,16 +176,12 @@ public partial class SettingsWindow
             }.OfType<string>()) is { Length: > 0 } help ? help : null));
         // Greyed, kept as set, while the main 줄 수 읽기 is off.
         var count = Row("줄 수 창",
-            Check("켜기", row.CountWindow, v => r.Gate(g.Id).CountWindow = v, () => { Changed(); again(); }),
             Check("자동", row.CountAuto, v => r.Gate(g.Id).CountAuto = v, Changed, "이 관문 보스를 알아본 동안만 보여 줍니다. 끄면 이 관문의 줄 수 창을 항상 보여 줍니다."));
         count.IsEnabled = r.CountEnabled;
         p.Children.Add(count);
-        if (row.CountWindow)
-        {
-            var alerts = Row(g.Hidden ? "빛날 HP %" : "빛날 줄 수", AlertChips(g, again));
-            alerts.IsEnabled = r.CountEnabled;
-            p.Children.Add(alerts);
-        }
+        var alerts = Row(g.Hidden ? "빛날 HP %" : "빛날 줄 수", AlertChips(g, again));
+        alerts.IsEnabled = r.CountEnabled;
+        p.Children.Add(alerts);
         if (r.OffsetPerGate) p.Children.Add(OffsetRow("± 줄 (이 관문)", row.Offset, v => r.Gate(g.Id).Offset = v));
         if (g.Hidden) p.Children.Add(HiddenNote());
     }

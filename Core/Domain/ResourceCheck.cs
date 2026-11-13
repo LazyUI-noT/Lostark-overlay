@@ -30,7 +30,7 @@ public static class ResourceCheck
         ["레이드 (보스 이름 · 줄 수)"] = "boss", ["보스 바 확인"] = "boss", ["보스 이름 (Windows OCR)"] = "boss",
         ["던전 이름 (Windows OCR)"] = "dungeon",
         ["게임 메뉴 (제목 비교)"] = "char", ["게임 메뉴 (칸 비교)"] = "char", ["게임 메뉴 (Windows OCR)"] = "char",
-        ["그리기: 스킬 · 파티 창"] = "skillview", ["그리기: 버프 창"] = "buff", ["그리기: 디버프 창"] = "debuff", ["그리기: 단심 창"] = "judg",
+        ["그리기: 스킬 · 파티 창"] = "skillview", ["그리기: 버프 창"] = "buff", ["그리기: 게이지 창"] = "aden", ["그리기: 디버프 창"] = "debuff", ["그리기: 단심 창"] = "judg",
         ["그리기: 암수 창"] = "amsu", ["그리기: 줄 수 창"] = "count", ["그리기: 미터기 창"] = "meter",
         ["화면 캡처 (새 프레임 대기 포함)"] = Capture, ["앱 처리 (미터 · 기록 · 파티 보내기)"] = Shared,
         ["감지 Live"] = Live, ["지도 선 강조"] = Map,

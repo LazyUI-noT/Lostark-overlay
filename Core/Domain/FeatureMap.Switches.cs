@@ -63,7 +63,7 @@ public static partial class FeatureMap
     {
         "skill" or "skillview" => "스킬창",
         "cls" => "직업 인식",
-        "aden" => "내 오버레이",
+        "aden" => "아덴 게이지",
         "judg" => "단심",
         "buff" or "cover" or "buffrows" => "버프 줄",
         "g-jeonbun" or "meter" => "DPS 미터기",

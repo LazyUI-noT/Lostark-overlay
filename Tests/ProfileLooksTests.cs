@@ -4,7 +4,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Tests;
 
-/// <summary>암수, 단심 and the meter's buff bar 투명도 follow 위치 프로필 1–5 (profile-looks.plan.md).</summary>
+/// <summary>암수, 단심 and the meter's buff bar 투명도 follow 프로필 1–5 (profile-looks.plan.md).</summary>
 public class ProfileLooksTests
 {
     static Settings Loaded(Action<Settings>? edit = null)
@@ -121,72 +121,84 @@ public class ProfileLooksTests
     }
 
     [Fact]
-    public void An_older_file_shares_every_look()
-    {
-        var s = Loaded(x => x.SharedLooks = null);
-
-        Assert.Equal(Enum.GetValues<LookGroup>(), s.SharedLooks!.Order());
-    }
-
-    [Fact]
-    public void An_older_file_names_the_looks_its_profiles_had_different()
+    public void A_file_with_shared_looks_gives_every_profile_the_shared_value_and_shares_none()
     {
         var s = Loaded(x =>
         {
-            x.SharedLooks = null;
+            x.SharedLooks = [LookGroup.암수];
             x.Profiles[3].Amsu = x.Amsu.Copy();
-            x.Profiles[3].Amsu!.Color = "#FFFFFF";
+            x.Profiles[3].Amsu!.Color = "#FFFFFF";   // stale: the shared value was the live one
         });
 
-        Assert.Equal([LookGroup.암수], s.MergedLooks);
+        Assert.Empty(s.SharedLooks!);
+        Assert.All(s.Profiles, p => Assert.Equal("#112233", p.Amsu!.Color));
     }
 
     [Fact]
-    public void Profiles_that_only_place_amsu_or_judgment_differently_are_not_named()
+    public void An_older_file_without_marks_shares_none()
     {
-        var s = Loaded(x =>
-        {
-            x.SharedLooks = null;
-            x.Profiles[3].Amsu = x.Amsu.Copy();
-            (x.Profiles[3].Amsu!.Left, x.Profiles[3].Amsu!.Height) = (500, 1.5);
-            x.Profiles[2].Judgment = x.Judgment.Copy();
-            x.Profiles[2].Judgment!.Top = 300;
-        });
-
-        Assert.Empty(s.MergedLooks);
+        Assert.Empty(Loaded(x => x.SharedLooks = null).SharedLooks!);
     }
 
     [Fact]
-    public void A_shared_amsu_or_judgment_window_keeps_each_profile_s_spot_and_size()
+    public void Applying_a_look_to_all_profiles_copies_the_live_value_once()
     {
-        var s = Loaded(x => x.SharedLooks = [.. Enum.GetValues<LookGroup>()]);
-        (s.Amsu.Left, s.Amsu.Height, s.Judgment.Top) = (10, 1.5, 20);
+        var s = Loaded();
+        s.SwitchProfile(2);
+        (s.Amsu.Color, s.Amsu.Left, s.Overlay.Opacity) = ("#ABCDEF", 500, 0.4);
+
+        s.ApplyLookToAll(LookGroup.암수);
+
+        Assert.All(s.Profiles, p => Assert.Equal("#ABCDEF", p.Amsu!.Color));
+        s.SwitchProfile(0);
+        Assert.Equal("#ABCDEF", s.Amsu.Color);
+        Assert.NotEqual(500, s.Amsu.Left);        // the window's spot stays the profile's own
+        Assert.NotEqual(0.4, s.Overlay.Opacity);  // 판 wasn't applied
+        s.Amsu.Color = "#000000";
+        s.SwitchProfile(2);
+        Assert.Equal("#ABCDEF", s.Amsu.Color);    // not shared afterwards: each keeps its own again
+    }
+
+    [Fact]
+    public void Every_look_switches_with_the_profile()
+    {
+        var s = Loaded();
         s.SwitchProfile(1);
-        (s.Amsu.Left, s.Amsu.Height, s.Judgment.Top, s.Amsu.Color) = (300, 0.8, 400, "#ABCDEF");
+        (s.Amsu.Color, s.Overlay.Opacity, s.Gauge.Fill) = ("#FFFFFF", 0.5, "#010203");
 
         s.SwitchProfile(0);
 
-        Assert.Equal((10.0, 1.5, 20.0), (s.Amsu.Left, s.Amsu.Height, s.Judgment.Top));
-        Assert.Equal("#ABCDEF", s.Amsu.Color);   // the look itself stays shared
+        Assert.Equal(("#112233", 0.9), (s.Amsu.Color, s.Overlay.Opacity));
+        Assert.NotEqual("#010203", s.Gauge.Fill);
+        Assert.False(new Settings().SharedLooks is { Count: > 0 });   // a new file shares nothing either
     }
 
     [Fact]
-    public void An_older_file_with_matching_profiles_or_a_newer_one_names_none()
+    public void Meter_debuff_and_count_windows_switch_spot_size_and_look_with_the_profile()
     {
-        Assert.Empty(Loaded(x => x.SharedLooks = null).MergedLooks);
-        Assert.Empty(Loaded(x => x.Profiles[3].Amsu = new() { Color = "#FFFFFF" }).MergedLooks);
+        var s = Loaded();
+        (s.Meter.Left, s.Debuffs.Top, s.Raids.Left, s.Raids.Width) = (10, 20, 30, 1.5);
+        (s.Debuffs.Box(1).Width, s.Debuffs.HideWhenEmpty, s.Raids.Background, s.Raids.Opacity) = (1.4, true, "#112233", 0.7);
+        s.SwitchProfile(1);
+        (s.Meter.Left, s.Debuffs.Top, s.Raids.Left, s.Raids.Width) = (100, 200, 300, 0.8);
+        (s.Debuffs.Box(1).Width, s.Debuffs.HideWhenEmpty, s.Raids.Background, s.Raids.Opacity) = (0.6, false, "#FFFFFF", 0.3);
+
+        s.SwitchProfile(0);
+
+        Assert.Equal((10.0, 20.0, 30.0, 1.5), (s.Meter.Left, s.Debuffs.Top, s.Raids.Left, s.Raids.Width));
+        Assert.Equal((1.4, true, "#112233", 0.7), (s.Debuffs.Box(1).Width, s.Debuffs.HideWhenEmpty, s.Raids.Background, s.Raids.Opacity));
+        s.SwitchProfile(1);
+        Assert.Equal((100.0, 0.6, "#FFFFFF"), (s.Meter.Left, s.Debuffs.Box(1).Width, s.Raids.Background));
     }
 
     [Fact]
-    public void The_merge_notice_names_the_merged_looks_and_is_none_without_them()
+    public void An_older_file_s_profiles_start_with_today_s_meter_debuff_and_count_windows()
     {
-        var s = new Settings { MergedLooks = [LookGroup.암수, LookGroup.게이지] };
+        var s = Loaded(x => (x.Meter.Left, x.Raids.Background, x.Debuffs.HideWhenEmpty) = (55, "#ABABAB", true));
 
-        var notice = s.MergedLooksNotice();
+        s.SwitchProfile(3);
 
-        Assert.Contains("암수, 게이지", notice);
-        Assert.Contains("모든 위치 프로필에 적용", notice);
-        Assert.Null(new Settings().MergedLooksNotice());
+        Assert.Equal((55.0, "#ABABAB", true), (s.Meter.Left, s.Raids.Background, s.Debuffs.HideWhenEmpty));
     }
 
     [Fact]
@@ -236,7 +248,7 @@ public class ProfileLooksTests
     }
 
     [Fact]
-    public void Gauge_colours_are_per_profile_when_not_shared_and_the_class_bar_isn_t()
+    public void Gauge_colours_and_class_bars_are_per_profile()
     {
         var s = Loaded(x => (x.Gauge.Fill, x.Gauge.Opacity) = ("#123456", 0.8));
         s.SwitchProfile(1);
@@ -247,51 +259,10 @@ public class ProfileLooksTests
 
         Assert.Equal(("#123456", "#3A3A3A", 0.8), (s.Gauge.Fill, s.Gauge.Empty, s.Gauge.Opacity));
         Assert.Equal(GaugeReadMode.Predicted, s.Gauge.ReadMode);   // a read setting, not a look
-        Assert.False(GaugeBar.Edit(s, "바드", "").GlowEnabled);     // the class's
+        Assert.True(GaugeBar.Edit(s, "바드", "").GlowEnabled);      // 클래스 전용 is per profile too (class-profiles.plan.md B)
         s.SwitchProfile(1);
         Assert.Equal(("#FFFFFF", 0.5), (s.Gauge.Fill, s.Gauge.Opacity));
-    }
-
-    [Fact]
-    public void A_shared_look_stays_the_same_across_a_switch()
-    {
-        var s = Loaded(x => x.SharedLooks = [LookGroup.암수, LookGroup.판]);
-        s.SwitchProfile(1);
-        (s.Amsu.Color, s.Overlay.Opacity, s.Judgment.FontSize) = ("#FFFFFF", 0.5, 200);
-
-        s.SwitchProfile(0);
-
-        Assert.Equal(("#FFFFFF", 0.5), (s.Amsu.Color, s.Overlay.Opacity));
-        Assert.Equal(150, s.Judgment.FontSize);   // 단심 isn't shared: 배치 0's own
-    }
-
-    [Fact]
-    public void Unsharing_a_look_starts_every_profile_from_the_shared_value()
-    {
-        var s = Loaded(x => x.SharedLooks = [.. Enum.GetValues<LookGroup>()]);
-        s.SwitchProfile(2);
-        (s.Amsu.Color, s.Overlay.Opacity) = ("#ABCDEF", 0.4);
-
-        s.ShareLook(LookGroup.암수, false);
-
-        Assert.DoesNotContain(LookGroup.암수, s.SharedLooks!);
-        Assert.All(s.Profiles, p => Assert.Equal("#ABCDEF", p.Amsu!.Color));
-        s.Amsu.Color = "#000000";
-        s.SwitchProfile(0);
-        Assert.Equal(("#ABCDEF", 0.4), (s.Amsu.Color, s.Overlay.Opacity));   // 배치 0's own 암수; 판 still shared
-    }
-
-    [Fact]
-    public void Sharing_a_look_keeps_the_active_profile_s_value()
-    {
-        var s = Loaded();
-        s.SwitchProfile(1);
-        s.Amsu.Color = "#ABCDEF";
-
-        s.ShareLook(LookGroup.암수, true);
-        s.SwitchProfile(0);
-
-        Assert.Equal("#ABCDEF", s.Amsu.Color);
+        Assert.False(GaugeBar.Edit(s, "바드", "").GlowEnabled);
     }
 
     [Theory]

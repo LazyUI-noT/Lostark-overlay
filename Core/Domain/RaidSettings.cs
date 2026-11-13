@@ -9,7 +9,8 @@ public enum GlowUntil { Seconds, Bars }
 /// <summary>One gate's row in the 레이드 table.</summary>
 public sealed class GateSettings
 {
-    /// <summary>줄 수 창 on for this gate.</summary>
+    /// <summary>Old (to 0.22): 줄 수 창 on for this gate. No longer read: the main <see cref="RaidSettings.CountEnabled"/>
+    /// switch turns the window on for every gate. Still written, so an older version reads the same file.</summary>
     public bool CountWindow { get; set; }
     /// <summary>자동: the 줄 수 창 shows only while this gate's boss is recognised (or picked by hand).</summary>
     public bool CountAuto { get; set; } = true;
@@ -42,8 +43,8 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <summary>자동 인식: the boss name above the HP bar picks the gate; off = <see cref="ManualGate"/>.</summary>
     public bool Auto { get; set; } = true;
     public string? ManualGate { get; set; }
-    /// <summary>줄 수 읽기 for every raid: off stops the bar count (X 494) and hides the 줄 수 창, each gate's own
-    /// <see cref="GateSettings.CountWindow"/> kept as it is. The 디버프 창 doesn't follow it.</summary>
+    /// <summary>줄 수 읽기 for every raid: on turns the 줄 수 창 on for every gate (no per-gate switch), off stops the bar
+    /// count (X 494) and hides it. The 디버프 창 doesn't follow it.</summary>
     public bool CountEnabled { get; set; } = true;
     public Dictionary<string, GateSettings> Gates { get; set; } = [];
     /// <summary>디버프 창 자동, for every raid (user, 2026-11-03: no per-gate switch): a raid's debuff window shows while its gate
@@ -86,6 +87,8 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     /// <summary>보스 체력 읽기: the boss bar's text read for 쉽게 보기 and 그림자 기믹 체력 with the DPS 미터기 off (<see cref="BossHpPlan"/>).</summary>
     public bool BossHpRead { get; set; } = true;
     public bool Glow { get; set; } = true;
+    /// <summary>빛날 때만 표시: the 줄 수 창 draws nothing unless it is glowing (needs <see cref="Glow"/>).</summary>
+    public bool OnlyWhenGlowing { get; set; }
     public GlowUntil GlowUntil { get; set; } = GlowUntil.Seconds;
     public int GlowSeconds { get; set; } = 20;
     public int GlowBars { get; set; } = 5;
@@ -109,10 +112,14 @@ public sealed class RaidSettings : IWindowPlace, System.Text.Json.Serialization.
     public RaidSettings Clone() =>
         System.Text.Json.JsonSerializer.Deserialize<RaidSettings>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(this, SettingsStore.Json), SettingsStore.Json)!;
 
-    /// <summary>A gate's 줄 수 창 is on (the window exists; what it shows waits for recognition).</summary>
-    public bool CountShown() => CountEnabled && Gates.Values.Any(g => g.CountWindow);
+    /// <summary>The 줄 수 창 is on (the window exists; what it shows waits for recognition).</summary>
+    public bool CountShown() => CountEnabled;
     /// <summary>Gate <paramref name="id"/>'s 줄 수 창 is on, with the main switch.</summary>
-    public bool CountOn(string id) => CountEnabled && Gates.TryGetValue(id, out var g) && g.CountWindow;
+    public bool CountOn(string id) => CountEnabled;
+
+    /// <summary>The status to publish: null under 빛날 때만 표시 while it isn't glowing (the count tracking goes on).
+    /// With 빛나기 off nothing glows, so the option (greyed out in 설정, its value kept) hides nothing.</summary>
+    public RaidStatus? Shown(RaidStatus? status) => OnlyWhenGlowing && Glow && status is { Glow: false } ? null : status;
     /// <summary>The 디버프 창 may show: 자동 or a raid picked in the tray (what it shows waits for a dungeon).</summary>
     public bool DebuffShown(DebuffSettings debuffs) => DebuffsAuto || debuffs.Raid != Raid.없음;
 

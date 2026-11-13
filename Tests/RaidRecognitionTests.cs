@@ -44,13 +44,25 @@ public class RaidRecognitionTests
     static RaidSettings Count(bool auto = true, bool countAuto = true)
     {
         var s = new RaidSettings { Auto = auto, ManualGate = auto ? null : "act3-g3", DebuffsAuto = false };   // the 줄 수 창 alone
-        (s.Gate("act3-g3").CountWindow, s.Gate("act3-g3").CountAuto) = (true, countAuto);
+        s.Gate("act3-g3").CountAuto = countAuto;
         return s;
     }
 
     [Fact]
     public void Windows_off_read_nothing() =>
-        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false }, Gates, "act3-g3"));
+        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false, CountEnabled = false }, Gates, "act3-g3"));
+
+    // User, 2026-11-13: the main 줄 수 switch alone turns the window on for every gate; a gate without a row has the defaults.
+    [Fact]
+    public void The_main_switch_alone_turns_on_every_gate_even_without_a_row()
+    {
+        var s = new RaidSettings { DebuffsAuto = false };
+        Assert.Empty(s.Gates);
+        Assert.Equal((true, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, "act3-g3"));
+        Assert.Equal((true, true, (RaidGate?)Other), RaidReadPlan.Of(s, Gates, "act3-g2"));
+        Assert.Equal((true, false, (RaidGate?)null), RaidReadPlan.Of(s, Gates, null));
+        Assert.Empty(s.Gates);   // reading adds no row
+    }
 
     [Fact]
     public void Unrecognised_with_자동_reads_the_name_and_shows_no_count() =>
@@ -61,8 +73,8 @@ public class RaidRecognitionTests
         Assert.Equal((true, true, (RaidGate?)Mordum), RaidReadPlan.Of(Count(), Gates, "act3-g3"));
 
     [Fact]
-    public void Another_gate_recognised_shows_no_count() =>
-        Assert.Equal((true, false, (RaidGate?)Other), RaidReadPlan.Of(Count(), Gates, "act3-g2"));
+    public void Another_gate_recognised_shows_its_count_too() =>   // every gate is on with the main switch
+        Assert.Equal((true, true, (RaidGate?)Other), RaidReadPlan.Of(Count(), Gates, "act3-g2"));
 
     [Fact]
     public void A_gate_picked_by_hand_wins_over_자동() =>
@@ -70,13 +82,13 @@ public class RaidRecognitionTests
 
     [Fact]
     public void A_count_window_not_on_자동_shows_without_recognition() =>
-        Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(Count(countAuto: false), Gates, null));   // nothing waits on the name
+        Assert.Equal((true, true, (RaidGate?)Mordum), RaidReadPlan.Of(Count(countAuto: false), Gates, null));   // the other gate (자동) still waits on the name
 
     [Fact]
     public void 디버프_창_자동_reads_the_name_and_off_reads_nothing()
     {
         Assert.Equal((true, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings(), Gates, null));   // on by default
-        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false }, Gates, null));
+        Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(new RaidSettings { DebuffsAuto = false, CountEnabled = false }, Gates, null));
     }
 
     // One 디버프 창 switch for every raid; a raid picked in the tray wins (user, 2026-11-03).
@@ -99,7 +111,7 @@ public class RaidRecognitionTests
     public void A_gate_picked_by_hand_feeds_the_debuff_window_without_reading_the_name()
     {
         var s = new RaidSettings { Auto = false, ManualGate = "act3-g3" };
-        Assert.Equal((false, false, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
+        Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
         s.ManualGate = "act3-g2";   // a gate without debuffs
         Assert.Equal(Raid.없음, RaidReadPlan.DebuffRaid(s, Gates, null, inDungeon: true, Raid.없음));
     }
@@ -121,9 +133,8 @@ public class RaidRecognitionTests
         var s = Count(countAuto: false);
         s.CountEnabled = false;
         Assert.Equal((false, false, (RaidGate?)null), RaidReadPlan.Of(s, Gates, "act3-g3"));
-        Assert.True(s.Gate("act3-g3").CountWindow);   // the gate's own switch is untouched
         s.CountEnabled = true;
-        Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
+        Assert.Equal((true, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
     }
 
     [Fact]
@@ -135,10 +146,11 @@ public class RaidRecognitionTests
     }
 
     [Fact]
-    public void A_gate_that_always_shows_its_count_still_does_while_another_is_recognised()
+    public void A_recognised_gate_wins_over_a_gate_that_always_shows_its_count()
     {
         var s = new RaidSettings { DebuffsAuto = false };
-        (s.Gate("act3-g3").CountWindow, s.Gate("act3-g3").CountAuto) = (true, false);
-        Assert.Equal((false, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, "act3-g2"));
+        s.Gate("act3-g3").CountAuto = false;
+        Assert.Equal((true, true, (RaidGate?)Other), RaidReadPlan.Of(s, Gates, "act3-g2"));
+        Assert.Equal((true, true, (RaidGate?)Mordum), RaidReadPlan.Of(s, Gates, null));
     }
 }

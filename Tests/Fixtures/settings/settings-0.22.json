@@ -1,0 +1,946 @@
+{
+  "Version": 4,
+  "FirstRunDone": false,
+  "Keys": {
+    "각성기": "V",
+    "초각스": "T",
+    "일반1": "Q",
+    "일반2": "W",
+    "일반3": "E",
+    "일반4": "R",
+    "일반5": "A",
+    "일반6": "S",
+    "일반7": "D",
+    "일반8": "F",
+    "아덴1": "Z",
+    "아덴2": "X"
+  },
+  "Overlay": {
+    "Left": 500,
+    "Top": 50,
+    "Width": 1.4,
+    "Height": 1,
+    "Opacity": 0.75,
+    "ShowPlate": true,
+    "PlateColor": "#0C0D10",
+    "BoxOpacity": 1,
+    "ShowTimer": true,
+    "TimerFont": 14,
+    "ReadyCountColor": "#000000",
+    "CooldownStyle": "Sweep",
+    "FillFrom": "Bottom",
+    "GoldColor": "#FFD24A",
+    "GoldThickness": 2,
+    "AwakeningChangedColor": "#FF4D4D",
+    "LayoutSnap": true,
+    "LayoutLinkSizes": true,
+    "ExcludeFromCapture": true,
+    "SkillRead": true,
+    "Visible": true,
+    "Always": false,
+    "HideWithoutHud": false,
+    "AutoWhen": null
+  },
+  "Screens": {
+    "Display": "",
+    "ReadBehind": false
+  },
+  "Gauge": {
+    "Fill": "#1E9BE6",
+    "Empty": "#3A3A3A",
+    "Thickness": 6,
+    "Opacity": 1,
+    "ReadMode": "Agreed"
+  },
+  "Hotkeys": {
+    "EditMode": "Ctrl\u002BShift\u002BE",
+    "ToggleOverlay": "Ctrl\u002BShift\u002BH",
+    "DetectCharacter": "Ctrl\u002BShift\u002BD",
+    "TestMode": "Ctrl\u002BShift\u002BT",
+    "DetectSubclass": "",
+    "RereadIcons": "",
+    "Profile1": "",
+    "Profile2": "",
+    "Profile3": "",
+    "Profile4": "",
+    "Profile5": ""
+  },
+  "Party": {
+    "DisplayName": "",
+    "HostPort": 47800,
+    "ApproveJoins": true,
+    "TrustedDevices": [],
+    "Send": {
+      "각성기": true,
+      "초각스": true,
+      "일반스킬": true,
+      "아덴스킬": true
+    },
+    "SendGauge": true,
+    "Label": "IconAndName",
+    "ShowOthersBySlot": [
+      {
+        "Left": "NaN",
+        "Top": "NaN"
+      },
+      {
+        "Left": "NaN",
+        "Top": "NaN"
+      },
+      {
+        "Left": "NaN",
+        "Top": "NaN"
+      }
+    ],
+    "RoleColor": {
+      "딜러": "#FF6B70",
+      "서포터": "#E8B53A"
+    },
+    "ReceiveSize": false,
+    "ReceiveLayout": false,
+    "SlotNames": [],
+    "MyNumber": 1,
+    "SupportFixed": false,
+    "SupportNumber": 2,
+    "IconScale": 1,
+    "NameLength": 14,
+    "Together": false,
+    "Left": "NaN",
+    "Top": "NaN",
+    "ShowMembers": true,
+    "PlateColor": "#0C0D10"
+  },
+  "Buffs": {
+    "Detached": false,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1,
+    "Size": 120,
+    "Count": 7,
+    "Side": false,
+    "Drain": true,
+    "HideWhenEmpty": false,
+    "Indicators": {},
+    "RaidOnly": false,
+    "AnyInRaidOnly": false
+  },
+  "Debuffs": {
+    "Raid": "없음",
+    "BossIconSize": 120,
+    "BossCount": 14,
+    "HideWhenEmpty": false,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1,
+    "Boxes": []
+  },
+  "Judgment": {
+    "Characters": [],
+    "Source": "Both",
+    "FontSize": 100,
+    "Display": "Bar",
+    "Side": false,
+    "HideWhenEmpty": false,
+    "Color": "#3FA9F5",
+    "CooldownColor": "#8A93A3",
+    "OneColor": false,
+    "ShowLabel": true,
+    "Opacity": 1,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1
+  },
+  "Amsu": {
+    "On": false,
+    "Rate": "높음",
+    "Look": "막대",
+    "Direction": "오른쪽",
+    "NumberBeside": false,
+    "ShowSeconds": true,
+    "Opacity": 1,
+    "Color": "#112233",
+    "WarnColor": "#E05252",
+    "WarnSeconds": 5,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1
+  },
+  "ReadsPerSecond": 20,
+  "DrawsPerSecond": 30,
+  "Updates": {
+    "Check": true,
+    "Channel": "Stable",
+    "Notified": "",
+    "WhatsNewTag": "",
+    "WhatsNew": ""
+  },
+  "Raids": {
+    "Auto": true,
+    "ManualGate": null,
+    "CountEnabled": true,
+    "Gates": {},
+    "DebuffsAuto": true,
+    "DebuffsMigrated": true,
+    "Offset": 0,
+    "OffsetPerGate": false,
+    "ShadowHpOff": [],
+    "ShadowHp": null,
+    "BossHpEasy": true,
+    "BossHpRead": true,
+    "Glow": true,
+    "OnlyWhenGlowing": false,
+    "GlowUntil": "Seconds",
+    "GlowSeconds": 20,
+    "GlowBars": 5,
+    "Background": "#CC101418",
+    "Opacity": 1,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1,
+    "Migrated": true
+  },
+  "Meter": {
+    "On": false,
+    "Send": false,
+    "Receive": true,
+    "TakesParty": false,
+    "Scope": "파티",
+    "Value": "지분",
+    "Look": "선그래프",
+    "Show": true,
+    "Record": true,
+    "Graph": true,
+    "Range": "전체",
+    "SkillFollowsRange": true,
+    "SkillRateExcludes": false,
+    "BuffBars": true,
+    "Support": true,
+    "Other": true,
+    "CompareAsShare": true,
+    "MyColor": null,
+    "DealerColor": null,
+    "SupportColor": null,
+    "OtherColor": null,
+    "Background": "#CC101418",
+    "Opacity": 1,
+    "BarOpacity": 1,
+    "Left": "NaN",
+    "Top": "NaN",
+    "Width": 1,
+    "Height": 1,
+    "Panels": {},
+    "HpEvery": 0.5,
+    "BuffShareOff": false
+  },
+  "RecordKeep": 50,
+  "RecordKeepMigrated": true,
+  "RecordOverflowKept": true,
+  "RecordSortByRaid": false,
+  "RecordRaidOrder": [],
+  "BinEmptyDay": "Wednesday",
+  "BinEmptyHour": 8,
+  "BinEmptiedAt": "0001-01-01T00:00:00",
+  "MutedWarnings": [],
+  "MutedNotices": [],
+  "RecordPauseSeconds": 120,
+  "RecordFontPercent": 100,
+  "BossBook": {},
+  "Homework": {
+    "Characters": [],
+    "Tags": {},
+    "ShowOnGrid": true,
+    "FollowLevel": true,
+    "Order": [],
+    "FollowGameOrder": true,
+    "CustomRaids": []
+  },
+  "RaidCapsules": {
+    "Colors": {}
+  },
+  "Theme": "DeepTeal",
+  "Palette": "LostArk",
+  "CooldownLooksMoved": true,
+  "HomeworkWithoutKey": false,
+  "GaugeBars": {
+    "워로드/전투태세": {
+      "SplitThickness": 3,
+      "SplitColor": "#101010",
+      "UnifiedColor": true,
+      "SegmentColors": [],
+      "Ramp": true,
+      "GlowEnabled": true,
+      "GlowStyle": "Pulse",
+      "GlowPeriod": 1.2
+    }
+  },
+  "Characters": {
+    "워로드 · 고독한기사": {
+      "ClassFamily": "전사",
+      "Class": "워로드",
+      "Subclass": "고독한기사",
+      "EmblemBgra": null
+    },
+    "워로드 · 전투태세": {
+      "ClassFamily": "전사",
+      "Class": "워로드",
+      "Subclass": "전투태세",
+      "EmblemBgra": null
+    },
+    "바드 · 절실한구원": {
+      "ClassFamily": "마법사",
+      "Class": "바드",
+      "Subclass": "절실한구원",
+      "EmblemBgra": null
+    }
+  },
+  "ActiveCharacter": "워로드 · 전투태세",
+  "Cores": {},
+  "CombatPower": {},
+  "ApiMainCharacter": null,
+  "BuffUnlockKey": null,
+  "ApiShowCombatPower": true,
+  "MeterCompare": {},
+  "CharacterWindows": {},
+  "StackSkills": {},
+  "FavoriteClasses": [],
+  "FavoriteSettings": [],
+  "SubclassHistory": {},
+  "AutoSubclass": false,
+  "ClassDetect": "수동",
+  "SeenSupport": null,
+  "RailSeen": null,
+  "PreviewBack": null,
+  "Fits": {},
+  "ManualHud": null,
+  "ManualScreen": null,
+  "DetectedScreen": null,
+  "Adjusts": {},
+  "UseAdjusts": false,
+  "FineSizes": false,
+  "Classes": {
+    "워로드 · 고독한기사": {
+      "Own": true,
+      "Mine": {
+        "NoShine": [],
+        "Pulse": [],
+        "PulseStyle": {},
+        "PulseColor": {},
+        "CustomGlow": false,
+        "SlotPulseColors": {},
+        "ReadyCount": [],
+        "SlotReadyCount": {},
+        "HeldCount": [],
+        "SlotHeldCount": {},
+        "Icons": [],
+        "SlotShine": {},
+        "SlotPulse": {},
+        "EndFlash": [],
+        "SlotEndFlash": {},
+        "HideOnCooldown": [],
+        "SlotHideOnCooldown": {},
+        "KeyLetters": [],
+        "CooldownStyle": "Sweep",
+        "FillFrom": "Bottom",
+        "ShowTimer": true,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      },
+      "Members": {
+        "Width": 1,
+        "Height": 1,
+        "UseMineColor": false,
+        "UseMineDisplay": false,
+        "UseMineSize": false,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      }
+    },
+    "워로드 · 전투태세": {
+      "Own": true,
+      "Mine": {
+        "NoShine": [],
+        "Pulse": [],
+        "PulseStyle": {},
+        "PulseColor": {},
+        "CustomGlow": false,
+        "SlotPulseColors": {},
+        "ReadyCount": [],
+        "SlotReadyCount": {},
+        "HeldCount": [],
+        "SlotHeldCount": {},
+        "Icons": [],
+        "SlotShine": {},
+        "SlotPulse": {},
+        "EndFlash": [],
+        "SlotEndFlash": {},
+        "HideOnCooldown": [],
+        "SlotHideOnCooldown": {},
+        "KeyLetters": [],
+        "CooldownStyle": "Sweep",
+        "FillFrom": "Bottom",
+        "ShowTimer": true,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      },
+      "Members": {
+        "Width": 1,
+        "Height": 1,
+        "UseMineColor": false,
+        "UseMineDisplay": false,
+        "UseMineSize": false,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      }
+    },
+    "바드 · 절실한구원": {
+      "Own": false,
+      "Mine": {
+        "NoShine": [],
+        "Pulse": [],
+        "PulseStyle": {},
+        "PulseColor": {},
+        "CustomGlow": false,
+        "SlotPulseColors": {},
+        "ReadyCount": [],
+        "SlotReadyCount": {},
+        "HeldCount": [],
+        "SlotHeldCount": {},
+        "Icons": [],
+        "SlotShine": {},
+        "SlotPulse": {},
+        "EndFlash": [],
+        "SlotEndFlash": {},
+        "HideOnCooldown": [],
+        "SlotHideOnCooldown": {},
+        "KeyLetters": [],
+        "CooldownStyle": "Sweep",
+        "FillFrom": "Bottom",
+        "ShowTimer": true,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      },
+      "Members": {
+        "Width": 1,
+        "Height": 1,
+        "UseMineColor": false,
+        "UseMineDisplay": false,
+        "UseMineSize": false,
+        "Groups": {
+          "각성기": true,
+          "초각스": true,
+          "일반스킬": true,
+          "아덴스킬": true
+        },
+        "HiddenSlots": [],
+        "Gauge": true,
+        "Layout": null,
+        "Color": "Default",
+        "Colors": {},
+        "SlotColors": {},
+        "SkillsUnified": null,
+        "AutoDim": true,
+        "DimColors": {},
+        "SlotDimColors": {}
+      }
+    }
+  },
+  "Profiles": [
+    {
+      "Overlay": {
+        "Left": 100,
+        "Top": 50,
+        "Width": 1,
+        "Height": 1
+      },
+      "SubclassPlaces": {
+        "워로드 · 고독한기사": {
+          "Left": 300,
+          "Top": 50,
+          "Width": 1,
+          "Height": 1
+        },
+        "바드 · 절실한구원": {
+          "Left": 222,
+          "Top": 50,
+          "Width": 1,
+          "Height": 1
+        },
+        "워로드 · 전투태세": {
+          "Left": 500,
+          "Top": 50,
+          "Width": 1.4,
+          "Height": 1
+        }
+      },
+      "Opacity": 0.8,
+      "PlateColor": "#0C0D10",
+      "GaugeThickness": 6,
+      "BuffsDetached": false,
+      "BuffsSide": false,
+      "Buffs": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "BuffBars": {},
+      "PartyTogether": false,
+      "BoundPartyLeft": "NaN",
+      "BoundPartyTop": "NaN",
+      "PartyPlateColor": "#0C0D10",
+      "PartySlots": [
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        },
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        },
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        }
+      ],
+      "Shot": null,
+      "Amsu": {
+        "On": false,
+        "Rate": "높음",
+        "Look": "막대",
+        "Direction": "오른쪽",
+        "NumberBeside": false,
+        "ShowSeconds": true,
+        "Opacity": 1,
+        "Color": "#112233",
+        "WarnColor": "#E05252",
+        "WarnSeconds": 5,
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "Judgment": {
+        "Characters": [],
+        "Source": "Both",
+        "FontSize": 100,
+        "Display": "Bar",
+        "Side": false,
+        "HideWhenEmpty": false,
+        "Color": "#3FA9F5",
+        "CooldownColor": "#8A93A3",
+        "OneColor": false,
+        "ShowLabel": true,
+        "Opacity": 1,
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "MeterBarOpacity": 1,
+      "Meter": {
+        "Look": "선그래프",
+        "Graph": true,
+        "My": null,
+        "Dealer": null,
+        "Support": null,
+        "Other": null,
+        "Background": "#CC101418",
+        "Opacity": 1
+      },
+      "BuffLook": {
+        "Drain": true,
+        "HideWhenEmpty": false,
+        "Bars": {}
+      },
+      "Boxes": {
+        "BoxOpacity": 1,
+        "GoldColor": "#FFD24A",
+        "GoldThickness": 2,
+        "AwakeningChangedColor": "#FF4D4D",
+        "ReadyCountColor": "#000000"
+      },
+      "ShowPlate": true,
+      "GaugeLook": {
+        "Fill": "#1E9BE6",
+        "Empty": "#3A3A3A",
+        "Opacity": 1
+      },
+      "MeterPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "DebuffPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "RaidPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "DebuffBoxes": [],
+      "DebuffHideWhenEmpty": false,
+      "RaidLook": {
+        "Background": "#CC101418",
+        "Opacity": 1
+      }
+    },
+    {
+      "Overlay": {
+        "Left": 650,
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "SubclassPlaces": {
+        "워로드 · 전투태세": {
+          "Left": 900,
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        },
+        "워로드 · 고독한기사": {
+          "Left": 700,
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        }
+      },
+      "Opacity": 0.5,
+      "PlateColor": "#0C0D10",
+      "GaugeThickness": 6,
+      "BuffsDetached": false,
+      "BuffsSide": false,
+      "Buffs": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "BuffBars": {},
+      "PartyTogether": false,
+      "BoundPartyLeft": "NaN",
+      "BoundPartyTop": "NaN",
+      "PartyPlateColor": "#0C0D10",
+      "PartySlots": [
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        },
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        },
+        {
+          "Left": "NaN",
+          "Top": "NaN",
+          "Width": 1,
+          "Height": 1
+        }
+      ],
+      "Shot": null,
+      "Amsu": {
+        "On": false,
+        "Rate": "높음",
+        "Look": "막대",
+        "Direction": "오른쪽",
+        "NumberBeside": false,
+        "ShowSeconds": true,
+        "Opacity": 1,
+        "Color": "#112233",
+        "WarnColor": "#E05252",
+        "WarnSeconds": 5,
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "Judgment": {
+        "Characters": [],
+        "Source": "Both",
+        "FontSize": 100,
+        "Display": "Bar",
+        "Side": false,
+        "HideWhenEmpty": false,
+        "Color": "#3FA9F5",
+        "CooldownColor": "#8A93A3",
+        "OneColor": false,
+        "ShowLabel": true,
+        "Opacity": 1,
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "MeterBarOpacity": 1,
+      "Meter": {
+        "Look": "선그래프",
+        "Graph": true,
+        "My": null,
+        "Dealer": null,
+        "Support": null,
+        "Other": null,
+        "Background": "#CC101418",
+        "Opacity": 1
+      },
+      "BuffLook": {
+        "Drain": true,
+        "HideWhenEmpty": false,
+        "Bars": {}
+      },
+      "Boxes": {
+        "BoxOpacity": 1,
+        "GoldColor": "#FFD24A",
+        "GoldThickness": 2,
+        "AwakeningChangedColor": "#FF4D4D",
+        "ReadyCountColor": "#000000"
+      },
+      "ShowPlate": true,
+      "GaugeLook": {
+        "Fill": "#00FF00",
+        "Empty": "#3A3A3A",
+        "Opacity": 1
+      },
+      "MeterPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "DebuffPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "RaidPlace": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "DebuffBoxes": [],
+      "DebuffHideWhenEmpty": false,
+      "RaidLook": {
+        "Background": "#CC101418",
+        "Opacity": 1
+      }
+    },
+    {
+      "Overlay": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "SubclassPlaces": {},
+      "Opacity": 0.9,
+      "PlateColor": "#0C0D10",
+      "GaugeThickness": 6,
+      "BuffsDetached": false,
+      "BuffsSide": false,
+      "Buffs": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "BuffBars": {},
+      "PartyTogether": false,
+      "BoundPartyLeft": "NaN",
+      "BoundPartyTop": "NaN",
+      "PartyPlateColor": "#0C0D10",
+      "PartySlots": [],
+      "Shot": null,
+      "Amsu": null,
+      "Judgment": null,
+      "MeterBarOpacity": null,
+      "Meter": null,
+      "BuffLook": null,
+      "Boxes": null,
+      "ShowPlate": null,
+      "GaugeLook": null,
+      "MeterPlace": null,
+      "DebuffPlace": null,
+      "RaidPlace": null,
+      "DebuffBoxes": null,
+      "DebuffHideWhenEmpty": null,
+      "RaidLook": null
+    },
+    {
+      "Overlay": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "SubclassPlaces": {},
+      "Opacity": 0.9,
+      "PlateColor": "#0C0D10",
+      "GaugeThickness": 6,
+      "BuffsDetached": false,
+      "BuffsSide": false,
+      "Buffs": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "BuffBars": {},
+      "PartyTogether": false,
+      "BoundPartyLeft": "NaN",
+      "BoundPartyTop": "NaN",
+      "PartyPlateColor": "#0C0D10",
+      "PartySlots": [],
+      "Shot": null,
+      "Amsu": null,
+      "Judgment": null,
+      "MeterBarOpacity": null,
+      "Meter": null,
+      "BuffLook": null,
+      "Boxes": null,
+      "ShowPlate": null,
+      "GaugeLook": null,
+      "MeterPlace": null,
+      "DebuffPlace": null,
+      "RaidPlace": null,
+      "DebuffBoxes": null,
+      "DebuffHideWhenEmpty": null,
+      "RaidLook": null
+    },
+    {
+      "Overlay": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "SubclassPlaces": {},
+      "Opacity": 0.9,
+      "PlateColor": "#0C0D10",
+      "GaugeThickness": 6,
+      "BuffsDetached": false,
+      "BuffsSide": false,
+      "Buffs": {
+        "Left": "NaN",
+        "Top": "NaN",
+        "Width": 1,
+        "Height": 1
+      },
+      "BuffBars": {},
+      "PartyTogether": false,
+      "BoundPartyLeft": "NaN",
+      "BoundPartyTop": "NaN",
+      "PartyPlateColor": "#0C0D10",
+      "PartySlots": [],
+      "Shot": null,
+      "Amsu": null,
+      "Judgment": null,
+      "MeterBarOpacity": null,
+      "Meter": null,
+      "BuffLook": null,
+      "Boxes": null,
+      "ShowPlate": null,
+      "GaugeLook": null,
+      "MeterPlace": null,
+      "DebuffPlace": null,
+      "RaidPlace": null,
+      "DebuffBoxes": null,
+      "DebuffHideWhenEmpty": null,
+      "RaidLook": null
+    }
+  ],
+  "ActiveProfile": 0,
+  "SharedLooks": [],
+  "PlaceKey": "워로드 · 전투태세"
+}

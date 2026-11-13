@@ -36,7 +36,8 @@ public static class SettingsResets
     /// <summary>내 오버레이 → 아덴 게이지: the gauge style and every 클래스·직업각인's bar.</summary>
     public static void Gauge(Settings s)
     {
-        s.Gauge = new();
+        var g = s.Gauge;   // the window's place and direction are layout, not look
+        s.Gauge = new() { Left = g.Left, Top = g.Top, Width = g.Width, Height = g.Height, Upright = g.Upright };
         s.GaugeBars.Clear();
     }
 

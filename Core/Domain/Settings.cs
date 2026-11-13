@@ -25,6 +25,9 @@ public sealed partial class Settings : IJsonOnDeserializing
     public HotkeySettings Hotkeys { get; set; } = new();
     public PartySettings Party { get; set; } = new();
     public BuffSettings Buffs { get; set; } = new();
+    /// <summary>합쳐서 / 따로: false = skill boxes, gauge and buff bars in one window, true = each in its own. The one value
+    /// <c>Buffs.Detached</c> (per profile and class in <see cref="ProfileEntry.BuffsDetached"/>), read by all three panels.</summary>
+    [JsonIgnore] public bool Apart { get => Buffs.Detached; set => Buffs.Detached = value; }
     public DebuffSettings Debuffs { get; set; } = new();
     public JudgmentSettings Judgment { get; set; } = new();
     /// <summary>설정 → 암흑수류탄: the 암수 창 (amsu.design.md).</summary>
@@ -42,6 +45,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     public int RecordKeep { get; set; } = 50;
     /// <summary>A saved <see cref="RecordKeep"/> of 20 (the default before 전투 기록 went per character) has moved to 50 once.</summary>
     public bool RecordKeepMigrated { get; set; } = true;
+    /// <summary>False in a file from before 0.23: <see cref="SplitLayout.Migrate"/> runs once on it (a new install needs none).</summary>
+    public bool SplitMigrated { get; set; } = true;
     /// <summary>False in a file from before 0.20: its fights past the new count turn 보관 once at start-up (RecordStore.KeepOverflow).</summary>
     public bool RecordOverflowKept { get; set; } = true;
     /// <summary>전투 기록's rows: 날짜순 (newest first) or 레이드순 (RaidOrder.Group) (user, 2026-11-10).</summary>
@@ -89,7 +94,7 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
     void IJsonOnDeserializing.OnDeserializing() =>
-        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved) = (UiTheme.DeepTeal, false, false, false, false, true, false);
+        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved, SplitMigrated) = (UiTheme.DeepTeal, false, false, false, false, true, false, false);
 
     /// <summary>The global 쿨 진행 표시 & co. (<see cref="OverlaySettings.CooldownStyle"/>) have moved into 기본 and every 개별
     /// class (<see cref="ClassProfileMigration.MoveCooldownViews"/>); false in an older file.</summary>
@@ -198,20 +203,18 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <see cref="ClassProfiles"/> for the order they apply in.</summary>
     public Dictionary<string, ClassSettings> Classes { get; set; } = [];
 
-    /// <summary>오버레이 프로필 1–5: each keeps a screenshot and where the windows are, their sizes, thicknesses, split or
-    /// together and plate colours. The active one's values live in the settings above (so nothing else reads profiles);
-    /// <see cref="SwitchProfile"/> swaps them. Replaced on load, not added to.</summary>
+    /// <summary>프로필 1–5: each keeps a screenshot, every window's spot and size and every look (<see cref="OverlayProfile"/>).
+    /// The active one's values live in the settings above (so nothing else reads profiles); <see cref="SwitchProfile"/> swaps
+    /// them. Replaced on load, not added to.</summary>
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
-    public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile())];
+    public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile { Classes = [], GaugeBars = [], Aden = [] })];
     public int ActiveProfile { get; set; }
-    /// <summary>The looks marked 모든 위치 프로필에 적용: one value for every 배치, kept across a switch (display-split.plan.md).
-    /// Null in an older file: <c>SettingsStore.Normalize</c> shares them all. Replaced on load, not added to.</summary>
+    /// <summary>Old (0.20–0.22) 모든 위치 프로필에 적용 marks: read once into every profile (<see cref="UnshareLooks"/>), then
+    /// written empty, so an older version sees every look per profile too. Replaced on load, not added to.</summary>
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
-    public HashSet<LookGroup>? SharedLooks { get; set; } = [.. Enum.GetValues<LookGroup>()];
-    /// <summary>Set on loading an older file: the looks whose 배치 differed and now share the active one's, for the
-    /// one-time notice. Not saved.</summary>
-    [JsonIgnore] public List<LookGroup> MergedLooks { get; set; } = [];
+    public HashSet<LookGroup>? SharedLooks { get; set; } = [];
 
-    /// <summary>The 직업각인 whose window spot and size <see cref="Overlay"/> holds now; null = the one shared by a character with no listed 직업각인.</summary>
+    /// <summary>The 클래스 · 직업각인 whose places and looks the live settings hold now (<see cref="SyncClass"/>); null = the
+    /// profile's shared ones. The JSON name is 0.22's, which kept only the window's spot per 직업각인 under it.</summary>
     public string? PlaceKey { get; set; }
 }

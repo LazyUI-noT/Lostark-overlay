@@ -177,7 +177,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>The window draws exactly these fields of the snapshot (and the settings, which come through
     /// <see cref="Refresh"/>), so equal ones draw the same picture while nothing moves. A part that shows the time must
     /// set the moving flags. 미터기 창: App builds MeterView once per meter status (1-2/s), each row's class included.
-    /// Windows without a check (yours, 버프, party) draw every new snapshot. status/decisions.md, "Overlay redraws".</summary>
+    /// Windows without a check (yours, 버프, 게이지, party) draw every new snapshot. status/decisions.md, "Overlay redraws".</summary>
     bool SameDrawn(Snapshot a, Snapshot b) =>
         MeterOnly ? ReferenceEquals(a.MeterView, b.MeterView)
         : DebuffsOnly ? Equals(a.Debuffs, b.Debuffs)
@@ -222,13 +222,13 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
     /// <summary>A box edge in DIPs for a Width/Height setting.</summary>
     /// <param name="min">Lowest scale drawn: a party member's received size or layout may be fitted below the setting's.</param>
-    static double BoxSize(double setting, double share = 1, double min = MinScale) => Math.Round(Box * Math.Clamp(setting, min, MaxScale) * share);
+    static double BoxSize(double setting, double share = 1, double min = MinScale) => SplitLayout.BoxSize(setting, share, min);
 
     /// <summary>The free layout: each shown part at its cell (a part the layout lacks at its fixed-grid spot), scaled by
     /// the box size. Nothing closes up when a group is off. The plate wraps what is shown; the gauge keeps its bottom
     /// edge at its cell's, so a thicker gauge grows upwards.</summary>
     PlayerLayout? LayoutCells(Player p, string key, IReadOnlyDictionary<Part, Cell> cells, IReadOnlySet<SlotId> hidden, double bw,
-        double bh, double lead, double top, Func<SlotGroup, bool> show, Func<SlotGroup, Color> col, Func<SlotId, Color> skillCol, double gaugeH, double leadH)
+        double bh, double lead, double top, Func<SlotGroup, bool> show, Func<SlotGroup, Color> col, Func<SlotId, Color> skillCol, double gaugeH, double leadH, double homeH = 0)
     {
         var s = p.Snapshot;
         var fallback = FreeLayout.Default(Settings.Gauge.Thickness);
@@ -263,6 +263,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         var l = new PlayerLayout(p, key, bh) { Anchor = new Point(ox, oy), CellOrigin = new Point(ox, oy), Scale = scale, Free = true };
         foreach (var (k, r, c) in boxes) l.Boxes.Add((k, Placed(r), c));
         if (gauge is { } gg) l.Gauge = Placed(gg);
+        else if (homeH > 0 && At(Part.게이지) is var gh) l.GaugeHome = Placed(new Rect(gh.X, gh.Bottom - homeH, gh.Width, homeH));
         l.GridTop = boxes.Count > 0 ? l.Boxes.Min(b => b.Rect.Y) : l.Gauge!.Value.Bottom;
         double right = all.Max(r => r.Right) + ox, bottom = Math.Max(all.Max(r => r.Bottom) + oy, l.GridTop + leadH);
         l.Plate = new Rect(Bleed, top, right + Pad - Bleed, bottom + Pad - top);
@@ -295,7 +296,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     public double BarFull => _layout?.BarFull ?? 0;
 
     /// <summary>The parts drawn now (the boxes a dragged one snaps to).</summary>
-    public IEnumerable<Part> DrawnParts => _layout is not { } l ? []
+    public IEnumerable<Part> DrawnParts => _layout is not { } l || GaugeOnly ? []
         : l.Boxes.Select(b => (Part)b.Key).Concat(l.Gauge is null ? [] : [Part.게이지]);
 
     /// <summary>The drawn player's class (a party member's decides their boxes' settings), or null when unknown.</summary>
@@ -327,7 +328,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         _frameMs = Math.Max(MinFrameMs, DrawSteps.FrameMs(Settings.DrawsPerSecond, fadeOnly: !_animating && !_moving));
         SetLoop(_moving || _animating || _blinking);
         string part = DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
-            : BuffsOnly ? "그리기: 버프 창" : Peer >= 0 ? "그리기: 파티 창" : "그리기: 스킬 창";
+            : BuffsOnly ? "그리기: 버프 창" : GaugeOnly ? "그리기: 게이지 창" : Peer >= 0 ? "그리기: 파티 창" : "그리기: 스킬 창";
         Services.Perf.AddCpu(part, Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
         Services.Perf.Count(part);   // draws a second, per window (perf-trace)
         if (!_frameAsked) Services.Perf.Count(part + " · 루프 밖");   // drawn for another reason than a loop frame
@@ -339,7 +340,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         var s = l.Player.Snapshot;
         var hidden = HiddenBoxes(l, now);
         // Plate, gauge and boxes each have their own opacity setting. The detached buff window has no plate.
-        if (Settings.Overlay.ShowPlate && !BuffsOnly)
+        if (Settings.Overlay.ShowPlate && !BuffsOnly && !GaugeOnly)
         {
             var rgb = Parse(l.Peer ? Settings.Party.PlateColor : Settings.Overlay.PlateColor);
             var plate = Solid(Color.FromArgb((byte)(PlateColor.A * Math.Clamp(Settings.Overlay.Opacity, MinOpacity, 1)), rgb.R, rgb.G, rgb.B));
@@ -376,8 +377,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
             double v = Get(_gauges, l.Key).Value(Math.Clamp(value, 0, 1), ms, ref _animating);
             dc.PushOpacity(Math.Clamp(Settings.Gauge.Opacity, MinOpacity, 1));
             dc.DrawRectangle(Solid(Parse(Settings.Gauge.Empty)), null, g);
-            if (l.Bar is { } bar) DrawBar(dc, g, l.Key, bar, s, v, ms, reduced);
-            else if (v > 0) dc.DrawRectangle(Solid(Parse(Settings.Gauge.Fill)), null, new Rect(g.X, g.Y, g.Width * v, g.Height));
+            if (l.Bar is { } bar) DrawBar(dc, g, l.Key, bar, s, v, ms, reduced, GaugeUpright);
+            else if (v > 0) dc.DrawRectangle(Solid(Parse(Settings.Gauge.Fill)), null, AsRect(GaugeAxis.Span(AsCell(g), 0, v, GaugeUpright)));
             dc.Pop();
         }
         if (l.Gauge is { } warn && ClassWarning && !l.Peer)

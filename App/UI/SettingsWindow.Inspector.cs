@@ -35,6 +35,7 @@ public partial class SettingsWindow
         InspectorHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         InspectorHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         InspectorFoot.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        CanvasBadgeHost.Children.Add(ProfileBadgeChip());
         CanvasTools.Children.Add(ShotButtons());
         CanvasTools.Children.Add(RunButtons(canvas, out _run));
         CanvasTools.Children.Add(ToolCheck("자석", canvas.Snap, v => canvas.Snap = v, "끌 때 다른 칸에 맞춰 붙습니다. Shift를 누르고 끌면 붙지 않습니다."));
@@ -115,20 +116,29 @@ public partial class SettingsWindow
         InspectorHead.Children.Add(Muted(new TextBlock { Text = about, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) }));
         if (SizeHint(box) is { } hint)
             InspectorHead.Children.Add(new TextBlock { Text = hint, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) });
+        if (PageOf(box) is { } page)
+        {
+            var go = new Button { Content = $"{page} 설정 열기 →", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
+            go.Click += (_, _) => Go(page);
+            InspectorHead.Children.Add(go);
+        }
         foreach (var p in panels) Detach(p);
         Detach(_contextNotes);
         Inspector.Children.Clear();
         if (ClassScoped(box)) Inspector.Children.Add(_contextNotes);
-        foreach (var p in panels) Inspector.Children.Add(p);
+        foreach (var p in panels) { Inspector.Children.Add(p); ShowCardBadges(p, false); }
         InspectorBody.ScrollToTop();
         var scope = new TextBlock
         {
             Text = box?.Kind switch
             {
-                "Skills" => $"색과 효과: {ClassName(ShownClass)}에만 · 칸 모양: 모든 직업각인",
-                "Plate" => $"쿨 진행·남은 쿨: {ClassName(ShownClass)}에만 · 나머지: 모두",
+                "Skills" => $"색과 효과: {ClassName(ShownClass)}에만 · 칸 모양: {BadgeText()}",
+                "Plate" => $"쿨 진행·남은 쿨: {ClassName(ShownClass)}에만 · 나머지: {BadgeText()}",
+                "BuffBar" => $"프로필 {_s.ActiveProfile + 1}의 모든 직업각인에 적용",   // 버프 막대 is one per profile (user, 2026-11-13)
+                "Gauge" => $"프로필 {_s.ActiveProfile + 1}의 {ClassName(ShownClass)}에만 적용",   // 게이지 is per profile · class since 0.23 (user, 2026-11-13)
                 _ when ClassScoped(box) => $"{ClassName(ShownClass)}에만 적용",
-                _ => "모든 직업각인에 적용",
+                // Looks and spots are per profile · played class (class-profiles.plan.md A), the same text as the badge.
+                _ => $"{BadgeText()}에 적용",
             },
             Opacity = 0.75, TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center,
@@ -145,23 +155,24 @@ public partial class SettingsWindow
     }
 
     /// <summary>What the inspector can show, as chips over its title (user, 2026-11-12): the canvas's windows can be picked from
-    /// here too, the one shown is lit like its gold outline on the canvas, and 전체 goes back. A skill box has no chip of its own
-    /// until it is picked on the canvas.</summary>
+    /// here too, the one shown is lit like its gold outline on the canvas, and 전체 goes back. 스킬창 is the skill window as a whole,
+    /// 스킬 칸 the first box (the picked one's name while one is picked), 복사 the copy page (user, 2026-11-13: both were hard to find).</summary>
     WrapPanel InspectorChips(CanvasBox? box, string title)
     {
         var chips = new List<(string Text, CanvasBox? Box)>
         {
-            ("전체", null), ("내 창", new("Plate", null, null)), ("게이지", new("Gauge", Part.게이지, null)),
-            ("버프 막대", new("BuffBar", FreeLayout.FirstBuff, null)), ("디버프", new("Debuff", null, 0)),
+            ("전체", null), ("스킬창", new("Plate", null, null)),
+            (box?.Kind == "Skills" ? title : "스킬 칸", box?.Kind == "Skills" ? box : new("Skills", Part.일반1, null)),
+            ("게이지", new("Gauge", Part.게이지, null)), ("버프 막대", new("BuffBar", FreeLayout.FirstBuff, null)), ("디버프", new("Debuff", null, 0)),
         };
         if (_s.Party.ShowOthersBySlot.Count > 0) chips.Add(("파티원", new("Party", null, null)));
-        chips.AddRange([("단심", new("Judgment", null, null)), ("암수", new("Amsu", null, null)), ("줄 수", new("Raid", null, null))]);
-        if (box?.Kind == "Skills") chips.Insert(2, (title, box));
+        chips.AddRange([("단심", new("Judgment", null, null)), ("암수", new("Amsu", null, null)), ("줄 수", new("Raid", null, null)), ("복사", new("Copy", null, null))]);
         var row = new WrapPanel { Margin = new(0, 0, 0, 10) };
         foreach (var (text, target) in chips)
         {
             var chip = new ToggleButton { Content = text, IsChecked = target?.Kind == box?.Kind, Padding = new(8, 1, 8, 2), Margin = new(0, 0, 4, 4), FontSize = 12 };
-            chip.Click += (_, _) => { _canvas?.Select(target); ShowInspector(target); };   // ShowInspector also for a box the canvas can't pick (no party)
+            if (target?.Kind == "Copy") chip.Click += (_, _) => { _canvas?.Select(null); ShowCopy(); };
+            else chip.Click += (_, _) => { _canvas?.Select(target); ShowInspector(target); };   // ShowInspector also for a box the canvas can't pick (no party)
             row.Children.Add(chip);
         }
         return row;
@@ -177,7 +188,7 @@ public partial class SettingsWindow
     };
 
     /// <summary>Box options and class rows follow 편집 중; the debuff window, the party's window and the overlay as a whole do not.</summary>
-    static bool ClassScoped(CanvasBox? box) => box?.Kind is "Skills" or "Gauge" or "BuffBar" or "Plate";
+    static bool ClassScoped(CanvasBox? box) => box?.Kind is "Skills" or "Gauge" or "Plate";
 
     readonly Dictionary<BuffKind, UIElement> _buffHeads = [];
 
@@ -207,7 +218,7 @@ public partial class SettingsWindow
                 ScrollToDebuff(d);
                 return ("디버프", "디버프 칸입니다. MP 바 위의 내 디버프와 보스 체력바 아래 빨강·파랑 숫자를 보여 줍니다.", [_secBuffs]);
             case { Kind: "Raid" }:
-                return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 설정은 왼쪽의 레이드에서 바꿉니다.", []);
+                return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 관문과 빛날 줄 수는 레이드에서 정합니다.", [_secRaidCount]);
             case { Kind: "Judgment" }:
                 return ("단심", "단죄·심판 룬의 심판 시간입니다.", [_secOther]);
             case { Kind: "Amsu" }:
@@ -216,11 +227,25 @@ public partial class SettingsWindow
                 return ("파티원 창", "파티원 칸의 모양입니다. 클래스마다 따로 저장됩니다.", [_secMembers]);
             case { Kind: "Plate" }:
                 ShowBox(null, plate: true);
-                return ("내 오버레이 창", "창 전체의 모양입니다.", [BoxTab, _secDisplay]);
+                return ("스킬창", "스킬 칸과 게이지가 든 창 전체의 모양입니다.", [BoxTab, _secApart, _secDisplay]);
             default:
-                return ("전체", "오버레이 전체의 표시와 배치입니다. 왼쪽 화면에서 칸을 누르거나 위에서 고르면 그 칸의 설정이 여기에 나옵니다.", [_secDisplay, _secPlace, _secCopyLink]);
+                return ("전체", "오버레이 전체의 표시와 배치입니다. 왼쪽 화면에서 칸을 누르거나 위에서 고르면 그 칸의 설정이 여기에 나옵니다.", [_secCopyLink, _secDisplay, _secPlace]);
         }
     }
+
+    /// <summary>The rail page with the rest of <paramref name="box"/>'s settings, for the inspector's shortcut (user, 2026-11-13);
+    /// null: the overlay as a whole or the copy page, which have no page of their own.</summary>
+    static string? PageOf(CanvasBox? box) => box?.Kind switch
+    {
+        "Skills" or "Plate" => AreaSkills,
+        "Gauge" => AreaGauge,
+        "BuffBar" or "Debuff" => AreaBuffs,
+        "Judgment" => AreaJudgment,
+        "Amsu" => AreaAmsu,
+        "Raid" => AreaRaid,
+        "Party" => AreaParty,
+        _ => null,
+    };
 
     /// <summary>Where a window whose size slider went to the canvas (settings-copy.plan.md) is sized now; null: it has its rows.</summary>
     static string? SizeHint(CanvasBox? box) => box?.Kind switch
