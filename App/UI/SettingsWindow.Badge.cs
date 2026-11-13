@@ -10,19 +10,23 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     const string CardBadgeTag = "ProfileBadge";
-    readonly List<TextBlock> _badgeTexts = [];
+    readonly List<(TextBlock Text, bool ProfileOnly)> _badgeTexts = [];
 
     /// <summary>The badge text for the picked profile and the character played (null class → 기본).</summary>
     string BadgeText() => ProfileBadge.Text(_s.ActiveProfile, ClassProfiles.LookKey(_s));
 
-    /// <summary>A new chip; it keeps itself current through <see cref="RefreshBadges"/>.</summary>
-    UIElement ProfileBadgeChip()
+    string BadgeText(bool profileOnly) => profileOnly ? ProfileBadge.ProfileText(_s.ActiveProfile) : BadgeText();
+
+    /// <summary>A new chip; it keeps itself current through <see cref="RefreshBadges"/>. <paramref name="profileOnly"/>: a
+    /// setting every class in the profile shares (버프 막대), so the chip names no class.</summary>
+    UIElement ProfileBadgeChip(bool profileOnly = false)
     {
-        var text = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Text = BadgeText() };
+        var text = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Text = BadgeText(profileOnly) };
         text.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
-        _badgeTexts.Add(text);
+        _badgeTexts.Add((text, profileOnly));
         var chip = new Border { CornerRadius = new(10), BorderThickness = new(1), Padding = new(10, 2, 10, 3), Child = text, HorizontalAlignment = HorizontalAlignment.Left,
-            ToolTip = "지금 편집하는 프로필과 플레이 중인 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
+            ToolTip = profileOnly ? "지금 편집하는 프로필입니다. 이 값은 이 프로필의 모든 직업각인이 같이 씁니다."
+                : "지금 편집하는 프로필과 플레이 중인 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
         chip.SetResourceReference(Border.BorderBrushProperty, "AccentTextFillColorPrimaryBrush");
         return chip;
     }
@@ -33,7 +37,7 @@ public partial class SettingsWindow
     {
         var (area, section) = ProfileBadge.Home(look);
         if (ProfileBadge.Of(area, section) != BadgeAt.Section) return new Border();
-        var chip = ProfileBadgeChip();
+        var chip = ProfileBadgeChip(profileOnly: look == LookGroup.버프막대);
         var host = new Border { Child = chip, Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
         return host;
     }
@@ -51,7 +55,6 @@ public partial class SettingsWindow
 
     void RefreshBadges()
     {
-        string text = BadgeText();
-        foreach (var t in _badgeTexts) t.Text = text;
+        foreach (var (t, profileOnly) in _badgeTexts) t.Text = BadgeText(profileOnly);
     }
 }

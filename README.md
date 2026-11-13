@@ -11,7 +11,7 @@
 
 ## 받기
 
-1. [Releases](../../releases/latest)에서 `GaugeOverlay-v0.23.0.zip`을 받아 원하는 폴더에 풉니다.
+1. [Releases](../../releases/latest)에서 `GaugeOverlay-v0.23.1.zip`을 받아 원하는 폴더에 풉니다.
 2. `GaugeOverlay.exe`를 실행합니다. 설치 과정도, .NET 설치도 필요 없습니다.
 3. "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행**을 누릅니다. 코드 서명이 없는 프로그램이라 뜨는 창입니다.
 

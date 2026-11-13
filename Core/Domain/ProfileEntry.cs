@@ -89,8 +89,9 @@ public class ProfileEntry
     /// look, as copies (<see cref="OverlayProfile.ShareBuffs"/>).</summary>
     internal void TakeBuffs(ProfileEntry from)
     {
-        (BuffsDetached, BuffsSide, Buffs) = (from.BuffsDetached, from.BuffsSide, WindowPlace.Of(from.Buffs));
-        BuffBars = from.BuffBars.ToDictionary(b => b.Key, b => new BarSize { Thickness = b.Value.Thickness, Length = b.Value.Length });
+        // Nulls only come from a hand-edited file; this runs at every load, so they read as defaults instead of throwing.
+        (BuffsDetached, BuffsSide, Buffs) = (from.BuffsDetached, from.BuffsSide, from.Buffs is { } place ? WindowPlace.Of(place) : new());
+        BuffBars = (from.BuffBars ?? []).ToDictionary(b => b.Key, b => b.Value is { } size ? new BarSize { Thickness = size.Thickness, Length = size.Length } : new BarSize());
         BuffLook = from.BuffLook is { } look ? look with { Bars = new(look.Bars) } : null;
     }
 

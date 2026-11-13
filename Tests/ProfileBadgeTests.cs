@@ -47,6 +47,12 @@ public class ProfileBadgeTests
     }
 
     [Fact]
+    public void ProfileText_names_only_the_profile()
+    {
+        Assert.Equal("프로필 3", ProfileBadge.ProfileText(2));
+    }
+
+    [Fact]
     public void Gauge_look_and_the_split_switch_have_their_own_pages()
     {
         Assert.Equal(("아덴 게이지", (string?)null), ProfileBadge.Home(LookGroup.게이지));

@@ -30,8 +30,8 @@ public partial class SettingsWindow
             EnumCombo([(Split.합쳐서, "합쳐서"), (Split.따로, "따로")], _s.Apart ? Split.따로 : Split.합쳐서, v => { _s.Apart = v == Split.따로; Dispatcher.BeginInvoke(RefillApart); })),
         s => s.Apart, (s, v) => s.Apart = v);
 
-    /// <summary>The chip for the switch (stored per profile and class) on the 스킬창 page; hidden in the inspector, whose tab chip covers it.</summary>
-    UIElement SwitchBadge() => new Border { Child = ProfileBadgeChip(), Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
+    /// <summary>The chip for the switch (one per profile, like all of 버프 막대) on the 스킬창 page; hidden in the inspector, whose tab chip covers it.</summary>
+    UIElement SwitchBadge() => new Border { Child = ProfileBadgeChip(profileOnly: true), Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
 
     /// <summary>A change of the switch: every panel that shows it (and what depends on it) is built again.</summary>
     void RefillApart()

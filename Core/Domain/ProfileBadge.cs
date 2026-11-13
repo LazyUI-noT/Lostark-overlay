@@ -40,5 +40,8 @@ public static class ProfileBadge
 
     /// <summary>"프로필 2 · 블래스터 · 포격 모드", or "프로필 2 · 기본" when no class is known. <paramref name="activeProfile"/> is 0-based.</summary>
     public static string Text(int activeProfile, string? classLabel) =>
-        $"프로필 {activeProfile + 1} · {(string.IsNullOrWhiteSpace(classLabel) ? "기본" : classLabel)}";
+        $"{ProfileText(activeProfile)} · {(string.IsNullOrWhiteSpace(classLabel) ? "기본" : classLabel)}";
+
+    /// <summary>"프로필 2": the badge of a setting shared by every class in the profile (버프 막대, user 2026-11-13).</summary>
+    public static string ProfileText(int activeProfile) => $"프로필 {activeProfile + 1}";
 }

@@ -99,4 +99,17 @@ public class BuffPerProfileTests
         p.Migrate(s);
         Assert.True(p.Classes[Lone].BuffsDetached);
     }
+
+    [Fact]
+    public void TakeBuffs_survives_null_values_from_a_hand_edited_file()
+    {
+        var from = new ProfileEntry { Buffs = null!, BuffBars = new() { [BuffKind.공증] = null! } };
+        var to = new ProfileEntry();
+
+        to.TakeBuffs(from);
+
+        Assert.NotNull(to.Buffs);
+        Assert.NotNull(to.BuffBars[BuffKind.공증]);
+        new ProfileEntry { BuffBars = null! }.TakeBuffs(new ProfileEntry { BuffBars = null! });
+    }
 }
