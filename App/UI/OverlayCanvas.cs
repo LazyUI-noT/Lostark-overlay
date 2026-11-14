@@ -32,7 +32,7 @@ public sealed partial class OverlayCanvas : Border
     readonly CharacterService _chars;
     readonly Canvas _world = new();
     readonly System.Windows.Controls.Image _shot = new() { Stretch = Stretch.Fill };   // placed by ShowPicture
-    readonly OverlayRenderer _mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid;
+    readonly OverlayRenderer _mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring;
     readonly OverlayRenderer? _meter;   // the scene only (설정 → 기능 Map): the 미터기 has its own page
     readonly OverlayRenderer[] _peers;
     readonly bool _scene;
@@ -84,6 +84,8 @@ public sealed partial class OverlayCanvas : Border
         _amsu.AmsuOnly = true;
         _raid = Renderer(-1, buffs: false);
         _raid.RaidOnly = true;
+        _ring = Renderer(-1, buffs: false);
+        _ring.RingOnly = true;
         _peers = [.. Enumerable.Range(0, _s.Party.ShowOthersBySlot.Count).Select(i => Renderer(i, buffs: false))];
         if (scene)
         {
@@ -97,7 +99,7 @@ public sealed partial class OverlayCanvas : Border
         _world.Children.Add(_grip);
         _world.Children.Add(_gripRight);
         _world.Children.Add(_gripBottom);
-        Play = _meter is null ? new PreviewPlayer(_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid) : new PreviewPlayer(_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _meter);
+        Play = _meter is null ? new PreviewPlayer(_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring) : new PreviewPlayer(_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, _meter);
         if (scene)   // previews play at 초당 그리기 횟수, as the overlays do (user, 2026-11-10; was a fixed 15 fps)
         {
             double frameMs = DrawSteps.FrameMs(live.DrawsPerSecond, fadeOnly: false);
@@ -161,6 +163,9 @@ public sealed partial class OverlayCanvas : Border
 
     PreviewTarget? _previewTarget;
 
+    /// <summary>The 기력·충격 창 is drawn only while 편집 중 (else the character) is a class with a ring (브레이커; user, 2026-11-14).</summary>
+    bool RingShown => (_previewTarget?.Class ?? _chars.ActiveClass?.Name) is { } cls && _chars.HasRing(cls);
+
     /// <summary>My overlay drawn as <paramref name="target"/> (편집 중's 직업각인; null: the character's), with its sample.</summary>
     public void SetTarget(PreviewTarget? target)
     {
@@ -218,13 +223,14 @@ public sealed partial class OverlayCanvas : Border
         var area = Displays.WorkArea;
         static (double L, double T) Or((double L, double T) at, double left, double top) =>
             (double.IsNaN(left) ? at.L : left, double.IsNaN(top) ? at.T : top);
-        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.GaugeOnly || r.DebuffsOnly || r.JudgmentOnly || r.AmsuOnly || r.RaidOnly);
+        var def = WindowDefaults.Place(area.Left, area.Width, area.Bottom, r.DesiredSize.Width, r.DesiredSize.Height + Strip, r.Peer, r.BuffsOnly || r.GaugeOnly || r.DebuffsOnly || r.JudgmentOnly || r.AmsuOnly || r.RaidOnly || r.RingOnly);
         if (r == _mine) return Or(def, _s.Overlay.Left, _s.Overlay.Top);
         if (r == _buffs) return Or(def, _s.Buffs.Left, _s.Buffs.Top);
         if (r == _gauge) return Or(GaugeDefault((def.Left + WindowDefaults.GaugeRight, def.Top)), _s.Gauge.Left, _s.Gauge.Top);
         if (r == _debuffs) return Or((def.Left + WindowDefaults.DebuffsRight, def.Top), _s.Debuffs.Left, _s.Debuffs.Top);   // as OverlayWindow.Replace
         if (r == _judgment) return Or((def.Left + WindowDefaults.JudgmentRight, def.Top), _s.Judgment.Left, _s.Judgment.Top);
         if (r == _amsu) return Or((def.Left + WindowDefaults.AmsuRight, def.Top), _s.Amsu.Left, _s.Amsu.Top);
+        if (r == _ring) return Or((def.Left + WindowDefaults.GaugeRight, def.Top + WindowDefaults.RingBelow), _s.Ring.Left, _s.Ring.Top);   // as OverlayWindow.Replace
         if (r == _raid)   // as OverlayWindow.Replace
             return Or((area.Left + (area.Width - r.DesiredSize.Width) / 2 + WindowDefaults.RaidRight, area.Top + WindowDefaults.RaidTop), _s.Raids.Left, _s.Raids.Top);
         if (r == _meter)   // as OverlayWindow.Replace
@@ -267,6 +273,7 @@ public sealed partial class OverlayCanvas : Border
         else if (r == _judgment) (_s.Judgment.Left, _s.Judgment.Top) = (left, top);
         else if (r == _amsu) (_s.Amsu.Left, _s.Amsu.Top) = (left, top);
         else if (r == _raid) (_s.Raids.Left, _s.Raids.Top) = (left, top);
+        else if (r == _ring) (_s.Ring.Left, _s.Ring.Top) = (left, top);
         else if (_s.Party.Together)
         {
             // the stack moves as one: the first window by as much as this one is dragged
@@ -287,8 +294,9 @@ public sealed partial class OverlayCanvas : Border
         _raid.Visibility = Drawn(_raid, _showMine);
         _judgment.Visibility = Drawn(_judgment, _showMine);
         _amsu.Visibility = Drawn(_amsu, _showMine);
+        _ring.Visibility = Drawn(_ring, _showMine && RingShown);
         foreach (var p in _peers) p.Visibility = Drawn(p, _showParty);
-        OverlayRenderer[] all = _meter is null ? [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, .. _peers] : [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _meter, .. _peers];
+        OverlayRenderer[] all = _meter is null ? [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, .. _peers] : [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, _meter, .. _peers];
         if (_scene) SceneVisibility(all);
         foreach (var r in all)
         {
@@ -326,6 +334,7 @@ public sealed partial class OverlayCanvas : Border
             case { Kind: "Judgment" } b: Pick(_judgment, b.Part); break;
             case { Kind: "Amsu" } b: Pick(_amsu, b.Part); break;
             case { Kind: "Raid" } b: Pick(_raid, b.Part); break;
+            case { Kind: "Ring" }: Pick(_ring, null); break;   // picked whole, as the gauge's own window
             case { Kind: "Party" } b when _peers.Length > 0: Pick(_peers[0], b.Part); break;
             case { Kind: "BuffBar" } b when _s.Buffs.Detached: Pick(_buffs, b.Part); break;
             case { Kind: "Gauge" } when _s.Apart: Pick(_gauge, null); break;   // its own window, picked whole
@@ -349,6 +358,7 @@ public sealed partial class OverlayCanvas : Border
         : r == _judgment ? new("Judgment", part, null)
         : r == _amsu ? new("Amsu", part, null)
         : r == _raid ? new("Raid", part, null)
+        : r == _ring ? new("Ring", null, null)
         : r.Peer >= 0 ? new("Party", part, null)
         : part is null ? new("Plate", null, null)
         : part == Part.게이지 ? new("Gauge", part, null)
@@ -383,7 +393,7 @@ public sealed partial class OverlayCanvas : Border
         if (!Outline(_pick, on, rect)) return;
         if (_picked is ({ } sized, null) && Sizing(sized) is { } sizing) { ShowPlateHandles(sized, Whole(sized), WindowSizing.ModeOf(_s, sizing) == SizeMode.Two); return; }
         if (rect is not { } b || on is null || _picked is (_, null)) return;   // a whole window has no box grip
-        if (on == _buffs || on == _gauge || on == _judgment || on == _amsu || on == _raid || on.ShowsReceivedLayout || Previewing(on)) return;
+        if (on == _buffs || on == _gauge || on == _judgment || on == _amsu || on == _raid || on == _ring || on.ShowsReceivedLayout || Previewing(on)) return;
         double g = GripSize(b);
         (_grip.Width, _grip.Height, _grip.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
         Canvas.SetLeft(_grip, Canvas.GetLeft(on) + b.Right - g);

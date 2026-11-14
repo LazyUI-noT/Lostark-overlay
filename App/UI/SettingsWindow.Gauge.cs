@@ -49,7 +49,21 @@ public partial class SettingsWindow
         forget.Click += (_, _) => GainsResetRequested?.Invoke();
         p.Children.Add(forget);
         BarRows(p);
+        if (ShownSubclass is { } edited && _chars.HasRing(edited.Class.Name)) RingRows(p);   // the edited class's name (ShownClass is the entry key), not the one read
         return p;
+    }
+
+    /// <summary>기력·충격 창 (브레이커): its own switch, colours and 불투명도, shown while 편집 중 is a class with a ring.</summary>
+    void RingRows(Panel p)
+    {
+        var r = _s.Ring;
+        p.Children.Add(Heading("기력·충격 창"));
+        p.Children.Add(Check("켜기", r.On, v => r.On = v, Changed, "링의 기력(왼쪽)과 충격(오른쪽)을 막대 하나로 보여 줍니다. 아덴 게이지를 꺼도 따로 켜집니다."));
+        p.Children.Add(ColorRow(Label("기력 색"), r.LeftFill, v => r.LeftFill = v, swatch: false));
+        p.Children.Add(ColorRow(Label("충격 색"), r.RightFill, v => r.RightFill = v, swatch: false));
+        p.Children.Add(ColorRow(Label("빈 색"), r.Empty, v => r.Empty = v, swatch: false));
+        p.Children.Add(SliderRow("불투명도", 0.2, 1, r.Opacity, 0.05, v => $"{v * 100:0}%", v => r.Opacity = v, Changed));
+        p.Children.Add(Note("위치와 크기는 편집 모드에서 창을 끌어 바꿉니다."));
     }
 
     /// <summary>막대: the class shown's split marks, segment colours and glow (GaugeBar), over its classes.json default.

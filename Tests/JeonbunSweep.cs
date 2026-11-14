@@ -72,6 +72,28 @@ public sealed class JeonbunSweep
         File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
     }
 
+    /// <summary>GAUGE_ADEN: a 1920×1080 video's 아덴 게이지 through the engine's filter at its 10 reads a second
+    /// (breaker-aden.plan.md phase 3): GAUGE_ADEN_DEF the Profiles/aden folder (default 브레이커_수라의길), GAUGE_ADEN_MASK its mask fixture (default
+    /// gauge_breaker_su_mask), GAUGE_ADEN_HUD (default 110), GAUGE_ADEN_DRAINS ("0": the filter without FollowsDrain). GAUGE_SWEEP_OUT: per read "t read shown", and "USE" where
+    /// the gauge left full (GaugeFilter.TakeDrainedFromFull, counted by the engine as the draining skill's use).</summary>
+    [Fact]
+    public void Aden_in_a_video_when_requested()
+    {
+        if (Environment.GetEnvironmentVariable("GAUGE_ADEN") is not { } video) return;
+        string folder = Path.Combine(Helpers.RepoRoot(), "Profiles", "aden", Environment.GetEnvironmentVariable("GAUGE_ADEN_DEF") ?? "브레이커_수라의길");
+        var def = Core.Data.GaugeLoader.Parse(File.ReadAllText(Path.Combine(folder, Core.Data.GaugeLoader.JsonFile)),
+            Fixture.Load(Environment.GetEnvironmentVariable("GAUGE_ADEN_MASK") ?? "gauge_breaker_su_mask").Frames[0]);
+        var rect = Geometry.ToScreen(def.Ref, new Viewport(0, 0, 1920, 1080), new Fit(double.Parse(Environment.GetEnvironmentVariable("GAUGE_ADEN_HUD") ?? "110")));
+        var filter = new Core.Data.GaugeFilter { FollowsDrain = Environment.GetEnvironmentVariable("GAUGE_ADEN_DRAINS") != "0" };
+        var lines = new List<string>();
+        foreach (var (t, img) in Frames(video, rect.X, rect.Y, rect.Width, rect.Height, fps: 10))
+        {
+            double read = def.Read(img), shown = filter.Add(read, TimeSpan.FromSeconds(t));
+            lines.Add($"{t:0.0} {read:0.00} {shown:0.00}{(filter.TakeDrainedFromFull() ? " USE" : "")}");
+        }
+        File.WriteAllLines(Environment.GetEnvironmentVariable("GAUGE_SWEEP_OUT")!, lines);
+    }
+
     /// <summary>GAUGE_AMSU: the 암수 loop as the engine runs it (<see cref="AmsuWatch"/>: its read times, row lock, boss HP from the
     /// bar's text) over a video at 10 frames a second, the cadence's fastest pass. GAUGE_AMSU_SIZE: the 보스 디버프 크기 (default 100);
     /// GAUGE_AMSU_HUD (default 100); GAUGE_AMSU_VP: the game in the video "x,y,w,h" (default 0,0,1920,1080; the 21:9 clip

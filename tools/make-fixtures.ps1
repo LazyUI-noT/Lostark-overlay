@@ -369,6 +369,57 @@ foreach ($spec in @(@('gauge_dohbug', 'gauge', $g), @('dohbug_Z', '아덴1', (Re
 # 도화가zc.png (만개, gauge full, Z and X lit): the bottom strip, for the fit, the gauge and the 아덴 slots.
 CutRect 'dohzc_bottom' (Join-Path $ref '도화가zc.png') 'band' 0 @(0, 900, 1920, 180)
 
+# 브레이커's orb (BreakerAdenTests, Phase 0 of breaker-aden.plan.md; both 직업각인, 1920×1080, HUD 110): the orb sits in the
+# emblem's middle, so its slot would be a box over the emblem. $orb is that area (x 926–992, y 954–1042): it holds the orb
+# (mask box 933,976, 51×51), the key letter Z under it (about y 1026–1036) and room for the candidate slot rects, which the
+# tests cut from it. Single frames of the clips (-ss on the frame's time: 10 fps grid, times are k/10 s).
+$brk = Join-Path $ref '브레이커'
+$orb = @(926, 954, 66, 88)
+function CutFrames($name, $src, $times, $r) {
+  $tmp = Join-Path $out "$name.tmp"
+  $one = Join-Path $out "$name.one"
+  if (Test-Path $tmp) { Remove-Item $tmp }
+  $stream = [IO.File]::Create($tmp)
+  try {
+    foreach ($t in $times) {
+      & ffmpeg -v error -y -ss "$t" -i $src -frames:v 1 -vf "format=bgra,crop=$($r[2]):$($r[3]):$($r[0]):$($r[1])" -f rawvideo -pix_fmt bgra $one
+      $bytes = [IO.File]::ReadAllBytes($one)
+      if ($bytes.Length -ne $r[2] * $r[3] * 4) { throw "$name at $t s: no frame" }
+      $stream.Write($bytes, 0, $bytes.Length)
+    }
+  } finally { $stream.Dispose() }
+  Move-Item -Force $tmp (Join-Path $out "$name.bgra")
+  Remove-Item $one
+  [ordered]@{ source = (Split-Path $src -Leaf); slot = 'orb'; hud = 110; rect = $r; width = $r[2]; height = $r[3]; pts = @($times) } |
+    ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM (Join-Path $out "$name.json")
+  Write-Host "$name  $($times.Count) frame(s)  rect $($r -join ',')"
+}
+# 권왕파천무 (Lost Ark 2026.11.13 - 20.59.43.02.mp4): full 0 s; Z at 1.8 s (flash, then the teal state 2.2–3.5, white flash
+# 2.8–3.0, the cooldown number over the teal 4–5.5), empty 6–8.8; filling 9.2–17.8; full again 18.5–20; Z again 20.8 (teal),
+# 25 flash, number 27, empty 29.
+CutFrames 'breaker_kw' (Join-Path $brk '권왕\Lost Ark 2026.11.13 - 20.59.43.02.mp4') @(0.0, 1.0, 1.8, 2.0, 2.4, 2.8, 3.0, 3.5, 4.0, 5.0, 5.5, 6.0, 9.2, 12.0, 16.0, 17.8, 18.0, 18.5, 20.0, 21.5, 25.0, 27.0, 29.0) $orb
+# 수라의길 (Lost Ark 2026.11.13 - 20.57.20.01.mp4): empty 0 s, filling 3–22 s, the full flash at 22.5 s, full 23–24 s.
+CutFrames 'breaker_su' (Join-Path $brk '수라\Lost Ark 2026.11.13 - 20.57.20.01.mp4') @(0.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 17.0, 20.0, 22.0, 22.5, 23.0, 24.0) $orb
+# 수라act.mp4: full 1.2–6.0 s, Z at 6.3 s (flash), the orb drains 7.2–11.1 s, empty 12 s; the key letter goes grey at 6.6 s.
+CutFrames 'breaker_act' (Join-Path $brk '수라\수라act.mp4') @(0.8, 0.9, 1.2, 6.0, 6.3, 6.6, 7.2, 7.8, 8.4, 9.0, 9.6, 10.2, 10.8, 11.4, 12.0) $orb
+# The still shots (empty, full) of both.
+CutRect 'breaker_still_kw_empty' (Join-Path $brk '권왕\empty.png') 'orb' 110 $orb
+CutRect 'breaker_still_kw_full' (Join-Path $brk '권왕\full_권왕.png') 'orb' 110 $orb
+CutRect 'breaker_still_su_empty' (Join-Path $brk '수라\empty.png') 'orb' 110 $orb
+CutRect 'breaker_still_su_full' (Join-Path $brk '수라\full.png') 'orb' 110 $orb
+# The orb masks (Profiles/aden/브레이커_*/mask.png, 51×51, origin in each gauge.json) for GaugeLoader.Parse.
+CutRect 'gauge_breaker_kw_mask' (Join-Path $root 'Profiles\aden\브레이커_권왕파천무\mask.png') 'gauge' 110 @(0, 0, 51, 51)
+CutRect 'gauge_breaker_su_mask' (Join-Path $root 'Profiles\aden\브레이커_수라의길\mask.png') 'gauge' 110 @(0, 0, 51, 51)
+# The ring round the orb (Phase 4: left half yellow 기력, right half green 충격, each filling bottom → top): $ring holds both
+# masks (left 900,950 58×97, right 958,945 58×102). Stills: empty_yellow.png (기력 empty, 충격 full), empty_Green.png (the reverse).
+$ring = @(900, 945, 116, 108)
+CutRect 'breaker_ring_empty_yellow' (Join-Path $brk 'empty_yellow.png') 'ring' 110 $ring
+CutRect 'breaker_ring_empty_green' (Join-Path $brk 'empty_Green.png') 'ring' 110 $ring
+CutFrames 'breaker_ring_act' (Join-Path $brk '수라\수라act.mp4') @(0.8, 1.2, 3.0, 6.0, 7.2, 8.4, 9.6, 10.8, 12.0) $ring
+CutFrames 'breaker_ring_kw' (Join-Path $brk '권왕\Lost Ark 2026.11.13 - 20.59.43.02.mp4') @(0.0, 3.0, 6.0, 9.2, 12.0, 16.0, 20.0, 25.0, 29.0) $ring
+CutRect 'gauge_breaker_ring_left_mask' (Join-Path $root 'Profiles\aden\브레이커_ring_left\mask.png') 'gauge' 110 @(0, 0, 58, 97)
+CutRect 'gauge_breaker_ring_right_mask' (Join-Path $root 'Profiles\aden\브레이커_ring_right\mask.png') 'gauge' 110 @(0, 0, 58, 102)
+
 # The class from the skill bar's centre piece (ClassEmblemTests): Geometry.RefEmblem cut from each gauge class's empty and
 # full shots (HUD 110), also written to Profiles/aden/<folder>/emblem_empty.png and emblem_full.png for the app, and 1 fps
 # through other recordings of each class (4k_down.mp4: HUD 100 in the 810-high viewport, bottom row 945).
@@ -501,3 +552,17 @@ foreach ($slot in $ordinary) { Cut "dead_$slot" (Join-Path $ref 'dead.PNG') $slo
 foreach ($slot in $ordinary) { Cut "hold559_$slot" $bell $slot 110 559.0 0.016 }
 foreach ($slot in $ordinary) { Cut "hold556_$slot" $bell $slot 110 556.0 0.016 }   # the same bar before the hold (TintedSlotReadTests)
 CutRect 'dead2_row' (Join-Path $ref 'dead2.PNG') 'row' 110 @(178, 243, 114, 20)
+
+# The 채널 box's corner (ChannelBoxTests, channel-cue.plan.md): the game area's top-right 110×40 at 1080 scale. Its arrow is
+# gold in town and field ("채널 N."), grey in instanced content ("-----"). town-1430-1500 (1080, town, 1 fps); v1_1막 (1080,
+# a whole raid, 0.5 fps); the two load clips (2560×1080 21:9 in a 1440 recording, game area from y 180; load1: town, then
+# the loading screen, then a dungeon; load2: a loading into a dungeon), 1 fps; single shots at 1080 (the user's town),
+# 4K and 4K forced 21:9 (game area 0, 270, 3840, 1620).
+$load = Join-Path $ref 'load'
+CutFps 'chan_town' (Join-Path $ref 'video-test/clips/dead-disabled/town-1430-1500.mp4') 'channel' 100 @(1810, 0, 110, 40) 1
+CutFps 'chan_raid' (Join-Path $ref 'video-test/videos/v1_1막_clear.mp4') 'channel' 100 @(1810, 0, 110, 40) 0.5
+CutFps 'chan_wide1' (Join-Path $load 'Lost Ark 2026.11.03 - 02.09.06.01.mp4') 'channel' 100 @(2450, 180, 110, 40) 1
+CutFps 'chan_wide2' (Join-Path $load 'Lost Ark 2026.11.03 - 02.10.28.02.mp4') 'channel' 100 @(2450, 180, 110, 40) 1
+CutRect 'chan_user' (Join-Path $ref 'channel_town_1080.png') 'channel' 100 @(1810, 0, 110, 40)
+CutRect 'chan_4k' (Join-Path $ref '4k_screenshot_bard.jpg') 'channel' 100 @(3620, 0, 220, 80)
+CutRect 'chan_4k219' (Join-Path $ref '4k_21_9_screenshot_bard.png') 'channel' 100 @(3675, 270, 165, 60)

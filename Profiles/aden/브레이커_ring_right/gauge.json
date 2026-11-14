@@ -1,0 +1,12 @@
+{
+  "tolerance": 40,
+  "units": "continuous",
+  "origin": [
+    958,
+    945
+  ],
+  "order": {
+    "kind": "linear",
+    "angleDeg": 90
+  }
+}

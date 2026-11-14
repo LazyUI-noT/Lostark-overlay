@@ -44,6 +44,10 @@ public sealed record GaugeRule(IReadOnlyList<double> Splits, GlowRule? Glow, IRe
     public IReadOnlyList<int> Ramp { get; } = Ramp ?? [];
     public IReadOnlyList<GaugeSpend> Spend { get; } = Spend ?? [];
 
+    /// <summary>"drains": the slot whose use drains the gauge steadily (브레이커 수라의길's Z, 아덴1): the bar follows the drain
+    /// (GaugeFilter.FollowsDrain) and leaving full is that slot's use. Null for every other gauge.</summary>
+    public SlotId? DrainSlot { get; init; }
+
     /// <summary>What a use of <paramref name="slot"/> leaves of <paramref name="value"/>: the full sections, lowest first
     /// and at most the <see cref="GaugeSpend.Max"/> of the <see cref="Spend"/> entry holding the slot, are taken and the
     /// rest of the fill stays; or, for an entry with an <see cref="GaugeSpend.Amount"/>, that share is taken. Null when
@@ -165,7 +169,13 @@ public static class ProfileLoader
             JsonObject c => new GaugeColors(Hex(c["full"], "full"), Hex(c["filling"], "filling")),
             _ => throw Bad("colors must be an object"),
         };
-        if (o["glow"] is null) return new GaugeRule(splits, null, ramp, spend, colors);
+        SlotId? drains = o["drains"] switch
+        {
+            null => null,
+            JsonValue d when d.TryGetValue<string>(out var id) && Enum.GetNames<SlotId>().Contains(id) => Enum.Parse<SlotId>(id),
+            _ => throw Bad("drains must be a slot id"),
+        };
+        if (o["glow"] is null) return new GaugeRule(splits, null, ramp, spend, colors) { DrainSlot = drains };
         if (o["glow"] is not JsonObject glow) throw Bad("glow must be an object");
         var rule = (glow["when"] as JsonValue)?.TryGetValue<string>(out var when) == true ? when : null;
         return new GaugeRule(splits, rule switch
@@ -181,7 +191,7 @@ public static class ProfileLoader
                     _ => throw Bad("minGauge must be above 0 and at most 1"),
                 }),
             _ => throw Bad("glow.when must be sections or slotReady"),
-        }, ramp, spend, colors);
+        }, ramp, spend, colors) { DrainSlot = drains };
     }
 
     private static int ClassId(string name, JsonNode? id) =>

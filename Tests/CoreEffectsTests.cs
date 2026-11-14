@@ -369,4 +369,50 @@ public sealed class CoreEffectsTests : IDisposable
         Assert.Equal([Burst], CoreEffects.Triggers(Chosen(sun: 3), Role.딜러, [e]));
         Assert.Equal([Burst], CoreEffects.Triggers(Chosen(sun: 3, apply: false), Role.딜러, [e]));   // off: still shown, greyed in 설정
     }
+
+    // --- a fixed trigger slot and a list of targets (브레이커 수라의길: Z is the orb, 아덴1) ---
+
+    const string ZList = """
+        { "subclasses": { "수라의길": { "effects": [ {
+            "requires": { "해": 3, "달": 2 }, "trigger": "Z 스킬", "triggerSlot": "아덴1", "effect": "cooldown_reduce",
+            "target": ["초각스", "일반1", "일반2", "일반3", "일반4", "일반5", "일반6", "일반7", "일반8"], "watchSeconds": 5 } ] } } }
+        """;
+
+    [Fact]
+    public void A_target_list_and_a_fixed_trigger_slot_load()
+    {
+        var e = Assert.Single(CoreEffects.Parse(ZList)["수라의길"]);
+        Assert.Equal(SlotId.아덴1, e.TriggerSlot);
+        Assert.Equal([SlotId.초각스, SlotId.일반1, SlotId.일반2, SlotId.일반3, SlotId.일반4, SlotId.일반5, SlotId.일반6, SlotId.일반7, SlotId.일반8], e.AllTargets);
+        Assert.True(e.Tracks);
+    }
+
+    [Theory]
+    [InlineData("\"target\": \"일반1\", \"triggerSlot\": \"Q\"")]
+    [InlineData("\"target\": []")]
+    [InlineData("\"target\": [\"일반1\", 3]")]
+    public void A_bad_trigger_slot_or_target_list_is_refused(string targetPart)
+    {
+        string json = $$"""{ "subclasses": { "a": { "effects": [ { "requires": { "해": 3 }, "trigger": "Z", "effect": "cooldown_reduce", {{targetPart}} } ] } } }""";
+        Assert.Throws<InvalidDataException>(() => CoreEffects.Parse(json));
+    }
+
+    [Fact]
+    public void A_fixed_trigger_slot_watches_every_target_without_asking_for_a_slot()
+    {
+        var effects = CoreEffects.Parse(ZList)["수라의길"];
+        var watches = CoreEffects.Watches(Chosen(sun: 3, moon: 2), Role.딜러, effects);
+        Assert.Equal(9, watches.Count);
+        Assert.All(watches, w => Assert.Equal((SlotId.아덴1, TimeSpan.FromSeconds(5)), (w.TriggerSlot, w.Duration)));
+        Assert.Contains(watches, w => w.TargetSlot == SlotId.초각스);
+        Assert.Empty(CoreEffects.Triggers(Chosen(sun: 3, moon: 2), Role.딜러, effects));   // 설정 asks for no slot
+        Assert.Empty(CoreEffects.Watches(Chosen(sun: 3, moon: 1), Role.딜러, effects));
+    }
+
+    [Fact]
+    public void All_eight_일반_slots_are_named_together()
+    {
+        var effects = CoreEffects.Parse(ZList)["수라의길"];
+        Assert.Equal("32x: Z 스킬을 쓰면 초각스, 일반 스킬 쿨초를 빨리 읽습니다", CoreEffects.Describe(effects, s => s.ToString()));
+    }
 }

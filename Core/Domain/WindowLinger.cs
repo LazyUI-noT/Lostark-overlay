@@ -12,9 +12,11 @@ public static class WindowLinger
 
     /// <summary>The DPS 미터기 window: from its first read (a boss hit) until <see cref="For"/> after the last, and on while the
     /// player stays in the dungeon that read was in (<paramref name="presence"/>: the in-game meter or a boss bar still seen),
-    /// so a long phase change or cutscene doesn't hide it.</summary>
+    /// so a long phase change or cutscene doesn't hide it. A read from before the channel box's gold arrow, or from within
+    /// <see cref="RaidPresence.OutBlock"/> after it (the last frames inside), shows nothing (channel-cue.plan.md): out of the
+    /// dungeon, it hides at once.</summary>
     public static bool MeterInUse(TimeSpan? lastRead, RaidPresence presence, TimeSpan now) =>
-        InUse(lastRead, now) || lastRead is { } r && presence.Since is { } since && r >= since && presence.InDungeon(now);
+        !(lastRead <= presence.OutSeen + RaidPresence.OutBlock) &&(InUse(lastRead, now) || lastRead is { } r && presence.Since is { } since && r >= since && presence.InDungeon(now));
 
     /// <summary>The last read after this step.</summary>
     public static TimeSpan? Seen(TimeSpan? lastRead, bool readNow, TimeSpan now) => readNow ? now : lastRead;

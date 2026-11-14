@@ -27,7 +27,7 @@ public sealed partial class OverlayCanvas
     {
         var shown = all.Where(r => r.Visibility == Visibility.Visible && r.DesiredSize.Width > 0).ToList();
         // A page's preview fits round the windows that are on: 레이드's 줄 수 창 (top) and an off 디버프 창 (bottom) zoomed out to specks.
-        if (Only is not null && IsOn is { } isOn && shown.Where(r => isOn(WindowPart(r)) || r == _mine && isOn(OverlayPart.Gauge)).ToList() is { Count: > 0 } on)
+        if (Only is not null && IsOn is { } isOn && shown.Where(r => WindowOn(r) || r == _mine && isOn(OverlayPart.Gauge)).ToList() is { Count: > 0 } on)
             shown = on;
         if (shown.Count == 0 || ActualWidth <= 0 || ActualHeight <= 0) return;
         double l = shown.Min(Canvas.GetLeft), t = shown.Min(Canvas.GetTop);
@@ -65,8 +65,9 @@ public sealed partial class OverlayCanvas
     /// <summary>The outlines and names of windows that are off, over every window (added last to the world).</summary>
     readonly Canvas _faint = new() { IsHitTestVisible = false };
 
+    /// <summary>The window's part; the 기력·충격 창 counts as the gauge (the 아덴 게이지 page sets it).</summary>
     OverlayPart WindowPart(OverlayRenderer r) =>
-        r == _buffs ? OverlayPart.Buffs : r == _gauge ? OverlayPart.Gauge : r == _debuffs ? OverlayPart.Debuffs : r == _judgment ? OverlayPart.Judgment : r == _amsu ? OverlayPart.Amsu
+        r == _buffs ? OverlayPart.Buffs : r == _gauge || r == _ring ? OverlayPart.Gauge : r == _debuffs ? OverlayPart.Debuffs : r == _judgment ? OverlayPart.Judgment : r == _amsu ? OverlayPart.Amsu
         : r == _raid ? OverlayPart.BarCount : r == _meter ? OverlayPart.Meter : r.Peer >= 0 ? OverlayPart.Party : OverlayPart.Skills;
 
     /// <summary>My window draws three parts: the gauge, the buff bars (not detached) and the skill boxes.</summary>
@@ -102,8 +103,8 @@ public sealed partial class OverlayCanvas
     /// window (디버프, 단심, 암수) jumps to its next phase.</summary>
     void PlayClick(OverlayRenderer r, Point at)
     {
-        if (r == _gauge) Play.Click(Part.게이지, PreviewPlayer.Gauge(_s, _chars));
-        else if ((r == _mine || r == _buffs) && r.PartAt(at)?.Part is { } part) Play.Click(part, PreviewPlayer.Gauge(_s, _chars));
+        if (r == _gauge) Play.Click(Part.게이지, PreviewPlayer.Gauge(_s, _chars, _previewTarget));
+        else if ((r == _mine || r == _buffs) && r.PartAt(at)?.Part is { } part) Play.Click(part, PreviewPlayer.Gauge(_s, _chars, _previewTarget));
         else Play.Skip(WindowPart(r));
     }
 
@@ -123,7 +124,7 @@ public sealed partial class OverlayCanvas
     /// <summary>Space, Enter or a click on the backdrop: every window of the preview moves on.</summary>
     void StepAll()
     {
-        var gauge = PreviewPlayer.Gauge(_s, _chars);
+        var gauge = PreviewPlayer.Gauge(_s, _chars, _previewTarget);
         foreach (var part in Only ?? [])
         {
             switch (part)
@@ -149,17 +150,18 @@ public sealed partial class OverlayCanvas
     /// <summary>My window holds the skills, the gauge and the buff bars while they aren't detached (합쳐서 / 따로).</summary>
     bool InScene(OverlayRenderer r) => Only is not { } only || (r == _mine
         ? only.Contains(OverlayPart.Skills) || only.Contains(OverlayPart.Gauge) && !_s.Apart || only.Contains(OverlayPart.Buffs) && !_s.Buffs.Detached
+        : r == _ring ? only.Contains(OverlayPart.Gauge) && !only.Contains(OverlayPart.Skills)   // the 아덴 게이지 page, not 스킬창's
         : only.Contains(WindowPart(r)));
 
     /// <summary>Every window shown (the buffs' own window only while detached), before they are measured.</summary>
     void SceneVisibility(IEnumerable<OverlayRenderer> all)
     {
-        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && (r != _gauge || _s.Apart) && InScene(r));
+        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && (r != _gauge || _s.Apart) && (r != _ring || RingShown) && InScene(r));
     }
 
     /// <summary>Whether the window is on in the real settings; mine is faint only when the skills and the gauge are both off.</summary>
-    bool WindowOn(OverlayRenderer r) =>
-        (IsOn?.Invoke(WindowPart(r)) ?? true) || r == _mine && (IsOn?.Invoke(OverlayPart.Gauge) ?? true);
+    bool WindowOn(OverlayRenderer r) => r == _ring ? _s.Ring.On   // its own switch, not the gauge's
+        : (IsOn?.Invoke(WindowPart(r)) ?? true) || r == _mine && (IsOn?.Invoke(OverlayPart.Gauge) ?? true);
 
     /// <summary>A window is drawn when it applies (<paramref name="exists"/>) and is on, or off with 꺼진 창 shown.</summary>
     Visibility Drawn(OverlayRenderer r, bool exists) => Shown(exists && (_showOff || WindowOn(r)));

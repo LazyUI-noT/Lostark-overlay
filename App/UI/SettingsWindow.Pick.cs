@@ -71,7 +71,7 @@ public partial class SettingsWindow
         RefreshBadges();
         Dispatcher.BeginInvoke(() =>
         {
-            FillClassSections(); FillBox(); FillDisplay(); FillMeter(); FillGauge(); RefreshInspector();   // FillDisplay: 칸 모양, 단심, 암수; FillMeter: its look
+            FillClassSections(); FillBox(); FillDisplay(); FillMeter(); FillGauge(); FillCharacter(); RefreshInspector();   // FillDisplay: 칸 모양, 단심, 암수; FillMeter: its look; FillCharacter: 코어 빌드
             _pickCombo?.Focus();   // the rebuild replaced the combo the keyboard was on
         });
     }
@@ -90,5 +90,6 @@ public partial class SettingsWindow
         }
         _canvas?.SetTarget(PreviewTarget);
         _canvas?.SetEdit(Target);   // its windows' spots and sizes are 편집 중's too
+        PreviewChanged();   // the page's preview is redrawn for the pick (the 기력·충격 창 only for a class with a ring)
     }
 }

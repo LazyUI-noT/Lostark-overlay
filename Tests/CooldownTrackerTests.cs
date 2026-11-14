@@ -512,4 +512,16 @@ public class CooldownTrackerTests
         s = CooldownTracker.Update(s, R(ReadKind.Ready, 2.0));
         Assert.Equal(SlotPhase.Cooldown, s.Phase);
     }
+
+    /// <summary>A use seen another way (브레이커 수라의길: its orb drained from full) starts a cooldown without a number on a ready
+    /// slot, as a use flash does; a slot already in a cooldown keeps it.</summary>
+    [Fact]
+    public void A_use_seen_elsewhere_starts_a_cooldown_only_on_a_ready_slot()
+    {
+        var ready = CooldownTracker.Update(SlotState.Unknown(D), R(ReadKind.Ready, 1));
+        var used = CooldownTracker.UsedElsewhere(ready, S(2));
+        Assert.Equal((SlotPhase.Cooldown, S(2), (TimeSpan?)S(2)), (used.Phase, used.ChangedAt, used.UsedAt));
+        Assert.Equal(used, CooldownTracker.UsedElsewhere(used, S(2.5)));
+        Assert.Equal(SlotPhase.Cooldown, CooldownTracker.Update(used, R(ReadKind.Ready, 3)).Phase);   // the drain's glow reads Ready: held
+    }
 }

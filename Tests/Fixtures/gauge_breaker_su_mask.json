@@ -1,0 +1,16 @@
+{
+  "source": "mask.png",
+  "slot": "gauge",
+  "hud": 110,
+  "rect": [
+    0,
+    0,
+    51,
+    51
+  ],
+  "width": 51,
+  "height": 51,
+  "pts": [
+    0.0
+  ]
+}

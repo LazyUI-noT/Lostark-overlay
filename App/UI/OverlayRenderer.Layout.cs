@@ -44,6 +44,7 @@ public sealed partial class OverlayRenderer
         if (AmsuOnly) return AmsuPanelSize();
         if (RaidOnly) return RaidPanelSize();
         if (MeterOnly) return MeterPanelSize();
+        if (RingOnly) return RingPanelSize();
         _layout = BuildLayout();
         return _layout is { } l ? new Size(l.Plate.Right + Bleed, l.Plate.Bottom + Bleed) : new Size(0, 0);
     }

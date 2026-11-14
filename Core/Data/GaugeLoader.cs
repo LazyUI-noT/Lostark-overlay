@@ -20,7 +20,7 @@ public sealed record GaugeDef(PixelRect Ref, GaugeShape Shape, bool Pieces, int 
     public double ReadOn(Image screen, Viewport vp, Fit fit) => Read(ImageOps.Crop(screen, Geometry.ToScreen(Ref, vp, fit)));
 
     /// <summary>Box-averaged down (or nearest up) to <paramref name="w"/> × <paramref name="h"/>.</summary>
-    static Image Scale(Image src, int w, int h)
+    internal static Image Scale(Image src, int w, int h)
     {
         var dst = new Image(w, h);
         for (int y = 0; y < h; y++)
@@ -40,6 +40,9 @@ public sealed record GaugeDef(PixelRect Ref, GaugeShape Shape, bool Pieces, int 
     }
 }
 
+/// <summary>브레이커's ring as two gauges (<see cref="GaugeLoader.RingFolders"/>): the left (기력) and right (충격) halves.</summary>
+public sealed record RingDefs(GaugeDef Left, GaugeDef Right);
+
 /// <summary>Reads Profiles/aden/&lt;클래스&gt;[_&lt;직업각인&gt;]/gauge.json and its mask.</summary>
 public static class GaugeLoader
 {
@@ -50,6 +53,13 @@ public static class GaugeLoader
     public static string? Folder(string profilesDir, string className, string subclass) =>
         new[] { $"{className}_{subclass}", className }.Select(n => Path.Combine(profilesDir, "aden", n))
             .FirstOrDefault(d => File.Exists(Path.Combine(d, JsonFile)));
+
+    /// <summary>The class's ring halves (Profiles/aden/&lt;클래스&gt;_ring_left and _ring_right, breaker-aden.plan.md phase 4), or null
+    /// when it has none (both folders needed).</summary>
+    public static (string Left, string Right)? RingFolders(string profilesDir, string className) =>
+        Path.Combine(profilesDir, "aden", $"{className}_ring_left") is var left && File.Exists(Path.Combine(left, JsonFile))
+        && Path.Combine(profilesDir, "aden", $"{className}_ring_right") is var right && File.Exists(Path.Combine(right, JsonFile))
+            ? (left, right) : null;
 
     /// <summary>--build-gauge: the pixels that change between <paramref name="empty"/> and <paramref name="full"/>
     /// (reference screenshots, 1920×1080 at HUD 110%) inside <paramref name="region"/>, cut to their bounding box, and a

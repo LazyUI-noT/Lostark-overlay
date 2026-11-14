@@ -81,6 +81,7 @@ public static class WindowDefaults
     public const double JudgmentRight = -260;       // the 단심 window this far left of it
     public const double GaugeRight = -120;          // the gauge window, unplaced and with no plate to take its spot from: left of the buff window's
     public const double AmsuRight = -400;           // the 암수 창 further left
+    public const double RingBelow = 24;             // the 기력·충격 창 this far under the gauge window's default spot
     public const double RaidRight = 420, RaidTop = 110;
     // The DPS 미터기: at the screen's right edge, its bottom this far above your default spot's bottom, so it stays clear of
     // the game's 전분 panel (bottom right), which it must not cover: it is read from the screen.

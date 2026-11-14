@@ -218,4 +218,45 @@ public sealed class CoreChoiceTests : IDisposable
         var read = System.Text.Json.JsonSerializer.Deserialize<CoreChoice>("""{ "Slots": { "가": "아덴2", "나": "초각스", "라": "일반8" } }""")!;
         Assert.Equal(["라"], read.Slots.Keys);
     }
+
+    // --- 수라의길 starts on 해 3 · 달 2 · 별 2, 적용 on (this patch only: breaker-aden.plan.md 2b) ---
+
+    const string Sura = "브레이커 · 수라의길";
+
+    [Fact]
+    public void 수라의길_picked_without_a_saved_build_starts_on_322_applied()
+    {
+        var s = new Settings();
+        s.PickCharacter("무도가", "브레이커", "수라의길");
+        Assert.Equal((true, 3, 2, 2), Fields(s.CoreOf(Sura)));
+    }
+
+    [Fact]
+    public void A_saved_수라의길_build_is_never_overwritten()
+    {
+        var s = new Settings();
+        s.SetCore(Sura, Digits(1, 1, 1));
+        s.PickCharacter("무도가", "브레이커", "수라의길");
+        SettingsStore.Normalize(s);
+        Assert.Equal((false, 1, 1, 1), Fields(s.CoreOf(Sura)));
+    }
+
+    [Fact]
+    public void A_수라의길_character_from_before_gets_322_at_load()
+    {
+        var s = new Settings();
+        s.Characters[Sura] = new() { ClassFamily = "무도가", Class = "브레이커", Subclass = "수라의길" };
+        SettingsStore.Normalize(s);
+        Assert.Equal((true, 3, 2, 2), Fields(s.CoreOf(Sura)));
+    }
+
+    [Fact]
+    public void Other_직업각인_get_no_build_by_themselves()
+    {
+        var s = new Settings();
+        s.PickCharacter("무도가", "브레이커", "권왕파천무");
+        s.PickCharacter("전사", "워로드", "고독한기사");
+        SettingsStore.Normalize(s);
+        Assert.Empty(s.Cores);
+    }
 }

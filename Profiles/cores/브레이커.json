@@ -1,0 +1,15 @@
+{
+  "_note": "코어 빌드 효과 (형식은 워로드.json의 _note). triggerSlot = 트리거 스킬의 칸이 정해져 있어 설정에서 묻지 않음 (브레이커 Z = 오브, 아덴1). target 목록 = 그 칸들을 모두 빨리 읽음.",
+  "subclasses": {
+    "수라의길": {
+      "effects": [
+        { "_why": "Z를 쓰면 약 5초 동안 빠르게 치고, 맞힐 때마다 노란 스킬(일반, 초각스) 쿨초가 0.5초 줄어든다. 줄어드는 쿨초를 매 프레임 읽는다. Z는 오브가 가득에서 빠지기 시작할 때 쓴 것으로 셈 (classes.json drains).",
+          "requires": { "해": 3, "달": 2 }, "trigger": "Z 스킬", "triggerSlot": "아덴1", "effect": "cooldown_reduce",
+          "target": ["초각스", "일반1", "일반2", "일반3", "일반4", "일반5", "일반6", "일반7", "일반8"], "watchSeconds": 5,
+          "tag": "CURRENT", "source": "user 2026-11-13; replay 2026-11-14 수라act.mp4: 20 reads/s on cooldown in the window" },
+        { "requires": { "해": 3, "달": 2 }, "effect": "text", "text": "초각스를 맞히면 아덴 게이지가 36%, 빗나가면 4% 찹니다",
+          "tag": "CURRENT", "source": "user 2026-11-13" }
+      ]
+    }
+  }
+}

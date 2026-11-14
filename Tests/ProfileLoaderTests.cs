@@ -185,6 +185,8 @@ public class ProfileLoaderTests
     [InlineData("""{ "colors": { "full": "blue", "filling": "#D7B932" } }""")]
     [InlineData("""{ "colors": "gold" }""")]
     [InlineData("""{ "splits": [0.5], "spend": { "slots": ["아덴1"], "max": 1, "immediate": "true" } }""")]
+    [InlineData("""{ "drains": true }""")]
+    [InlineData("""{ "drains": "Z" }""")]
     public void A_bad_adenGauge_is_rejected(string adenGauge) =>
         Assert.Throws<InvalidDataException>(() => Gauge(adenGauge));
 

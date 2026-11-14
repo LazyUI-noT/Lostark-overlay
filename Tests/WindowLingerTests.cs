@@ -69,5 +69,25 @@ public sealed class WindowLingerTests
         p = p.Saw(true, false, S(201));   // the meter back after the cutscene, before the next hit
         Assert.True(WindowLinger.MeterInUse(lastRead: S(10), p, S(201)));
     }
-}
 
+    // The channel box's gold arrow hides the 미터기 at once: no ten seconds after it (channel-cue.plan.md).
+    [Fact]
+    public void The_gold_arrow_hides_the_meter_without_its_linger()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10)).Outside(S(12));
+        Assert.False(WindowLinger.MeterInUse(lastRead: S(11), p, S(12)));
+        Assert.False(WindowLinger.MeterInUse(lastRead: S(11), p, S(20)));
+    }
+
+    // A probe read in the last frames inside, just after the arrow, doesn't bring the 미터기 back for its linger.
+    [Fact]
+    public void A_read_within_the_block_after_the_arrow_shows_nothing()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10)).Outside(S(12));
+        Assert.False(WindowLinger.MeterInUse(lastRead: S(12) + RaidPresence.OutBlock, p, S(15)));
+    }
+
+    [Fact]
+    public void A_read_after_the_arrow_shows_the_meter_again() =>
+        Assert.True(WindowLinger.MeterInUse(lastRead: S(30), RaidPresence.None.Outside(S(12)), S(31)));
+}

@@ -54,6 +54,9 @@ public sealed record Snapshot(
     /// <summary>The 감지 page's Live box, captured 2/s while it is on; null otherwise.</summary>
     public DetectPicture? DetectLive { get; init; }
 
+    /// <summary>The ring's halves (기력·충격 창, 브레이커); yours only, never sent; null for a class without one or while it is off.</summary>
+    public RingState? Ring { get; init; }
+
     /// <summary>The DPS 미터기's own reads (yours; the party's figures travel as MeterSample); null while it is off.</summary>
     public MeterStatus? Meter { get; init; }
 

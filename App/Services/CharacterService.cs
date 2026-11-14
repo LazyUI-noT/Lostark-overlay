@@ -44,25 +44,24 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// <summary>The active 직업각인's "adenGauge" rule in classes.json, or null.</summary>
     public GaugeRule? GaugeRule => Active is { } c ? ActiveClass?.Subclasses.GetValueOrDefault(c.Subclass) : null;
 
-    string? _coresFor;
-    IReadOnlyDictionary<string, IReadOnlyList<CoreEffect>> _cores = new Dictionary<string, IReadOnlyList<CoreEffect>>();
+    // ponytail: plain Dictionary, so every caller must be on the UI thread (설정 and Configure are); ConcurrentDictionary if that changes.
+    readonly Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<CoreEffect>>> _cores = [];
 
     /// <summary>The active 직업각인's 코어 빌드 effects (Profiles/cores), empty when it has none. The file is read once per class
-    /// (<see cref="CoreEffects.Load(string, string)"/> is uncached), never per frame or per cast.</summary>
-    public IReadOnlyList<CoreEffect> ActiveCoreEffects
+    /// (<see cref="CoreEffects.Load(string, string)"/> is uncached) and kept, never per frame or per cast.</summary>
+    public IReadOnlyList<CoreEffect> ActiveCoreEffects => Active is { } c ? CoreEffectsOf(c.Class, c.Subclass) : [];
+
+    /// <summary>A 직업각인's 코어 빌드 effects, active or not (설정 shows 편집 중's). Same once-per-class cache as
+    /// <see cref="ActiveCoreEffects"/>.</summary>
+    public IReadOnlyList<CoreEffect> CoreEffectsOf(string cls, string sub)
     {
-        get
+        if (!_cores.TryGetValue(cls, out var bySub))
         {
-            if (Active is not { } c) return [];
-            if (c.Class != _coresFor)
-            {
-                var loaded = CoreEffects.Load(profilesDir, c.Class, out bool readFailed);
-                // A read that failed (locked file) is tried again at the next call, not kept empty for the session.
-                if (readFailed) return loaded.GetValueOrDefault(c.Subclass) ?? [];
-                (_coresFor, _cores) = (c.Class, loaded);
-            }
-            return _cores.GetValueOrDefault(c.Subclass) ?? [];
+            bySub = CoreEffects.Load(profilesDir, cls, out bool readFailed);
+            // A read that failed (locked file) is tried again at the next call, not kept empty for the session.
+            if (!readFailed) _cores[cls] = bySub;
         }
+        return bySub.GetValueOrDefault(sub) ?? [];
     }
 
     /// <summary>The slots to read on every frame after a cast, from the active 직업각인's saved 코어 빌드: a fresh immutable list the
@@ -85,6 +84,37 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             return _gauge;
         }
     }
+
+    string? _ringFor;
+    RingDefs? _ring;
+
+    /// <summary>The active class's ring (브레이커: 기력·충격), or null: none, or a broken definition (traced). Loaded once per class.</summary>
+    public RingDefs? Ring
+    {
+        get
+        {
+            var cls = ActiveClass?.Name;
+            if (cls != _ringFor) (_ringFor, _ring) = (cls, cls is null ? null : LoadRing(cls));
+            return _ring;
+        }
+    }
+
+    /// <summary>Whether <paramref name="cls"/> ships a ring (브레이커), whatever class is active: for 편집 중's settings.</summary>
+    public bool HasRing(string cls) => GaugeLoader.RingFolders(profilesDir, cls) is not null;
+
+    RingDefs? LoadRing(string cls)
+    {
+        if (GaugeLoader.RingFolders(profilesDir, cls) is not var (left, right)) return null;
+        try { return new RingDefs(LoadDef(left), LoadDef(right)); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or NotSupportedException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[ring] {cls}: {ex.Message}");
+            return null;
+        }
+    }
+
+    static GaugeDef LoadDef(string dir) =>
+        GaugeLoader.Parse(File.ReadAllText(Path.Combine(dir, GaugeLoader.JsonFile)), Platform.Png.Load(Path.Combine(dir, GaugeLoader.MaskFile)));
 
     GaugeDef? LoadGauge()
     {
@@ -244,9 +274,14 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             }
         }
         if (sub is null && greyedSkills is not null) sub = SkillPool.Pick(greyedSkills, _skills.Load(cls.Name, cls.Subclasses.Keys));
+        OrbAsked = sub is null && OrbHue.For(cls.Name) is not null;   // 성운멸쇄권 (both 직업각인's): the orb's colour tells
         if (sub is null)
-            return !asked || quiet ? null : _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {Josa.By(c.Subclass)} 둡니다."
+        {
+            if (!asked || quiet) return null;
+            string kept = _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {Josa.By(c.Subclass)} 둡니다."
                 : $"직업각인을 인식하지 못해 {Josa.By(c.Subclass)} 둡니다.";
+            return OrbAsked ? $"{kept} 아덴 게이지가 {OrbHue.MinFill * 100:0}% 넘게 차면 그 색으로 정합니다." : kept;
+        }
         if (sub != c.Subclass) return Detected(sub);
         settings.SubclassHistory[cls.Name] = sub;
         return asked && !quiet ? $"직업각인이 {Josa.By(sub)} 맞습니다." : null;
@@ -265,7 +300,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     }
 
     /// <summary>Drops a 직업각인 read asked for (다시 감지, 자동 감지, 등록) and not captured yet: a pick or a refit came first.</summary>
-    public void ForgetRequests() => (_redetect, _quiet, _register, _watchTries) = (false, false, false, 0);
+    public void ForgetRequests() => (_redetect, _quiet, _register, _watchTries, OrbAsked) = (false, false, false, 0, false);
 
     /// <summary>클래스 인식 자동: the 초각스 about to be handled is read as by 직업각인 다시 읽기, but only the 직업각인 changes and only a
     /// change is told. Only for a class with an icon for every 직업각인 (shipped or 직업각인 등록).</summary>
@@ -310,6 +345,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
             string? known = pick.Subclass is { } s && cls.Subclasses.ContainsKey(s) ? s : null;
             string sub = known ?? cls.Remembered(settings.SubclassHistory) ?? cls.Subclasses.Keys.First();
             settings.PickCharacter(cls.Family, cls.Name, sub, remember: known is not null);
+            OrbAsked = known is null && OrbHue.For(cls.Name) is not null;   // switched by 성운멸쇄권: the orb's colour tells the 직업각인
             note = $"클래스를 {cls.Name} · {Josa.By(sub)} 바꿨습니다.";
         }
         if (watch) ReadSubclassQuietly();
@@ -350,6 +386,22 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     /// <summary>Why the active class's 직업각인 is only picked by hand, or null.</summary>
     public string? SameSkillsNote => ActiveClass is { SameSkills: true } ? SameSkills : null;
     const string SameSkills = "두 직업각인의 스킬이 같아 알아볼 수 없습니다. 마지막으로 고른 직업각인을 씁니다 (트레이나 설정 → 직업 인식에서 바꿀 수 있습니다).";
+
+    /// <summary>A 직업각인 read asked for (refit, 다시 읽기, 클래스 인식 자동) couldn't tell it, and the class's orb colour can
+    /// (<see cref="OrbHue.For"/>, 브레이커's 성운멸쇄권): the engine reads the orb until <see cref="OnOrbSubclass"/> uses it up. Never on
+    /// its own (detection.md): a pick by hand or a new request drops it.</summary>
+    public bool OrbAsked { get; private set; }
+
+    /// <summary>The orb's colour told <paramref name="sub"/> (Engine.OrbSubclassSeen, 브레이커): set it when it differs, once per
+    /// <see cref="OrbAsked"/>. Returns what changed, to tell the user, or null.</summary>
+    public string? OnOrbSubclass(string sub)
+    {
+        if (!OrbAsked) return null;
+        OrbAsked = false;
+        if (Active is not { } c || ActiveClass is not { } cls || !cls.Subclasses.ContainsKey(sub)) return null;
+        settings.SubclassHistory[cls.Name] = sub;
+        return sub == c.Subclass ? null : Detected(sub);
+    }
 
     string Detected(string sub)
     {

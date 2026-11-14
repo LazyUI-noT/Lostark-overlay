@@ -105,5 +105,37 @@ public sealed class RaidPresenceTests
     [Fact]
     public void Away_from_the_game_outside_a_dungeon_is_nowhere() =>
         Assert.False(RaidPresence.None.Away(S(10)).InDungeon(S(10)));
-}
 
+    // The channel box's gold arrow (channel-cue.plan.md): outside any dungeon, at once.
+    [Fact]
+    public void The_gold_arrow_ends_the_stay_at_once()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10)).Outside(S(12));
+        Assert.False(p.InDungeon(S(12)));
+        Assert.False(p.BossUp(S(12)));
+        Assert.Null(p.Since);
+    }
+
+    [Fact]
+    public void While_the_arrow_was_just_seen_a_meter_or_boss_read_starts_no_stay()
+    {
+        var p = RaidPresence.None.Outside(S(10)).Saw(true, true, S(10) + RaidPresence.OutBlock);
+        Assert.False(p.InDungeon(S(10) + RaidPresence.OutBlock));
+    }
+
+    [Fact]
+    public void After_the_block_a_meter_starts_a_stay_again()
+    {
+        var at = S(10) + RaidPresence.OutBlock + S(0.5);
+        var p = RaidPresence.None.Outside(S(10)).Saw(true, false, at);
+        Assert.True(p.InDungeon(at));
+        Assert.Equal(at, p.Since);
+    }
+
+    [Fact]
+    public void A_hidden_hud_after_the_arrow_keeps_nothing()
+    {
+        var p = RaidPresence.None.Saw(true, true, S(10)).Outside(S(12)).Hidden(S(13)).Away(S(14));
+        Assert.False(p.InDungeon(S(14)));
+    }
+}

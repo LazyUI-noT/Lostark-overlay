@@ -121,6 +121,32 @@ public class ClassDataTests
         Assert.Equal(amount, spend.Amount);
     }
 
+    /// <summary>브레이커 (breaker-aden.plan.md, Phase 0's BreakerAdenTests): the orb is 아덴1, read by its key label (Icon calls a
+    /// 권왕 orb near full ready); it glows when full. 권왕파천무's Z spends the whole orb at the press; 수라의길's drains (no spend).</summary>
+    [Fact]
+    public void 브레이커_orb_is_aden1_read_by_label_and_권왕_z_spends_it_all()
+    {
+        var b = Classes.Single(c => c.Name == "브레이커");
+        Assert.Equal([SlotId.아덴1], b.AdenSlots);
+        Assert.Equal(new PixelRect(931, 974, 55, 54), b.AdenRects![SlotId.아덴1]);
+        foreach (var sub in new[] { "권왕파천무", "수라의길" })
+        {
+            Assert.Equal(DarkCue.Label, b.AdenDark(sub));
+            Assert.Equal(new GlowRule(GlowWhen.SlotReady, SlotId.아덴1, 0.95), b.Subclasses[sub]!.Glow);
+        }
+        var spend = b.Subclasses["권왕파천무"]!.Spend.Single();
+        Assert.Equal([SlotId.아덴1], spend.Slots);
+        Assert.Equal((1.0, true), (spend.Amount, spend.Immediate));
+        Assert.Empty(b.Subclasses["수라의길"]!.Spend);
+        Assert.Equal(SlotId.아덴1, b.Subclasses["수라의길"]!.DrainSlot);   // Z drains the orb: the bar follows, the drain is the use
+        Assert.Null(b.Subclasses["권왕파천무"]!.DrainSlot);
+    }
+
+    /// <summary>Only 수라의길's gauge follows a drain; every shipped class before it keeps its filter.</summary>
+    [Fact]
+    public void Only_수라의길_follows_a_drain() =>
+        Assert.Equal(new[] { ("브레이커", "수라의길") }, Classes.SelectMany(c => c.Subclasses.Where(s => s.Value?.DrainSlot is not null).Select(s => (c.Name, s.Key))));
+
     /// <summary>바드's bar by default: gold while a crystal fills, blue once it is full, as in the game.</summary>
     [Fact]
     public void 바드_fills_gold_and_turns_blue()

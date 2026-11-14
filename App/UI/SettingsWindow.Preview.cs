@@ -115,7 +115,8 @@ public partial class SettingsWindow
         _preview?.Play.Stop();
         var copy = SceneSettings();
         var preview = _preview = new OverlayCanvas(copy, _chars, scene: true) { IsOn = part => TrayToggles.IsShown(_s, part), Only = _previewParts, ClickPlays = true };
-        preview.Play.Auto = () => PreviewPlayer.Gauge(copy, _chars);
+        preview.Play.Auto = () => PreviewPlayer.Gauge(copy, _chars, PreviewTarget);
+        preview.SetTarget(PreviewTarget);   // 편집 중's 직업각인: its boxes and gauge, and the 기력·충격 창 only for a class with a ring
         System.Windows.Automation.AutomationProperties.SetName(preview, $"{_area.Name} 미리보기");
         preview.Loaded += (_, _) =>
         {

@@ -1,0 +1,16 @@
+{
+  "source": "4k_screenshot_bard.jpg",
+  "slot": "channel",
+  "hud": 100,
+  "rect": [
+    3620,
+    0,
+    220,
+    80
+  ],
+  "width": 220,
+  "height": 80,
+  "pts": [
+    0.0
+  ]
+}

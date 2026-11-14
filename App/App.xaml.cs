@@ -98,6 +98,7 @@ public partial class App : Application
     OverlayWindow _amsu = null!;   // 암수 창: the bomb on the boss
     OverlayWindow _raid = null!;   // 설정 → 레이드: the boss bar count
     OverlayWindow _meter = null!;   // DPS 미터기
+    OverlayWindow _ring = null!;   // 기력·충격 창: 브레이커's ring
     OverlayTextWindow _shadow = null!;   // 그림자 레이드 기믹 체력, in the gimmick's fill bar
     OverlayTextWindow _shadowDealt = null!;   // 대난투's damage, easy to read, beside its number
     OverlayTextWindow _bossHp = null!;   // 보스 체력 쉽게 보기, beside the boss's name
@@ -106,7 +107,7 @@ public partial class App : Application
     IReadOnlyList<RaidGate> _raidGates = [];   // Profiles/raids.json
     string? _raidSeen;   // the gate 자동 인식 recognises now
     /// <summary>The windows besides yours that follow it: the party slots and the buff bars'.</summary>
-    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _meter];
+    IEnumerable<OverlayWindow> Others => [.. _peers, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _meter, _ring];
     bool AnyDragging => _overlay.Dragging || Others.Any(w => w.Dragging);
     SettingsWindow _settingsWindow = null!;
     AdjustLayer _layer = null!;
@@ -145,6 +146,7 @@ public partial class App : Application
         _amsu = new OverlayWindow(settings, amsu: true);
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
+        _ring = new OverlayWindow(settings, ring: true);
         _shadow = OverlayTextWindow.InBar();
         _shadowDealt = OverlayTextWindow.Label(textShare: 0.6);   // about the size of the gimmick's number
         _bossHp = OverlayTextWindow.Label(textShare: 0.5);   // about the size of the boss's name
@@ -351,6 +353,7 @@ public partial class App : Application
         _meter.Visibility = ClassProfiles.MeterShown(_settings) && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
+        _ring.Visibility = _settings.Ring.On && _characters.Ring is not null ? _overlay.Visibility : Visibility.Hidden;   // only a class with a ring
         // 숙제 tags: only over the game (in front, or seen behind with Alt+Tab 중에도 항상 표시); an Alt+Tab hides them at once,
         // since no menu read comes while the game is behind to do it (user, 2026-11-08).
         if (!GameSeen && _homeworkTags is { IsVisible: true } tags) tags.Hide();

@@ -17,6 +17,7 @@ public static partial class FeatureMap
         ("boss", 0) => Bit(s.Raids.BossHpRead),
         ("boss", 1) => Shown(s.Raids.BossHpEasy),
         ("amsu", 0) => Bit(s.Amsu.On),
+        ("ring", 0) => Bit(s.Ring.On),
         ("meter", 0) => (int)s.Meter.Mode(),
         ("cover", 0) => (int)s.Meter.BuffShare(),
         ("skillview", 0) => Shown(TrayToggles.IsShown(s, OverlayPart.Skills)),
@@ -44,6 +45,7 @@ public static partial class FeatureMap
             case ("boss", 0): s.Raids.BossHpRead = on; break;
             case ("boss", 1): s.Raids.BossHpEasy = shown; break;
             case ("amsu", 0): s.Amsu.On = on; break;
+            case ("ring", 0): s.Ring.On = on; break;
             case ("meter", 0): s.Meter.SetMode((ThreeWay)index); break;
             case ("cover", 0): s.Meter.SetBuffWish((ThreeWay)index); break;
             case ("skillview", 0): TrayToggles.Show(s, OverlayPart.Skills, shown); break;
@@ -63,7 +65,7 @@ public static partial class FeatureMap
     {
         "skill" or "skillview" => "스킬창",
         "cls" => "직업 인식",
-        "aden" => "아덴 게이지",
+        "aden" or "ring" => "아덴 게이지",
         "judg" => "단심",
         "buff" or "cover" or "buffrows" => "버프 줄",
         "g-jeonbun" or "meter" => "DPS 미터기",

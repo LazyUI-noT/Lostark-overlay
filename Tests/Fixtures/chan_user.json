@@ -1,0 +1,16 @@
+{
+  "source": "channel_town_1080.png",
+  "slot": "channel",
+  "hud": 100,
+  "rect": [
+    1810,
+    0,
+    110,
+    40
+  ],
+  "width": 110,
+  "height": 40,
+  "pts": [
+    0.0
+  ]
+}

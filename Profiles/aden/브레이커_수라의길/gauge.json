@@ -1,0 +1,22 @@
+{
+  "origin": [
+    933,
+    976
+  ],
+  "units": "continuous",
+  "order": {
+    "kind": "linear",
+    "angleDeg": 90
+  },
+  "filling": [
+    "#741D10",
+    "#7F2926",
+    "#95312B",
+    "#AC453B",
+    "#B73C20",
+    "#CD6045",
+    "#EC8559",
+    "#FCC586"
+  ],
+  "tolerance": 40
+}

@@ -225,6 +225,8 @@ public partial class SettingsWindow
                 // Same as the buff bars: the section already holds this box's size rows.
                 ScrollToDebuff(d);
                 return ("디버프", "디버프 칸입니다. MP 바 위의 내 디버프와 보스 체력바 아래 빨강·파랑 숫자를 보여 줍니다.", [_secBuffs]);
+            case { Kind: "Ring" }:
+                return ("기력·충격 창", "브레이커의 기력(왼쪽)과 충격(오른쪽)입니다.", [GaugeBox]);
             case { Kind: "Raid" }:
                 return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 관문과 빛날 줄 수는 레이드에서 정합니다.", [_secRaidCount]);
             case { Kind: "Judgment" }:
@@ -246,7 +248,7 @@ public partial class SettingsWindow
     static string? PageOf(CanvasBox? box) => box?.Kind switch
     {
         "Skills" or "Plate" => AreaSkills,
-        "Gauge" => AreaGauge,
+        "Gauge" or "Ring" => AreaGauge,
         "BuffBar" or "Debuff" => AreaBuffs,
         "Judgment" => AreaJudgment,
         "Amsu" => AreaAmsu,

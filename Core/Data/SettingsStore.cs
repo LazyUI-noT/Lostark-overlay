@@ -104,6 +104,7 @@ public sealed class SettingsStore(string path)
         if (!s.RecordKeepMigrated) (s.RecordKeep, s.RecordKeepMigrated) = (s.RecordKeep == OldRecordKeep ? new Settings().RecordKeep : s.RecordKeep, true);
         foreach (var (key, c) in s.Cores.ToList())   // CoreChoiceJson repaired what was malformed inside an entry; here: levels outside 1–3, an entry that was not an object
             if (c is null) s.Cores.Remove(key); else s.Cores[key] = c.Clamped();
+        s.FillSuraCore();   // after the repair: a broken saved entry was dropped and starts on 322 like a new one
         s.Amsu ??= new();
         s.Amsu.Clamp();
         s.ReadsPerSecond = ReadSteps.Clamp(s.ReadsPerSecond);

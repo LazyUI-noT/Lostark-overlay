@@ -183,6 +183,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         : DebuffsOnly ? Equals(a.Debuffs, b.Debuffs)
         : JudgmentOnly ? Equals(a.Judgment, b.Judgment)
         : AmsuOnly ? Equals(a.Amsu, b.Amsu) && a.AmsuTimed == b.AmsuTimed
+        : RingOnly ? Equals(a.Ring, b.Ring)
         : RaidOnly && Equals(a.Raid, b.Raid);
 
     /// <summary>Call after <see cref="Settings"/> changed.</summary>
@@ -323,11 +324,12 @@ public sealed partial class OverlayRenderer : FrameworkElement
         else if (AmsuOnly) DrawAmsu(dc, now, ms, reduced);
         else if (RaidOnly) DrawRaid(dc, ms, reduced);
         else if (MeterOnly) DrawMeter(dc);
+        else if (RingOnly) DrawRing(dc);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         // 초당 그리기 횟수: one rate for every moving part; a slow fade alone at most 15 (DrawSteps).
         _frameMs = Math.Max(MinFrameMs, DrawSteps.FrameMs(Settings.DrawsPerSecond, fadeOnly: !_animating && !_moving));
         SetLoop(_moving || _animating || _blinking);
-        string part = DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+        string part = RingOnly ? "그리기: 기력·충격 창" : DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
             : BuffsOnly ? "그리기: 버프 창" : GaugeOnly ? "그리기: 게이지 창" : Peer >= 0 ? "그리기: 파티 창" : "그리기: 스킬 창";
         Services.Perf.AddCpu(part, Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
         Services.Perf.Count(part);   // draws a second, per window (perf-trace)

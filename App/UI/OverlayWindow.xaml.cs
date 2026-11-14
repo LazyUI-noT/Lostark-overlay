@@ -28,6 +28,7 @@ public partial class OverlayWindow : Window
     readonly bool _amsu;   // the 암수 창
     readonly bool _raid;   // the 줄 수 창 (설정 → 레이드)
     readonly bool _meter;   // the DPS 미터기
+    readonly bool _ring;   // the 기력·충격 창 (브레이커)
     Player? _player, _shown;   // live data; what is drawn (sample data in edit mode)
     bool _editMode;
     enum Drag { None, Move, Scale }
@@ -44,12 +45,12 @@ public partial class OverlayWindow : Window
     /// <param name="debuffs">The debuff window: your raid debuffs and the swap count (PLAN §4 디버프).</param>
     /// <param name="judgment">The 단심 window: 심판's 30 s cycle, or its icon while ready.</param>
     /// <param name="raid">The 줄 수 창: the boss bar count, glowing at the gate's alerts (설정 → 레이드).</param>
-    public OverlayWindow(Settings settings, int peer = -1, bool buffs = false, bool debuffs = false, bool judgment = false, bool raid = false, bool meter = false, bool amsu = false, bool gauge = false)
+    public OverlayWindow(Settings settings, int peer = -1, bool buffs = false, bool debuffs = false, bool judgment = false, bool raid = false, bool meter = false, bool amsu = false, bool gauge = false, bool ring = false)
     {
         _settings = settings;
         _peer = peer;
         InitializeComponent();
-        (_buffs, _debuffs, _judgment, _raid, _meter, _amsu, _gauge) = (buffs, debuffs, judgment, raid, meter, amsu, gauge);
+        (_buffs, _debuffs, _judgment, _raid, _meter, _amsu, _gauge, _ring) = (buffs, debuffs, judgment, raid, meter, amsu, gauge, ring);
         if (peer >= 0) Title = $"GaugeOverlay - 파티원 {peer + 1}";
         if (buffs) Title = "GaugeOverlay - 버프";
         if (gauge) Title = "GaugeOverlay - 아덴 게이지";
@@ -58,6 +59,7 @@ public partial class OverlayWindow : Window
         if (amsu) Title = "GaugeOverlay - 암수";
         if (raid) Title = "GaugeOverlay - 레이드";
         if (meter) Title = "GaugeOverlay - DPS 미터기";
+        if (ring) Title = "GaugeOverlay - 기력·충격";
         Renderer.Settings = settings;
         Renderer.Peer = peer;
         Renderer.BuffsOnly = buffs;
@@ -67,13 +69,14 @@ public partial class OverlayWindow : Window
         Renderer.AmsuOnly = amsu;
         Renderer.RaidOnly = raid;
         Renderer.MeterOnly = meter;
+        Renderer.RingOnly = ring;
         Loaded += (_, _) => PlaceInitially();
 
     }
 
     /// <summary>This window's spot and size. Looked up each time: a reset replaces the settings objects. A party
     /// member's window stands where its slot's does, at the size set for the class of whoever is shown in it.</summary>
-    IWindowPlace Place => _gauge ? _settings.Gauge : _amsu ? _settings.Amsu : _meter ? _settings.Meter : _raid ? _settings.Raids : _judgment ? _settings.Judgment : _debuffs ? _settings.Debuffs : _buffs ? _settings.Buffs : _peer < 0 ? _settings.Overlay : new MemberPlace(_settings, _peer, ShownClass);
+    IWindowPlace Place => _ring ? _settings.Ring : _gauge ? _settings.Gauge : _amsu ? _settings.Amsu : _meter ? _settings.Meter : _raid ? _settings.Raids : _judgment ? _settings.Judgment : _debuffs ? _settings.Debuffs : _buffs ? _settings.Buffs : _peer < 0 ? _settings.Overlay : new MemberPlace(_settings, _peer, ShownClass);
 
     /// <summary>The class of the member drawn here (sample data included); null while unknown or for yourself.</summary>
     string? ShownClass => _peer < 0 ? null : Emblems.Class(_shown?.Snapshot.ClassId ?? 0)?.Name;
@@ -158,7 +161,7 @@ public partial class OverlayWindow : Window
         // The timer font was only capped while resizing, so a shrink and grow restores it; now the cap sticks.
         // Never below MinTimerFont: at the smallest sizes the cap is under it, and committing that would hide the
         // timer for good. Party members' boxes have no timer.
-        if (_peer < 0 && !_buffs && !_gauge && !_debuffs && !_judgment && !_raid && !_meter && !_amsu)
+        if (_peer < 0 && !_buffs && !_gauge && !_debuffs && !_judgment && !_raid && !_meter && !_amsu && !_ring)
             _settings.Overlay.TimerFont = Math.Min(_settings.Overlay.TimerFont,
                 Math.Max(OverlayRenderer.MinTimerFont, OverlayRenderer.MaxTimerFont(_settings.Overlay.Width, _settings.Overlay.Height)));
         LayoutCommitted?.Invoke();
@@ -167,7 +170,7 @@ public partial class OverlayWindow : Window
     void ShowLabel()
     {
         EditLabel.Visibility = _editMode ? Visibility.Visible : Visibility.Collapsed;
-        string who = _amsu ? " (암수)" : _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _gauge ? " (아덴 게이지)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
+        string who = _ring ? " (기력·충격)" : _amsu ? " (암수)" : _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _gauge ? " (아덴 게이지)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
         EditLabelText.Text = $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기";
         EditLabel.ToolTip = EditLabelText.Text;
     }
@@ -193,11 +196,12 @@ public partial class OverlayWindow : Window
     {
         var p = Place;
         var area = Displays.WorkArea;
-        var (left, top) = WindowDefaults.Place(area.Left, area.Width, area.Bottom, ActualWidth, ActualHeight, _peer, _buffs || _gauge || _debuffs || _judgment || _raid || _meter || _amsu);
+        var (left, top) = WindowDefaults.Place(area.Left, area.Width, area.Bottom, ActualWidth, ActualHeight, _peer, _buffs || _gauge || _debuffs || _judgment || _raid || _meter || _amsu || _ring);
         if (_gauge) left += WindowDefaults.GaugeRight;
         if (_debuffs) left += WindowDefaults.DebuffsRight;
         if (_judgment) left += WindowDefaults.JudgmentRight;
         if (_amsu) left += WindowDefaults.AmsuRight;
+        if (_ring) (left, top) = (left + WindowDefaults.GaugeRight, top + WindowDefaults.RingBelow);
         if (_meter) (left, top) = (area.Left + area.Width - ActualWidth - WindowDefaults.MeterFromRight,
             area.Bottom - WindowDefaults.AboveBottom - ActualHeight - WindowDefaults.MeterAbove);
         if (_raid) (left, top) = (area.Left + (area.Width - ActualWidth) / 2 + WindowDefaults.RaidRight, area.Top + WindowDefaults.RaidTop);
@@ -267,8 +271,8 @@ public partial class OverlayWindow : Window
             case Drag.Scale:
                 // Across changes the box width, down the box height.
                 var place = Place;
-                (place.Width, place.Height) = _gauge
-                    ? WindowSizing.Resize(_settings, SizedWindow.Gauge, SizeHandle.Corner, _startSize, _startPlate, dx, dy)   // length × thickness, swapped when upright
+                (place.Width, place.Height) = _gauge || _ring
+                    ? WindowSizing.Resize(_settings, _ring ? SizedWindow.Ring : SizedWindow.Gauge, SizeHandle.Corner, _startSize, _startPlate, dx, dy)   // length × thickness, swapped when upright
                     : OverlayRenderer.Resized(_startSize, _startPlate, dx, dy);
                 Refresh();   // records the new size, so the next Refresh doesn't mistake it for a gauge change
                 break;

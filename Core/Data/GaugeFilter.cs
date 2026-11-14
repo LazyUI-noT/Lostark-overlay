@@ -6,11 +6,13 @@ namespace GaugeOverlay.Core.Data;
 /// a dark band reads it low for about 3 reads, then a veil reads it full for 2; over 80% the orb also shines on its own,
 /// and a full orb reads 0.80 for up to 4 reads. So a value is taken only once <see cref="Run"/> reads in a row (0.5 s at
 /// the engine's 100 ms) agree within <see cref="Spread"/>. A shine only ever makes pixels miss once the orb is lit, so
-/// the value taken is the run's highest, and the gauge drops only by more than <see cref="Spread"/> (a skill spending
-/// it drops far more). Not thread-safe: one per reading thread.</summary>
+/// the value taken is the run's highest; the gauge drops once a whole run is below it, however little (a run's highest
+/// may be a flash read just after the drop: 권왕's Z, 0.03 over an empty orb). Not thread-safe: one per reading thread.</summary>
 public sealed class GaugeFilter
 {
-    const int Run = 5;
+    /// <summary>Agreeing reads in a row before a value is taken: 5 for an orb (its shine and veils), 3 for 브레이커's ring, whose
+    /// plateaus are clean and step about once a second (BreakerSweep ring sweep: only 1–2 read blips).</summary>
+    public int Run { get; init; } = 5;
     const double Spread = 0.06;
     /// <summary>How long after a key press its drop may show (the game draws it about 0.4 s after the press).</summary>
     public static readonly TimeSpan ArmFor = TimeSpan.FromSeconds(1);
@@ -25,6 +27,16 @@ public sealed class GaugeFilter
     /// <summary>When a rise shows (게이지 읽기). A change drops what the casts before it predicted.</summary>
     public GaugeReadMode Mode { get => _mode; set { if (value != _mode) (_mode, _expected) = (value, 0); } }
     GaugeReadMode _mode;
+    /// <summary>The gauge drains steadily after a use (브레이커 수라의길, classes.json "drains"; breaker-aden.plan.md): a fall
+    /// over <see cref="DrainRun"/> reads, never rising, at least two steps down, each at most <see cref="DrainStep"/>, is shown
+    /// at once instead of waiting for <see cref="Run"/> agreeing reads (which a fall of ~0.03 a read never gives). Off for every
+    /// other class, whose shine dips the gauge for a few reads.</summary>
+    public bool FollowsDrain { get; set; }
+    const int DrainRun = 4;
+    const double DrainStep = 0.12, DrainMinFall = 0.02;
+    // Leaving full (FollowsDrain only): shown at least Full, then below LeftFull, is one use of the draining skill.
+    const double Full = 0.95, LeftFull = 0.9;
+    bool _full, _drained;
     readonly Queue<double> _reads = new();
     double? _shown;
     double _left, _margin;
@@ -73,13 +85,43 @@ public sealed class GaugeFilter
         if (at >= _expectUntil) _expected = 0;
         _reads.Enqueue(read);
         if (_reads.Count > Run) _reads.Dequeue();
-        if (QuickRise() is { } quick) return quick;
+        if (QuickRise() is { } quick) return Watched(quick);
+        if (DrainFall() is { } fall) return Watched(fall);
         if (_reads.Count == Run && _reads.Max() - _reads.Min() <= Spread)
         {
             double v = _reads.Max();
-            if (_shown is not { } s || v > s || v < s - Spread) _shown = v;
+            // Following a drain, the run's highest is an older read of the fall: no rise unless the newest read is higher (수라act's tail).
+            bool falling = FollowsDrain && _shown is { } shown && _reads.Last() <= shown;
+            if (_shown is not { } s || v > s && !falling || v < s) _shown = v;
         }
-        return _shown ?? read;   // before the first agreeing run: as read
+        return Watched(_shown ?? read);   // before the first agreeing run: as read
+    }
+
+    /// <summary>Whether the gauge left full since the last call (<see cref="FollowsDrain"/> only): the draining skill was used.
+    /// Once per fill: it is full again before the next.</summary>
+    public bool TakeDrainedFromFull()
+    {
+        bool drained = _drained;
+        _drained = false;
+        return drained;
+    }
+
+    double Watched(double shown)
+    {
+        if (!FollowsDrain) return shown;
+        if (shown >= Full) _full = true;
+        else if (_full && shown < LeftFull) (_full, _drained) = (false, true);
+        return shown;
+    }
+
+    // The last DrainRun reads fall steadily below the shown value: the newest is shown.
+    double? DrainFall()
+    {
+        if (!FollowsDrain || _shown is not { } s || _reads.Count < DrainRun) return null;
+        double[] last = [.. _reads.Skip(_reads.Count - DrainRun)];
+        var steps = last.Zip(last.Skip(1), (a, b) => a - b).ToList();
+        if (steps.Any(d => d < 0 || d > DrainStep) || steps.Count(d => d > 0) < 2 || last[0] - last[^1] < DrainMinFall || last[^1] >= s) return null;
+        return (_shown = last[^1]).Value;
     }
 
     // The last two reads agree on a rise the mode lets through without the full run: shown at once.
@@ -95,5 +137,5 @@ public sealed class GaugeFilter
     }
 
     /// <summary>Forgets the reads and the value (another character's gauge, or the HUD was hidden).</summary>
-    public void Reset() { _reads.Clear(); (_shown, _armedUntil, _holdUntil, _expected, _expectUntil) = (null, null, default, 0, default); }
+    public void Reset() { _reads.Clear(); (_shown, _armedUntil, _holdUntil, _expected, _expectUntil, _full, _drained) = (null, null, default, 0, default, false, false); }
 }

@@ -54,8 +54,8 @@ public class CoreDataTests
                 foreach (var e in effects)
                 {
                     Assert.True(Tags.Contains(e.Tag), $"{cls.Name} {sub}: tag \"{e.Tag}\" must be CURRENT or UNVERIFIED");
-                    if (e.Target is SlotId.아덴1 or SlotId.아덴2)
-                        Assert.True(cls.AdenSlotsOf(sub).Contains(e.Target!.Value), $"{cls.Name} {sub}: {e.Target} is not one of its 아덴 slots");
+                    foreach (var slot in e.AllTargets.Append(e.TriggerSlot ?? SlotId.일반1).Where(s => s is SlotId.아덴1 or SlotId.아덴2))
+                        Assert.True(cls.AdenSlotsOf(sub).Contains(slot), $"{cls.Name} {sub}: {slot} is not one of its 아덴 slots");
                 }
         }
     }
@@ -88,5 +88,18 @@ public class CoreDataTests
         var e = Assert.Single(CoreEffects.Load(Profiles, "워로드")["전투태세"]);
         Assert.Equal([(CoreType.해, 2)], e.Requires.Select(r => (r.Key, r.Value)));
         Assert.Equal(("방패 돌진", CoreEffects.Reset, true, "CURRENT"), (e.Trigger, e.Kind, e.Self, e.Tag));
+    }
+
+    /// <summary>From the user (2026-11-13, breaker-aden.plan.md 2b): 브레이커 수라의길's 해 3 · 달 2 core cuts every yellowish
+    /// skill's cooldown while Z's phase runs (~5 s), and 초각스 fills the orb (a text line only: the orb is read, not computed).</summary>
+    [Fact]
+    public void 수라의길_322_is_in_the_data()
+    {
+        var effects = CoreEffects.Load(Profiles, "브레이커")["수라의길"];
+        var z = Assert.Single(effects, e => e.Tracks);
+        Assert.Equal([(CoreType.해, 3), (CoreType.달, 2)], z.Requires.Select(r => (r.Key, r.Value)));
+        Assert.Equal(("Z 스킬", CoreEffects.Reduce, SlotId.아덴1, 5.0), (z.Trigger, z.Kind, z.TriggerSlot, z.WatchSeconds));
+        Assert.Equal([SlotId.초각스, SlotId.일반1, SlotId.일반2, SlotId.일반3, SlotId.일반4, SlotId.일반5, SlotId.일반6, SlotId.일반7, SlotId.일반8], z.AllTargets);
+        Assert.Single(effects, e => e.Kind == CoreEffects.TextOnly);
     }
 }

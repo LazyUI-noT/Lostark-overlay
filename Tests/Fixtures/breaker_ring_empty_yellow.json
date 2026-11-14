@@ -1,0 +1,16 @@
+{
+  "source": "empty_yellow.png",
+  "slot": "ring",
+  "hud": 110,
+  "rect": [
+    900,
+    945,
+    116,
+    108
+  ],
+  "width": 116,
+  "height": 108,
+  "pts": [
+    0.0
+  ]
+}

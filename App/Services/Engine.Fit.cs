@@ -31,6 +31,9 @@ public sealed partial class Engine
             (_debuffs, _slots, _gauge, _gaugeSpent) = (DebuffStatus.None, DebuffSlots.None, null, false);
             ResetIconGates();
             _gaugeFilter.Reset();
+            (_ring, _lastRing) = (null, default);
+            _ringLeft.Reset();
+            _ringRight.Reset();
             // What casts add to the gauge: the game's is saved before a video plays, and what the video taught is dropped after.
             if (!_testMode) SaveGains();
             _gains = new(_gainsFor is not null ? _savedGains?.GetValueOrDefault(_gainsFor) : null);

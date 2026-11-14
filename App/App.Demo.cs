@@ -183,6 +183,7 @@ public partial class App
             _debuffs.Update(self);
             _judgment.Update(self);
             _amsu.Update(self);
+            _ring.Update(self);
             _raid.Update(self);
             _meter.Update(self);
             ShowPeers(peers);

@@ -420,7 +420,9 @@ public partial class App
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
                 settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
                 settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly, settings.Debuffs.BossCount,
-                HomeworkRead: !(settings.Meter.On && settings.Meter.Record), BossHpEvery: MeterSettings.ClampHpEvery(settings.Meter.HpEvery)));   // 숙제 without a recorded fight reads the bar itself
+                HomeworkRead: !(settings.Meter.On && settings.Meter.Record), BossHpEvery: MeterSettings.ClampHpEvery(settings.Meter.HpEvery),
+                Ring: !wrongClass && settings.Ring.On ? characters.Ring : null,
+                OrbPick: !wrongClass && characters.OrbAsked ? OrbHue.For(characters.ActiveClass?.Name) : null));   // only after a read asked for (detection.md)   // 숙제 without a recorded fight reads the bar itself
             engine.ReadBehind = settings.Screens.ReadBehind;
             ApplyUi();
             Draw();
@@ -434,7 +436,16 @@ public partial class App
             homework.Playing(characters.Active?.Class, characters.Active?.Subclass);   // returns at once unless they changed
             PlayingClass(GameWindow.TestMode ? null : characters.Active?.Class);   // for the skill map, read off the UI thread
             _meterReadAt = WindowLinger.LastRead(mine?.Meter);
+            var before = _presence;
             _presence = mine?.Presence ?? RaidPresence.None;
+            // The channel box's gold arrow: out of the dungeon, so the fight ends now, not after the frozen timer's limit
+            // (channel-cue.plan.md); 클리어 / 실패 as when the meter goes off. Only on leaving a stay: in town the arrow
+            // refreshes OutSeen every second.
+            if (_presence.OutSeen is { } left && left != before.OutSeen && before.Since is not null && recorder.Finish() is { } outFight)
+            {
+                Trace.WriteLine($"[records] fight ended ({outFight.Gate ?? "?"}, {outFight.Duration:0}s): outside (channel box)");
+                SaveRecord(outFight);
+            }
             if (mine is not null) _settingsWindow.SetDetect(mine);   // 감지 중 on the map, only redrawn while it shows
             _countReadAt = WindowLinger.Seen(_countReadAt, mine?.Raid?.Count is not null, Clock.Now());
             CheckInUse();
@@ -460,6 +471,7 @@ public partial class App
             _debuffs.Update(mine is not null ? new Player("", mine) : null);
             _judgment.Update(mine is not null ? new Player("", mine) : null);
             _amsu.Update(mine is not null ? new Player("", mine) : null);
+            _ring.Update(mine is not null ? new Player("", mine) : null);
             _raid.Update(mine is not null ? new Player("", hiddenStatus is not null && mine.Meter is not null ? mine with { Raid = hiddenStatus } : mine) : null);
             _meter.Update(mine is not null ? new Player("", mine) : null);
             bool overGame = _overlay.Visibility == Visibility.Visible || _meter.Visibility == Visibility.Visible;
@@ -869,6 +881,15 @@ public partial class App
                 catch (Exception ex) when (ex is not OutOfMemoryException) { Trace.WriteLine($"[class] search failed: {ex}"); }
             }
             if (characters.OnSubclassSlot(slot, greyedSkills) is not { } note) { OnSettingsChanged(); return; }   // ClassMismatch or the history may have changed
+            _settingsWindow.Reload();
+            _tray.Notify(note);
+            OnSettingsChanged();
+        });
+        engine.OrbSubclassSeen += sub => Dispatcher.BeginInvoke(() =>
+        {
+            Trace.WriteLine($"[class] orb colour: {sub}");
+            // Configure first in any case: the request is used up, so the engine stops reading the orb's colour.
+            if (characters.OnOrbSubclass(sub) is not { } note) { OnSettingsChanged(); return; }
             _settingsWindow.Reload();
             _tray.Notify(note);
             OnSettingsChanged();

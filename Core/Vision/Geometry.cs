@@ -401,6 +401,16 @@ public static class Geometry
     /// x 55–1855, y 1030–1037 (v4, 지옥 and the 21:9 clips).</summary>
     public static readonly PixelRect RefLoadingBar = new(45, 1018, 1820, 32);
 
+    /// <summary>The 채널 box's corner (channel-cue.plan.md): the game area's top-right 110×40 at 1080 scale, holding the box's
+    /// arrow. It follows the game area and its height only: HUD 크기, the minimap size and the other in-game sizes don't move
+    /// it (user, 2026-11-14).</summary>
+    public static PixelRect ChannelCorner(Viewport vp)
+    {
+        double s = vp.Height / ReferenceHeight;
+        int w = (int)Math.Round(110 * s);
+        return new(vp.X + vp.Width - w, vp.Y, w, (int)Math.Round(40 * s));
+    }
+
     /// <summary>Where the loading bar is read. The loading art is 16:9 in the game area's middle (a forced 21:9 game shows it
     /// centred), so the strip follows the game area's height and centre only: not the HUD 크기 or the other in-game sizes.</summary>
     public static PixelRect LoadingBar(Viewport vp)

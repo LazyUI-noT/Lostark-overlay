@@ -11,7 +11,19 @@ public sealed partial class Settings
         var key = CharacterKey(className, subclass);
         if (!Characters.ContainsKey(key)) Characters[key] = new() { ClassFamily = family, Class = className, Subclass = subclass };
         if (remember) SubclassHistory[className] = subclass;
+        FillSuraCore();
         return ActiveCharacter = key;
+    }
+
+    const string Sura = "브레이커 · 수라의길";
+
+    /// <summary>브레이커 수라의길 starts on 해 3 · 달 2 · 별 2, 적용 on (the main build: its Z core, Profiles/cores/브레이커.json) when the
+    /// character exists and no 코어 빌드 was ever saved for it; a saved one is never touched. Called on a pick and at load.
+    /// ponytail: one patch only (breaker-aden.plan.md 2b): remove in the next patch, the saved builds stay.</summary>
+    internal void FillSuraCore()
+    {
+        if (Characters.ContainsKey(Sura) && !Cores.ContainsKey(Sura))
+            Cores[Sura] = new CoreChoice { Apply = true, Sun = 3, Moon = 2, Star = 2 };
     }
 
     /// <summary>The key of a character in <see cref="Characters"/>, <see cref="Cores"/>: "클래스 · 직업각인".</summary>

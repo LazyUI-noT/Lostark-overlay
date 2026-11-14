@@ -55,6 +55,30 @@ public sealed partial class Engine
         Trace.WriteLine($"[presence] loading screen{(_presence.InDungeon(t) ? " (in a dungeon)" : "")}");
     }
 
+    // The channel box's gold arrow (channel-cue.plan.md): read once a second in a dungeon, and on while it keeps showing (no
+    // stale read starts a stay meanwhile); two in a row, a second apart (ChannelBox.Hits), end the stay at once.
+    static readonly TimeSpan ChannelEvery = TimeSpan.FromSeconds(1);
+    const int ChannelInARow = 2;
+    TimeSpan _lastChannel = TimeSpan.MinValue;
+    int _channelHits;
+
+    PixelRect? ChannelRect(Config config, TimeSpan now) =>
+        _hud.Visible == true && (_meterOn || RaidReadsOn(config)) && (_presence.InDungeon(now) || _channelHits > 0)
+        && Elapsed(now, _lastChannel, ChannelEvery) && Geometry.ChannelCorner(_vp) is var r && r.Inside(_vp) ? r : null;
+
+    void ReadChannel(Image corner, TimeSpan t)
+    {
+        bool outside = ChannelBox.IsOutside(corner, _vp.Height / Geometry.ReferenceHeight);
+        _channelHits = ChannelBox.Hits(_channelHits, _lastChannel == TimeSpan.MinValue ? null : _lastChannel, outside, t);
+        _lastChannel = t;
+        if (_channelHits < ChannelInARow) return;
+        bool was = _presence.InDungeon(t);
+        _presence = _presence.Outside(t);
+        if (!was) return;
+        Trace.WriteLine("[presence] outside (the channel box's gold arrow): left");
+        Publish(t);
+    }
+
     /// <summary>A new 전분 record after another one: between gates there is no loading screen, but the record starts at 00:00
     /// (user, 2026-11-03). As after a loading screen, the dungeon panel gets fresh votes, read fast.</summary>
     void NewGate()

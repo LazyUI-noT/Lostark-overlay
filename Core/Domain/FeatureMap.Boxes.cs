@@ -98,6 +98,7 @@ public static partial class FeatureMap
         new("meter", "DPS 미터기", Record, 2, null, Three),
         new("cover", "버프 적용률", Buff, 2, "meter", Three),
         new("skillview", "스킬창 표시", Skill, 2, null, Show),
+        new("ring", "기력·충격 창", Skill, 2, null, OffOn) { Note = "브레이커만" },
         new("count", "줄 수 창", Raid, 2, null, OffOn),
         new("debuff", "디버프 창 자동", Raid, 2, null, OffOn),
         // Its switch hides the display only: the number is read whenever the boss HP is (user, 2026-11-09).
@@ -114,7 +115,7 @@ public static partial class FeatureMap
     public static IReadOnlyList<MapEdge> Edges { get; } =
     [
         new("g-jeonbun", "meter"), new("skill", "skillview"), new("boss", "shadow"), new("g-font", "judg"), new("g-hud", "skill"),
-        new("g-hud", "aden"), new("g-hud", "amsu"), new("g-buff", "buff"), new("g-debuff", "amsu"), new("cls", "icons"),
+        new("g-hud", "aden"), new("g-hud", "ring"), new("g-hud", "amsu"), new("g-buff", "buff"), new("g-debuff", "amsu"), new("cls", "icons"),
         new("skill", "rec", Label: "사용 기록"), new("skill", "icons"), new("buff", "buffrows"), new("meter", "rec", Label: "내 전분"),
         new("meter", "rec", Party: true, Label: "파티원 전분"), new("dungeon", "rec"), new("buff", "cover"), new("cover", "buffrows"),
         new("boss", "count"), new("boss", "debuff"), new("boss", "hw"), new("dungeon", "hw"), new("char", "hw"),
@@ -139,6 +140,7 @@ public static partial class FeatureMap
         "g-jeonbun" => On(s.Meter.On),
         "boss" => !s.Raids.BossHpRead ? BoxState.Off : s.Raids.BossHpEasy ? BoxState.On : BoxState.Hidden,
         "amsu" => On(s.Amsu.On),
+        "ring" => On(s.Ring.On),
         "meter" => s.Meter.Mode() == ThreeWay.켜기 && !ClassProfiles.MeterShown(s) ? BoxState.Hidden : Of(s.Meter.Mode()),
         "cover" => Of(s.Meter.BuffShare()),
         "count" => On(s.Raids.CountEnabled),

@@ -249,4 +249,104 @@ public class GaugeFilterTests
         f.Reset();
         Assert.Equal(0.2, f.Add(0.2));
     }
+
+    // 수라act.mp4 (브레이커 수라의길) at 10 fps from 6.0 s: Z at 6.3 s (its effects flicker the read), then the orb drains about
+    // 0.03 a read to 0 at 11.0 s (BreakerSweep, su_act.csv).
+    static readonly double[] SuraDrain = [1.00, 1.00, 1.00, 0.00, 0.12, 1.00, 0.31, 0.27, 1.00, 1.00, 1.00, 0.89, 1.00, 0.84, 0.84,
+        0.79, 0.77, 0.74, 0.74, 0.70, 0.70, 0.65, 0.65, 0.60, 0.55, 0.55, 0.53, 0.51, 0.48, 0.46, 0.43, 0.41, 0.39, 0.36, 0.34,
+        0.31, 0.31, 0.27, 0.24, 0.22, 0.20, 0.17, 0.17, 0.12, 0.12, 0.08, 0.05, 0.03, 0.03, 0.01, 0.00, 0.00, 0.00, 0.00];
+
+    static (double[] Shown, int[] Drained) Drain(double[] reads, bool follows)
+    {
+        var f = new GaugeFilter { FollowsDrain = follows };
+        for (int i = 0; i < 6; i++) f.Add(1);   // full before
+        var drained = new List<int>();
+        var shown = reads.Select((r, i) => { double v = f.Add(r); if (f.TakeDrainedFromFull()) drained.Add(i); return v; }).ToArray();
+        return (shown, [.. drained]);
+    }
+
+    /// <summary>Without drain follow a steady fall never gives 5 agreeing reads: the gauge stays full until the orb is empty.</summary>
+    [Fact]
+    public void A_drain_shows_only_at_its_end_by_default()
+    {
+        var (shown, drained) = Drain(SuraDrain, follows: false);
+        Assert.All(shown[..45], v => Assert.Equal(1.0, v));
+        Assert.Empty(drained);
+    }
+
+    /// <summary>수라의길 (breaker-aden.plan.md Phase 2): with drain follow the bar is within 0.06 of the read from 7.6 s (two
+    /// falls in four reads), and leaving full is reported once, as Z's use.</summary>
+    [Fact]
+    public void A_followed_drain_tracks_the_read_and_reports_leaving_full_once()
+    {
+        var (shown, drained) = Drain(SuraDrain, follows: true);
+        for (int i = 16; i < SuraDrain.Length; i++) Assert.True(Math.Abs(shown[i] - SuraDrain[i]) <= 0.06, $"{6.0 + i / 10.0:0.0} s: {shown[i]} for {SuraDrain[i]}");
+        Assert.All(shown[..13], v => Assert.Equal(1.0, v));   // Z's flicker moves nothing
+        Assert.Equal([16], drained);
+    }
+
+    /// <summary>One low read, or a single step down, is no drain (and not a use).</summary>
+    [Fact]
+    public void A_single_dip_on_a_full_orb_is_not_a_drain()
+    {
+        var (shown, drained) = Drain([1, 1, 1, 0.89, 1, 1, 0.9, 0.9, 1, 1], follows: true);
+        Assert.All(shown, v => Assert.Equal(1.0, v));
+        Assert.Empty(drained);
+    }
+
+    /// <summary>A gauge that drops from full by any path is reported (the drain may be missed), once until it is full again.</summary>
+    [Fact]
+    public void Leaving_full_is_reported_once_per_fill()
+    {
+        var f = new GaugeFilter { FollowsDrain = true };
+        int fired = 0;
+        foreach (var r in new double[] { 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 })
+        {
+            f.Add(r);
+            if (f.TakeDrainedFromFull()) fired++;
+        }
+        Assert.Equal(2, fired);
+    }
+
+    /// <summary>수라act.mp4 at 10 reads a second (JeonbunSweep.Aden_in_a_video_when_requested): the drain's tail reads
+    /// 0.05, 0.03, 0.03, 0.01, 0.00 then empty. The bar ends at 0, not back up at 3% from an older read in the run.</summary>
+    [Fact]
+    public void A_drain_ends_at_empty_not_at_the_runs_highest_read()
+    {
+        var (shown, _) = Drain([0.84, 0.79, 0.77, 0.74, 0.70, 0.65, 0.60, 0.55, 0.48, 0.41, 0.34, 0.27, 0.20, 0.12, 0.08, 0.05, 0.03, 0.03, 0.01, 0, 0, 0, 0, 0, 0, 0, 0], follows: true);
+        Assert.Equal(0, shown[^1]);
+    }
+
+    /// <summary>A use not yet taken is forgotten with the gauge (another character, the HUD hidden).</summary>
+    [Fact]
+    public void Reset_forgets_a_use_not_yet_taken()
+    {
+        var f = new GaugeFilter { FollowsDrain = true };
+        foreach (var r in new double[] { 1, 1, 1, 1, 1, 0, 0, 0, 0, 0 }) f.Add(r);
+        f.Reset();
+        Assert.False(f.TakeDrainedFromFull());
+    }
+
+    /// <summary>권왕 20.59.43.mp4's second Z (JeonbunSweep.Aden_in_a_video_when_requested): the orb empties at once, Z's flash
+    /// reads 0.05, 0.08, 0.03 over it, then empty. The run that takes the drop holds the 0.03; a later run all below it is
+    /// shown even though the step is under Spread, so the bar ends at 0, not at 3% until the gauge refills.</summary>
+    [Fact]
+    public void A_drop_settles_at_empty_after_the_flash()
+    {
+        var (shown, _) = Drain([1, 1, 1, 1, 1, 0, 0.05, 0.08, 0.03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], follows: false);
+        Assert.Equal(0, shown[^1]);
+    }
+
+    /// <summary>브레이커's ring (BreakerSweep.Sweep_the_ring_when_requested): 충격 steps about once a second over clean plateaus, with
+    /// rare 1–2 read blips. Three agreeing reads take a step 0.2 s after it, and a two-read blip never shows.</summary>
+    [Fact]
+    public void A_shorter_run_takes_a_step_after_three_reads_and_skips_a_two_read_blip()
+    {
+        var f = new GaugeFilter { Run = 3 };
+        double[] reads = [0.26, 0.26, 0.26, 0.82, 0.82, 0.82, 0.20, 0.20, 0.82, 0.82, 0.82];
+        var shown = reads.Select((r, i) => f.Add(r, TimeSpan.FromMilliseconds(100 * i))).ToList();
+        Assert.Equal(0.26, shown[4]);
+        Assert.Equal(0.82, shown[5]);   // the third 0.82
+        Assert.All(shown.Skip(5), s => Assert.Equal(0.82, s));   // the two 0.20s never show
+    }
 }

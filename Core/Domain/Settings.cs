@@ -22,6 +22,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>표시 화면 and 창 밖에서도 읽기: for the install, not per profile.</summary>
     public ScreenSettings Screens { get; set; } = new();
     public GaugeStyle Gauge { get; set; } = new();
+    /// <summary>기력·충격 창 (브레이커's ring).</summary>
+    public RingSettings Ring { get; set; } = new();
     public HotkeySettings Hotkeys { get; set; } = new();
     public PartySettings Party { get; set; } = new();
     public BuffSettings Buffs { get; set; } = new();

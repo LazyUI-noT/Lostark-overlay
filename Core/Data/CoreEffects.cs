@@ -9,11 +9,17 @@ namespace GaugeOverlay.Core.Data;
 /// <see cref="CoreEffects.Reduce"/> with a <see cref="Trigger"/> skill (its name, shown only) and a <see cref="Target"/> slot
 /// changes behaviour (<see cref="Tracks"/>): the target is read on every frame for <see cref="WatchSeconds"/> after the trigger's
 /// slot is cast. <see cref="Self"/> ("target": "self"): the target is the trigger's own slot, which its cast may reset. Any other kind is <see cref="Text"/> for the support table. <see cref="Tag"/> and <see cref="Source"/> say how
-/// sure the fact is and who gave it. Compares by reference through <see cref="Requires"/>.</summary>
+/// sure the fact is and who gave it. <see cref="Targets"/> ("target": [...]) watches several slots at once;
+/// <see cref="TriggerSlot"/> ("triggerSlot") is a trigger whose slot is fixed (브레이커's Z is the orb, 아덴1), so 설정 asks for none.
+/// Compares by reference through <see cref="Requires"/>.</summary>
 public sealed record CoreEffect(IReadOnlyDictionary<CoreType, int> Requires, string Kind, string? Trigger, SlotId? Target,
-    double WatchSeconds, string? Text, string Tag, string Source, bool Self = false)
+    double WatchSeconds, string? Text, string Tag, string Source, bool Self = false,
+    IReadOnlyList<SlotId>? Targets = null, SlotId? TriggerSlot = null)
 {
-    public bool Tracks => Kind is CoreEffects.Reset or CoreEffects.Reduce && Trigger is not null && (Target is not null || Self);
+    /// <summary>Every slot read after the trigger: the list, else the single target (none for a "self" effect).</summary>
+    public IReadOnlyList<SlotId> AllTargets => Targets ?? (Target is { } t ? [t] : []);
+
+    public bool Tracks => Kind is CoreEffects.Reset or CoreEffects.Reduce && Trigger is not null && (AllTargets.Count > 0 || Self);
 }
 
 /// <summary>Slot <see cref="TargetSlot"/> is to be read on every frame for <see cref="Duration"/> after <see cref="TriggerSlot"/> is cast.</summary>
@@ -105,20 +111,25 @@ public static class CoreEffects
     static CoreEffect ParseEffect(string sub, JsonNode? node)
     {
         if (node is not JsonObject e) throw Bad(sub, "has an effect that is not an object");
-        OnlyKeys(e, sub, "requires", "effect", "trigger", "target", "watchSeconds", "text", "tag", "source");
+        OnlyKeys(e, sub, "requires", "effect", "trigger", "triggerSlot", "target", "watchSeconds", "text", "tag", "source");
         string? Str(string name) => e[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
         string kind = Str("effect") is Reset or Reduce or TextOnly ? Str("effect")! : throw Bad(sub, "has an unknown \"effect\" (cooldown_reset, cooldown_reduce or text)");
         var (trigger, text) = (Str("trigger"), Str("text"));
         bool self = Str("target") == SelfTarget;
-        SlotId? target = self ? null : Str("target") is { } t ? (Named<SlotId>(t, out var slot) ? slot : throw Bad(sub, $"has an unknown target slot \"{t}\"")) : null;
-        if (kind != TextOnly && (string.IsNullOrWhiteSpace(trigger) || target is null && !self)) throw Bad(sub, $"{kind} needs a \"trigger\" and a \"target\" slot");
+        SlotId Slot(string? name, string what) => name is not null && Named<SlotId>(name, out var slot) ? slot : throw Bad(sub, $"has an unknown {what} slot \"{name}\"");
+        SlotId? target = self ? null : Str("target") is { } t ? Slot(t, "target") : null;
+        IReadOnlyList<SlotId>? targets = e["target"] is JsonArray list
+            ? (list.Count > 0 ? [.. list.Select(n => Slot(n is JsonValue v && v.TryGetValue<string>(out var x) ? x : null, "target"))] : throw Bad(sub, "has an empty \"target\" list"))
+            : null;
+        SlotId? triggerSlot = e["triggerSlot"] is null ? null : Slot(Str("triggerSlot"), "trigger");
+        if (kind != TextOnly && (string.IsNullOrWhiteSpace(trigger) || target is null && targets is null && !self)) throw Bad(sub, $"{kind} needs a \"trigger\" and a \"target\" slot");
         if (kind == TextOnly && text is null) throw Bad(sub, "text effect needs \"text\"");
 
         double seconds = e["watchSeconds"] is null ? DefaultWatchSeconds
             : e["watchSeconds"] is JsonValue w && w.TryGetValue<double>(out var d) && d > 0 && d <= MaxWatchSeconds ? d
             : throw Bad(sub, $"has a \"watchSeconds\" outside 0–{MaxWatchSeconds}");
-        return new CoreEffect(ParseRequires(sub, e["requires"]), kind, trigger, target, seconds, text, Str("tag") ?? "", Str("source") ?? "", self);
+        return new CoreEffect(ParseRequires(sub, e["requires"]), kind, trigger, target, seconds, text, Str("tag") ?? "", Str("source") ?? "", self, targets, triggerSlot);
     }
 
     static Dictionary<CoreType, int> ParseRequires(string sub, JsonNode? node)
@@ -144,14 +155,19 @@ public static class CoreEffects
         return [.. effects.Where(e => e.Requires.Count > 0 && e.Requires.All(r => allowed.Contains(r.Key) && choice.Of(r.Key) == r.Value))];
     }
 
-    /// <summary>What to watch: for each active effect that <see cref="CoreEffect.Tracks"/> and whose trigger skill the user placed in a
-    /// slot (<see cref="CoreChoice.Slots"/>). An effect with no slot chosen gives none.</summary>
+    /// <summary>What to watch: for each active effect that <see cref="CoreEffect.Tracks"/> and whose trigger has a slot (its fixed
+    /// <see cref="CoreEffect.TriggerSlot"/>, else where the user placed the skill, <see cref="CoreChoice.Slots"/>), one watch per
+    /// target. An effect with no slot chosen gives none.</summary>
     public static IReadOnlyList<CoreWatch> Watches(CoreChoice choice, Role role, IEnumerable<CoreEffect> effects)
     {
         var watches = new List<CoreWatch>();
         foreach (var e in Active(choice, role, effects))
-            if (e.Tracks && choice.Slots.TryGetValue(e.Trigger!, out var trigger))
-                watches.Add(new CoreWatch(trigger, e.Self ? trigger : e.Target!.Value, TimeSpan.FromSeconds(e.WatchSeconds)));
+        {
+            if (!e.Tracks) continue;
+            if (e.TriggerSlot is not { } trigger && !choice.Slots.TryGetValue(e.Trigger!, out trigger)) continue;
+            foreach (var target in e.Self ? [trigger] : e.AllTargets)
+                watches.Add(new CoreWatch(trigger, target, TimeSpan.FromSeconds(e.WatchSeconds)));
+        }
         return watches;
     }
 
@@ -168,7 +184,7 @@ public static class CoreEffects
     /// <summary>The skills whose slot 설정 asks for (user, 2026-10-13): those of the effects <paramref name="choice"/>'s levels switch
     /// on, whether or not 적용 is on (off, the rows are greyed). Another level's skills aren't asked.</summary>
     public static IReadOnlyList<string> Triggers(CoreChoice choice, Role role, IEnumerable<CoreEffect> effects) =>
-        [.. Active(choice with { Apply = true }, role, effects).Where(e => e.Tracks).Select(e => e.Trigger!).Distinct()];
+        [.. Active(choice with { Apply = true }, role, effects).Where(e => e.Tracks && e.TriggerSlot is null).Select(e => e.Trigger!).Distinct()];
 
     /// <summary>The cores an effect needs as the game writes a build (user, 2026-10-13): 해, 달 and 별 levels in that order, x where
     /// it doesn't ask ("3xx" = 해 3; "x2x" = 달 2).</summary>
@@ -188,7 +204,15 @@ public static class CoreEffects
     public static string Describe(IEnumerable<CoreEffect> effects, Func<SlotId, string>? keyName = null) => string.Join(" / ", effects.Select(e =>
         $"{Code(e.Requires)}: " +
         (e.Text ?? (e.Self ? $"{Josa.Object(e.Trigger!)} 쓴 뒤 바로 다시 준비되면 곧바로 보여 줍니다"
-            : $"{Josa.Object(e.Trigger!)} 쓰면 {Named(e.Target!.Value, keyName)} 쿨초를 빨리 읽습니다"))));
+            : $"{Josa.Object(e.Trigger!)} 쓰면 {Named(e.AllTargets, keyName)} 쿨초를 빨리 읽습니다"))));
+
+    /// <summary>The slots by name; all eight 일반 slots together are "일반 스킬".</summary>
+    static string Named(IReadOnlyList<SlotId> slots, Func<SlotId, string>? keyName)
+    {
+        bool allGeneral = Enum.GetValues<SlotId>().Where(CoreChoice.IsTriggerSlot).All(slots.Contains);
+        var named = slots.Where(s => !allGeneral || !CoreChoice.IsTriggerSlot(s)).Select(s => Named(s, keyName));
+        return string.Join(", ", allGeneral ? named.Append("일반 스킬") : named);
+    }
 
     static string Named(SlotId slot, Func<SlotId, string>? keyName) =>
         keyName?.Invoke(slot) is { } key && key != slot.ToString() ? $"{slot}({key})" : slot.ToString();

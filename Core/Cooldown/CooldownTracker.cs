@@ -60,6 +60,12 @@ public static class CooldownTracker
         return r.Kind == ReadKind.Unreadable || r.At - used >= hold ? null : prev with { Estimated = false };
     }
 
+    /// <summary>A use seen another way than the slot (브레이커 수라의길: its orb drained from full, GaugeFilter.TakeDrainedFromFull) at
+    /// <paramref name="at"/>: on a ready slot, a cooldown without a number starts as at a use flash (<see cref="UseHold"/> then
+    /// ignores the drain's glow reading Ready); any other state is kept.</summary>
+    public static SlotState UsedElsewhere(SlotState prev, TimeSpan at) =>
+        prev.Phase == SlotPhase.Ready ? new SlotState(prev.Slot, SlotPhase.Cooldown, null, null, false, at, UsedAt: at) : prev;
+
     private static SlotState Next(SlotState prev, Reading r) => r.Kind switch
     {
         // Only a read sets Ready while readable; this also covers resets (333.mp4).

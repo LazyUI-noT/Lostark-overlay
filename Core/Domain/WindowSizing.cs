@@ -1,7 +1,7 @@
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>The windows whose size is set by dragging their outline on 내 오버레이 (no slider).</summary>
-public enum SizedWindow { Judgment, Amsu, Raid, Meter, Gauge }
+public enum SizedWindow { Judgment, Amsu, Raid, Meter, Gauge, Ring }
 
 /// <summary>What the window's Width/Height settings mean: <c>Two</c> sizes (단심 길이/두께, 암수 크기/막대 길이), one size kept in
 /// both (<c>Uniform</c>), or one size in <c>WidthOnly</c> / <c>HeightOnly</c>.</summary>
@@ -19,7 +19,7 @@ public static class WindowSizing
     {
         SizedWindow.Judgment => s.Judgment.Display == JudgmentDisplay.Bar ? SizeMode.Two : SizeMode.WidthOnly,
         SizedWindow.Amsu => s.Amsu.Look is AmsuLook.막대 or AmsuLook.세로막대 ? SizeMode.Two : SizeMode.HeightOnly,
-        SizedWindow.Gauge => SizeMode.Two,   // 길이 (Width) and 두께 (Height)
+        SizedWindow.Gauge or SizedWindow.Ring => SizeMode.Two,   // 길이 (Width) and 두께 (Height)
         _ => SizeMode.Uniform,
     };
 

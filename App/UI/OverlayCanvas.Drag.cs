@@ -28,10 +28,10 @@ public sealed partial class OverlayCanvas
     (BuffKind Kind, Rect Rect, bool Upright) _bar;          // BarLength: the bar, as drawn when the drag began
     double _startLength, _barFull;                          // and its 길이 then, and its length drawn at 길이 1
 
-    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _gauge ? _s.Gauge : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _amsu ? _s.Amsu : r == _raid ? _s.Raids : _s.Overlay;
+    IWindowPlace SizeOf(OverlayRenderer r) => r == _buffs ? _s.Buffs : r == _gauge ? _s.Gauge : r == _debuffs ? _s.Debuffs : r == _judgment ? _s.Judgment : r == _amsu ? _s.Amsu : r == _raid ? _s.Raids : r == _ring ? _s.Ring : _s.Overlay;
 
     /// <summary>The window sized by its outline here (null: its size is set elsewhere).</summary>
-    SizedWindow? Sizing(OverlayRenderer r) => r == _gauge ? SizedWindow.Gauge : r == _judgment ? SizedWindow.Judgment : r == _amsu ? SizedWindow.Amsu : r == _raid ? SizedWindow.Raid : null;
+    SizedWindow? Sizing(OverlayRenderer r) => r == _gauge ? SizedWindow.Gauge : r == _judgment ? SizedWindow.Judgment : r == _amsu ? SizedWindow.Amsu : r == _raid ? SizedWindow.Raid : r == _ring ? SizedWindow.Ring : null;
 
     /// <summary>The plate handle at <paramref name="at"/> (<paramref name="r"/>'s coordinates): the bottom-right corner on any window, the
     /// middle of the right and bottom edges where the window has two sizes.</summary>

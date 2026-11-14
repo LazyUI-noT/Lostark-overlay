@@ -41,7 +41,8 @@ public sealed partial class Engine : IDisposable
         RaidSettings? Raids = null, IReadOnlyList<RaidGate>? RaidGates = null, IReadOnlyList<(string GateId, Image Template)>? BossNames = null,
         bool MeterOn = false, IReadOnlyDictionary<string, PixelRect>? MeterPanels = null, bool AmsuOn = false,
         AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool BuffsInRaidOnly = false,
-        int BossCount = Geometry.MaxBossSlots, bool HomeworkRead = false, double BossHpEvery = MeterSettings.DefaultHpEvery)
+        int BossCount = Geometry.MaxBossSlots, bool HomeworkRead = false, double BossHpEvery = MeterSettings.DefaultHpEvery,
+        RingDefs? Ring = null, (string Below, string Above)? OrbPick = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -73,6 +74,8 @@ public sealed partial class Engine : IDisposable
     public event Action<Image, IReadOnlyList<Image>?, IReadOnlyList<Image>>? SubclassSlotCaptured;
     /// <summary>Result of <see cref="RequestSkills"/>: the 일반 slots ready now, or null when the bar is greyed out.</summary>
     public event Action<IReadOnlyList<Image>?>? SkillsCaptured;
+    /// <summary>The orb's liquid told the 직업각인 (OrbHue, <see cref="Config.OrbPick"/>): five reads a second apart agreed.</summary>
+    public event Action<string>? OrbSubclassSeen;
     /// <summary>A skill's icon as the skill bar shows it when ready (아이콘으로 표시): while a copy run is on
     /// (<see cref="CopyIcons"/>), once per slot at its first ready read. Never while the HUD is hidden or the bar is greyed.
     /// The int is the run it was read in (<see cref="CopyIcons"/>'s result), so a read posted before a new run can be dropped.</summary>
@@ -120,8 +123,18 @@ public sealed partial class Engine : IDisposable
     // Debuff icons: 3 a second with none up, 5 while one is (boxes filled from the left, plus the next); the 결투자's timer
     // 10 a second in between, its ticks putting the countdown back to when it really came (DebuffTracker.DuelTimer).
     DebuffSlots _slots = DebuffSlots.None;   // your debuff row at the last read and when each pass ran (DebuffSchedule: cadence v2)
+    // 기력·충격 (breaker-aden.plan.md phase 4): the ring's halves, read with the gauge's pace and filter, each on its own.
+    RingState? _ring;
+    RingDefs? _ringFrom;
+    TimeSpan _lastRing;
+    readonly GaugeFilter _ringLeft = new() { Run = 3 }, _ringRight = new() { Run = 3 };   // the ring steps often over clean plateaus (GaugeFilter.Run)
+    // 직업각인 by the orb's colour (breaker-aden.plan.md phase 4b): one hue a second while the orb is filled enough.
+    OrbVote _orbVote = OrbVote.Empty;
+    (string Below, string Above)? _orbPickFrom;
+    TimeSpan _orbHueAt;
+    static readonly TimeSpan OrbHueEvery = TimeSpan.FromSeconds(1);
     double? _gauge;
-    GaugeDef? _gaugeFrom;      // the definition _gauge was read with (one instance per 직업각인: CharacterService caches it)
+    GaugeDef? _gaugeFrom;     // the definition _gauge was read with (one instance per 직업각인: CharacterService caches it)
     readonly GaugeFilter _gaugeFilter = new();   // drops the shine the game sweeps over the gauge
     readonly ImmediateSpend _spender = new();   // which presses drop the gauge at once (도화가, 바드)
     bool _gaugeSpent;   // the gauge was set by a press: publish it without waiting for a read
@@ -387,12 +400,15 @@ public sealed partial class Engine : IDisposable
         // The buff row is polled every 50 ms, 단심 / 레이드 / 암수 every 100 ms and the gauge by GaugePace, whether or not a slot is due.
         bool poll = Elapsed(due, _lastPoll, PollEvery), buffPoll = Elapsed(due, _lastBuff, BuffEvery);
         var gaugeDef = config.Reads.Gauge ? config.Gauge : null;
-        if (config.Gauge != _gaugeFrom) { (_gaugeFrom, _gauge) = (config.Gauge, null); _gaugeFilter.Reset(); _spender.Reset(); }   // another character: not its value
+        if (config.Gauge != _gaugeFrom) { (_gaugeFrom, _gauge) = (config.Gauge, null); _gaugeFilter.Reset(); _spender.Reset(); _orbVote = OrbVote.Empty; }   // another character: not its value
+        if (config.OrbPick != _orbPickFrom) (_orbPickFrom, _orbVote) = (config.OrbPick, OrbVote.Empty);   // asked again: no hues from before
+        if (config.Ring != _ringFrom) { (_ringFrom, _ring) = (config.Ring, null); _ringLeft.Reset(); _ringRight.Reset(); }
         if (config.Character != _gainsFor) SwitchGains(config.Character);
         if (config.Character != _stacksFor) { _stacksFor = config.Character; _stackLearner.Reset(); }
         SwitchJudgment(config, now);
         StepPresence(now);
         _gaugeFilter.Mode = config.ReadMode;
+        _gaugeFilter.FollowsDrain = config.GaugeRule?.DrainSlot is not null;
         // Another class: its own 아덴 spots and ready looks (the file name holds both, SlotCalibration.FileName).
         if (CalibrationFile(SlotId.아덴2, config) is var aden && aden != _adenFile) { _adenFile = aden; ReloadAden(config); }
         (_buffsOn, _gaugeOn, _debuffsOn) = (config.Reads.BuffSize is not null, gaugeDef is not null, DebuffRaid(config, now) != Raid.없음);
@@ -409,6 +425,7 @@ public sealed partial class Engine : IDisposable
         bool debuffs = debuffIcons || fastTimers.Count > 0, boss = debuffIcons && Elapsed(due, _lastBoss, BossEvery);
         int debuffBoxes = DebuffSchedule.Boxes(_slots);
         if (!Elapsed(due, _lastGauge, _gaugeFilter.Armed(due) ? GaugePace.Fast : GaugePace.Every(due, _castAt))) gaugeDef = null;
+        var ringDefs = config.Ring is { } ringNow && Elapsed(due, _lastRing, GaugePace.Every(due, _castAt)) ? ringNow : null;
         bool preview = _previewing && Elapsed(due, _lastPreview, PreviewEvery);
         var (judgRow, judgBand) = JudgmentRects(config.Judgment, poll, due);
         bool judging = judgRow is not null || judgBand is not null;
@@ -417,11 +434,12 @@ public sealed partial class Engine : IDisposable
         var (meterHp, meterPanel, dungeonRect, searchRect) = MeterRects(config, due);
         raiding |= meterHp is not null;
         var (bossProbe, meterProbe, loadingBar) = (BossProbeRect(config, due), MeterProbeRect(config, due), LoadingRect(config, due));
+        var channelCorner = ChannelRect(config, due);
         var (menuTitle, menuPanel, menuWaiting, menuWatch) = MenuRects(due);
         var pictures = PictureRects();   // 감지: a mark's moment or the Live box
         bool sideReads = pictures.Count > 0 || dungeonRect is not null || searchRect is not null || bossProbe is not null || meterProbe is not null || loadingBar is not null
-            || menuTitle is not null || menuPanel is not null || menuWatch is not null;   // ride on this step's capture: no frame wait of their own
-        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && !debuffs && !preview && !judging && !raiding && !sideReads)
+            || channelCorner is not null || menuTitle is not null || menuPanel is not null || menuWatch is not null;   // ride on this step's capture: no frame wait of their own
+        if (slots.Count == 0 && !wantLabel && buffSize is null && gaugeDef is null && ringDefs is null && !debuffs && !preview && !judging && !raiding && !sideReads)
         {
             if (Advance(now) | _gaugeSpent) { _gaugeSpent = false; Publish(now); }
             Thread.Sleep(4);
@@ -459,6 +477,8 @@ public sealed partial class Engine : IDisposable
         if (meterProbe is { } meterSpot) rects.Add(meterSpot);
         int loadingAt = rects.Count;
         if (loadingBar is { } loadingStrip) rects.Add(loadingStrip);
+        int channelAt = rects.Count;
+        if (channelCorner is { } corner) rects.Add(corner);
         int menuAt = rects.Count;   // the game menu: its title strip, its panel and waiting corner, the watched area (Engine.Menu.cs)
         if (menuTitle is { } titleStrip) rects.Add(titleStrip);
         int menuPanelAt = rects.Count;
@@ -473,6 +493,8 @@ public sealed partial class Engine : IDisposable
         if (_shadow is not null && ShadowGate(config) is null) _shadow = null;   // switched off mid-gimmick: its text doesn't stay behind
         var shadowRect = ShadowRect(config, meterHp ?? (_meterOn ? null : bossProbe));
         if (shadowRect is { } shadowNumber) rects.Add(shadowNumber);
+        int ringAt = rects.Count;
+        if (ringDefs is not null) { rects.Add(Geometry.ToScreen(ringDefs.Left.Ref, _vp, _fit!)); rects.Add(Geometry.ToScreen(ringDefs.Right.Ref, _vp, _fit!)); }
 
         int pictureAt = rects.Count;
         rects.AddRange(pictures.Select(p => p.Area));
@@ -502,13 +524,26 @@ public sealed partial class Engine : IDisposable
         if (gaugeDef is not null) _lastGauge = t;
         if (gaugeDef is not null && _hud.Visible == true)   // loading screens and cutscenes would read as empty
         {
-            double v = Perf.Run("아덴 게이지", () => _gaugeFilter.Add(gaugeDef!.Read(images[slots.Count + (wantLabel ? 1 : 0)]), t));
+            var orb = images[slots.Count + (wantLabel ? 1 : 0)];
+            double v = Perf.Run("아덴 게이지", () => _gaugeFilter.Add(gaugeDef!.Read(orb), t));
+            if (config.OrbPick is { } pick && v >= OrbHue.MinFill && t - _orbHueAt >= OrbHueEvery) StepOrbHue(orb, gaugeDef!, pick, t);
             changed |= v != _gauge;
             _gauge = v;
+            if (_gaugeFilter.TakeDrainedFromFull() && config.GaugeRule?.DrainSlot is { } drained)   // 수라의길's Z: its flash is often unread
+            {
+                var was = _states[(int)drained];
+                var used = CooldownTracker.UsedElsewhere(was, t);
+                if (used != was) (_states[(int)drained], changed) = (used, true);
+                // Whatever the slot read (an Unreadable blip at Z too): 코어 322's window starts, and the gauge is read every
+                // frame through the drain as after any cast. A watch already open is only extended.
+                _castAt = t;
+                WatchAfterCast(config, drained, t);
+            }
             if (!_previewing) _gains.Seen(v, t);
             if (Elapsed(now, _gainsSavedAt, GainsSaveEvery)) { SaveGains(); _gainsSavedAt = now; }
         }
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
+        if (ringDefs is not null) changed |= ReadRing(ringDefs, images[ringAt], images[ringAt + 1], t);
         if (buffSize is { } read) changed |= Perf.Run("버프", () => ReadBuffs(images[debuffAt - 1], read, config.BuffCount, t));
         if (debuffIcons) changed |= Perf.Run("디버프", () => ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, config.BossSize, t, debuffBoxes));
         else if (fastTimers.Count > 0) changed |= Perf.Run("디버프 (시간)", () => ReadDebuffTimers(images, debuffAt, fastTimers, debuffSize, t));
@@ -522,6 +557,7 @@ public sealed partial class Engine : IDisposable
         if (bossProbe is not null) changed |= Perf.Run("보스 바 확인", () => ReadBossProbe(images[bossRowAt], shadowRect is null ? null : images[shadowAt], t));
         if (meterProbe is not null) ReadMeterProbe(images[meterProbeAt], t);
         if (loadingBar is not null) ReadLoading(images[loadingAt], t);
+        if (channelCorner is not null) ReadChannel(images[channelAt], t);
         if (dungeonRect is not null) StartDungeon(images[dungeonAt], t);
         if (menuTitle is not null) Perf.Run("게임 메뉴 (제목 비교)", () => StepMenuTitle(images[menuAt], t));
         if (menuWatch is not null) Perf.Run("게임 메뉴 (칸 비교)", () => StepMenuWatch(images[menuWatchAt], t));
@@ -547,6 +583,64 @@ public sealed partial class Engine : IDisposable
         }
     }
 
+    void StepOrbHue(Image orb, GaugeDef def, (string Below, string Above) pick, TimeSpan t)
+    {
+        _orbHueAt = t;
+        _orbVote = _orbVote.Add(Perf.Run("직업각인 색", () => OrbHue.Median(orb, def)), t);
+        if (_orbVote.Pick(pick) is not { } sub) return;
+        _orbVote = OrbVote.Empty;
+        OrbSubclassSeen?.Invoke(sub);
+    }
+
+    /// <summary>The ring's halves through their filters; with the HUD hidden (loading, cutscene) nothing is read and the ring is
+    /// dropped (no value: the window draws nothing) instead of keeping the last value. Returns whether it changed.</summary>
+    bool ReadRing(RingDefs defs, Image left, Image right, TimeSpan t)
+    {
+        _lastRing = t;
+        RingState? next = null;
+        if (_hud.Visible == true)
+            next = new(Perf.Run("기력·충격", () => _ringLeft.Add(defs.Left.Read(left), t)), _ringRight.Add(defs.Right.Read(right), t));
+        else { _ringLeft.Reset(); _ringRight.Reset(); }
+        bool changed = next != _ring;
+        _ring = next;
+        return changed;
+    }
+
+    // 코어 watch log (breaker-aden.plan.md phase 3): a line when a cast starts a watch, and one when it ends with each
+    // watched slot's reads while on cooldown, so a replay shows the faster reads (about 10 a second, against 2–3 unwatched).
+    TimeSpan? _coreLogEnd;
+    SlotId _coreLogCast;
+    readonly int[] _coreReads = new int[SlotInfo.All.Length];
+    readonly HashSet<SlotId> _coreLogSlots = [];
+
+    void WatchAfterCast(Config config, SlotId cast, TimeSpan at)
+    {
+        var end = at;
+        var targets = new List<SlotId>();
+        CoreEffects.ApplyAfterCast(config.CoreWatches, cast, at, (slot, until) => { _scheduler.Watch(slot, until); targets.Add(slot); if (until > end) end = until; });
+        if (targets.Count == 0) return;
+        if (_coreLogEnd is not null) { _coreLogEnd = at; FlushCoreLog(TimeSpan.MaxValue); }   // a watch still open: its line ends here (the scheduler extends it)
+        (_coreLogEnd, _coreLogCast) = (end, cast);
+        Array.Clear(_coreReads);
+        _coreLogSlots.Clear();
+        _coreLogSlots.UnionWith(targets);
+        Trace.WriteLine($"[core] {cast} at {at.TotalSeconds:0.0}s: {string.Join(" ", targets)} read every frame to {end.TotalSeconds:0.0}s");
+    }
+
+    void CountCoreRead(SlotId slot, TimeSpan t)
+    {
+        if (_coreLogEnd is { } end && t <= end && _coreLogSlots.Contains(slot) && _states[(int)slot].Phase is SlotPhase.Cooldown or SlotPhase.LongCooldown)
+            _coreReads[(int)slot]++;
+    }
+
+    void FlushCoreLog(TimeSpan t)
+    {
+        if (_coreLogEnd is not { } end || t <= end) return;
+        _coreLogEnd = null;
+        var read = _coreLogSlots.Where(s => _coreReads[(int)s] > 0).Select(s => $"{s} {_coreReads[(int)s]}");
+        Trace.WriteLine($"[core] {_coreLogCast} watch ended at {end.TotalSeconds:0.0}s, reads on cooldown: {(read.Any() ? string.Join(", ", read) : "none")}");
+    }
+
     /// <summary>Reads each captured slot and updates its state. Returns true if anything changed.</summary>
     TimeSpan _lastVote;
 
@@ -561,6 +655,7 @@ public sealed partial class Engine : IDisposable
         int iconRun = Volatile.Read(ref _iconRun);   // a run started after this read sends this step's icons as the old run
         if (_iconsStale) { _iconsStale = false; Array.Clear(_iconFresh); }
         Image? subclassCrop = null;
+        FlushCoreLog(t);
         for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
@@ -568,6 +663,7 @@ public sealed partial class Engine : IDisposable
             var cal = _cal[(int)slot];
             var reading = SlotClassifier.Read(slot, crop, t, cal, _digits!, Dark(slot, config));
             _scheduler.MarkRead(slot, t);
+            if (!voteOnly) CountCoreRead(slot, t);
             // The capture buffer is reused next step: keep the pixels in this slot's own buffer (no allocation once sized);
             // the rare handouts (ReadyOrdinary, the subclass capture) get copies of it.
             if (slot is >= SlotId.일반1 and <= SlotId.일반8)
@@ -767,6 +863,7 @@ public sealed partial class Engine : IDisposable
             Debuffs = _debuffsOn ? _debuffs : null,
             Judgment = _judgmentOn ? _judgment : null,
             Raid = _raid,
+            Ring = _config.Ring is null ? null : _ring,
             Meter = _meterOn ? _meter : null,
             Presence = _presence,
             Dungeon = _meterOn ? _dungeon : null,
@@ -817,7 +914,7 @@ public sealed partial class Engine : IDisposable
     {
         _castAt = at;
         Arm(slot, config, at);
-        CoreEffects.ApplyAfterCast(config.CoreWatches, slot, at, _scheduler.Watch);
+        WatchAfterCast(config, slot, at);
         if (_gauge is not { } gauge || _hud.Visible != true) return;
         if (!_previewing) _gains.Cast(slot, at, gauge);   // a gauge read at a fit still being moved teaches nothing
         if (config.ReadMode == GaugeReadMode.Predicted && _gains.Expected(slot) is { } rise and > 0) _gaugeFilter.Expect(rise, at + GaugeGains.Window);

@@ -7,7 +7,7 @@ using static GaugeOverlay.App.UI.UiBuild;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>코어 빌드 in 설정 → 캐릭터, under the character picker: the active 직업각인's choice (Settings.Cores), which the engine reads
+/// <summary>코어 빌드 in 설정 → 캐릭터, under the character picker: 편집 중's 직업각인's choice (Settings.Cores), which the engine reads
 /// as a snapshot (CharacterService.CoreWatches, through Configure). Nothing here knows what an effect does; the data does.</summary>
 public partial class SettingsWindow
 {
@@ -19,15 +19,18 @@ public partial class SettingsWindow
         "딜러는 해와 달, 서포터는 별의 레벨(1~3)을 고릅니다. 직업각인마다 따로 저장되고, 기본은 꺼짐입니다. " +
         "코어 빌드는 화면에서 읽지도, 파티원에게 보내지도 않습니다.";
 
-    /// <summary>The 코어 빌드 rows of the active 직업각인: 적용, the levels its role chooses, and for each skill an effect tracks the slot
+    /// <summary>The 코어 빌드 rows of 편집 중's 직업각인 (none for 기본): 적용, the levels its role chooses, and for each skill an effect tracks the slot
     /// it sits in. Edits go to <see cref="Settings.SetCore"/> and the engine at once (<see cref="Changed"/>); the rows after the checkbox
     /// are disabled, not rebuilt, while it is off, so the table above keeps its NEW marks.</summary>
     void CoreRows(Panel p)
     {
-        if (_chars.Active is not { Subclass.Length: > 0 } c) return;
+        // 편집 중's 직업각인, not the one read (user, 2026-11-14); the engine applies the played one's (CoreWatches).
+        if (ShownSubclass is not { } shown) return;
+        var c = (Class: shown.Class.Name, Subclass: shown.Sub);
+        var role = shown.Class.RoleOf(shown.Sub);
         string key = Settings.CharacterKey(c.Class, c.Subclass);
         var choice = _s.CoreOf(key);
-        var effects = _chars.ActiveCoreEffects;
+        var effects = _chars.CoreEffectsOf(c.Class, c.Subclass);
         var gated = new List<UIElement>();
         void Edit(Func<CoreChoice, CoreChoice> change) { _s.SetCore(key, change(_s.CoreOf(key))); Changed(); }
         T Gate<T>(T row) where T : UIElement { row.IsEnabled = choice.Apply; gated.Add(row); return row; }
@@ -47,13 +50,13 @@ public partial class SettingsWindow
         {
             slots.Children.Clear();
             var now = _s.CoreOf(key);
-            foreach (var trigger in CoreEffects.Triggers(now, _chars.Role, effects))
+            foreach (var trigger in CoreEffects.Triggers(now, role, effects))
                 slots.Children.Add(HelpRow($"{Josa.Subject(trigger)} 있는 칸", "앱은 스킬 이름을 읽지 않습니다. 이 스킬을 어느 칸에 두었는지 고르세요. 그 칸의 쿨타임이 시작되면 효과를 적용합니다.",
                     SlotCombo(now.Slots.TryGetValue(trigger, out var slot) ? slot : null, v => Edit(x => x.WithSlot(trigger, v)))));
         }
 
         var levels = new List<UIElement>();
-        foreach (var core in CoreEffects.Allowed(_chars.Role))
+        foreach (var core in CoreEffects.Allowed(role))
         {
             levels.Add(Label(core.ToString()));
             levels.Add(LevelCombo($"{core} 레벨", choice.Of(core), n => { Edit(x => x.With(core, n)); FillSlots(); }));

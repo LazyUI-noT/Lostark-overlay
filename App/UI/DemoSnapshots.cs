@@ -167,7 +167,8 @@ public sealed class DemoSnapshots
         SlotState Lit(SlotId id) => State(id) with { Gold = id is SlotId.일반3 or SlotId.일반4 && t is >= 12 and < 18 };   // gold frame
         return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist),
             Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)),   // 심판 at 1 s: its 6 s, then the 24 s cooldown
-            Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12), MeterView = DemoMeter(60 + (int)t) };   // the 줄 수 창 glows at 755 for 7 s
+            Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12), MeterView = DemoMeter(60 + (int)t),   // the 줄 수 창 glows at 755 for 7 s
+            Ring = new RingState(Math.Min(1, t % 10 / 8), Math.Min(1, (t + 5) % 10 / 8)) };   // 기력·충격, drawn only for a class with a ring (--as=브레이커:…)
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap
@@ -225,7 +226,7 @@ public sealed class DemoSnapshots
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
         var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
-            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
+            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true), Ring = new RingState(0.8, 0.35) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),
