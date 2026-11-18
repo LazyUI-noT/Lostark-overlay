@@ -20,7 +20,8 @@ public sealed partial class OverlayRenderer
     public bool MeterOnly { get; set; }
 
     /// <summary>My row's id (drawn in my colour); 0 alone.</summary>
-    public ulong MeterMe { get; set; }
+    public ulong MeterMe { get => _meterMe; set { if (value != _meterMe) (_meterMe, _meterScene) = (value, null); } }
+    ulong _meterMe;
 
     (double W, double Row) MeterUnit => (BoxSize(Settings.Meter.Width, MeterWidth), BoxSize(Settings.Meter.Height, MeterRow));
 
@@ -44,20 +45,60 @@ public sealed partial class OverlayRenderer
     double MeterSkillHeight(double row) => _player?.Snapshot.MeterView?.Skill is null ? 0 : row * MeterSkillRow;
 
     /// <summary>스킬 사용 횟수 under the header, in every look: mine alone, "—" dimmed with nothing to count from.</summary>
-    void MeterSkillDraw(DrawingContext dc, Rect r, MeterSkillLine skill)
+    void MeterSkillDraw(MeterScene dc, Rect r, MeterSkillLine skill)
     {
         string rate = skill.PerMinute is { } n ? $"{n:0.0}회/분" : "—";
         MeterText(dc, new(r.X, r.Y), skill.Name, r.Height * 0.68, 0.85);
         MeterTextRight(dc, new(r.Right, r.Y), rate, r.Height * 0.68, skill.PerMinute is null ? 0.45 : 1);
     }
 
-    void DrawMeter(DrawingContext dc)
+    /// <summary>The meter as it was drawn once a draw, recorded (<see cref="MeterScene"/>): null until the next draw records it.</summary>
+    MeterScene? _meterScene;
+    /// <summary>Each bar's value easing to its latest (overlay-motion.plan.md phase 6), by the bar's key.</summary>
+    readonly Dictionary<object, Glide> _meterBars = [];
+
+    /// <summary>A frame of the meter: recorded again when its data, the settings or anything else asked for a draw (not a loop
+    /// frame), then drawn with each bar at its eased value. The text is drawn once per record; a frame between redraws the bars.</summary>
+    void DrawMeterFrame(DrawingContext dc, double ms)
+    {
+        if (_meterScene is null || !_frameAsked) RecordMeter(ms);
+        else Services.Perf.Count("그리기: 미터기 창 · 막대만");
+        if (_meterScene!.Draw(dc, _meterBars, ms, OverlayMotion.MeterBarMs)) _animating = true;
+    }
+
+    // The text is recorded at the window's DPI: a new DPI records it again at the next draw, loop frame or not. (The size
+    // needs nothing of its own: MeterPanelSize reads only the settings and the view, which drop the recording themselves,
+    // and a size-changed callback comes after the arrange that already drew.)
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        _meterScene = null;
+        base.OnDpiChanged(oldDpi, newDpi);
+    }
+
+    void RecordMeter(double ms)
+    {
+        var scene = new MeterScene();
+        DrawMeter(scene);
+        scene.End();
+        bool motion = NewMotion;   // bars ease 240 ms to a new value (overlay-motion.plan.md phase 6); edit mode and previews don't
+        var seen = new HashSet<object>();
+        foreach (var b in scene.Bars)
+        {
+            seen.Add(b.Key);
+            // A bar new to the meter (a row joining) stands at its value; numbers are never eased, only the bars.
+            _meterBars[b.Key] = _meterBars.TryGetValue(b.Key, out var g) ? g.Toward(b.Value, ms, OverlayMotion.MeterBarMs, motion) : Glide.At(b.Value);
+        }
+        foreach (var gone in _meterBars.Keys.Where(k => !seen.Contains(k)).ToList()) _meterBars.Remove(gone);
+        _meterScene = scene;
+    }
+
+    void DrawMeter(MeterScene dc)
     {
         var m = Settings.Meter;
         var size = MeterPanelSize();
         var (w, row) = MeterUnit;
         var panel = new Rect(Bleed, Bleed, w, size.Height - 2 * Bleed);
-        dc.PushOpacity(MeterSettings.ClampOpacity(m.Opacity));
+        dc.Section(MeterSettings.ClampOpacity(m.Opacity));
         dc.DrawRoundedRectangle(Solid(UiColor.Parse(m.Background, Color.FromArgb(0xCC, 0x10, 0x14, 0x18))), null, panel, 4, 4);
         var view = _player?.Snapshot.MeterView;
         _ghostShown = null;
@@ -80,12 +121,10 @@ public sealed partial class OverlayRenderer
         double noteX = panel.X + w * 0.32, noteSize = row * 0.4;
         if (note is not null) MeterText(dc, new(noteX, panel.Y + row * 0.25), note, noteSize, 0.7);
         MeterHeader(dc, new Rect(panel.X + 6, panel.Y, w - 12, row), view, note is null || noteSize < MinTimerFont ? null : noteX + Text(note, noteSize).Width);
-        dc.Pop();
         if (bars <= 0) return;
         // Their own 투명도 (profile-looks.plan.md), outside the panel's; on the panel's background, under none of the body.
-        dc.PushOpacity(MeterSettings.ClampOpacity(m.BarOpacity ?? m.Opacity));
+        dc.Section(MeterSettings.ClampOpacity(m.BarOpacity ?? m.Opacity));
         MeterBuffBars(dc, new Rect(body.X, body.Bottom + 2, body.Width, bars - 2), view);
-        dc.Pop();
     }
 
     /// <summary>How the 비교 line drawn this frame was picked; null when none was drawn.</summary>
@@ -93,7 +132,7 @@ public sealed partial class OverlayRenderer
 
     /// <summary>The timer at the left; the boss and my share at the right, the name shortened with "…" so it ends before the
     /// timer or the note (<paramref name="noteEnd"/>: 전분 가려짐, 비교) and the figure after it stays whole.</summary>
-    void MeterHeader(DrawingContext dc, Rect r, MeterView? v, double? noteEnd)
+    void MeterHeader(MeterScene dc, Rect r, MeterView? v, double? noteEnd)
     {
         string timer = v?.Timer is { } t ? $"{t / 60:00}:{t % 60:00}" : "--:--";
         string state = v is null ? "" : v.Running ? "▶" : "■";
@@ -129,14 +168,15 @@ public sealed partial class OverlayRenderer
         return r.Role == MeterRole.서포터 ? UiColor.TryParse(m.SupportColor) ?? MeterSupport : UiColor.TryParse(m.DealerColor) ?? MeterDealer;
     }
 
-    void MeterRowsDraw(DrawingContext dc, Rect body, MeterView v, double row)
+    void MeterRowsDraw(MeterScene dc, Rect body, MeterView v, double row)
     {
         var m = Settings.Meter;
         double y = body.Y;
         var supports = v.Rows.Where(r => r.Role == MeterRole.서포터).ToList();
+        int slot = 0;
         foreach (var r in v.Rows.Where(r => r.Role == MeterRole.딜러).Take(MeterRows))
         {
-            MeterRowDraw(dc, new Rect(body.X, y, body.Width, row - 2), r, row);
+            MeterRowDraw(dc, new Rect(body.X, y, body.Width, row - 2), r, row, slot++);
             y += row;
         }
         if (m.Support && supports.Count > 0)
@@ -148,7 +188,7 @@ public sealed partial class OverlayRenderer
                 var s = supports[i];
                 var cell = new Rect(body.X + body.Width * 0.38 + i * each, y + row * 0.15, each - 4, row * 0.7);
                 dc.DrawRectangle(Solid(Color.FromArgb(0x60, 0, 0, 0)), null, cell);
-                if (s.Share is { } sh) dc.DrawRectangle(Solid(MeterColor(s)), null, cell with { Width = cell.Width * Math.Clamp(sh, 0, 1) });
+                if (s.Share is { } sh) dc.Add(("서포터", i), sh, v => cell with { Width = cell.Width * Math.Clamp(v, 0, 1) }, Solid(MeterColor(s)));
                 MeterText(dc, new(cell.X + 3, cell.Y), Value(s), row * 0.36, 1);
             }
             y += row;
@@ -156,7 +196,7 @@ public sealed partial class OverlayRenderer
         if (m.Other && v.Other is { } o)
         {
             var cell = new Rect(body.X, y, body.Width, row - 2);
-            dc.DrawRectangle(Solid(UiColor.TryParse(m.OtherColor) ?? MeterOtherColor), null, cell with { Width = cell.Width * Math.Clamp(o, 0, 1) });
+            dc.Add("기타", o, v => cell with { Width = cell.Width * Math.Clamp(v, 0, 1) }, Solid(UiColor.TryParse(m.OtherColor) ?? MeterOtherColor));
             MeterText(dc, new(cell.X + 4, cell.Y + row * 0.18), "기타", row * 0.45, 0.85);
             MeterTextRight(dc, new(cell.Right - 4, cell.Y + row * 0.18), $"{o * 100:0.0}%", row * 0.45, 0.85);
             y += row;
@@ -164,11 +204,12 @@ public sealed partial class OverlayRenderer
         if (m.Graph) MeterLines(dc, new Rect(body.X, y + 2, body.Width, Math.Max(0, body.Bottom - y - 2)), v);
     }
 
-    void MeterRowDraw(DrawingContext dc, Rect cell, MeterRow r, double row)
+    /// <param name="slot">The row's place from the top: its bar's key (an id can repeat; a rank change eases the slot's bar).</param>
+    void MeterRowDraw(MeterScene dc, Rect cell, MeterRow r, double row, int slot)
     {
         var c = MeterColor(r);
         dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, cell);
-        if (r.Share is { } s) dc.DrawRectangle(Solid(Color.FromArgb(0xB0, c.R, c.G, c.B)), null, cell with { Width = cell.Width * Math.Clamp(s, 0, 1) });
+        if (r.Share is { } s) dc.Add(("행", slot), s, v => cell with { Width = cell.Width * Math.Clamp(v, 0, 1) }, Solid(Color.FromArgb(0xB0, c.R, c.G, c.B)));
         string party = r.Party == 2 && Settings.Meter.Scope == MeterScope.파티별 ? "2 · " : "";
         MeterText(dc, new(cell.X + 4, cell.Y + row * 0.16), party, row * 0.46, 1);   // no names (user, 2026-11-13): colour and class tell rows apart
         if (Emblems.Class(r.ClassId)?.Name is { } cls) MeterText(dc, new(cell.X + cell.Width * 0.36, cell.Y + row * 0.24), cls, row * 0.34, 0.6);
@@ -186,7 +227,7 @@ public sealed partial class OverlayRenderer
         _ => r.Share is { } s ? $"{s * 100:0.0}%" : "–",
     };
 
-    void MeterColumns(DrawingContext dc, Rect body, MeterView v)
+    void MeterColumns(MeterScene dc, Rect body, MeterView v)
     {
         var rows = v.Rows.Take(MeterRows).ToList();
         if (rows.Count == 0) return;
@@ -194,13 +235,17 @@ public sealed partial class OverlayRenderer
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
-            double h = (body.Height - label) * Math.Clamp(r.Share ?? 0, 0, 1);
-            dc.DrawRectangle(Solid(MeterColor(r)), null, new Rect(body.X + i * each + 2, body.Bottom - label - h, Math.Max(0, each - 4), h));
+            int at = i;   // the loop's i is one variable: the rectangle keeps this bar's
+            dc.Add(("세로", at), r.Share ?? 0, v =>
+            {
+                double h = (body.Height - label) * Math.Clamp(v, 0, 1);
+                return new Rect(body.X + at * each + 2, body.Bottom - label - h, Math.Max(0, each - 4), h);
+            }, Solid(MeterColor(r)));
             MeterText(dc, new(body.X + i * each + 2, body.Bottom - label * 0.5), Value(r), label * 0.38, 0.8);
         }
     }
 
-    void MeterStrip(DrawingContext dc, Rect body, MeterView v)
+    void MeterStrip(MeterScene dc, Rect body, MeterView v)
     {
         double x = body.X, h = body.Height * 0.45;
         foreach (var r in v.Rows.Where(r => r.Role == MeterRole.딜러 && r.Share is not null))
@@ -215,7 +260,7 @@ public sealed partial class OverlayRenderer
     }
 
     /// <summary>파티 비교: 1파티 from the left, 2파티 from the right, in % or 피해량.</summary>
-    void MeterTug(DrawingContext dc, Rect body, MeterView v)
+    void MeterTug(MeterScene dc, Rect body, MeterView v)
     {
         double Sum(int party) => v.Rows.Where(r => r.Party == party && r.Role == MeterRole.딜러)
             .Sum(r => Settings.Meter.CompareAsShare ? r.Share ?? 0 : r.Damage);
@@ -232,7 +277,7 @@ public sealed partial class OverlayRenderer
     /// <summary>Each dealer's DPS over this 전분 record (그래프 범위: or its last minute), one line each, and always mine (alone, or as a support). The scale is a
     /// round step (GridScale), labelled at the left in 억/초; the time lines fall on round steps, labelled m:ss below. A graph
     /// too small for its labels draws its lines alone.</summary>
-    void MeterLines(DrawingContext dc, Rect area, MeterView v)
+    void MeterLines(MeterScene dc, Rect area, MeterView v)
     {
         if (area.Height < 8) return;
         dc.DrawRectangle(Solid(Color.FromArgb(0x40, 0, 0, 0)), null, area);
@@ -336,22 +381,28 @@ public sealed partial class OverlayRenderer
         }
     }
 
-    const double BuffBarRows = 2.4;   // × a row: three bars
+    const double BuffBarRow = 0.8;   // × a row, per buff bar
 
     /// <summary>버프 적용률 is on and I'm not on a support (the view says so once the meter has read).</summary>
     bool BuffBarsShown => Settings.Meter.BuffShare() == ThreeWay.켜기 && _player?.Snapshot.MeterView?.ShowBuffBars != false;
 
-    /// <summary>The buff bars' rows: the three buffs, or 공증 alone under the buff lock (BuffLock.Apply).</summary>
-    // Before the first view: the lock as it is now, so the panel doesn't open at three rows and shrink.
-    int BuffBarCount => (_player?.Snapshot.MeterView?.BuffLocked ?? Services.BuffUnlock.Locked) ? 1 : TimelineView.Buffs.Length;
+    /// <summary>The buff bars' rows (BuffLock.MeterKinds): the four buffs, or 공증 and 낙인 under the buff lock (BuffLock.Apply).</summary>
+    // Before the first view: the lock as it is now, so the panel doesn't open at four rows and shrink.
+    IReadOnlyList<BuffKind> MeterBuffKinds => BuffLock.MeterKinds(_player?.Snapshot.MeterView?.BuffLocked ?? Services.BuffUnlock.Locked);
+    /// <summary>The rows drawn (BuffLock.MeterRows): 낙인's left out while its bar is off and nothing reads it.</summary>
+    IReadOnlyList<int> MeterBuffRows => BuffLock.MeterRows(_player?.Snapshot.MeterView?.BuffLocked ?? Services.BuffUnlock.Locked,
+        Settings.Buffs.Of(BuffKind.낙인).Visible);
+    int BuffBarCount => Math.Max(1, MeterBuffRows.Count);
 
-    double BuffBarsHeight(double row) => BuffBarsShown ? row * BuffBarRows * BuffBarCount / TimelineView.Buffs.Length : 0;
+    double BuffBarsHeight(double row) => BuffBarsShown ? row * BuffBarRow * BuffBarCount : 0;
+
+    static (BuffKind Kind, string Name, Color Color) MeterBuff(BuffKind k) => TimelineView.Buffs.First(b => b.Kind == k);
 
     /// <summary>버프 적용률: the share of my damage dealt while each of my three buffs was on (TimelineView's colours); with two
     /// or more dealers sharing, 버프 분배 instead: each buff's bar is 100% of the damage dealt under it, split by dealer (who
     /// made the most of it). A note while the buff row isn't read (설정 → 버프 off). Under the buff lock: 공증's row only, its
     /// figure and bar capped at the fight's cap (BuffLock.CapFor).</summary>
-    void MeterBuffBars(DrawingContext dc, Rect r, MeterView? v)
+    void MeterBuffBars(MeterScene dc, Rect r, MeterView? v)
     {
         double each = r.Height / BuffBarCount, font = each * 0.75, label = r.Width * 0.3;
         double? cap = v?.BuffCap;
@@ -361,27 +412,33 @@ public sealed partial class OverlayRenderer
         if ((v?.BuffCover ?? party) is not { } cover) { MeterText(dc, r.TopLeft, "버프 적용률: 설정 → 버프 줄을 켜면 보입니다", font, 0.6); return; }
         bool mine = v!.BuffCover is not null;
         double text = font * (mine && party is not null ? 6 : 3.2);
-        for (int i = 0; i < TimelineView.Buffs.Length && i < cover.Count; i++)
+        var kinds = MeterBuffKinds;
+        var rows = MeterBuffRows;
+        for (int n = 0; n < rows.Count && rows[n] < cover.Count; n++)
         {
-            var (_, name, color) = TimelineView.Buffs[i];
-            double y = r.Y + i * each, share = cover[i];
+            int i = rows[n];
+            var (_, name, color) = MeterBuff(kinds[i]);
+            double y = r.Y + n * each, share = cover[i];
             MeterText(dc, new(r.X, y), name, font, 0.8);
             var bar = new Rect(r.X + label, y + each * 0.15, Math.Max(0, r.Width - label - text), each * 0.7);
             dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), null, bar);
-            dc.DrawRectangle(Solid(color), null, bar with { Width = bar.Width * BuffLock.Bar(share, cap) });
+            dc.Add(("버프", i), share, v => bar with { Width = bar.Width * BuffLock.Bar(v, cap) }, Solid(color));
             string figure = !mine ? $"({BuffLock.Figure(share, cap)})"
                 : party is not null && i < party.Count ? $"{BuffLock.Figure(share, cap)} ({BuffLock.Figure(party[i], cap)})" : BuffLock.Figure(share, cap);
             MeterTextRight(dc, new(r.Right, y), figure, font, 0.9);
         }
     }
 
-    void MeterBuffSplit(DrawingContext dc, Rect r, MeterView v, IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>> split,
+    void MeterBuffSplit(MeterScene dc, Rect r, MeterView v, IReadOnlyList<IReadOnlyList<(ulong Id, string Name, double Share)>> split,
         double each, double font, double label)
     {
-        for (int i = 0; i < TimelineView.Buffs.Length && i < split.Count; i++)
+        var kinds = MeterBuffKinds;
+        var rows = MeterBuffRows;
+        for (int n = 0; n < rows.Count && rows[n] < split.Count; n++)
         {
-            var (_, name, color) = TimelineView.Buffs[i];
-            double y = r.Y + i * each;
+            int i = rows[n];
+            var (_, name, color) = MeterBuff(kinds[i]);
+            double y = r.Y + n * each;
             MeterText(dc, new(r.X, y), name, font, 0.8);
             var bar = new Rect(r.X + label, y + each * 0.1, r.Width - label, each * 0.8);
             dc.DrawRectangle(Solid(Color.FromArgb(0x50, 0, 0, 0)), new Pen(Solid(Color.FromArgb(0x90, color.R, color.G, color.B)), 1), bar);
@@ -399,7 +456,7 @@ public sealed partial class OverlayRenderer
         }
     }
 
-    void MeterText(DrawingContext dc, Point at, string s, double size, double opacity)
+    void MeterText(MeterScene dc, Point at, string s, double size, double opacity)
     {
         if (size < MinTimerFont) return;
         dc.PushOpacity(opacity);
@@ -407,7 +464,7 @@ public sealed partial class OverlayRenderer
         dc.Pop();
     }
 
-    void MeterTextRight(DrawingContext dc, Point topRight, string s, double size, double opacity)
+    void MeterTextRight(MeterScene dc, Point topRight, string s, double size, double opacity)
     {
         if (size < MinTimerFont) return;
         var t = Text(s, size);

@@ -36,6 +36,81 @@ sealed class TrayRenderer : ToolStripProfessionalRenderer
         _ => new ToolStripProfessionalRenderer(),
     };
 
+    /// <summary>설정's measures on <paramref name="menu"/> and every submenu, in every theme (high contrast and 밝게 too): rows
+    /// <see cref="Tokens.Row.Height"/> tall, and Windows 11's rounded corners (Windows 10 has none and keeps square ones).
+    /// Applied as each menu opens, since submenus (직업 인식, 테스트 모드, 레이드) are refilled while the app runs.</summary>
+    public static void Shape(ToolStripDropDown menu)
+    {
+        menu.Opening += (_, _) => Rows(menu);
+        menu.HandleCreated += (_, _) => Round(menu);   // before the first frame, so a menu opened still is round from the start
+        if (menu.IsHandleCreated) Round(menu);
+    }
+
+    /// <summary>Menus and items already hooked; entries go with the items when a submenu is refilled.</summary>
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> Hooked = [];
+
+    static void Rows(ToolStripDropDown menu)
+    {
+        var row = MulDiv((int)Tokens.Row.Height, DpiAt(Cursor.Position), 96);
+        foreach (ToolStripItem item in menu.Items)
+        {
+            if (item is not ToolStripMenuItem m) continue;
+            m.Padding = Padding.Empty;
+            var pad = Math.Max(0, row - m.GetPreferredSize(Size.Empty).Height);
+            m.Padding = new Padding(0, pad / 2, 0, pad - pad / 2);
+            // Hooked on the item, not on HasDropDownItems: a submenu filled while this menu is open (테스트 모드's window list)
+            // is shaped when it opens. DropDownOpening fires before the submenu's own Opening.
+            if (Hooked.TryAdd(m, Hooked))
+                m.DropDownOpening += (_, _) => { if (Hooked.TryAdd(m.DropDown, Hooked)) Shape(m.DropDown); };
+        }
+    }
+
+    /// <summary>The DPI of the monitor the menu opens on (the tray click), not the menu's own: before its window exists it
+    /// still has the DPI it was made at, wrong on a second monitor with another scale.</summary>
+    static int DpiAt(Point p) =>
+        GetDpiForMonitor(MonitorFromPoint(p, 2 /* MONITOR_DEFAULTTONEAREST */), 0 /* MDT_EFFECTIVE_DPI */, out var dpi, out _) == 0 ? (int)dpi : 96;
+
+    static int MulDiv(int value, int numerator, int denominator) => (int)Math.Round(value * (double)numerator / denominator);
+
+    // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2 (8 px, Tokens.Radius.Card): Windows 11 only; Windows 10 returns an
+    // error and the corners stay square, which is the intended fallback (user, 2026-11-17).
+    static void Round(ToolStripDropDown menu)
+    {
+        int round = 2;
+        _ = DwmSetWindowAttribute(menu.Handle, 33, ref round, sizeof(int));
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern nint MonitorFromPoint(Point pt, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("shcore.dll")]
+    static extern int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
+
+    /// <summary>The hovered row as 설정's controls: inset <see cref="Tokens.Space.Tight"/> from the sides, corners
+    /// <see cref="Tokens.Radius.Control"/>, instead of WinForms' edge-to-edge box with a border.</summary>
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+    {
+        if (!e.Item.Selected || !e.Item.Enabled) return;
+        var inset = e.Item.Owner?.LogicalToDeviceUnits((int)Tokens.Space.Tight) ?? (int)Tokens.Space.Tight;
+        var r = new Rectangle(inset, 1, e.Item.Width - 2 * inset - 1, e.Item.Height - 3);   // -1: Right/Bottom are exclusive
+        var d = 2 * (e.Item.Owner?.LogicalToDeviceUnits((int)Tokens.Radius.Control) ?? (int)Tokens.Radius.Control);
+        if (r.Width <= d || r.Height <= d) return;
+        using var path = new GraphicsPath();
+        path.AddArc(r.Left, r.Top, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        using var brush = new SolidBrush(_c.Hover);
+        var state = e.Graphics.Save();   // the Graphics is shared with the text and arrow drawn next
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.FillPath(brush, path);
+        e.Graphics.Restore(state);
+    }
+
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
         e.TextColor = e.Item.Enabled ? _c.Text : _c.Dim;

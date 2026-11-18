@@ -38,6 +38,23 @@ public partial class SettingsWindow
         });
     }
 
+    /// <summary>--demo --tab=… --scroll=px: the page scrolled down, for shot.ps1 on a page longer than the window.</summary>
+    internal void DemoScroll(string scroll)
+    {
+        if (!double.TryParse(scroll, NumberStyles.Float, CultureInfo.InvariantCulture, out double y)) return;
+        // ponytail: set again every half second, because a page shown again scrolls to the top (Go); demo only
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            for (int i = 0; i < DemoScrollTries; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(0.5));
+                Body.ScrollToVerticalOffset(y);
+            }
+        });
+    }
+
+    const int DemoScrollTries = 20;   // 10 s, past shot.ps1's capture at 6 s
+
     /// <summary>What 자동 인식 recognises now (a gate id, null: none), shown under 보스 인식.</summary>
     public void SetRaidSeen(string? id, string? difficulty = null)
     {
@@ -50,6 +67,9 @@ public partial class SettingsWindow
         FillRaid();
     }
 
+    /// <summary>The raid box a click just opened: its gates move in on the FillRaid that follows, once.</summary>
+    string? _raidJustOpened;
+
     /// <summary>One raid as a box: a header (chevron, name, what's on) that opens or closes it, and when open its gates inside.</summary>
     UIElement RaidBox(string name, IReadOnlyList<RaidGate> gates, Action again)
     {
@@ -58,9 +78,9 @@ public partial class SettingsWindow
         string summary = r.CountEnabled ? "줄 수 창 켜짐" : "줄 수 읽기 꺼짐";
 
         var icons = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
-        var chevron = new TextBlock { Text = open ? "" : "", FontFamily = icons, FontSize = 12, Margin = new(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
-        var title = new TextBlock { Text = name, FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-        var info = Muted(new TextBlock { Text = summary, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        var chevron = new TextBlock { Text = open ? "" : "", FontFamily = icons, FontSize = Tokens.Font.Hint, Margin = new(0, 0, Tokens.Space.Block, 0), VerticalAlignment = VerticalAlignment.Center };
+        var title = new TextBlock { Text = name, FontSize = Tokens.Font.Section, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var info = Muted(new TextBlock { Text = summary, Margin = new(Tokens.Space.Block, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         var head = new DockPanel { LastChildFill = false };
         DockPanel.SetDock(info, Dock.Right);
         head.Children.Add(info);
@@ -68,21 +88,36 @@ public partial class SettingsWindow
         head.Children.Add(title);
         var toggle = new Button
         {
-            Content = head, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(14, 10, 14, 10), Cursor = Cursors.Hand,
+            Content = head, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(Tokens.Space.Card, Tokens.Space.Block, Tokens.Space.Card, Tokens.Space.Block), Cursor = Cursors.Hand,
             Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new(0), ToolTip = open ? "접기" : "펼치기",
         };
         System.Windows.Automation.AutomationProperties.SetName(toggle, $"{name} {(open ? "접기" : "펼치기")}");
-        toggle.Click += (_, _) => { if (!_raidOpen.Remove(name)) _raidOpen.Add(name); again(); };
+        toggle.Click += (_, _) =>
+        {
+            if (!_raidOpen.Remove(name))
+            {
+                _raidOpen.Add(name);
+                _raidJustOpened = name;
+            }
+            again();
+            // After that FillRaid (Normal runs before Background): a box it didn't draw must not move on a later refill.
+            Dispatcher.BeginInvoke(() => _raidJustOpened = null, System.Windows.Threading.DispatcherPriority.Background);
+        };
 
         var inside = new StackPanel { Children = { toggle } };
         if (open)
         {
             inside.Children.Add(Divider(0, 0));
-            var body = new CardStack { Margin = new(14, 4, 14, 8) };
+            var body = new CardStack { Margin = new(Tokens.Space.Block, Tokens.Space.Tight, Tokens.Space.Block, Tokens.Space.Gap) };
             foreach (var g in gates) GateRows(body, g, again);
             inside.Children.Add(body);
+            if (name == _raidJustOpened)
+            {
+                _raidJustOpened = null;   // the next FillRaid is a refill
+                UiMotion.Arrive(body, -UiMotion.OpenDrop, UiMotion.OpenTime);
+            }
         }
-        var box = new Border { Child = inside, CornerRadius = new(8), BorderThickness = new(1), Margin = new(0, 0, 0, 8) };
+        var box = new Border { Child = inside, CornerRadius = new(Tokens.Radius.Card), BorderThickness = new(1), Margin = new(0, 0, 0, Tokens.Space.Gap) };
         box.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         box.SetResourceReference(Border.BackgroundProperty, CardBrushKey);   // reads as a box even when closed
         CardStack.SetBreak(box, true);   // its own box, not a row in the page's cards
@@ -95,7 +130,7 @@ public partial class SettingsWindow
         var state = Label(on ? "켜짐 (빛나기와 모양은 내 오버레이 → 줄 수)" : "꺼짐: 아래 관문 설정은 남고 흐리게 보입니다", 0.7);
         if (ProfileBadge.Of(AreaRaid, option: ProfileBadge.RaidCountNote) != BadgeAt.Option) return state;
         var chip = ProfileBadgeChip(profileOnly: true);
-        ((FrameworkElement)chip).Margin = new(0, 0, 0, 4);
+        ((FrameworkElement)chip).Margin = new(0, 0, 0, Tokens.Space.Tight);
         return Stack(chip, state);
     }
 
@@ -108,20 +143,20 @@ public partial class SettingsWindow
 
         // The main 줄 수 switch gates every gate's own 줄 수 창 below; it lives with the window on 내 오버레이 (one per profile since
         // 2026-11-14), shown here with a way there, as 버프/디버프 shows the 디버프 창's state.
-        var toCount = new Button { Content = "줄 수 창 열기", Margin = new(0, 2, 0, 2) };
+        var toCount = new Button { Content = "줄 수 창 열기", Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Hair) };
         toCount.Click += (_, _) => ShowRaidCount();
         p.Children.Add(Row("줄 수 창", CountState(r.CountEnabled), toCount));
-        // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시 → 디버프 창).
+        // One 디버프 창 switch for every raid (user, 2026-11-03); a raid turned on by hand is the tray's (표시할 창 → 디버프 창).
         p.Children.Add(DefaultedCheck(Check("디버프 창 자동 (모든 레이드)", r.DebuffsAuto, v => r.DebuffsAuto = v, () => { Changed(); Again(); FillBuffs(); },
             "켜면 디버프가 있는 레이드(3막 모르둠)에서 보스를 알아본 동안 디버프 창을 보여 줍니다. " +
-            "보스를 못 알아봐도 보고 싶으면 트레이 메뉴 → 표시 → 디버프 창을 켜세요. 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽이든 보이지 않습니다."), s => s.Raids.DebuffsAuto, (s, v) => s.Raids.DebuffsAuto = v));
+            "보스를 못 알아봐도 보고 싶으면 트레이 메뉴 → 표시할 창 → 디버프 창을 켜세요. 레이드 안에서는 늘 보입니다. 마을·지옥·필드에서는 어느 쪽이든 보이지 않습니다."), s => s.Raids.DebuffsAuto, (s, v) => s.Raids.DebuffsAuto = v));
 
         p.Children.Add(SubHeading("보스 인식"));
         p.Children.Add(DefaultedCheck(Check("자동 인식", r.Auto, v => r.Auto = v, () => { Changed(); Again(); },
             "보스 이름으로 관문을 알아봅니다. 끄면 아래에서 고른 관문을 씁니다. 트레이 메뉴의 레이드와 같습니다."), s => s.Raids.Auto, (s, v) => s.Raids.Auto = v));
         if (r.Auto) p.Children.Add(RaidData.Find(RaidGates, _raidSeen) is { } seen
-            ? Row("지금 인식", RaidBadgeView.Of(seen.Raid, _raidSeenDifficulty), Label(RaidData.Label(seen), 0.7))
-            : Row("지금 인식", Label("인식 안 됨", 0.7)));
+            ? Row("지금 인식", RaidBadgeView.Of(seen.Raid, _raidSeenDifficulty), Value(RaidData.Label(seen)))
+            : Row("지금 인식", Value("인식 안 됨")));
         else p.Children.Add(Row("관문", GateCombo()));
 
         // 기타 인식 (user, 2026-11-08): the boss bar's own reads, and 대난투 체력 as one switch for every raid with 대난투.
@@ -142,10 +177,10 @@ public partial class SettingsWindow
         // Tabs (카제로스 레이드, 그림자 레이드, 어비스 던전), then each raid as a heading with its gates, in raids.json order.
         var tabs = RaidGates.Select(g => g.TabName).Distinct().ToList();
         string tab = _raidTab is { } t && tabs.Contains(t) ? t : RaidData.Find(RaidGates, _raidSeen)?.TabName ?? tabs.FirstOrDefault() ?? "";
-        var bar = new WrapPanel { Margin = new(0, 8, 0, 4) };
+        var bar = new WrapPanel { Margin = new(0, Tokens.Space.Gap, 0, Tokens.Space.Tight) };
         foreach (var name in tabs)
         {
-            var b = new System.Windows.Controls.Primitives.ToggleButton { Content = name, IsChecked = name == tab, Padding = new(12, 4, 12, 4), Margin = new(0, 0, 6, 0) };
+            var b = new System.Windows.Controls.Primitives.ToggleButton { Content = name, IsChecked = name == tab, Padding = new(Tokens.Space.Block, Tokens.Space.Tight, Tokens.Space.Block, Tokens.Space.Tight), Margin = new(0, 0, Tokens.Space.Gap, 0) };
             b.Click += (_, _) => { _raidTab = name; Again(); };
             bar.Children.Add(b);
         }
@@ -201,21 +236,21 @@ public partial class SettingsWindow
         void Set(List<int>? list) { r.Gate(g.Id).Alerts = list; Changed(); again(); }
         foreach (int a in alerts)
         {
-            var chip = new Button { Content = $"{a}  ✕", Margin = new(0, 0, 6, 4), ToolTip = "이 줄 수 지우기" };
+            var chip = new Button { Content = $"{a}  ✕", Margin = new(0, 0, Tokens.Space.Gap, Tokens.Space.Tight), ToolTip = "이 줄 수 삭제" };
             chip.Click += (_, _) => Set([.. alerts.Where(x => x != a)]);
             wrap.Children.Add(chip);
         }
-        if (alerts.Count == 0) wrap.Children.Add(Label("없음  ", 0.7));
-        var box = new TextBox { Width = 64, Margin = new(0, 0, 6, 4), VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "줄 수 (1–99999)" };
+        if (alerts.Count == 0) wrap.Children.Add(Value("없음  "));
+        var box = new TextBox { Width = 64, Margin = new(0, 0, Tokens.Space.Gap, Tokens.Space.Tight), VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "줄 수 (1–99999)" };
         void Add()
         {
             if (int.TryParse(box.Text.Trim(), out int v) && v is > 0 and < 100_000) Set([.. alerts.Append(v).Distinct().OrderDescending()]);
             else box.Text = "";
         }
-        var add = new Button { Content = "추가", Margin = new(0, 0, 6, 4) };
+        var add = new Button { Content = "추가", Margin = new(0, 0, Tokens.Space.Gap, Tokens.Space.Tight) };
         add.Click += (_, _) => Add();
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Add(); };
-        var reset = new Button { Content = "기본값", Margin = new(0, 0, 0, 4), IsEnabled = r.Gates.GetValueOrDefault(g.Id)?.Alerts is not null,
+        var reset = new Button { Content = "기본값으로", Margin = new(0, 0, 0, Tokens.Space.Tight), IsEnabled = r.Gates.GetValueOrDefault(g.Id)?.Alerts is not null,
             ToolTip = g.Alerts.Count == 0 ? "이 관문의 기본 빛남 기준은 아직 없습니다." : $"기본값: {string.Join(", ", g.Alerts)}" };
         reset.Click += (_, _) => Set(null);
         wrap.Children.Add(box);

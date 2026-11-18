@@ -13,32 +13,60 @@ public partial class SettingsWindow
 {
     readonly Border _screenBox = new()
     {
-        HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new(10),
-        Padding = new(10, 6, 10, 8), CornerRadius = new(6), BorderThickness = new(1),
+        HorizontalAlignment = HorizontalAlignment.Left, Padding = new(Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap), CornerRadius = new(Tokens.Radius.Card), BorderThickness = new(1),
     };
 
     /// <summary>The canvas with the box over its top left corner. The Fluent themes leave the nav brush unset, so an
     /// opaque Fluent base sits under it: the map art never shows through the box (user, 2026-11-10).</summary>
     Grid WithScreenBox(UIElement canvas)
     {
-        _screenBox.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
-        _screenBox.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
-        var solid = new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = _screenBox.Margin,
-            CornerRadius = _screenBox.CornerRadius, Child = _screenBox,
-        };
-        _screenBox.Margin = default;
-        solid.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
         FillScreenBox();
-        return new Grid { Children = { canvas, solid } };
+        FillAutoBox();
+        var boxes = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new(Tokens.Space.Block),
+            Children = { Solid(_screenBox), Solid(_autoBox) },
+        };
+        return new Grid { Children = { canvas, boxes } };
+    }
+
+    /// <summary>A box over an opaque Fluent base, so the map art never shows through it.</summary>
+    static Border Solid(Border box)
+    {
+        box.Margin = default;
+        box.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
+        box.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        var solid = new Border { CornerRadius = box.CornerRadius, Child = box, Margin = new(0, 0, 0, Tokens.Space.Gap) };
+        solid.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
+        return solid;
+    }
+
+    /// <summary>The 자동 box under it (user, 2026-11-15): every raid-only switch in one place, the same values as the 버프,
+    /// 게이지 and 스킬 panels.</summary>
+    readonly Border _autoBox = new() { HorizontalAlignment = HorizontalAlignment.Left, Padding = new(Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap), CornerRadius = new(Tokens.Radius.Card), BorderThickness = new(1) };
+
+    // The 전투자원 창 only while 편집 중 is a class with one (user, 2026-11-18); refilled on a pick (RefreshPick).
+    void FillAutoBox()
+    {
+        var row = new WrapPanel
+        {
+            Children =
+            {
+                AutoBoxLabel(),
+                Check("버프 막대", _s.Buffs.RaidOnly, v => _s.Buffs.RaidOnly = v, AutoBoxChanged),
+                Check("게이지", _s.Gauge.RaidOnly, v => _s.Gauge.RaidOnly = v, AutoBoxChanged),
+                Check("스킬 칸", _s.Overlay.SkillsRaidOnly, v => _s.Overlay.SkillsRaidOnly = v, AutoBoxChanged),
+            },
+        };
+        if (EditedHasRing()) row.Children.Add(Check("전투자원 창", _s.Ring.RaidOnly, v => _s.Ring.RaidOnly = v, AutoBoxChanged));
+        _autoBox.Child = row;
     }
 
     /// <summary>Refilled with 스킬창 맞추기's page (FillFit): a fit, 직접 입력, 버프 크기 or the game window changed.</summary>
     void FillScreenBox()
     {
         var facts = ScreenSummary.Of(_s, _gameRunning);
-        var refit = new Button { Content = "맞추기", Margin = new(8, 0, 0, 0), Padding = new(6, 0, 6, 0), ToolTip = "화면·인식 → 스킬창 맞추기를 엽니다." };
+        var refit = new Button { Content = "맞추기", Margin = new(Tokens.Space.Gap, 0, 0, 0), Padding = new(Tokens.Space.Gap, 0, Tokens.Space.Gap, 0), ToolTip = "인게임 설정을 엽니다." };
         refit.Click += (_, _) => Go(AreaFit);
         var rows = new (string Name, FrameworkElement Value)[]
         {
@@ -61,5 +89,29 @@ public partial class SettingsWindow
             grid.Children.Add(rows[i].Value);
         }
         _screenBox.Child = grid;
+    }
+
+    static TextBlock AutoBoxLabel()
+    {
+        var t = Label("레이드 안에서만 표시", 0.7);
+        (t.Margin, t.VerticalAlignment) = (new(0, 0, 12, 0), VerticalAlignment.Center);
+        return t;
+    }
+
+    /// <summary>A switch in the 자동 box: the panels that hold the same switch are rebuilt to show it.</summary>
+    void AutoBoxChanged()
+    {
+        Changed();
+        FillBuffs();
+        FillGauge();
+        FillBox();
+        RefreshInspector();
+    }
+
+    /// <summary>A raid-only switch on a panel: the 자동 box shows it too.</summary>
+    void AutoChanged()
+    {
+        Changed();
+        FillAutoBox();
     }
 }

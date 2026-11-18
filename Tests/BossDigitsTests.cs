@@ -94,6 +94,85 @@ public class BossDigitsTests
         Assert.Equal(494, bar.Count);
     }
 
+    // 구원의 종탑 3단계 (1,142,325,546,571): the max's last '1' fades under MinGlyph as the fight goes on (0.56, 0.55-, 0.46)
+    // while every other digit stays 0.81+. Strict, the whole HP drops; with the fight's max known, the max's glyphs are taken as
+    // that max by position (a cursor over them too), so only a max of another digit count still fails.
+    [Theory]
+    [InlineData(0, 96_198_309_725L, true)]
+    [InlineData(1, 89_677_997_033L, false)]
+    [InlineData(2, 42_481_520_811L, false)]
+    public void A_weak_digit_in_the_max_reads_when_the_max_is_known(int frame, long current, bool strictReads)
+    {
+        const long max = 1_142_325_546_571;
+        var row = Fixture.Load("bosshp_jongtap_weakmax").Frames[frame];   // the whole text row, as Engine reads it
+        Assert.Equal(strictReads, BossDigits.ReadBar(row, 1.1).Hp is not null);
+        Assert.Equal((current, max, 0L), BossDigits.ReadBar(row, 1.1, knownMax: max).Hp);
+        if (strictReads) return;
+        Assert.Null(BossDigits.ReadBar(row, 1.1, knownMax: max / 10).Hp);   // fewer digits: still strict
+        Assert.Equal((current, max - 1, 0L), BossDigits.ReadBar(row, 1.1, knownMax: max - 1).Hp);   // same layout: taken as known (Engine clears it per gate)
+    }
+
+    // A mouse arrow left over the max's digits (spots where the strict read drops, from a sweep over the row): with the max
+    // known it still reads, and the current HP, untouched, reads as before.
+    [Theory]
+    [InlineData(388, 27)]
+    [InlineData(434, 27)]
+    [InlineData(452, 27)]
+    public void A_cursor_over_the_max_reads_when_the_max_is_known(int tipX, int tipY)
+    {
+        const long max = 1_142_325_546_571;
+        var row = WithCursor(Fixture.Load("bosshp_jongtap_weakmax").Frames[0], tipX, tipY);
+        Assert.Null(BossDigits.ReadBar(row, 1.1).Hp);
+        Assert.Equal((96_198_309_725L, max, 0L), BossDigits.ReadBar(row, 1.1, knownMax: max).Hp);
+    }
+
+    // The same over a max followed by a shield (모르둠): the "(+n)" after it still reads.
+    [Theory]
+    [InlineData(158, 3)]
+    [InlineData(196, 9)]
+    [InlineData(242, 0)]
+    public void A_cursor_over_the_max_keeps_the_shield_when_the_max_is_known(int tipX, int tipY)
+    {
+        const long max = 17_126_566_042_900;
+        var row = WithCursor(Fixture.Load("bosshp_shield_mordum").Frames[0], tipX, tipY);
+        Assert.Null(BossDigits.ReadBar(row, 1.1).Hp);
+        Assert.Equal((6_747_376_602_438L, max, 321_823_151_269L), BossDigits.ReadBar(row, 1.1, knownMax: max).Hp);
+    }
+
+    // A cursor over the shield's digits breaks their commas: the read stopped at the last full group ("(+321", "(+321,823")
+    // with digits still after it. That is a cut-off shield, so no read, never a shorter shield.
+    [Theory]
+    [InlineData(312, -12)]
+    [InlineData(342, -12)]
+    [InlineData(372, -12)]
+    public void A_cursor_over_the_shield_reads_nothing_rather_than_a_shorter_shield(int tipX, int tipY)
+    {
+        var row = WithCursor(Fixture.Load("bosshp_shield_mordum").Frames[0], tipX, tipY);
+        Assert.Null(BossDigits.ReadBar(row, 1.1).Hp);
+    }
+
+    static readonly string[] Arrow =
+    [
+        "B", "BB", "BWB", "BWWB", "BWWWB", "BWWWWB", "BWWWWWB", "BWWWWWWB", "BWWWWWWWB", "BWWWWWWWWB",
+        "BWWWWWWWWWB", "BWWWWWWBBBBB", "BWWWBWWB", "BWWBBWWB", "BWB BWWB", "BB  BWWB", "B    BWWB", "     BWWB", "      BB",
+    ];
+
+    // The Windows arrow cursor (B black, W white) with its tip at (tipX, tipY).
+    static Image WithCursor(Image src, int tipX, int tipY)
+    {
+        var img = new Image(src.Width, src.Height, (byte[])src.Bgra.Clone());
+        for (int r = 0; r < Arrow.Length; r++)
+            for (int c = 0; c < Arrow[r].Length; c++)
+            {
+                int x = tipX + c, y = tipY + r;
+                if (Arrow[r][c] == ' ' || x < 0 || y < 0 || x >= img.Width || y >= img.Height) continue;
+                byte v = Arrow[r][c] == 'W' ? (byte)255 : (byte)0;
+                int i = y * img.Stride + x * 4;
+                (img.Bgra[i], img.Bgra[i + 1], img.Bgra[i + 2], img.Bgra[i + 3]) = (v, v, v, 255);
+            }
+        return img;
+    }
+
     [Fact]
     public void A_blank_or_bare_bar_reads_nothing()
     {

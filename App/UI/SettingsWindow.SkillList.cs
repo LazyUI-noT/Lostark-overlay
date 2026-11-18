@@ -17,7 +17,7 @@ public partial class SettingsWindow
     {
         string? cls = BoxKey;
         var p = Refill(_secSkillList, $"내 스킬 ({ClassName(ShownClass)})",
-            "편집 중에서 고른 직업각인의 스킬 칸입니다. 반짝임, 경과 초 같은 효과는 내 오버레이에서 칸을 눌러 바꿉니다.");
+            "편집할 직업각인의 스킬 칸입니다. 반짝임, 경과 초 같은 효과는 내 오버레이에서 칸을 눌러 바꿉니다.");
         p.Children.Add(ShowSwitch(OverlayPart.Skills, Tray.PartNames.First(n => n.Part == OverlayPart.Skills).Name));
         if (!_s.Overlay.SkillRead) p.Children.Add(Note("칸 모양의 스킬창 읽기가 꺼져 있어 스킬 칸이 보이지 않습니다."));
 

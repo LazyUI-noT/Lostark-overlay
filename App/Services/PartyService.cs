@@ -78,10 +78,10 @@ public sealed class PartyService : IDisposable
         {
             var ip = string.IsNullOrWhiteSpace(publicIp) ? await FetchPublicIp()
                 : IPAddress.TryParse(publicIp.Trim(), out var typed) && typed.AddressFamily == AddressFamily.InterNetwork ? typed : null;
-            if (ip is null) return Fail("공인 IP(IPv4)를 확인하지 못했습니다. 인터넷 연결을 확인해 주세요.");
+            if (ip is null) return Fail("공인 IP(IPv4)를 확인하지 못했습니다. 인터넷 연결을 확인하세요.");
             UdpTransport udp;
             try { udp = new UdpTransport(port); }
-            catch (SocketException) { return Fail($"UDP 포트 {Josa.Object(port.ToString(System.Globalization.CultureInfo.InvariantCulture))} 열 수 없습니다. 다른 프로그램이 쓰고 있는지 확인해 주세요."); }
+            catch (SocketException) { return Fail($"UDP 포트 {Josa.Object(port.ToString(System.Globalization.CultureInfo.InvariantCulture))} 열 수 없습니다. 다른 프로그램이 쓰고 있는지 확인하세요."); }
 
             Listen(udp);
             Locked(() =>
@@ -118,7 +118,7 @@ public sealed class PartyService : IDisposable
             });
             if (valid) return done.Task;
             udp.Dispose();
-            return Task.FromResult(Fail("참가 코드가 올바르지 않습니다. 호스트가 준 참가 코드를 그대로 붙여 넣고, 호스트와 같은 버전인지 확인해 주세요."));
+            return Task.FromResult(Fail("참가 코드가 올바르지 않습니다. 호스트가 준 참가 코드를 그대로 붙여 넣고, 호스트와 같은 버전인지 확인하세요."));
         }
         finally { lock (_lock) _starting = false; }
     }

@@ -46,7 +46,7 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{"Buffs":{"Count":99},"Debuffs":{"BossIconSize":999}}""", 14, 120)]
+    [InlineData("""{"Buffs":{"Count":99},"Debuffs":{"BossIconSize":999}}""", 17, 120)]
     [InlineData("""{"Buffs":{"Count":0},"Debuffs":{"BossIconSize":10}}""", 1, 120)]
     [InlineData("""{"Buffs":{"Count":11},"Debuffs":{"BossIconSize":90}}""", 11, 90)]
     [InlineData("""{}""", 7, 120)]   // a file from before both settings
@@ -389,7 +389,7 @@ public sealed class SettingsStoreTests : IDisposable
     public void The_last_second_flash_is_on_for_공증_and_아덴피증_and_kept()
     {
         var b = new Settings().Buffs;
-        Assert.Equal([true, true, false, false], Enum.GetValues<BuffKind>().Select(b.EndFlash).ToArray());
+        Assert.Equal([true, true, false, false, false], Enum.GetValues<BuffKind>().Select(b.EndFlash).ToArray());
         var store = new SettingsStore(FilePath);
         var s = new Settings();
         s.Buffs.Edit(BuffKind.공증).EndFlash = false;
@@ -397,7 +397,7 @@ public sealed class SettingsStoreTests : IDisposable
         s.Buffs.Edit(BuffKind.아덴피증).Length = 0.5;   // edited, flash left alone: still the default
         store.Save(s);
         var back = store.Load(out _).Buffs;
-        Assert.Equal([false, true, false, true], Enum.GetValues<BuffKind>().Select(back.EndFlash).ToArray());
+        Assert.Equal([false, true, false, true, false], Enum.GetValues<BuffKind>().Select(back.EndFlash).ToArray());
     }
 
     /// <summary>아이콘으로 표시: every group is drawn in colour until picked, and the pick is kept per group.</summary>
@@ -661,7 +661,7 @@ public sealed class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(FilePath).Load(out _);
         Assert.Equal(120, s.Buffs.Size);
-        Assert.Equal(["#E8262B", "#FFE600", "#1BA8E0", "#A04FB0"], Enum.GetValues<BuffKind>().Select(k => s.Buffs.Of(k).Color));
+        Assert.Equal(["#E8262B", "#FFE600", "#1BA8E0", "#A04FB0", "#E6E6E6"], Enum.GetValues<BuffKind>().Select(k => s.Buffs.Of(k).Color));
         Assert.All(Enum.GetValues<BuffKind>(), k => Assert.True(s.Buffs.Of(k).Visible && s.Buffs.Of(k).ShowLabel));
     }
 
@@ -785,6 +785,6 @@ public sealed class SettingsStoreTests : IDisposable
     {
         var s = SettingsStore.Normalize(System.Text.Json.JsonSerializer.Deserialize<Settings>("{}")!);
         Assert.False(s.FineSizes);
-        Assert.Equal(Core.Vision.Geometry.MaxBossSlots, s.Debuffs.BossCount);
+        Assert.Equal(Core.Vision.Geometry.MaxIconsAny, s.Debuffs.BossCount);
     }
 }

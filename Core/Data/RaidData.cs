@@ -61,7 +61,7 @@ public static class RaidData
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException) { return []; }
     }
 
-    /// <summary>The buff lock's level bands (raids.json "buffCaps"); 85% for every fight when the file or the entry is missing.</summary>
+    /// <summary>The buff lock's level bands (raids.json "buffCaps"); 95% for every fight when the file or the entry is missing.</summary>
     public static BuffCapRules LoadBuffCaps(string profilesDir)
     {
         try

@@ -28,6 +28,7 @@ public sealed partial class Engine
             Array.Clear(_cal);
             for (int i = 0; i < _states.Length; i++) _states[i] = SlotState.Unknown(SlotInfo.All[i]);
             _buffs = [.. Enum.GetValues<BuffKind>().Select(k => BuffState.Absent(k, TimeSpan.Zero))];
+            _brand = new();   // else its next step writes the old 낙인 back over the cleared bar
             (_debuffs, _slots, _gauge, _gaugeSpent) = (DebuffStatus.None, DebuffSlots.None, null, false);
             ResetIconGates();
             _gaugeFilter.Reset();
@@ -177,17 +178,17 @@ public sealed partial class Engine
 
     bool FitNow()
     {
-        if (_vp.Height == 0) return Failed("게임 화면을 찾지 못했습니다. 게임을 창 모드(전체 창)로 실행해 주세요.");
+        if (_vp.Height == 0) return Failed("게임 화면을 찾지 못했습니다. 게임을 창 모드(전체 창)로 실행하세요.");
         // The request came from the tray menu or 설정, which leave the taskbar over the skill bar: App brings the game to
         // the front, and the capture waits for it and for the taskbar to slide away.
         for (int i = 0; i < FitWaitSteps && !CanRead; i++) Thread.Sleep(100);
-        if (!CanRead) return Failed("게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도해 주세요.");
+        if (!CanRead) return Failed("게임 창을 앞으로 가져오지 못했습니다. 게임 화면을 한 번 누른 뒤 다시 시도하세요.");
         // A quiet try runs with the video already in front, and a window capture sees through the taskbar: nothing to wait out.
         if (!_quietFit && !_seesBehind) Thread.Sleep(TaskbarSettleMs);
         var band = FitSolver.Band(_vp);
         var img = new Image(band.Width, band.Height);
         if (!_source!.TryCapture([band], [img], TimeSpan.FromMilliseconds(500), out _))
-            return Failed("화면을 캡처하지 못했습니다. 게임 창이 보이는 상태에서 다시 시도해 주세요.");
+            return Failed("화면을 캡처하지 못했습니다. 게임 창이 보이는 상태에서 다시 시도하세요.");
         // 테스트 모드: always read off the video (직접 입력 describes the game), and its calibration stays in memory.
         var (fit, note, detected) = !_testMode && _config.Manual(_client) is { } m ? SolveManual(img, band, m.Hud, m.Screen) : SolveAuto(img, band);
         if (fit is null) return Failed(note);
@@ -253,7 +254,7 @@ public sealed partial class Engine
     (Fit? Fit, string Note, ManualScreen? Detected) SolveAuto(Image band, PixelRect rect)
     {
         if (FitSolver.Solve(band, rect, _vp, _testMode) is not { } fit)
-            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 화면·인식 → 스킬창 위치에서 직접 입력을 골라 보세요. 저장된 맞춤은 그대로 둡니다.", null);
+            return (null, "HUD 크기를 찾지 못했습니다. HP 바가 보이는지 확인하거나, 설정 → 인게임 설정 → 스킬창 위치에서 직접 입력을 골라 보세요. 저장된 맞춤은 그대로 둡니다.", null);
         return (fit, "", Geometry.Detected(_vp, _client));
     }
 
@@ -263,7 +264,7 @@ public sealed partial class Engine
         string given = $"HUD {hud:0}%, {screen.Width}×{screen.Height}{(screen.Wide ? ", 21:9" : "")}";
         var r = FitSolver.SolveManual(band, rect, _vp, hud);
         if (r.Fit is null)
-            return (null, $"직접 입력한 값({given})으로 스킬창을 찾지 못했습니다. 값을 확인하거나 자동으로 맞추기를 눌러 주세요. 저장된 맞춤은 그대로 둡니다.", null);
+            return (null, $"직접 입력한 값({given})으로 스킬창을 찾지 못했습니다. 값을 확인하거나 자동으로 맞추기를 누르세요. 저장된 맞춤은 그대로 둡니다.", null);
         string note = r.Moved > 0 ? $" 입력한 값의 자리에서 {r.Moved}px 옮겨 맞췄습니다." : "";
         if ((_client.Width, _client.Height) != (screen.Width, screen.Height))
             note += $" 게임 창({_client.Width}×{_client.Height})이 입력한 해상도와 달라 창 크기에 맞춰 계산했습니다.";

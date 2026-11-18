@@ -14,9 +14,13 @@ public sealed class BuffSettings : IWindowPlace
     /// how big their icons are. 스킬창 맞추기 doesn't detect it; 120 is the size the reads are measured best at.</summary>
     public int Size { get; set; } = 120;
     /// <summary>버프 읽을 칸 수: how many boxes of the buff row are read, counted from its fixed right end
-    /// (<see cref="Vision.Geometry.MinBuffBoxCount"/>–<see cref="Vision.Geometry.MaxBuffBoxCount"/>). A buff further left than this is
+    /// (<see cref="Vision.Geometry.MinBuffBoxCount"/>–<see cref="Vision.Geometry.MaxIconsAny"/>). A buff further left than this is
     /// not seen; more boxes cost a little more reading, and boxes past the game's own "+N" icon read nothing.</summary>
     public int Count { get; set; } = Vision.Geometry.BuffBoxCount;
+    /// <summary>The game's 버프 표시 (10–17); null = the size's most (<see cref="Vision.Geometry.Shown"/>).</summary>
+    public int? Shown { get; set; }
+    /// <summary>The boxes read: <see cref="Count"/> within what the row shows.</summary>
+    public int ReadCount => Math.Min(Count, Vision.Geometry.Shown(Size, Shown));
     /// <summary>세로: the bars stand upright side by side instead of lying flat one under another. In the fixed grid they stand
     /// left of the plate, outside it (flat: under the grid, two to a row); in their own window they fill it (flat: one to a
     /// row). A free layout keeps them where they were put.</summary>
@@ -39,7 +43,7 @@ public sealed class BuffSettings : IWindowPlace
     public bool EndFlash(BuffKind kind) => Of(kind).EndFlash ?? kind is BuffKind.공증 or BuffKind.아덴피증;
 
     /// <summary>자동 (user, 2026-11-12): every shown bar only in a raid; off (자동 끄기), always. One switch for all bars; the
-    /// buff row is read either way (the meter's 버프 적용률).</summary>
+    /// buff row is then read only in a raid too (user, 2026-11-18, Engine.StepRaidOnlyReads: 버프 적용률 counts fights only).</summary>
     public bool RaidOnly { get; set; }
 
     /// <summary>A bar while 자동 is on and the player isn't in a raid (RaidPresence: the in-game meter or a boss bar seen): not
@@ -62,7 +66,7 @@ public sealed class BuffSettings : IWindowPlace
 
     static BuffIndicator Default(BuffKind kind) => new()
     {
-        Color = kind switch { BuffKind.공증 => "#E8262B", BuffKind.아덴피증 => "#FFE600", BuffKind.초각스피증 => "#1BA8E0", _ => "#A04FB0" },
+        Color = kind switch { BuffKind.공증 => "#E8262B", BuffKind.아덴피증 => "#FFE600", BuffKind.초각스피증 => "#1BA8E0", BuffKind.낙인 => "#E6E6E6", _ => "#A04FB0" },
     };
 }
 

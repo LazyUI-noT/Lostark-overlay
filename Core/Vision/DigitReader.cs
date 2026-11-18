@@ -30,6 +30,11 @@ public sealed class DigitReader
     // A count is white with a dark outline: its Stroke is 124–136 on the four count fixtures. A bright streak of icon art
     // uncovered by the sweep can match the '1' at 0.83–0.85 but only reaches 69–91 (bugEskill.mp4, D's lightning).
     private const double MinCountStroke = 108;
+    // Stroke is measured at scale 1 (HUD 110 at 1080p). A smaller HUD blends more of a glyph's edge into its outline, so
+    // the stroke falls with the scale: the four counts box-scaled to HUD 90 reach only 100–106 (NCC still 0.82–0.94), and a
+    // fixed 108 missed them all. Lowered with the scale below 1, never raised above it (4K keeps 108), and never below the
+    // game's smallest HUD (80 at 1080p): a scale under it is no real fit, and there icon art passes (icon_회귀 at scale 0).
+    private readonly double _minCountStroke;
     /// <summary>The characters the generated templates (DigitTemplates, FrameTemplate) use for grey 0..255 in 10 steps.</summary>
     internal const string GreyRamp = " .:-=+*#%@";
     private static readonly int Lanes = Vector<float>.Count;
@@ -48,6 +53,7 @@ public sealed class DigitReader
     {
         Scale = scale;
         _main = Templates(scale);
+        _minCountStroke = MinCountStroke * Math.Clamp(scale, Settings.HudSizes[0] / Geometry.ReferenceHud, 1);
         _small = Templates(scale * SmallFont);
         _count = [.. DigitTemplates.Main.Where(t => t.Ch is >= '1' and <= '9').Select(t => Glyph.FromRows(t.Ch, t.Rows, scale * CountFont)),
                   .. DigitTemplates.Count.Select(t => Glyph.FromRows(t.Ch, t.Rows, scale))];
@@ -88,16 +94,26 @@ public sealed class DigitReader
     /// <summary>True when a stack count (1..9) sits in the bottom-right corner of <paramref name="crop"/>, as on a
     /// stack skill recharging with a use left (live_test2 E "1", live test Q "1"). The count's font is smaller than
     /// the timer's; its '2' is drawn differently and has a template of its own (Q's "2" in live_test2).</summary>
-    public bool ShowsCount(Image crop)
+    /// <remarks>At 스킬창 맞추기 a ready icon is full-bright, and box-scaled icon art (워로드 C, 초각스) passes the lowered
+    /// gate at a smaller HUD: this check keeps the HUD 110 gate, so a small HUD misses a ready count here and
+    /// <see cref="Cooldown.StackLearner"/> learns the slot in play instead.</remarks>
+    public bool ShowsCount(Image crop) => Count(crop, MinCountStroke) > 0;
+
+    /// <summary>The stack count in the bottom-right corner of <paramref name="crop"/> (uses left, 1..9), 0 when none
+    /// shows: the best-matching count glyph, so a '1' inside a '4' doesn't win.</summary>
+    public int Count(Image crop) => Count(crop, _minCountStroke);
+
+    private int Count(Image crop, double minStroke)
     {
         Load(crop);
+        var (best, score) = ('0', MinCount);
         foreach (var g in _count)
         {
             for (int b = Math.Max(g.H, (int)(_h * 0.75)); b <= Math.Min(_h, (int)(_h * 0.95)); b++)
                 for (int x = (int)(_w * 0.62); x <= _w - g.W; x++)
-                    if (Ncc(g, x, b - g.H) is var s && s >= MinCount && Stroke(g, new(0, x, b, s)) >= MinCountStroke) return true;
+                    if (Ncc(g, x, b - g.H) is var s && s >= score && Stroke(g, new(0, x, b, s)) >= minStroke) (best, score) = (g.Ch, s);
         }
-        return false;
+        return best - '0';
     }
 
     private Glyph[] Set(SlotId slot) => slot is SlotId.아덴1 or SlotId.아덴2 ? _small : _main;

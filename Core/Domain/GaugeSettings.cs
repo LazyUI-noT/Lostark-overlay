@@ -17,6 +17,12 @@ public sealed class GaugeStyle : IWindowPlace
     public double Thickness { get; set; } = 6;
     public double Opacity { get; set; } = 1.0;
     public GaugeReadMode ReadMode { get; set; }
+    /// <summary>자동 (user, 2026-11-15): your gauge only in a raid, as the buff bars' <see cref="BuffSettings.RaidOnly"/>.
+    /// It is still read either way.</summary>
+    public bool RaidOnly { get; set; }
+
+    /// <summary>Your gauge while 자동 is on and the player isn't in a raid: not drawn, its place kept.</summary>
+    public bool OutOfRaid(bool inDungeon) => RaidOnly && !inDungeon;
 }
 
 /// <summary>When a gauge read is shown (GaugeFilter): <see cref="Agreed"/>, once 5 reads agree; <see cref="SteadyRise"/>, a small

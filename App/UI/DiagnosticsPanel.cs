@@ -7,7 +7,7 @@ using Geometry = GaugeOverlay.Core.Vision.Geometry;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>설정 → 화면·인식 → 감지 (under the screen): per slot the crop, the last <see cref="Reading"/> and the <see cref="SlotState"/>
+/// <summary>설정 → 화면 인식 설정 (under the screen): per slot the crop, the last <see cref="Reading"/> and the <see cref="SlotState"/>
 /// (ARCHITECTURE.md §4.1), then the buff and debuff boxes and the boss's counts. Fed through <see cref="Update"/> and
 /// <see cref="UpdateExtra"/> while it is shown.</summary>
 public sealed class DiagnosticsPanel : Grid
@@ -29,7 +29,7 @@ public sealed class DiagnosticsPanel : Grid
             AddRow([new TextBlock { Text = id.ToString(), VerticalAlignment = VerticalAlignment.Center }, crop, row.Item2, row.Item3], DetectPlace.Slots);
         }
         // The buff and debuff boxes and the boss's counts, fed by UpdateExtra while their reads run.
-        foreach (var key in Enumerable.Range(1, Geometry.MaxBuffBoxCount).Select(i => $"버프 {i}")
+        foreach (var key in Enumerable.Range(1, Geometry.MaxIconsAny).Select(i => $"버프 {i}")
                      .Concat(Enumerable.Range(1, Geometry.DebuffBoxCount).Select(i => $"디버프 {i}")).Append("보스"))
         {
             var crop = new System.Windows.Controls.Image { Height = key == "보스" ? 40 : 60, MaxWidth = 150, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
@@ -85,7 +85,7 @@ public sealed class DiagnosticsPanel : Grid
         for (int c = 0; c < cells.Length; c++)
         {
             var e = cells[c] as UIElement ?? new TextBlock { Text = (string)cells[c], FontWeight = header ? FontWeights.SemiBold : FontWeights.Normal };
-            if (e is FrameworkElement f) f.Margin = new(0, 4, 12, 4);
+            if (e is FrameworkElement f) f.Margin = new(0, Tokens.Space.Tight, Tokens.Space.Block, Tokens.Space.Tight);
             _cells.Add((group, e));
             Grid.SetRow(e, row);
             Grid.SetColumn(e, c);

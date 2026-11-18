@@ -38,19 +38,29 @@ public class BuffLockTests
     public void Bar_stops_at_the_fights_cap() => Assert.Equal(0.9, BuffLock.Bar(0.97, 0.9), 6);
 
     static MeterView View() => new([], null, 0, null, false, true, new MeterHistory(),
-        BuffCover: [0.9, 0.5, 0.4], BuffParty: [0.88, 0.6, 0.3],
-        BuffSplit: [[(1UL, "가", 0.6), (2UL, "나", 0.4)], [(1UL, "가", 1.0)], [(2UL, "나", 1.0)]]);
+        BuffCover: [0.9, 0.5, 0.4, 0.7], BuffParty: [0.88, 0.6, 0.3, 0.65],
+        BuffSplit: [[(1UL, "가", 0.6), (2UL, "나", 0.4)], [(1UL, "가", 1.0)], [(2UL, "나", 1.0)], [(1UL, "가", 1.0)]]);
 
     [Fact]
-    public void Locked_meter_keeps_only_공증()
+    public void Locked_meter_keeps_공증_and_낙인()
     {
         var v = BuffLock.Apply(View(), 0.9);
         Assert.True(v.BuffLocked);
         Assert.Equal(0.9, v.BuffCap);
-        Assert.Equal([0.9], v.BuffCover!);
-        Assert.Equal([0.88], v.BuffParty!);
-        Assert.Single(v.BuffSplit!);
+        Assert.Equal([0.9, 0.7], v.BuffCover!);
+        Assert.Equal([0.88, 0.65], v.BuffParty!);
+        Assert.Equal(2, v.BuffSplit!.Count);
         Assert.Equal(2, v.BuffSplit![0].Count);
+        Assert.Equal([BuffKind.공증, BuffKind.낙인], BuffLock.MeterKinds(true));
+    }
+
+    [Fact]
+    public void Meter_drops_the_brand_row_while_it_is_not_read()
+    {
+        Assert.Equal([0, 1, 2, 3], BuffLock.MeterRows(false, brandRead: true));
+        Assert.Equal([0, 1, 2], BuffLock.MeterRows(false, brandRead: false));
+        Assert.Equal([0], BuffLock.MeterRows(true, brandRead: false));
+        Assert.Equal(BuffKind.낙인, BuffLock.MeterKinds(false)[3]);
     }
 
     [Fact]
@@ -72,8 +82,8 @@ public class BuffLockTests
     [Fact]
     public void Locked_timeline_has_no_초각스_lane()
     {
-        Assert.Equal([BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증], BuffLock.TimelineKinds(false));
-        Assert.Equal([BuffKind.공증, BuffKind.아덴피증], BuffLock.TimelineKinds(true));
+        Assert.Equal([BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증, BuffKind.낙인], BuffLock.TimelineKinds(false));
+        Assert.Equal([BuffKind.공증, BuffKind.아덴피증, BuffKind.낙인], BuffLock.TimelineKinds(true));
     }
 
     static FightRecord Fight(DateTime started, double seconds) => new(started, null, seconds, [], "나", 0, null, [], [], [], []);
@@ -87,19 +97,21 @@ public class BuffLockTests
         Assert.True(BuffLock.LineShown(BuffKind.아덴피증, true, r, start.AddMinutes(15)));
         Assert.True(BuffLock.LineShown(BuffKind.아덴피증, false, r, start.AddMinutes(6)));
         Assert.True(BuffLock.LineShown(BuffKind.공증, true, r, start.AddMinutes(6)));
+        Assert.True(BuffLock.LineShown(BuffKind.낙인, true, r, start.AddMinutes(6)));
         Assert.False(BuffLock.LineShown(BuffKind.초각스피증, true, r, start.AddDays(3)));
     }
 
     [Fact]
-    public void Locked_shows_a_percent_for_공증_only()
+    public void Locked_shows_a_percent_for_공증_and_낙인_only()
     {
         Assert.True(BuffLock.PercentShown(BuffKind.공증, true));
+        Assert.True(BuffLock.PercentShown(BuffKind.낙인, true));
         Assert.False(BuffLock.PercentShown(BuffKind.아덴피증, true));
         Assert.False(BuffLock.PercentShown(BuffKind.초각스피증, true));
         Assert.All(Enum.GetValues<BuffKind>(), k => Assert.True(BuffLock.PercentShown(k, false)));
     }
 
-    // The level bands and overrides (user, 2026-11-13): ≤1720 → 80, else 85; 세르카 · 벨가르딘 나이트메어 90; 종막 EX 나이트메어 none.
+    // How bands and a gate's override combine, on example numbers (the shipped caps: Shipped_raids_json_gives_the_users_caps).
     static readonly BuffCapRules Rules = new(85, [new BuffBand(1720, 80)]);
 
     static RaidGate Gate(Dictionary<string, int> levels, Dictionary<string, int?>? caps = null) =>
@@ -139,19 +151,20 @@ public class BuffLockTests
         var gates = RaidData.Load(dir);
         var rules = RaidData.LoadBuffCaps(dir);
         double? Cap(string id, string d) => BuffLock.CapFor(RaidData.Find(gates, id), d, rules);
-        Assert.Equal(0.80, Cap("act4-g1", "하드"));
-        Assert.Equal(0.80, Cap("final-g1", "노말"));
-        Assert.Equal(0.85, Cap("final-g1", "하드"));
-        Assert.Equal(0.80, Cap("serka-g1", "노말"));
-        Assert.Equal(0.85, Cap("serka-g2", "하드"));
-        Assert.Equal(0.90, Cap("serka-g2", "나이트메어"));
-        Assert.Equal(0.85, Cap("belgardin-g1", "노말"));
-        Assert.Equal(0.90, Cap("belgardin-g2", "나이트메어"));
-        Assert.Equal(0.80, Cap("belltower-g1", "2단계"));
-        Assert.Equal(0.85, Cap("belltower-g2", "3단계"));
-        Assert.Equal(0.85, Cap("final-ex-g2-1", "EX 하드"));
+        Assert.Equal(0.90, Cap("act4-g1", "하드"));
+        Assert.Equal(0.90, Cap("final-g1", "노말"));
+        Assert.Equal(0.90, Cap("final-g1", "하드"));   // 1730: under 1740
+        Assert.Equal(0.90, Cap("serka-g1", "노말"));
+        Assert.Equal(0.90, Cap("serka-g2", "하드"));
+        Assert.Equal(0.95, Cap("serka-g2", "나이트메어"));   // 1740: the top band
+        Assert.Equal(0.95, Cap("belgardin-g1", "노말"));
+        Assert.Equal(0.95, Cap("belgardin-g2", "나이트메어"));
+        Assert.Equal(0.90, Cap("belltower-g1", "2단계"));
+        Assert.Equal(0.95, Cap("belltower-g2", "3단계"));
+        Assert.Equal(0.95, Cap("final-ex-g2-1", "EX 하드"));
         Assert.Null(Cap("final-ex-g2-2", "EX 나이트메어"));
         Assert.Null(Cap("final-ex-g2-3", "EX 나이트메어"));
+        Assert.Equal(0.95, RaidData.LoadBuffCaps(Path.Combine(dir, "missing")).Fallback / 100.0);   // no file: the top band
     }
 
     [Fact]

@@ -17,8 +17,9 @@ public sealed partial class Engine
     int? _previewBuffSize;   // engine thread only: the session's 버프 크기 until 적용 stores it in 설정
     PixelRect? _previewPanel;   // engine thread only: the session's 전분 box
 
-    /// <summary>A preview session began: its number, the game area, the fit it starts from, the buff size, 테스트 모드, the 전분 spot in use.</summary>
-    public event Action<int, Viewport, Fit, int, bool, PixelRect?>? PreviewStarted;
+    /// <summary>A preview session began: its number, the game area, the fit it starts from, the buff size, 테스트 모드, the 전분 spot in use,
+    /// the class's own Z/C spots.</summary>
+    public event Action<int, Viewport, Fit, int, bool, PixelRect?, IReadOnlyDictionary<SlotId, PixelRect>?>? PreviewStarted;
     /// <summary>The session's read states (what the adjust layer draws green), every <see cref="PreviewEvery"/>.</summary>
     public event Action<int, AdjustReads>? PreviewReads;
     /// <summary>적용 kept: the slots calibrated as ready (-1: the game wasn't in front), 테스트 모드 (then only the video's fit has it).</summary>
@@ -103,7 +104,7 @@ public sealed partial class Engine
         if (!_previewing || _vp != _previewVp)
         {
             (_previewing, _previewVp, _lastPreview, _previewBuffSize, _previewPanel) = (true, _vp, TimeSpan.MinValue, null, null);
-            PreviewStarted?.Invoke(++_gen, _vp, _fit!, (_testMode ? _testFits.BuffSize : null) ?? _config.DebuffSize, _testMode, PanelSpot(_config));
+            PreviewStarted?.Invoke(++_gen, _vp, _fit!, (_testMode ? _testFits.BuffSize : null) ?? _config.DebuffSize, _testMode, PanelSpot(_config), _config.AdenRects);
             return;
         }
         if (ask.Gen != _gen) return;

@@ -26,7 +26,7 @@ public partial class SettingsWindow
         static ComboBox Pick(IEnumerable<string> items, string? text, bool editable)
         {
             var list = items.ToList();
-            var box = new ComboBox { ItemsSource = list, IsEditable = editable, MinWidth = 220, Margin = new(0, 2, 0, 2) };
+            var box = new ComboBox { ItemsSource = list, IsEditable = editable, MinWidth = 220, Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Hair) };
             if (editable) box.Text = text ?? "";
             else box.SelectedIndex = list.IndexOf(text ?? "");
             return box;
@@ -61,7 +61,7 @@ public partial class SettingsWindow
         // list never takes focus, so typing goes on in the box.
         var known = _s.Homework.Characters.Select(c => c.Name).Concat(all.Select(x => x.Record.Character)).OfType<string>()
             .Select(n => n.Trim()).Where(n => n.Length > 0).Distinct().ToList();
-        var who = new TextBox { Text = r.Character ?? "", MinWidth = 220, Margin = new(0, 2, 0, 2) };
+        var who = new TextBox { Text = r.Character ?? "", MinWidth = 220, Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Hair) };
         // Picking a name: its TextChanged follows the class and closes the list (the name now matches in full).
         TypeAhead.Attach(who, typed => typed.Trim() is var t ? [.. known.Where(n => n != t && n.StartsWith(t, StringComparison.Ordinal)).Take(MaxSuggested)] : [],
             n => { who.Text = n; who.CaretIndex = n.Length; });
@@ -96,8 +96,8 @@ public partial class SettingsWindow
         }
 
         // 적용 and 취소 sit in the fight's row, where 편집 was (user, 2026-11-09).
-        var apply = new Button { Content = "적용", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        var cancel = new Button { Content = "취소", Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var apply = new Button { Content = "적용", Margin = new(Tokens.Space.Block, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var cancel = new Button { Content = "취소", Margin = new(Tokens.Space.Block, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         void ShowUnapplied() => UiBuild.MarkUnapplied(apply, RecordEdits.Unapplied(r, Draft()));
         cancel.Click += (_, _) => { _editing = null; FillRecords(); };
         apply.Click += (_, _) =>
@@ -128,7 +128,7 @@ public partial class SettingsWindow
             if (homework) Homework!.Edited(r, edited);
         };
 
-        var panel = new StackPanel { Margin = new(16, 2, 0, 10) };
+        var panel = new StackPanel { Margin = new(Tokens.Space.Card, Tokens.Space.Hair, 0, Tokens.Space.Block) };
         panel.Children.Add(Row("콘텐츠", dungeon));
         panel.Children.Add(Row("난이도", difficulty));
         panel.Children.Add(Row("결과", result));

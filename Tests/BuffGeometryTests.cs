@@ -67,19 +67,13 @@ public class BuffGeometryTests
     public void Box_bottoms_at_each_hud_size_match_the_buff_120_shots(int hud, int bottom) =>
         Assert.InRange(Geometry.BuffBoxes(Fhd, new Fit(hud), 120)[0].Icon.Bottom, bottom - 1, bottom + 1);
 
-    /// <summary>The debug window's guide lines over a row: a column edge between every two boxes and at both ends (the timer
-    /// cells tile the row), and the line between the icons and their timers.</summary>
+    /// <summary>The timer cells tile the row a pitch apart, each icon inside its cell and above its timer.</summary>
     [Fact]
-    public void The_row_grid_separates_every_box_and_the_icons_from_the_timers()
+    public void The_timer_cells_tile_the_row_with_each_icon_above_its_timer()
     {
-        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120);
-        var (columns, iconBottom) = Geometry.RowGrid(boxes);
-        Assert.Equal(Geometry.BuffBoxCount + 1, columns.Length);
-        Assert.Equal(columns.Order(), columns);
-        Assert.All(columns.Zip(columns.Skip(1)), p => Assert.InRange(p.Second - p.First, 34, 36));   // pitch 35 at buff 120
-        Assert.Equal(boxes[0].Icon.Bottom, iconBottom);
-        Assert.All(boxes, b => Assert.Contains(columns, c => c <= b.Icon.X));
-        Assert.Equal(Geometry.DebuffBoxCount + 1, Geometry.RowGrid(Geometry.DebuffBoxes(Fhd, new Fit(110), 120)).Columns.Length);
+        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120).OrderBy(b => b.Timer.X).ToArray();
+        Assert.All(boxes.Zip(boxes.Skip(1)), p => Assert.InRange(p.Second.Timer.X - p.First.Timer.X, 34, 36));   // pitch 35 at buff 120
+        Assert.All(boxes, b => Assert.True(b.Icon.X >= b.Timer.X && b.Icon.Bottom <= b.Timer.Y, $"{b}"));
     }
 
     [Fact]
@@ -170,12 +164,12 @@ public class BuffGeometryTests
     public void Fourteen_buff_boxes_carry_the_row_on_at_one_pitch()
     {
         var seven = Geometry.BuffBoxes(Fhd, new Fit(110), 120);
-        var fourteen = Geometry.BuffBoxes(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
+        var fourteen = Geometry.BuffBoxes(Fhd, new Fit(110), 120, 14);
         Assert.Equal(14, fourteen.Length);
         Assert.Equal(seven, fourteen.Take(7));
         int first = fourteen[0].Icon.X - fourteen[1].Icon.X;
         Assert.All(fourteen.Zip(fourteen.Skip(1)), p => Assert.InRange(p.First.Icon.X - p.Second.Icon.X, first - 1, first + 1));
-        var down = Geometry.BuffBoxes(new Viewport(0, 135, 1920, 810), new Fit(100), 100, Geometry.MaxBuffBoxCount);
+        var down = Geometry.BuffBoxes(new Viewport(0, 135, 1920, 810), new Fit(100), 100, 14);
         double measured = 13 * 21.86;
         Assert.InRange(down[0].Icon.X - down[13].Icon.X, measured - 4.5, measured + 1);
         Assert.Equal(down[0].Icon.Y, down[13].Icon.Y);
@@ -202,8 +196,8 @@ public class BuffGeometryTests
     [Fact]
     public void Area_covers_every_box_and_timer()
     {
-        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
-        var area = Geometry.BuffArea(Fhd, new Fit(110), 120, Geometry.MaxBuffBoxCount);
+        var boxes = Geometry.BuffBoxes(Fhd, new Fit(110), 120, Geometry.MaxIconsAny);
+        var area = Geometry.BuffArea(Fhd, new Fit(110), 120, Geometry.MaxIconsAny);
         foreach (var b in boxes)
             foreach (var r in new[] { b.Icon, b.Timer })
                 Assert.True(r.X >= area.X && r.Y >= area.Y && r.Right <= area.Right && r.Bottom <= area.Bottom, $"{r} in {area}");

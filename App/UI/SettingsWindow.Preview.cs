@@ -18,7 +18,7 @@ public partial class SettingsWindow
     const double ScrollbarRoom = 18;   // Body's vertical scrollbar, beside the form
     static readonly TimeSpan PreviewDelay = TimeSpan.FromMilliseconds(300);   // typing in a box rebuilds once, not per key
 
-    readonly Border _previewHost = new() { CornerRadius = new(6), ClipToBounds = true };
+    readonly Border _previewHost = new() { CornerRadius = new(Tokens.Radius.Card), ClipToBounds = true };
     readonly StackPanel _previewPane = new() { VerticalAlignment = VerticalAlignment.Top };
     readonly TextBlock _previewNote = Note("");   // names the click only on a page where a click does something
     readonly DispatcherTimer _previewDebounce = new() { Interval = PreviewDelay };
@@ -28,7 +28,7 @@ public partial class SettingsWindow
     bool? _previewBeside;   // null: not placed
     const string DefaultBackColour = "#202020";
     readonly ComboBox _previewBack = new() { MinWidth = 120 };   // 게임 화면 / 그림 파일… / 단색
-    readonly Button _previewFile = new() { Content = "다른 그림…", Margin = new(8, 0, 0, 0), Padding = new(10, 2, 10, 2) };
+    readonly Button _previewFile = new() { Content = "다른 그림…", Margin = new(Tokens.Space.Gap, 0, 0, 0), Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
     Button? _previewPlace;   // 위치 조정, hidden on a page whose windows the 레이아웃 편집기 doesn't hold
     UIElement? _previewColour;   // its colour row, shown for 단색
     string _backColour = DefaultBackColour;   // the last 단색 colour, kept while another 배경화면 is picked
@@ -88,13 +88,18 @@ public partial class SettingsWindow
         SectionPage.SizeChanged += (_, _) => { if (_previewPane.Parent is not null) PlacePreview(); };
     }
 
+    const double PreviewEdge = 24;   // the preview to the page's edge
+
     /// <summary>Beside: Body narrowed to the form (its scrollbar against the form, not mid-page) and the preview right after it.
     /// Above: the preview docked under the header, Body filling the rest.</summary>
     void PlacePreview()
     {
-        bool beside = SettingsPreview.Beside(SectionPage.ActualWidth - FormSides - ScrollbarRoom);
+        double page = SectionPage.ActualWidth - FormSides - ScrollbarRoom;
+        bool beside = SettingsPreview.Beside(page);
         // Above: as wide as the form under it (left alone, it sizes to the canvas, a thumbnail).
-        if (!beside) _previewPane.Width = Math.Max(0, Math.Min(FormMaxWidth, SectionPage.ActualWidth - FormSides - ScrollbarRoom));
+        if (!beside) _previewPane.Width = Math.Max(0, Math.Min(FormMaxWidth, page));
+        // On every resize: the form takes what the preview, its gap and its right margin leave.
+        else Body.Width = SettingsPreview.FormBeside(SectionPage.ActualWidth - FormSides - PreviewEdge) + FormSides + ScrollbarRoom;
         if (_previewBeside == beside) return;   // a resize that doesn't cross the line: nothing moves
         _previewBeside = beside;
         // DockPanel fills with its last child: beside, the preview is last; above, Body is.
@@ -102,10 +107,11 @@ public partial class SettingsWindow
         SectionPage.Children.Insert(beside ? SectionPage.Children.Count : SectionPage.Children.IndexOf(Body), _previewPane);
         DockPanel.SetDock(Body, Dock.Left);   // ignored while Body is last
         DockPanel.SetDock(_previewPane, Dock.Top);   // ignored while the preview is last
-        (Body.Width, Body.HorizontalAlignment) = beside ? (FormMaxWidth + FormSides + ScrollbarRoom, HorizontalAlignment.Left) : (double.NaN, HorizontalAlignment.Stretch);
+        if (!beside) Body.Width = double.NaN;
+        Body.HorizontalAlignment = beside ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
         if (beside) _previewPane.Width = SettingsPreview.PreviewWidth;
         _previewPane.HorizontalAlignment = HorizontalAlignment.Left;
-        _previewPane.Margin = beside ? new(SettingsPreview.Gap - ScrollbarRoom, 12, 24, 0) : new(24, 8, 24, 0);
+        _previewPane.Margin = beside ? new(SettingsPreview.Gap - ScrollbarRoom, 12, PreviewEdge, 0) : new(PreviewEdge, 8, PreviewEdge, 0);
         _previewHost.Height = beside ? PreviewBesideHeight : PreviewAboveHeight;
     }
 
@@ -139,7 +145,7 @@ public partial class SettingsWindow
     /// <summary>Under the preview: 위치 조정 (the 레이아웃 편집기 at the page's first window) and the 배경화면 choice.</summary>
     void AddPreviewControls()
     {
-        var place = new Button { Content = "위치 조정", Padding = new(10, 2, 10, 2) };
+        var place = new Button { Content = "위치 조정", Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
         place.Click += (_, _) => { if (EditorPlace() is { } at) GoTo(at); };
         foreach (var name in new[] { "게임 화면", "그림 파일", "단색" }) _previewBack.Items.Add(name);
         _previewBack.SelectionChanged += (_, _) => PreviewBackPicked();
@@ -151,7 +157,7 @@ public partial class SettingsWindow
         back.Children.Add(label);
         back.Children.Add(_previewBack);
         back.Children.Add(_previewFile);
-        var row = new DockPanel { Margin = new(0, 8, 0, 0) };
+        var row = new DockPanel { Margin = new(0, Tokens.Space.Gap, 0, 0) };
         DockPanel.SetDock(place, Dock.Left);
         row.Children.Add(place);
         row.Children.Add(back);

@@ -20,14 +20,14 @@ public partial class SettingsWindow
     readonly SettingsRegistry _registry = new();
     readonly CardStack _secFavorites = new();
     readonly TextBox _search = new() { VerticalContentAlignment = VerticalAlignment.Center };
-    readonly ListBox _results = new() { Visibility = Visibility.Collapsed, MaxHeight = 380, Margin = new(0, 0, 0, 8) };
+    readonly ListBox _results = new() { Visibility = Visibility.Collapsed, MaxHeight = 380, Margin = new(0, 0, 0, Tokens.Space.Gap) };
     bool _collecting;   // BuildAll is filling the registry
 
     /// <summary>Where a section panel's rows are found; null: rows not listed (복사, the box options of one box).</summary>
     Place? PlaceOf(Panel p) =>
         p == _secCharacter ? new(AreaCharacter, AreaCharacter, null)
         : p == _secFit ? new(AreaFit, SecFit, null)
-        : p == _secDetect ? new(AreaFit, SecDetect, null)
+        : p == _secDetect ? new(AreaDetect, SecDetect, null)
         : p == _secDisplay ? new(AreaOverlay, "배경판", null)
         : p == _secPlace ? new(AreaOverlay, "배치", null)
         : p == GaugeBox ? new(AreaGauge, AreaGauge, null)
@@ -44,7 +44,6 @@ public partial class SettingsWindow
         : p == _secRaid ? new(AreaRaid, "레이드", null)
         : p == _secMeter ? new(AreaMeter, AreaMeter, null)
         : p == _secShow ? new(AreaShow, AreaShow, null)
-        : p == _secScreens ? new(AreaScreens, AreaScreens, null)
         : p == _secKeys ? new(AreaKeys, "게임 키", null)
         : p == _secHotkeys ? new(AreaKeys, "앱 단축키", null)
         : p == _secPerformance ? new(AreaPerformance, AreaPerformance, null)
@@ -110,7 +109,7 @@ public partial class SettingsWindow
     /// <summary>The search box and its results, at the top of the rail.</summary>
     void BuildSearch()
     {
-        var hint = Muted(new TextBlock { Text = "설정 검색   Ctrl+F", IsHitTestVisible = false, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        var hint = Muted(new TextBlock { Text = "설정 검색   Ctrl+F", IsHitTestVisible = false, Margin = new(Tokens.Space.Block, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         System.Windows.Automation.AutomationProperties.SetName(_search, "설정 검색");
         _search.TextChanged += (_, _) => { hint.Visibility = Shown(_search.Text.Length == 0); ShowResults(); };
         _search.PreviewKeyDown += (_, e) =>
@@ -126,8 +125,8 @@ public partial class SettingsWindow
         };
         _results.MouseLeftButtonUp += (_, _) => OpenResult();
         _results.KeyDown += (_, e) => { if (e.Key == Key.Enter) { OpenResult(); e.Handled = true; } };
-        Nav.Children.Insert(0, _results);
-        Nav.Children.Insert(0, new Grid { Margin = new(0, 0, 0, 10), Children = { _search, hint } });
+        NavTop.Children.Add(new Grid { Margin = new(0, 0, 0, Tokens.Space.Block), Children = { _search, hint } });
+        NavTop.Children.Add(_results);
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.F || Keyboard.Modifiers != ModifierKeys.Control || KeyFieldCapturing()) return;
@@ -152,20 +151,20 @@ public partial class SettingsWindow
         if (!asked) return;
         var found = SettingsSearch.Find(_registry.All, _search.Text, MaxResults);
         foreach (var e in found) _results.Items.Add(ResultItem(e));
-        if (found.Count == 0) _results.Items.Add(new ListBoxItem { Content = "찾은 설정이 없습니다", IsEnabled = false });
+        if (found.Count == 0) _results.Items.Add(new ListBoxItem { Content = "찾은 설정이 없습니다. 다른 낱말로 찾아 보세요.", IsEnabled = false });
     }
 
     /// <summary>"label" over "영역 › 섹션", with ☆ to star it.</summary>
     ListBoxItem ResultItem(SettingEntry e)
     {
-        var star = new Button { Content = IsFavorite(e.Id) ? "★" : "☆", MinWidth = 0, Padding = new(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "즐겨찾기" };
+        var star = new Button { Content = IsFavorite(e.Id) ? "★" : "☆", MinWidth = 0, Padding = new(Tokens.Space.Gap, 0, Tokens.Space.Gap, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "즐겨찾기" };
         star.Click += (_, _) => { ToggleFavorite(e.Id); star.Content = IsFavorite(e.Id) ? "★" : "☆"; };   // the click is the button's: the result doesn't open
         var text = new StackPanel
         {
             Children =
             {
                 new TextBlock { Text = e.Label, TextWrapping = TextWrapping.Wrap },
-                Muted(new TextBlock { Text = e.Path, FontSize = 12, TextWrapping = TextWrapping.Wrap }),
+                Muted(new TextBlock { Text = e.Path, FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap }),
             },
         };
         var row = new DockPanel();
@@ -188,9 +187,9 @@ public partial class SettingsWindow
         {
             if (_registry.Find(id) is not { } e) continue;
             var row = _registry.Build(id) ?? new TextBlock { Text = e.Label, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-            var go = new Button { Content = $"→ {e.Path}", Margin = new(0, 4, 8, 0) };
+            var go = new Button { Content = $"→ {e.Path}", Margin = new(0, Tokens.Space.Tight, Tokens.Space.Gap, 0) };
             go.Click += (_, _) => _registry.Navigate(id);
-            var unstar = new Button { Content = "★ 빼기", Margin = new(0, 4, 0, 0), ToolTip = "즐겨찾기에서 뺍니다." };
+            var unstar = new Button { Content = "★ 빼기", Margin = new(0, Tokens.Space.Tight, 0, 0), ToolTip = "즐겨찾기에서 뺍니다." };
             unstar.Click += (_, _) => ToggleFavorite(id);
             p.Children.Add(Stack(row, Wrap(go, unstar)));
         }

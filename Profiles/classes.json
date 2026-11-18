@@ -35,7 +35,7 @@
     "소서리스":     { "id": 22, "adenSlots": [], "subclasses": { "점화": { "adenGauge": null }, "환류": { "adenGauge": null } } }
   },
   "암살자": {
-    "블레이드":     { "id": 23, "adenSlots": [], "subclasses": { "잔재된기운": { "adenGauge": null }, "버스트": { "adenGauge": null } } },
+    "블레이드":     { "id": 23, "sameSkills": true, "adenSlots": [], "subclasses": { "잔재된기운": { "adenGauge": null }, "버스트": { "adenGauge": null } } },
     "데모닉":       { "id": 24, "adenSlots": [], "subclasses": { "완벽한억제": { "adenGauge": null }, "멈출수없는충동": { "adenGauge": null } } },
     "리퍼":         { "id": 25, "adenSlots": [], "subclasses": { "달의소리": { "adenGauge": null }, "갈증": { "adenGauge": null } } },
     "소울이터":     { "id": 26, "adenSlots": [], "subclasses": { "만월의집행자": { "adenGauge": null }, "그믐의경계": { "adenGauge": null } } }

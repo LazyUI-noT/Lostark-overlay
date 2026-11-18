@@ -18,19 +18,22 @@ public partial class SettingsWindow
         // 편집 중's 직업각인, not the character's (user, 2026-11-13): 설정 opens on the character's, so it is that one until another is picked.
         if (BoxKey is not { } key)
         {
-            p.Children.Add(Note("편집 중에서 직업각인을 고르세요. 단심은 직업각인마다 따로 켭니다."));
+            p.Children.Add(Note("편집할 직업각인을 고르세요. 단심은 직업각인마다 따로 켭니다."));
             return;
         }
         p.Children.Add(Check($"{key}에서 쓰기", j.On(key), v => j.Set(key, v), () => { Changed(); Dispatcher.BeginInvoke(FillJudgment); },
             "직업각인마다 따로 켭니다. 끄면 단심을 읽지 않습니다."));
         if (!j.On(key)) return;
+        p.Children.Add(Defaulted(Row("표시", Check(RaidOnlyText, j.RaidOnly, v => j.RaidOnly = v, Changed,
+            "켜면 단심 창을 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 주고, 그때만 단심을 읽습니다. 위치 조정에서는 레이드 안처럼 보입니다.")),
+            s => s.Judgment.RaidOnly, (s, v) => s.Judgment.RaidOnly = v, Target));
 
-        p.Children.Add(Defaulted(HelpRow("감지 방식",
-            "아이콘이 가장 정확합니다. 버프 줄의 심판 아이콘과 그 아래 남은 시간으로 시작 시각을 맞춥니다. 캐릭터 위에 뜨는 '심판' 글자는 버프가 많아 아이콘이 밀려났을 때 대신 쓰며, 아이콘보다 덜 안정적입니다.",
+        p.Children.Add(Defaulted(HelpRow("읽는 방식",
+            "아이콘이 가장 정확합니다. 버프 줄의 심판 아이콘과 그 아래 남은 시간으로 시작 시각을 맞춥니다. 버프가 많아 아이콘이 밀려나면 캐릭터 위에 뜨는 '심판' 글자를 대신 읽습니다. 글자는 아이콘보다 덜 안정적입니다.",
             EnumCombo([(JudgmentSource.Both, "아이콘 + 글자 (아이콘 우선)"), (JudgmentSource.Icon, "아이콘만"), (JudgmentSource.Text, "글자만")], j.Source, v => j.Source = v)),
             s => s.Judgment.Source, (s, v) => s.Judgment.Source = v, Target));
         if (j.Source != JudgmentSource.Icon)
-            p.Children.Add(Note("데미지 폰트 크기는 화면·인식 → 게임 설정 값에서 맞춥니다."));
+            p.Children.Add(Note("데미지 폰트 크기는 인게임 설정 → 게임 설정 값에서 맞춥니다."));
 
         p.Children.Add(Defaulted(Row("표시 방식", EnumCombo([(JudgmentDisplay.Bar, "막대"), (JudgmentDisplay.ReadyIcon, "아이콘")], j.Display,
             v => { j.Display = v; Dispatcher.BeginInvoke(FillJudgment); })), s => s.Judgment.Display, (s, v) => s.Judgment.Display = v, Target));

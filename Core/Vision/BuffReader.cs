@@ -82,9 +82,14 @@ public sealed class BuffReader
     /// <summary>The buffs in a row of <paramref name="count"/> boxes, box 0 first. The row packs from box 0 (the right), so the
     /// boxes up to the last framed one (<see cref="RowCadence.Filled"/>: one unframed box passed) hold icons and read at the
     /// usual bar; a box past them is most likely empty scenery, read only at <see cref="MinUnframedStructure"/>. Pure.</summary>
-    public static BuffKind?[] ReadRow(int count, Func<int, bool> framed, Func<int, (BuffKind Kind, double Structure)?> read)
+    public static BuffKind?[] ReadRow(int count, Func<int, bool> framed, Func<int, (BuffKind Kind, double Structure)?> read) =>
+        ReadRow(count, framed, read, out _);
+
+    /// <summary><see cref="ReadRow(int, Func{int, bool}, Func{int, ValueTuple{BuffKind, double}?})"/> with <paramref name="framedRun"/>, the
+    /// boxes holding icons: a row as long as the game shows is full, and what it pushed out is behind its "+N".</summary>
+    public static BuffKind?[] ReadRow(int count, Func<int, bool> framed, Func<int, (BuffKind Kind, double Structure)?> read, out int framedRun)
     {
-        int run = RowCadence.Filled(count, framed);
+        int run = framedRun = RowCadence.Filled(count, framed);
         var row = new BuffKind?[count];
         for (int i = 0; i < count; i++)
             if (read(i) is { } r && (i < run || r.Structure >= MinUnframedStructure)) row[i] = r.Kind;
@@ -266,7 +271,10 @@ public sealed class BuffReader
     sealed record Glyph(char Ch, int W, int H, float[] Luma);
     sealed record GlyphSet(int Size, double Enlarge, Glyph Cho, Glyph Dot, Glyph[] Digits);
 
-    static readonly GlyphSet[] Sets = [.. BuffGlyphs.Sets.Select(s =>
+    static readonly GlyphSet[] Sets = Parse(BuffGlyphs.Sets);
+    static readonly GlyphSet[] BossSets = Parse(BossGlyphs.Sets);
+
+    static GlyphSet[] Parse((int Size, double Enlarge, (char Ch, string[] Rows)[] Glyphs)[] sets) => [.. sets.Select(s =>
     {
         var g = s.Glyphs.ToDictionary(x => x.Ch, x => new Glyph(x.Ch, x.Rows[0].Length, x.Rows.Length,
             [.. x.Rows.SelectMany(r => r.Select(c => DigitReader.GreyRamp.IndexOf(c) * 28.3f))]));
@@ -278,12 +286,19 @@ public sealed class BuffReader
 
     /// <summary>A reader for boxes at <paramref name="buffScale"/> (<see cref="Geometry.BuffScale"/>): the glyph set of the
     /// nearest buff size at 1080 (scale × 100), with its enlargement adjusted by the remaining ratio.</summary>
-    public BuffReader(double buffScale)
+    public BuffReader(double buffScale) : this(Sets, buffScale) { }
+
+    BuffReader(GlyphSet[] sets, double scale)
     {
-        double size = buffScale * 100;
-        _set = Sets.MinBy(s => Math.Abs(s.Size - size))!;
+        double size = scale * 100;
+        _set = sets.MinBy(s => Math.Abs(s.Size - size))!;
         _enlarge = _set.Enlarge * _set.Size / size;
     }
+
+    /// <summary>A reader for the boss row's "N초" at <paramref name="textScale"/> (<see cref="Geometry.BuffScale"/> at the 보스 디버프
+    /// 크기) with the boss text's own glyphs (<see cref="BossGlyphs"/>, 80% and 90% at 1080): the buff glyphs score that peach,
+    /// slightly larger text at most 0.60–0.64 there.</summary>
+    internal static BuffReader ForBossText(double textScale) => new(BossSets, textScale);
 
     /// <summary>Scores of the last <see cref="ReadTimer"/>: '초', the ones digit and the tens candidate, for diagnostics.</summary>
     internal (double Cho, double Ones, double Tens) LastScores { get; private set; }

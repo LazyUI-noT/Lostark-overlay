@@ -94,10 +94,10 @@ public class SubclassHistoryTests
     }
 
     [Fact]
-    public void Only_디스트로이어_is_marked_as_having_the_same_skills()
+    public void Only_디스트로이어_and_블레이드_are_marked_as_having_the_same_skills()
     {
         var classes = ProfileLoader.LoadClasses(Path.Combine(RepoRoot(), "Profiles"));
-        Assert.Equal(["디스트로이어"], classes.Where(c => c.SameSkills).Select(c => c.Name));
+        Assert.Equal(["디스트로이어", "블레이드"], classes.Where(c => c.SameSkills).Select(c => c.Name));
     }
 
     [Fact]

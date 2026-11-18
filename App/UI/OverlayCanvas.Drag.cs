@@ -111,7 +111,10 @@ public sealed partial class OverlayCanvas
     void StartBoxDrag(OverlayRenderer r, Part part, bool resize)
     {
         _part = part;
-        _startCells = new(Boxes(r).Layout ?? r.CellsAsDrawn());
+        var saved = Boxes(r).Layout;
+        _startCells = new(saved ?? r.CellsAsDrawn());
+        if (saved is not null && !_startCells.ContainsKey(part))
+            _startCells[part] = r.CellsAsDrawn()[part];   // a bar the layout predates (낙인): where FreeLayout.CellOf drew it
         var moving = resize && LinkSizes ? FreeLayout.Linked(part).Parts : [part];
         _still = r.DrawnParts.Where(q => !moving.Contains(q)).Cast<Part?>().FirstOrDefault();
         if (_still is { } p && OnCanvas(r, p) is { } at0) _stillAt = at0;

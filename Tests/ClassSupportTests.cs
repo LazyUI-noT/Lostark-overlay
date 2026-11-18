@@ -1,5 +1,6 @@
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
+using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.Tests;
 
@@ -13,13 +14,13 @@ public class ClassSupportTests
     static IReadOnlyList<SupportRow> Rows() => ClassSupport.Rows(Profiles, ProfileLoader.LoadClasses(Profiles), Key);
 
     [Fact]
-    public void Every_shipped_class_with_icons_or_a_gauge_is_listed_and_no_other()
+    public void Every_shipped_class_with_icons_초각스_or_a_gauge_is_listed_and_no_other()
     {
         var rows = Rows();
         Assert.Contains(rows, r => (r.Class, r.Subclass) == ("워로드", "전투태세"));
         Assert.Contains(rows, r => (r.Class, r.Subclass) == ("홀리나이트", "심판자") && r.Detect && r.Gauge is null && r.Skills is null);
         Assert.DoesNotContain(rows, r => r.Class == "디스트로이어");   // one 초각스 icon for both: not told apart
-        Assert.DoesNotContain(rows, r => r.Class == "소서리스");       // nothing yet
+        Assert.Contains(rows, r => (r.Class, r.Subclass) == ("소서리스", "점화") && r.Detect);   // told by its 초각스 alone, no PNG
         Assert.All(rows, r => Assert.True(r.Detect || r.Gauge is not null));
     }
 
@@ -57,6 +58,35 @@ public class ClassSupportTests
         {
             var cls = new ClassInfo("가족", "시험", [SlotId.아덴1], new Dictionary<string, GaugeRule?> { ["가"] = new GaugeRule([], null) });
             Assert.Empty(ClassSupport.Rows(dir, [cls], Key));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    static IconPrint Print(int seed)
+    {
+        var img = new Image(48, 48, new byte[48 * 48 * 4]);
+        new Random(seed).NextBytes(img.Bgra);
+        return IconPrint.Of(img);
+    }
+
+    /// <summary>A class with no PNG in Profiles/subclass gets 감지 when every one of its 직업각인 is named by a 초각스 in the skill library.</summary>
+    [Fact]
+    public void A_class_whose_초각스_name_every_직업각인_gets_detect_without_icons()
+    {
+        var (dir, classes) = Temp(null);
+        var skills = Path.Combine(dir, "skills");
+        SkillLibrary.Save(skills, "시험", [
+            new("시험", "가기", SlotGroup.초각스, "a.png", "가", [Print(1)]),
+            new("시험", "나기", SlotGroup.초각스, "b.png", "나", [Print(2)])]);
+        SkillLibrary.Save(skills, "시험2", [new("시험2", "가기", SlotGroup.초각스, "c.png", "가", [Print(3)])]);
+        try
+        {
+            var rows = ClassSupport.Rows(dir, classes, Key);
+            Assert.All(rows, r => Assert.True(r.Detect));
+            Assert.Contains("시험/가/감지", ClassSupport.Keys(rows));
+            // a class missing one 직업각인's 초각스 does not
+            SkillLibrary.Save(skills, "시험", [new("시험", "가기", SlotGroup.초각스, "a.png", "가", [Print(1)])]);
+            Assert.DoesNotContain(ClassSupport.Rows(dir, classes, Key), r => r.Class == "시험" && r.Detect);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

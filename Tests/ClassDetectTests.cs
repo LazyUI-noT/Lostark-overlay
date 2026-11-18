@@ -21,6 +21,23 @@ public class ClassDetectTests
         Assert.Equal(("워로드", "고독한기사", false), (found.Class, found.Subclass, found.Fast));
     }
 
+    /// <summary>Every shipped 초각스 shown as its own print gives back its class and its 직업각인 (null where shared), so 자동 never
+    /// names the wrong 직업각인 from the library's mapping.</summary>
+    [Fact]
+    public void Every_shipped_초각스_tells_its_own_class_and_직업각인()
+    {
+        var wrong = new List<string>();
+        foreach (var cls in Lib.Classes)
+            foreach (var skill in Lib.Pool(cls, SlotGroup.초각스))
+            {
+                var found = SkillClassFinder.Find(skill.Prints, Lib);
+                if ((found.Class, found.Subclass) != (cls, skill.Subclass)) wrong.Add($"{cls}/{skill.Name}: {found.Class}/{found.Subclass} (want {skill.Subclass})");
+                var fast = SkillClassFinder.Find(skill.Prints, Lib, last: cls);   // the last-class fast path
+                if ((fast.Class, fast.Subclass) != (cls, skill.Subclass)) wrong.Add($"fast {cls}/{skill.Name}: {fast.Class}/{fast.Subclass} (want {skill.Subclass})");
+            }
+        Assert.Empty(wrong);
+    }
+
     [Fact]
     public void The_last_class_is_enough_when_the_초각스_is_its_own()
     {

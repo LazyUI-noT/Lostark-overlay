@@ -29,7 +29,7 @@ public class FeatureMapTests
 
     [Fact]
     public void The_records_group_holds_the_timeline_and_the_homework_tab_beside_it() =>
-        Assert.Equal(["타임라인", "레이드 숙제"], FeatureMap.Rail[Group("전투기록")].Areas);
+        Assert.Equal(["타임라인", "원정대"], FeatureMap.Rail[Group("전투기록")].Areas);
 
     [Fact]
     public void The_raid_tab_has_its_two_line_label() =>
@@ -42,7 +42,7 @@ public class FeatureMapTests
         Assert.Equal("기능 맵/기능 맵/오버레이 표시/y", FeatureMap.MigrateSettingId("표시/표시/오버레이 표시/y"));
         Assert.Equal("기능 맵/기능 맵/a", FeatureMap.MigrateSettingId("기능 Map/기능 Map/a"));
         Assert.Equal("표시할 화면/b/c", FeatureMap.MigrateSettingId("화면 선택 및 출력/b/c"));
-        Assert.Equal("레이드 숙제/d/e", FeatureMap.MigrateSettingId("원정대 (레이드 선택)/d/e"));
+        Assert.Equal("원정대/d/e", FeatureMap.MigrateSettingId("원정대 (레이드 선택)/d/e"));   // back to 원정대 (rail-split.plan.md)
         Assert.Equal("파티 공유/f/g", FeatureMap.MigrateSettingId("파티/f/g"));
         Assert.Equal("파티 공유/f/g", FeatureMap.MigrateSettingId("파티 공유/f/g"));   // today's name stays
     }
@@ -50,8 +50,8 @@ public class FeatureMapTests
     [Fact]
     public void Favourites_saved_under_the_old_names_follow_their_rows_on_load()
     {
-        var s = new Settings { FavoriteSettings = ["캐릭터/캐릭터/스킬 칸/x", "표시/표시/오버레이 표시", "화면·인식/감지/y"] };
-        Assert.Equal(["직업 인식/직업 인식/스킬 칸/x", "기능 맵/기능 맵/오버레이 표시", "화면·인식/감지/y"], SettingsStore.Normalize(s).FavoriteSettings);
+        var s = new Settings { FavoriteSettings = ["캐릭터/캐릭터/스킬 칸/x", "표시/표시/오버레이 표시", "화면·인식/게임 설정 값/y", "화면·인식/감지/z", "내 오버레이/단심/감지 방식"] };
+        Assert.Equal(["직업 인식/직업 인식/스킬 칸/x", "기능 맵/기능 맵/오버레이 표시", "인게임 설정/게임 설정 값/y", "화면 인식 설정/화면 인식 설정/z", "내 오버레이/단심/읽는 방식"], SettingsStore.Normalize(s).FavoriteSettings);
     }
 
     [Fact]
@@ -79,12 +79,44 @@ public class FeatureMapTests
     {
         Assert.Equal("시스템 성능/시스템 성능/초당 읽기 횟수", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/초당 읽기 횟수"));
         Assert.Equal("시스템 성능/시스템 성능/초당 그리기 횟수", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/초당 그리기 횟수"));
-        Assert.Equal("화면·인식/스킬창 맞추기/버프 크기 (%)", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/버프 크기 (%)"));
+        Assert.Equal("인게임 설정/인게임 설정/버프 크기 (%)", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/버프 크기 (%)"));
+    }
+
+    [Fact]   // reading-place.plan.md A
+    public void The_fit_section_and_the_screens_tab_land_in_in_game_settings()
+    {
+        Assert.Equal("인게임 설정/인게임 설정/스킬창 위치", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/스킬창 위치"));
+        Assert.Equal("인게임 설정/인게임 설정/표시 화면", FeatureMap.MigrateSettingId("표시할 화면/표시할 화면/표시 화면"));
+        Assert.Equal("인게임 설정/인게임 설정/표시 화면", FeatureMap.MigrateSettingId("화면 선택 및 출력/표시할 화면/표시 화면"));   // 2026-11-09's name, two moves
+        Assert.Equal("인게임 설정/인게임 설정/x", FeatureMap.MigrateSettingId("인게임 설정/인게임 설정/x"));
+    }
+
+    [Fact]
+    public void The_screens_tab_leaves_the_rail_and_the_game_group_keeps_the_rest() =>
+        Assert.Equal(["인게임 설정", "화면 인식 설정", "내 오버레이"], FeatureMap.Rail[Group("게임 설정")].Areas);
+
+    [Fact]
+    public void Rail_seen_rows_move_to_the_new_names_once_and_keep_other_keys()
+    {
+        var s = new Settings { RailSeen = new() { ["화면·인식"] = ["화면·인식/감지/x", "화면·인식/읽는 자리/x", "hp:abc"], ["파티 공유"] = null! } };
+        var seen = SettingsStore.Normalize(s).RailSeen!;
+        Assert.Equal(["화면 인식 설정/화면 인식 설정/x"], seen["화면 인식 설정"]);   // 화면·인식's rows split by tab (rail-split.plan.md)
+        Assert.Equal(["hp:abc"], seen["인게임 설정"]);
+        Assert.False(seen.ContainsKey("화면·인식"));
+        Assert.Empty(seen["파티 공유"]);
     }
 
     [Fact]
     public void Ids_of_areas_that_kept_their_names_are_left_alone() =>
-        Assert.Equal("화면·인식/감지/x", FeatureMap.MigrateSettingId("화면·인식/감지/x"));
+        Assert.Equal("내 오버레이/x/y", FeatureMap.MigrateSettingId("내 오버레이/x/y"));
+
+    [Fact]
+    public void The_detect_page_and_the_judgment_source_row_follow_their_new_words()
+    {
+        Assert.Equal("화면 인식 설정/화면 인식 설정/x", FeatureMap.MigrateSettingId("화면·인식/감지/x"));
+        Assert.Equal("내 오버레이/단심/읽는 방식", FeatureMap.MigrateSettingId("내 오버레이/단심/감지 방식"));
+        Assert.Equal("화면 인식 설정/화면 인식 설정/화면 인식 설정", FeatureMap.MigrateSettingId("화면·인식/감지/감지"));   // the page's own row
+    }
 
     [Fact]
     public void No_area_is_listed_twice()
@@ -96,4 +128,13 @@ public class FeatureMapTests
     [Fact]
     public void Colours_are_hex_or_neutral() =>
         Assert.All(FeatureMap.Rail, g => Assert.Matches("^(#[0-9A-Fa-f]{6})?$", g.Color));
+
+    [Fact]
+    public void The_homework_tab_and_the_split_screen_tabs_take_their_new_ids()
+    {
+        Assert.Equal("원정대/원정대/x", FeatureMap.MigrateSettingId("레이드 숙제/레이드 숙제/x"));
+        Assert.Equal("인게임 설정/인게임 설정/스킬창 위치", FeatureMap.MigrateSettingId("화면·인식/스킬창 맞추기/스킬창 위치"));
+        Assert.Equal("화면 인식 설정/화면 인식 설정/x", FeatureMap.MigrateSettingId("화면·인식/읽는 자리/x"));
+        Assert.Equal("원정대", FeatureMap.Page("hw"));
+    }
 }

@@ -16,10 +16,10 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _icon;
     readonly ContextMenuStrip _menu = new();
     readonly ToolStripMenuItem _overlay, _edit, _test, _character, _refit, _detectSubclass, _rereadIcons, _party, _host, _join, _copyToken, _leave;
-    readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _testReinforced, _parts;
+    readonly ToolStripMenuItem _profiles, _raid, _raidCount, _testFront, _testOff, _testReinforced, _parts, _hideCapture, _autoAsAlways;
     readonly Dictionary<OverlayPart, ToolStripMenuItem> _partItems = [];
 
-    /// <summary>기능 Map ▸'s names, in menu order (as 설정 → 기능 Map).</summary>
+    /// <summary>표시할 창 ▸'s names, in menu order (as 설정 → 기능 맵).</summary>
     internal static readonly (OverlayPart Part, string Name)[] PartNames =
         [(OverlayPart.Skills, "스킬 칸"), (OverlayPart.Gauge, "아덴 게이지"), (OverlayPart.Buffs, "버프 막대"), (OverlayPart.Debuffs, "디버프 창"),
          (OverlayPart.Judgment, "단심 창"), (OverlayPart.Amsu, "암수 창"), (OverlayPart.Meter, "DPS 미터기"), (OverlayPart.BarCount, "줄 수 창"), (OverlayPart.Party, "파티원 창")];
@@ -31,7 +31,7 @@ public sealed class Tray : IDisposable
     public event Action<string, string, string>? CharacterPicked;
     /// <summary>기본 (no class) picked from the 캐릭터 menu.</summary>
     public event Action? DefaultPicked;
-    /// <summary>기능 Map ▸: a part turned on (true) or off.</summary>
+    /// <summary>표시할 창 ▸: a part turned on (true) or off.</summary>
     public event Action<OverlayPart, bool>? PartToggled;
     /// <summary>오버레이 프로필 picked (0-based).</summary>
     public event Action<int>? ProfileChosen;
@@ -41,12 +41,16 @@ public sealed class Tray : IDisposable
     public event Action<IntPtr>? TestWindowPicked;
     /// <summary>테스트 모드 → 끄기.</summary>
     public event Action? TestOff;
-    /// <summary>테스트 모드 → 강화 읽기 clicked: the new state.</summary>
+    /// <summary>테스트 모드 → 압축 영상 읽기 clicked: the new state.</summary>
     public event Action<bool>? ReinforcedToggled;
     /// <summary>레이드 → 자동 인식 (null) or a gate picked by hand (its id).</summary>
     public event Action<string?>? RaidPicked;
     /// <summary>레이드 → 줄 수 읽기 (모든 레이드) turned on (true) or off.</summary>
     public event Action<bool>? CountToggled;
+    /// <summary>방송·캡처에서 숨김 turned on (true) or off.</summary>
+    public event Action<bool>? CaptureHiddenToggled;
+    /// <summary>자동을 항상으로 (수련장 테스트) turned on (true) or off.</summary>
+    public event Action<bool>? AutoAsAlwaysToggled;
 
     public Tray()
     {
@@ -57,13 +61,15 @@ public sealed class Tray : IDisposable
             return i;
         }
 
-        _overlay = Item("오버레이 켜기/끄기", () => ToggleOverlay?.Invoke());
+        _overlay = Item("오버레이 표시", () => ToggleOverlay?.Invoke());
         _overlay.Checked = true;
+        _autoAsAlways = Item("자동을 항상으로 (수련장 테스트)", () => AutoAsAlwaysToggled?.Invoke(!_autoAsAlways!.Checked));
+        _autoAsAlways.ToolTipText = "자동으로 둔 오버레이와 창을 레이드 밖에서도 보여 주고 읽습니다. 다시 누르거나 앱을 다시 켜면 자동으로 돌아갑니다.";
         _edit = Item("편집 모드", () => ToggleEditMode?.Invoke());
         _test = new ToolStripMenuItem("테스트 모드");
         _testFront = Item("맨 앞 창 따라가기", () => ToggleTestMode?.Invoke());
         _testOff = Item("끄기", () => TestOff?.Invoke());
-        _testReinforced = Item("강화 읽기 (압축된 영상)", () => ReinforcedToggled?.Invoke(!_testReinforced!.Checked));
+        _testReinforced = Item("압축 영상 읽기", () => ReinforcedToggled?.Invoke(!_testReinforced!.Checked));
         _testReinforced.ToolTipText = "스트림·720p처럼 압축된 영상의 버프, 디버프, 전분, 보스 체력, 암수를 더 잘 읽습니다. CPU를 더 씁니다. 테스트 모드에서만.";
         // The window list is filled each time the submenu opens (App answers TestMenuOpening with SetTestWindows).
         _test.DropDownItems.Add(_testFront);
@@ -71,7 +77,7 @@ public sealed class Tray : IDisposable
         _profileItems = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => Item($"프로필 {i + 1}", () => ProfileChosen?.Invoke(i)))];
         _profiles = new ToolStripMenuItem("프로필");
         _profiles.DropDownItems.AddRange(_profileItems);
-        _parts = new ToolStripMenuItem("기능 맵");
+        _parts = new ToolStripMenuItem("표시할 창");
         foreach (var (part, name) in PartNames)
         {
             var item = new ToolStripMenuItem(name);
@@ -79,12 +85,18 @@ public sealed class Tray : IDisposable
             _partItems[part] = item;
             _parts.DropDownItems.Add(item);
         }
-        _character = new ToolStripMenuItem("직업 인식: 없음");
+        // 표시할 창 stays open after a tick (user, 2026-11-18: several windows at once); a click outside or Esc closes it.
+        // The click closes the whole menu chain, so both the list and the menu above it keep open for a click on the list.
+        _parts.DropDown.Closing += KeepOpen;
+        _menu.Closing += KeepOpen;
+        _hideCapture = Item("방송·캡처에서 숨김", () => CaptureHiddenToggled?.Invoke(!_hideCapture!.Checked));
+        _hideCapture.ToolTipText = "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다.";
+        _character = new ToolStripMenuItem("직업 인식: 기본");
         _raid = new ToolStripMenuItem();
         _raidCount = Item("줄 수 읽기 (모든 레이드)", () => CountToggled?.Invoke(!_raidCount!.Checked));
         _raid.DropDownItems.AddRange([_raidCount, new ToolStripSeparator(), Item("자동 인식", () => RaidPicked?.Invoke(null))]);
         SetRaid(new RaidSettings(), [], null);
-        _refit = Item("스킬창 다시 맞추기 (+직업 확인)", () => Refit?.Invoke());
+        _refit = Item("스킬창 다시 맞추기 (직업 확인 포함)", () => Refit?.Invoke());
         _detectSubclass = Item("직업각인 다시 읽기", () => DetectSubclass?.Invoke());
         var submitSkills = Item("스킬 등록", () => SubmitSkills?.Invoke());
         _rereadIcons = Item("아이콘 다시 읽기", () => RereadIcons?.Invoke());
@@ -92,7 +104,7 @@ public sealed class Tray : IDisposable
         _join = Item("참가…", () => JoinParty?.Invoke());
         _copyToken = Item("참가 코드 복사", () => CopyToken?.Invoke());
         _leave = Item("나가기", () => LeaveParty?.Invoke());
-        _party = new ToolStripMenuItem("공유: 없음");
+        _party = new ToolStripMenuItem("파티 공유: 꺼짐");
         _party.DropDownItems.AddRange([_host, _join, _copyToken, _leave]);
 
         // Rarely used tools in one submenu, so the top level keeps what is used between gates.
@@ -104,16 +116,23 @@ public sealed class Tray : IDisposable
         settings.Font = _bold = new Font(settings.Font, FontStyle.Bold);
         // Windows' dark mode or high contrast switched while running: redraw the menu for it.
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemColors;
+        _fade = new System.Windows.Forms.Timer { Interval = FadeStep };
+        _fade.Tick += (_, _) => FadeTick();
+        _menu.Opening += (_, _) => FadeStart();
+        _menu.Opened += (_, _) => _fadeClock.Restart();   // the 120 ms count from the first frame, not from before the layout
+        _menu.Closed += (_, _) => FadeStop();
 
         _menu.Items.AddRange(
         [
             settings,
             new ToolStripSeparator(),
             _overlay,
+            _autoAsAlways,
             _edit,
             _test,
             _profiles,
             _parts,
+            _hideCapture,
             new ToolStripSeparator(),
             _character,
             _raid,
@@ -125,13 +144,15 @@ public sealed class Tray : IDisposable
             Item("종료", () => Exit?.Invoke()),
         ]);
         SetParty(null);
+        TrayRenderer.Shape(_menu);
 
         _icon = new NotifyIcon { Text = "GaugeOverlay", ContextMenuStrip = _menu, Visible = true };
         // Left click opens the menu too (Windows convention); NotifyIcon only does that for the right button.
         _icon.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) ShowContextMenu?.Invoke(_icon, null); };
         _icon.DoubleClick += (_, _) => { _menu.Close(); OpenSettings?.Invoke(); };
         _icon.BalloonTipClicked += (_, _) => { var click = _onNoticeClick; _onNoticeClick = null; click?.Invoke(); };
-        _icon.BalloonTipClosed += (_, _) => _onNoticeClick = null;
+        // No clear on BalloonTipClosed: the replaced balloon's close lands after the next Notify and wiped its action. Every
+        // Notify sets the action, so a late click (Action Center) runs the newest notice's, at worst the wrong page.
         UpdateIcon();
     }
 
@@ -143,10 +164,11 @@ public sealed class Tray : IDisposable
     public void Notify(string text, Action? onClick = null, NoticeKind kind = NoticeKind.Guide)
     {
         // A kind turned off still reaches the log: some notices (settings reset, a hotkey not registered) show nowhere else.
-        // A muted notice's onClick is dropped with it; no caller passes one today.
+        // A muted notice's onClick is dropped with it.
         if (!NoticeShown(kind)) { System.Diagnostics.Trace.WriteLine($"[tray] notice off ({kind}): {text}"); return; }
         _onNoticeClick = onClick;
-        _icon.ShowBalloonTip(5000, "GaugeOverlay", text, ToolTipIcon.None);
+        // A 문제 balloon looks like one (Windows' warning sign); the rest stay plain (ui-audit-2026-11-18, P2).
+        _icon.ShowBalloonTip(5000, "GaugeOverlay", text, kind == NoticeKind.Problem ? ToolTipIcon.Warning : ToolTipIcon.None);
     }
     Action? _onNoticeClick;
 
@@ -170,7 +192,7 @@ public sealed class Tray : IDisposable
     /// <summary>Checkmark on "오버레이 표시".</summary>
     public void SetOverlayVisible(bool visible) => _overlay.Checked = visible;
 
-    /// <summary>기능 Map ▸'s ticks as the settings say.</summary>
+    /// <summary>표시할 창 ▸'s ticks as the settings say.</summary>
     public void SetParts(Func<OverlayPart, bool> shown)
     {
         foreach (var (part, item) in _partItems) item.Checked = shown(part);
@@ -185,7 +207,7 @@ public sealed class Tray : IDisposable
             _profileItems[i].Font = i == active ? (_boldFont ??= new Font(_menu.Font, FontStyle.Bold)) : _menu.Font;
         }
         _profile = active;
-        if (_icon is not null) { UpdateIcon(); _icon.Text = $"GaugeOverlay · 프로필 {active + 1}"; }
+        if (_icon is not null) UpdateIcon();
     }
 
     int _profile;
@@ -226,6 +248,18 @@ public sealed class Tray : IDisposable
         }
     }
 
+    /// <summary>Checkmark on "방송·캡처에서 숨김".</summary>
+    public void SetCaptureHidden(bool on) => _hideCapture.Checked = on;
+
+    /// <summary>Checkmark on 자동을 항상으로 (수련장 테스트).</summary>
+    public void SetAutoAsAlways(bool on) => _autoAsAlways.Checked = on;
+
+    void KeepOpen(object? sender, ToolStripDropDownClosingEventArgs e)
+    {
+        var list = _parts.DropDown;
+        if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked && list.Visible && list.Bounds.Contains(Cursor.Position)) e.Cancel = true;
+    }
+
     /// <summary>Checkmark on "편집 모드".</summary>
     public void SetEditMode(bool on) => _edit.Checked = on;
 
@@ -236,7 +270,7 @@ public sealed class Tray : IDisposable
         _testFront.Checked = on && picked == 0;
     }
 
-    /// <summary>Checkmark on 테스트 모드 → 강화 읽기.</summary>
+    /// <summary>Checkmark on 테스트 모드 → 압축 영상 읽기.</summary>
     public void SetReinforced(bool on) => _testReinforced.Checked = on;
 
     const int MaxTitle = 50;
@@ -322,7 +356,7 @@ public sealed class Tray : IDisposable
     public void SetParty(string? status)
     {
         _partyActive = status is not null;
-        _party.Text = $"공유: {status ?? "없음"}";
+        _party.Text = $"파티 공유: {status ?? "꺼짐"}";
         _host.Visible = _join.Visible = !_partyActive;
         _copyToken.Visible = _leave.Visible = _partyActive;
         if (_icon is not null) UpdateIcon();
@@ -333,6 +367,7 @@ public sealed class Tray : IDisposable
         var old = _icon.Icon;
         _icon.Icon = Draw(SystemInformation.SmallIconSize.Width, !_gameRunning, _partyActive, _profile + 1);
         old?.Dispose();
+        _icon.Text = TrayTip.Text(_profile + 1, _gameRunning, _partyActive);
     }
 
     /// <summary>A tiny version of the overlay: 각성기 column, 2×2 skills, 아덴 column.</summary>
@@ -379,17 +414,78 @@ public sealed class Tray : IDisposable
     [DllImport("user32.dll")]
     static extern bool DestroyIcon(nint handle);
 
-    /// <summary>--demo --tray-menu: the menu opened near the top left of the screen, for screenshots.</summary>
-    internal void DemoShowMenu() => _menu.Show(new Point(40, 40));
+    /// <summary>system.md "Motion", the tray menu opens: the top menu fades in 120 ms <c>Out</c> through UiMotion's gate (user,
+    /// 2026-11-17, decisions.md); submenus open still. WinForms has no animation, so a timer steps the menu's opacity.</summary>
+    static readonly TimeSpan FadeTime = TimeSpan.FromMilliseconds(120);
+    const int FadeStep = 15;   // about one frame at 60 Hz; WinForms' timer ticks at ~15.6 ms anyway
+    readonly System.Windows.Forms.Timer _fade;
+    readonly System.Diagnostics.Stopwatch _fadeClock = new();
+
+    void FadeStart()
+    {
+        if (!UiMotion.On) { FadeStop(); return; }
+        _menu.Opacity = 0;
+        _fadeClock.Restart();
+        _fade.Start();
+    }
+
+    void FadeTick()
+    {
+        var t = _fadeClock.Elapsed / FadeTime;
+        if (t >= 1) { FadeStop(); return; }
+        _menu.Opacity = Motion.Out(t);
+    }
+
+    /// <summary>The end state at once: closed mid-fade, or motion off. Opacity below 1 made the menu a layered window, and
+    /// Opacity = 1 doesn't undo that: AllowTransparency off does, so later opens (motion off) draw as a plain window.</summary>
+    void FadeStop()
+    {
+        _fade.Stop();
+        if (_menu.IsDisposed) return;
+        _menu.Opacity = 1;
+        _menu.AllowTransparency = false;
+    }
+
+    /// <summary>--demo --motion=tray: the menu, to grab its frames.</summary>
+    internal ContextMenuStrip DemoMenu => _menu;
+
+    /// <summary>--demo --tray-menu: the menu opened near the top left of the screen, for screenshots. With
+    /// --tray-shot=&lt;png&gt; it is also drawn into that file once the fade is over (a popup that PrintWindow on the 설정 window
+    /// doesn't catch, so shot.ps1's capture of it was black).</summary>
+    internal void DemoShowMenu(string? shot)
+    {
+        _menu.Show(new Point(40, 40));
+        if (shot is null) return;
+        var wait = new System.Windows.Forms.Timer { Interval = 600 };
+        wait.Tick += (_, _) =>
+        {
+            wait.Dispose();
+            // Closed already (focus lost), or the path can't be written: say so, a demo mustn't crash over its picture.
+            if (!_menu.Visible) { System.Diagnostics.Trace.WriteLine("[tray] --tray-shot: menu closed before the capture"); return; }
+            try
+            {
+                using var bmp = new Bitmap(_menu.Width, _menu.Height);
+                _menu.DrawToBitmap(bmp, new Rectangle(Point.Empty, bmp.Size));   // without DWM's rounded corners
+                bmp.Save(shot, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or System.IO.IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                System.Diagnostics.Trace.WriteLine($"[tray] --tray-shot failed: {ex.Message}");
+            }
+        };
+        wait.Start();
+    }
 
     public void Dispose()
     {
+        _fade.Stop();   // disposed after the menu, whose Closed may still call FadeStop
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemColors;
         _icon.Visible = false;
         _icon.Icon?.Dispose();
         _boldFont?.Dispose();
         _icon.Dispose();
         _menu.Dispose();
+        _fade.Dispose();
         _bold.Dispose();
     }
 }

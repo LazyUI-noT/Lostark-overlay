@@ -9,18 +9,27 @@
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border x:Name="TopBar" Grid.Row="0" Padding="16,8,16,8" BorderThickness="0,0,0,1">
             <DockPanel x:Name="TopBarContent" LastChildFill="False" />
         </Border>
-        <Grid Grid.Row="1">
+        <!-- 자동 → 항상 test (tray), shown on every page while on (SettingsWindow.TopBar.cs) -->
+        <Border x:Name="AutoTestBanner" Grid.Row="1" Padding="16,6,16,6" BorderThickness="0,0,0,1" Visibility="Collapsed">
+            <DockPanel x:Name="AutoTestBannerContent" />
+        </Border>
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="212" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border x:Name="NavHost" Grid.Column="0" Padding="10,12,10,12" BorderThickness="0,0,1,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Nav" /></ScrollViewer>
+            <Border x:Name="NavHost" Grid.Column="0" Padding="8,12,8,12" BorderThickness="0,0,1,0">
+                <!-- NavTop holds 설정 검색 above the scroll, so it stays in view (ui-audit-2026-11-18, P3) -->
+                <DockPanel>
+                    <StackPanel x:Name="NavTop" DockPanel.Dock="Top" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Nav" /></ScrollViewer>
+                </DockPanel>
             </Border>
             <Grid x:Name="CanvasPage" Grid.Column="1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
@@ -29,22 +38,22 @@
                     <ColumnDefinition Width="2*" MinWidth="300" MaxWidth="400" />
                 </Grid.ColumnDefinitions>
                 <DockPanel>
-                    <StackPanel x:Name="CanvasBadgeHost" DockPanel.Dock="Top" Margin="12,10,12,0" Orientation="Horizontal" />
-                    <WrapPanel x:Name="CanvasTools" DockPanel.Dock="Top" Margin="12,6,12,8" />
+                    <StackPanel x:Name="CanvasBadgeHost" DockPanel.Dock="Top" Margin="12,12,12,0" Orientation="Horizontal" />
+                    <WrapPanel x:Name="CanvasTools" DockPanel.Dock="Top" Margin="12,8,12,8" />
                     <Border x:Name="CanvasHost" />
                 </DockPanel>
                 <Border x:Name="InspectorHost" Grid.Column="1" BorderThickness="1,0,0,0">
                     <DockPanel>
-                        <StackPanel x:Name="InspectorHead" DockPanel.Dock="Top" Margin="20,14,20,8" />
-                        <Border x:Name="InspectorFoot" DockPanel.Dock="Bottom" Padding="20,10,20,12" BorderThickness="0,1,0,0" />
+                        <StackPanel x:Name="InspectorHead" DockPanel.Dock="Top" Margin="24,12,24,8" />
+                        <Border x:Name="InspectorFoot" DockPanel.Dock="Bottom" Padding="24,12,24,12" BorderThickness="0,1,0,0" />
                         <ScrollViewer x:Name="InspectorBody" VerticalScrollBarVisibility="Auto">
-                            <StackPanel x:Name="Inspector" Margin="20,4,20,20" />
+                            <StackPanel x:Name="Inspector" Margin="24,4,24,24" />
                         </ScrollViewer>
                     </DockPanel>
                 </Border>
             </Grid>
             <DockPanel x:Name="SectionPage" Grid.Column="1">
-                <StackPanel x:Name="Header" DockPanel.Dock="Top" Margin="24,14,24,0" />
+                <StackPanel x:Name="Header" DockPanel.Dock="Top" Margin="24,12,24,0" />
                 <ScrollViewer x:Name="Body" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="Form" Margin="24,12,24,24" />
                 </ScrollViewer>

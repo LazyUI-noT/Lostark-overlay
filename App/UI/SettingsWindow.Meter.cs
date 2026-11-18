@@ -115,14 +115,14 @@ public partial class SettingsWindow
             "보스 체력을 몇 초마다 읽을지 정합니다. 짧을수록 보스 체력바가 사라지거나 보스가 처치된 순간을 빨리 알아채지만 CPU를 조금 더 씁니다. 전분은 그대로 1초마다 읽습니다. 대난투 중에는 0.2초보다 느려지지 않습니다. 기본 0.5초."),
             s => s.Meter.HpEvery, (s, v) => s.Meter.HpEvery = v));
 
-        p.Children.Add(SubHeading("전분 위치", "미터기가 켜져 있으면 전투 중에 전분 창을 알아서 찾아 게임 화면 크기마다 저장하고, 창을 옮기면 다시 찾습니다. 위치 조정에서 끌어 옮기거나 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
+        p.Children.Add(SubHeading("전분 위치", "미터기가 켜져 있으면 전투 중에 전분 창을 알아서 찾아 게임 화면 크기마다 저장하고, 창을 옮기면 다시 찾습니다. 수동 위치 조정에서 끌어 옮기거나 직접 넣어도 됩니다. 전분 창을 닫으면 미터기에 '전분 없음'이 보입니다."));
         if (GameArea?.Invoke() is not { } key)
         {
             p.Children.Add(Note("스킬창을 먼저 맞추세요. 전분 위치는 게임 화면 크기마다 저장됩니다."));
             return;
         }
         var r = m.Panels.TryGetValue(key, out var saved) ? saved : new PixelRect(0, 0, 0, 0);
-        TextBox Box(int v) => new() { Text = v.ToString(), Width = 60, Margin = new(0, 0, 6, 0) };
+        TextBox Box(int v) => new() { Text = v.ToString(), Width = 60, Margin = new(0, 0, Tokens.Space.Gap, 0) };
         var (x, y, w, h) = (Box(r.X), Box(r.Y), Box(r.Width), Box(r.Height));
         var save = new Button { Content = "저장" };
         save.Click += (_, _) =>
@@ -141,7 +141,7 @@ public partial class SettingsWindow
     {
         var who = BoxKey;
         var w = ClassProfiles.WindowsOf(_s, who);
-        p.Children.Add(SubHeading("스킬 사용 횟수", "고른 스킬을 1분에 몇 번 썼는지 미터기 창에 보여 줍니다. 클래스 · 직업각인마다 따로 고릅니다(위의 편집 중). 타임라인은 이 스킬에 금색 테두리를 두르고 평균을 보여 줍니다. 내 것만 셉니다."));
+        p.Children.Add(SubHeading("스킬 사용 횟수", "고른 스킬을 1분에 몇 번 썼는지 미터기 창에 보여 줍니다. 클래스 · 직업각인마다 따로 고릅니다(위의 편집할 직업각인). 타임라인은 이 스킬에 금색 테두리를 두르고 평균을 보여 줍니다. 내 것만 셉니다."));
         var skill = Combo();
         skill.MinWidth = 120;
         skill.ItemsSource = SkillChoices(SlotKeyName);

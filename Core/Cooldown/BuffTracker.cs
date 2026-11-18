@@ -28,18 +28,23 @@ public static class BuffTracker
         [BuffKind.공증] = [1, 8],             // 8 for every support; 바드 and 도화가 also have a 1 s one, recast 8 times
         [BuffKind.아덴피증] = [12, 16, 20],   // 바드 12/16, 도화가 12 (stacks), 발키리 12, 홀리나이트 16–20
         [BuffKind.초각스피증] = [10, 12, 15], // 발키리 and 홀리나이트 10, 도화가 12, 바드 15
+        [BuffKind.낙인] = [12, 14, 16, 18],   // 바드 · 도화가 · 홀리나이트 · 발키리 differ; read off the boss row's "N초" (BrandWatch)
         [BuffKind.뎀증] = [20],               // differs per support class (to come); 20 s observed on 발키리 (first read at 19)
     };
 
     /// <summary>The state of <paramref name="prev"/>'s buff after a read of the whole row. <paramref name="readings"/>
-    /// may hold other buffs and, for 공증, two icons (two supports): the longer one counts. "N초" means the remaining
+    /// may hold other buffs and, for 공증, two icons (two supports): the longer one counts. <paramref name="rowFull"/>: the row held
+    /// every box the game shows (user, 2026-11-18), so a buff missing from it may be behind "+N". "N초" means the remaining
     /// time is in [N, N+1): the game rounds down, so "1초" is 1.9 to 1 s left. A decimal is taken as-is.</summary>
-    public static BuffState Update(BuffState prev, IReadOnlyList<BuffReading> readings, TimeSpan now, bool hudVisible)
+    public static BuffState Update(BuffState prev, IReadOnlyList<BuffReading> readings, TimeSpan now, bool hudVisible, bool rowFull = false)
     {
         // A hidden HUD shows nothing: freeze, and let the count start over when it's back.
         if (!hudVisible) return prev.Active ? prev with { Estimated = true, MissedAt = null } : prev;
 
         var mine = readings.Where(r => r.Kind == prev.Kind).Select(r => r with { Seconds = PointLost(r.Kind, r.Seconds) }).ToList();
+        // A row holding every box the game shows may have pushed this buff out behind its "+N": a timed one goes on to its end.
+        if (mine.Count == 0 && rowFull && prev is { Active: true, EndsAt: { } ends })
+            return now < ends ? prev with { MissedAt = null } : prev with { Active = false, Estimated = false, ChangedAt = now, MissedAt = null, Pending = null };
         if (mine.Count == 0)
             return !prev.Active ? prev
                 : now - (prev.MissedAt ?? now) >= MissedFor ? prev with { Active = false, Estimated = false, ChangedAt = now, MissedAt = null, Pending = null }

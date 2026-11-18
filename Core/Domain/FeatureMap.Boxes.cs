@@ -11,10 +11,27 @@ public sealed record MapBox(string Id, string Title, string Color, int Column, s
 /// <summary>A map arrow: data flows <paramref name="From"/> → <paramref name="To"/>; <paramref name="Party"/> lines are dotted pink
 /// and can be cut (<see cref="FeatureMap.Cut"/>); <paramref name="Optional"/> lines are dashed: the target works without
 /// them, better with.</summary>
-public sealed record MapEdge(string From, string To, bool Party = false, string? Label = null, bool Optional = false);
+/// <param name="Without">Readers whose loss this line doesn't pass on: a block working in part without one still sends this
+/// line whole (user, 2026-11-17: 스킬창 읽기 feeds neither 내 전분 nor the clears 숙제 takes from the record). Only for a line from
+/// a block: a line from a reader marked ! always stops.</param>
+public sealed record MapEdge(string From, string To, bool Party = false, string? Label = null, bool Optional = false, IReadOnlyList<string>? Without = null);
 
 /// <summary>What a box's switches add up to: off, read but not shown, shown.</summary>
 public enum BoxState { Off, Hidden, On }
+
+/// <summary>A block below a reader marked ! (<see cref="FeatureMap.ImpactOf"/>): it works in part (yellow !) or stops (red !).</summary>
+public enum Impact { Partial, Stopped }
+
+/// <summary>How a block is hit and <paramref name="Root"/>, the ! reader above it to look at first.</summary>
+public sealed record BoxImpact(Impact Level, string Root)
+{
+    /// <summary>Every ! reader above it, <see cref="Root"/> among them: a line runs whole only without all of them
+    /// (<see cref="MapEdge.Without"/>). Left out of equality.</summary>
+    public IReadOnlyCollection<string> Roots { get => field ?? [Root]; init; }
+
+    public bool Equals(BoxImpact? other) => other is not null && Level == other.Level && Root == other.Root;
+    public override int GetHashCode() => HashCode.Combine(Level, Root);
+}
 
 /// <summary>How a party line is drawn (<see cref="FeatureMap.LookOf"/>).</summary>
 public enum PartyLineLook { Pink, Grey, GreySlashed }
@@ -40,15 +57,57 @@ public static partial class FeatureMap
     static bool Flows(string id, IReadOnlyDictionary<string, Detection> board) => board.ContainsKey(id) ? DetectBoard.Flowing(board, id)
         : Edges.Any(e => e.To == id && !e.Party && !e.Optional && DetectBoard.Flowing(board, e.From));
 
-    /// <summary>The line runs lights: its source flows, or it comes from a game setting (no reader there) into a reader that is ✓.</summary>
+    /// <summary>The line runs lights: its source flows, or it comes from a game setting (no reader there) into a reader that is ✓.
+    /// A block stopped by a ! reader above it (<see cref="ImpactOf"/>) runs none.</summary>
     public static bool Lit(MapEdge edge, IReadOnlyDictionary<string, Detection> board) =>
-        !edge.Party && (Flows(edge.From, board) || Boxes.First(b => b.Id == edge.From).Column == 0 && DetectBoard.Flowing(board, edge.To));
+        !edge.Party && (Flows(edge.From, board) || Boxes.First(b => b.Id == edge.From).Column == 0 && DetectBoard.Flowing(board, edge.To))
+        && Passed(edge, ImpactOf(edge.From, board)) is null;
+
+    /// <summary>The hit <paramref name="edge"/> passes on from its source: a stopped source's whole, a part-working one's
+    /// readers the line doesn't run without (<see cref="MapEdge.Without"/>); null when it passes none.</summary>
+    static BoxImpact? Passed(MapEdge edge, BoxImpact? hit)
+    {
+        if (hit is null || hit.Level == Impact.Stopped) return hit;
+        var left = hit.Roots.Where(r => edge.Without?.Contains(r) != true).ToList();
+        return left.Count == 0 ? null : hit with { Root = left[0], Roots = left };
+    }
+
+    /// <summary>A block with no reader of its own, below a reader marked ! (user, 2026-11-17): <see cref="Impact.Stopped"/> when
+    /// every input it needs is stopped or failed, <see cref="Impact.Partial"/> when another input still works (a dashed one, or
+    /// one more it needs); null when nothing above it failed. <see cref="BoxImpact.Root"/>: the ! reader to look at.
+    /// Inputs: non-party lines, game settings (column 0) left out as they hold no data.</summary>
+    public static BoxImpact? ImpactOf(string id, IReadOnlyDictionary<string, Detection> board) =>
+        ImpactOf(id, board, new Dictionary<string, BoxImpact?>());
+
+    static BoxImpact? ImpactOf(string id, IReadOnlyDictionary<string, Detection> board, Dictionary<string, BoxImpact?> known)
+    {
+        if (board.ContainsKey(id)) return null;   // a reader shows its own mark
+        if (known.TryGetValue(id, out var done)) return done;
+        known[id] = null;   // a loop back here counts as unhit
+        var inputs = Edges.Where(e => e.To == id && !e.Party && Boxes.First(b => b.Id == e.From).Column > 0)
+            .Select(e => (e.Optional, Hit: Failed(e.From) ? new BoxImpact(Impact.Stopped, e.From)
+                : Passed(e, ImpactOf(e.From, board, known))))
+            .ToList();
+        BoxImpact? result = null;
+        if (inputs.FirstOrDefault(i => i.Hit is not null).Hit is { } first)
+        {
+            var needed = inputs.Where(i => !i.Optional).ToList();
+            bool stopped = needed.Count > 0 && needed.All(i => i.Hit?.Level == Impact.Stopped);
+            result = new BoxImpact(stopped ? Impact.Stopped : Impact.Partial, first.Root)
+            {
+                Roots = [.. inputs.SelectMany(i => i.Hit?.Roots ?? []).Distinct()],
+            };
+        }
+        return known[id] = result;
+
+        bool Failed(string from) => board.GetValueOrDefault(from)?.Mark == DetectMark.Failed;
+    }
 
     /// <summary>Touches the 파티 block, so a click on it cuts: the one party line that doesn't (DPS 미터기 → 타임라인) follows 파티 → DPS 미터기.</summary>
     public static bool Cuttable(MapEdge e) => e.Party && (e.From == PartyBox || e.To == PartyBox);
 
-    /// <summary>Drawn as two ends (user, 2026-11-06): a short arrow to a small square at the far box, a square and the clickable
-    /// line at the 파티 block, the long line between them only in focus (<see cref="LinkShown"/>). 파티원 창 stands beside 파티: one line.</summary>
+    /// <summary>Drawn as a tag left of 파티 and a pink P on the far box (metro-map.plan.md P2), the dotted line between them only in
+    /// focus (<see cref="LinkShown"/>). 파티원 창 stands beside 파티: one short line.</summary>
     public static bool UsesPorts(MapEdge e) => Cuttable(e) && e.To != "peers";
 
     /// <summary>The long line and the text show with a box at either end in focus, or while the line itself is hovered.</summary>
@@ -61,16 +120,6 @@ public static partial class FeatureMap
         (true, false) => PartyLineLook.Grey,
         _ => PartyLineLook.Pink,
     };
-
-    /// <summary>Each line's offset from the middle of a box's side, in order: <paramref name="step"/> apart within a group,
-    /// <paramref name="gap"/> between groups, all drawn closer when they wouldn't fit in <paramref name="room"/>.</summary>
-    public static double[] SpreadPorts(IReadOnlyList<int> groups, double step, double gap, double room)
-    {
-        var at = new double[groups.Count];
-        for (int i = 1; i < at.Length; i++) at[i] = at[i - 1] + (groups[i] == groups[i - 1] ? step : gap);
-        double span = at.Length == 0 ? 0 : at[^1], scale = span > room ? room / span : 1;
-        return [.. at.Select(a => (a - span / 2) * scale)];
-    }
 
     static readonly string[] OffRead = ["끄기", "읽기"], OffOn = ["끄기", "켜기"], Show = ["켜기", "표시 안 함"], Three = ["끄기", "표시 안 함", "켜기"];
 
@@ -98,7 +147,7 @@ public static partial class FeatureMap
         new("meter", "DPS 미터기", Record, 2, null, Three),
         new("cover", "버프 적용률", Buff, 2, "meter", Three),
         new("skillview", "스킬창 표시", Skill, 2, null, Show),
-        new("ring", "기력·충격 창", Skill, 2, null, OffOn) { Note = "브레이커만" },
+        new("ring", "전투자원 창", Skill, 2, null, OffOn) { Note = "브레이커만" },
         new("count", "줄 수 창", Raid, 2, null, OffOn),
         new("debuff", "디버프 창 자동", Raid, 2, null, OffOn),
         // Its switch hides the display only: the number is read whenever the boss HP is (user, 2026-11-09).
@@ -109,17 +158,17 @@ public static partial class FeatureMap
         new("buffrows", "버프 줄 · 적용률", Buff, 3, "rec", OffOn),
         new("amsuline", "암수 줄", Record, 3, "rec"),
         new("zone", "대난투 구간", Record, 3, "rec"),
-        new("hw", "레이드 숙제", Homework, 3, null, OffOn) { Note = "타임라인 없이도 되지만 틀릴 수 있음" },
+        new("hw", "원정대 숙제", Homework, 3, null, OffOn) { Note = "타임라인 없이도 되지만 틀릴 수 있음" },
     ];
 
     public static IReadOnlyList<MapEdge> Edges { get; } =
     [
         new("g-jeonbun", "meter"), new("skill", "skillview"), new("boss", "shadow"), new("g-font", "judg"), new("g-hud", "skill"),
-        new("g-hud", "aden"), new("g-hud", "ring"), new("g-hud", "amsu"), new("g-buff", "buff"), new("g-debuff", "amsu"), new("cls", "icons"),
-        new("skill", "rec", Label: "사용 기록"), new("skill", "icons"), new("buff", "buffrows"), new("meter", "rec", Label: "내 전분"),
+        new("g-hud", "aden"), new("g-hud", "ring"), new("g-hud", "amsu"), new("g-buff", "buff"), new("g-debuff", "amsu"), new("g-debuff", "buff", Label: "낙인"), new("cls", "icons"),
+        new("skill", "rec", Label: "사용 기록"), new("skill", "icons"), new("buff", "buffrows"), new("meter", "rec", Label: "내 전분", Without: ["skill"]),
         new("meter", "rec", Party: true, Label: "파티원 전분"), new("dungeon", "rec"), new("buff", "cover"), new("cover", "buffrows"),
         new("boss", "count"), new("boss", "debuff"), new("boss", "hw"), new("dungeon", "hw"), new("char", "hw"),
-        new("rec", "hw", Label: "있으면 더 정확", Optional: true), new("amsu", "amsuline"), new("shadow", "zone"),
+        new("rec", "hw", Label: "있으면 더 정확", Optional: true, Without: ["skill"]), new("amsu", "amsuline"), new("shadow", "zone"),
         new("shadow", "hw", Label: "대난투 중 보류"),
         new("api", "hw", Label: "새 설치는 키 필요", Optional: true), new("api", "rec", Label: "전투력", Optional: true),
         new("skill", "party", true, "스킬쿨"), new("aden", "party", true, "아덴"), new("meter", "party", true, "내 전분"),

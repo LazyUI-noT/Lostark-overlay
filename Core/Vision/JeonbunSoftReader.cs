@@ -19,11 +19,11 @@ public sealed class JeonbunSoftReader
 
     /// <summary>The panel as captured, cleaned three ways (<see cref="Reinforce"/>: levels stretched, then also sharpened,
     /// sharpened only; each wins on some video): the first read on the clock with the damage not falling counts.</summary>
-    public JeonbunReading? Read(Image panel, TimeSpan now)
+    public JeonbunReading? Read(Image panel, double scale, TimeSpan now)
     {
         var levels = Reinforce.Levels(panel);
         Image[] cleaned = [levels, Reinforce.Clean(levels), Reinforce.Clean(panel)];
-        return Step(expected => [.. cleaned.Select(p => JeonbunReader.ReadHinted(p, expected))], now);
+        return Step(expected => [.. cleaned.Select(p => JeonbunReader.ReadHinted(p, scale, expected))], now);
     }
 
     /// <summary>A new fight, or 강화 turned on again: the clock and the damage start over.</summary>

@@ -35,14 +35,14 @@ public sealed partial class Engine
     {
         var gates = config.RaidGates ?? [];
         var gate = RaidData.ByHp(gates, _lastBar?.Max)?.Gate ?? RaidData.Find(gates, _raidRec.Gate);
-        return ShadowRead.Gate(config.Raids, gate, gates, _meterOn, config.HomeworkRead);
+        return ShadowRead.Gate(config.Raids, gate, gates, _meterOn, config.HomeworkRead, config.AmsuOn || config.BrandOn);
     }
 
     /// <summary>A bar read keeps its HP and "X n" for the gimmick; with none, the gimmick's number gives the HP. Returns the HP
     /// to step the meter with (dead: 0).</summary>
     (long Current, long Max)? ShadowStep((int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) bar, Image? number, TimeSpan t)
     {
-        if (bar.Hp is var (current, max, _))
+        if (bar.Hp is var (current, max, _) && !_barHeld)   // a kept read (BossHpFight) may be the gimmick starting
         {
             int? count = bar.Count ?? (_lastBar is { Max: var m, Count: var c } && m == max ? c : null);   // "X n" unread this time
             (_lastBar, _shadow, _shadowBefore) = ((current, max, count), null, null);

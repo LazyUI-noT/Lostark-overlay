@@ -7,8 +7,13 @@ namespace GaugeOverlay.Core.Vision;
 public enum Bomb { 암수, 빛암 }
 
 /// <summary>The boss debuff zone in a strip: its first slot's left edge (strip px, Geometry.FirstBossDebuffX) and the most slots
-/// it shows (Geometry.MaxBossDebuffs).</summary>
-public sealed record BossSlots(int FirstX, int Most);
+/// it shows (Geometry.MaxIcons); the gap between two frames (reference px); <paramref name="Centred"/>: the row is centred
+/// on <paramref name="FirstX"/> (대난투, Geometry.DaenantuSlotsIn), so the walk starts at the first debuff left of it.</summary>
+public sealed record BossSlots(int FirstX, int Most, int Gap = 2, bool Centred = false, int? Identify = null)
+{
+    /// <summary>The slots whose icons are identified and timed (감지 개수 within what the row shows); the walk still goes to <see cref="Most"/>.</summary>
+    public int Reads => Identify ?? Most;
+}
 
 /// <summary>A bomb's icon found in the boss row strip (strip px).</summary>
 public sealed record BombAt(Bomb Kind, PixelRect Icon, int? Slot = null);
@@ -26,14 +31,35 @@ public sealed record AmsuRow(IReadOnlyList<BombRead> Bombs, bool Full = false, b
 /// Icons are matched as the boss's sigils are (BuffReader.Match: structure and hue, frame left out) along the line. Pure.</summary>
 public static class AmsuReader
 {
-    static readonly Image?[] Templates = [.. AmsuTemplates.Icons.Select(s => s is null ? null : Image.FromBytes(Convert.FromBase64String(s)))];
-    static readonly float[]?[] Thumbs = [.. Templates.Select(t => t is null ? null : BuffReader.Thumb(t))];
-    static readonly double[] Hues = [.. Templates.Select(t => t is null ? 0 : SlotClassifier.ColourStats(t).MeanHue)];
+    /// <summary>A set of boss-row icons matched together (structure and hue, frame left out): its templates (null: none yet),
+    /// and the score a match needs.</summary>
+    internal sealed class IconSet
+    {
+        public readonly Image?[] Templates;
+        public readonly int[] Kinds;   // the templates there are
+        public readonly float[][] Thumbs;
+        public readonly BuffReader.Centred[] Centred;
+        public readonly double[] Hues;
+        public readonly double Min;
+
+        public IconSet(IEnumerable<string?> icons, double min)
+        {
+            Templates = [.. icons.Select(s => s is null ? null : Image.FromBytes(Convert.FromBase64String(s)))];
+            Kinds = [.. Enumerable.Range(0, Templates.Length).Where(k => Templates[k] is not null)];
+            Thumbs = [.. Kinds.Select(k => BuffReader.Thumb(Templates[k]!))];
+            Centred = [.. Thumbs.Select(BuffReader.Centred.Of)];
+            Hues = [.. Kinds.Select(k => SlotClassifier.ColourStats(Templates[k]!).MeanHue)];
+            Min = min;
+        }
+    }
+
+    static readonly IconSet Bombs = new(AmsuTemplates.Icons, MinBomb);
+    static Image?[] Templates => Bombs.Templates;
     const int Icon = DebuffReader.BossIconSize, Pitch = DebuffReader.BossSlotPitch, Slack = 8;   // ±8: at 120% a slot's frame peaks 28 px after the last, not 34 (amsu_live_120)
 
     /// <summary>The bomb's icon as matched (the 암수 창 draws it); null while it has no template (빛암, amsu.plan.md).</summary>
     public static Image? IconOf(Bomb b) => Templates[(int)b];
-    // Measured on amsu_15/25/45/55 (2560×1080, 보스 디버프 크기 100): 암수 scores 0.93 in each, under a damage number too (45); the
+    // Measured on amsu_15/25/45/55 (2560×1080, 타겟 UI 버프 크기 100): 암수 scores 0.93 in each, under a damage number too (45); the
     // best other icon 0.54 (any hue) / 0.40 (a hue within MaxHueDistance), amsu_35 (no 암수) 0.38 at best. Midway: margins ±0.2.
     internal const double MinBomb = 0.72;
     // A slot placed on its frame (OnFrame) holds a debuff from this share: 0.45–0.88 on bitam_*/amsu_*; an empty slot whose window
@@ -44,7 +70,7 @@ public static class AmsuReader
     // right line 19, 22, 25, 28, 31 screen px after the left at 80–120%, 30.1–31.0 reference px at every size, and the next
     // icon's left line ending 35–36 ref px after it; so the right line is looked for up to 33. The next one starts 1–6 px after.
     const double LineShare = 0.75;
-    const int MinWidth = 23, MaxWidth = 33, Gap = 2, MaxGap = 6;
+    const int MinWidth = 23, MaxWidth = 33, GapReach = 4;   // the next left line up to 4 px past the layout's gap (2: 1–6 px)
     // A frame's top and bottom border run inward from its side lines: the column after a left line is red in those rows, the
     // gap after a right line is not (scene behind it).
     const double BorderShare = 0.15;
@@ -72,7 +98,7 @@ public static class AmsuReader
     /// matched again, wherever the row moved it. Twice the most slots: the row and the icons it held before a shift. One per
     /// <see cref="AmsuWatch"/>, new with each layout.</summary>
     public static IconCache<(Bomb Kind, int Dx)?> Gate() =>
-        new(InBox, 2 * Geometry.MaxBossSlots);
+        new(InBox, 2 * Geometry.MaxIconsAny);
 
     /// <summary><see cref="Around"/> at <paramref name="box"/>, the match's x relative to the box (as the cache keeps it).</summary>
     static (Bomb Kind, int Dx)? InBox(Image r, PixelRect box) =>
@@ -111,7 +137,7 @@ public static class AmsuReader
         var walk = Walk(r, scale, rowY, slots);
         int y = (int)Math.Round(rowY / scale);
         var found = new List<BombAt>();
-        foreach (var f in walk.Filled)
+        foreach (var f in walk.Filled.Take(slots.Reads))
         {
             int x = (int)Math.Round(f.Icon.X / scale);
             var box = new PixelRect(x, y, Icon, Icon);
@@ -179,10 +205,15 @@ public static class AmsuReader
         // The first slot: the first debuff from the left within a slot of where the layout puts it (테스트 모드's fit put it 20 px
         // off, replay 7): its frame lines (a lone 빛암 there scores 0.34 by the window: AmsuSimulationTests), else the first window
         // over MinSlotFrame, put onto its peak. Buff art never reaches MinSlotFrame; on a red scene the frame stays the peak.
-        int guess = (int)Math.Round(slots.FirstX / scale);
-        var firstIcon = IconIn(guess - Pitch, guess + Pitch);
-        int start = firstIcon?.Left ?? Enumerable.Range(Math.Max(0, guess - Pitch), Math.Max(0, Math.Min(guess + Pitch, last) - Math.Max(0, guess - Pitch) + 1))
-            .FirstOrDefault(x => Red(x) >= MinSlotFrame, -1);
+        // Centred (대난투): the first debuff left of the centre, no further than a full row reaches, by its frame lines only (the
+        // gimmick's scene is red: no red-share fallback), and the slots counted from it.
+        int centre = (int)Math.Round(slots.FirstX / scale);
+        var firstIcon = slots.Centred
+            ? IconIn(centre - slots.Most * (Icon + slots.Gap) / 2 - Slack, centre)
+            : IconIn(centre - Pitch, centre + Pitch);
+        int guess = slots.Centred ? firstIcon?.Left ?? centre : centre;
+        int start = firstIcon?.Left ?? (slots.Centred ? -1 : Enumerable.Range(Math.Max(0, guess - Pitch), Math.Max(0, Math.Min(guess + Pitch, last) - Math.Max(0, guess - Pitch) + 1))
+            .FirstOrDefault(x => Red(x) >= MinSlotFrame, -1));
         if (start < 0) return new(filled, false, DebuffReader.BuffZone(map, y).Count > 0);
         // One empty slot is passed (a damage number or a popup over one frame, review 2026-11-01); two in a row end the walk.
         int expected = firstIcon?.Left ?? Enumerable.Range(start, Math.Min(Pitch / 2, last - start) + 1).MaxBy(Red), empty = 0, pitch = Pitch;
@@ -201,12 +232,12 @@ public static class AmsuReader
                 continue;
             }
             empty = 0;
-            filled.Add(new((int)Math.Round((x - guess) / (double)pitch),   // from the layout's first slot: steady when the walk begins early
+            filled.Add(new((int)Math.Round((x - guess) / (double)pitch),   // from the layout's first slot (steady when the walk begins early); centred, from the first debuff
                 new PixelRect((int)Math.Round(x * scale), rowY, (int)Math.Round(Icon * scale), (int)Math.Round(Icon * scale))));
             if (right is { } edge)   // the last line in reach: red icon art makes lines inside
             {
-                pitch = edge - x + 1 + Gap;   // the icon's own width and the usual gap
-                lined = Edge(edge + 1, edge + MaxGap);
+                pitch = edge - x + 1 + slots.Gap;   // the icon's own width and the layout's gap
+                lined = Edge(edge + 1, edge + slots.Gap + GapReach);
             }
             else lined = null;
             expected = x + pitch;
@@ -215,15 +246,12 @@ public static class AmsuReader
         return new(filled, filled.Count >= slots.Most, filled.Count > 0 || DebuffReader.BuffZone(map, y).Count > 0);
     }
 
-    static readonly int[] Kinds = [.. Enumerable.Range(0, Thumbs.Length).Where(k => Thumbs[k] is not null)];
-    static readonly float[][] KindThumbs = [.. Kinds.Select(k => Thumbs[k]!)];
-    static readonly BuffReader.Centred[] KindCentred = [.. KindThumbs.Select(BuffReader.Centred.Of)];
-    static readonly double[] KindHues = [.. Kinds.Select(k => Hues[k])];
+    static int[] Kinds => Bombs.Kinds;
 
     /// <summary>Each template's structure score and hue distance on <paramref name="icon"/> (reference px), in <see cref="Kinds"/> order.</summary>
     internal static (double[] Structure, double[] Hue) Scores(Image r, PixelRect icon)
     {
-        var (s, h, _) = BuffReader.Match(r, icon, KindThumbs, KindHues, []);
+        var (s, h, _) = BuffReader.Match(r, icon, Bombs.Thumbs, Bombs.Hues, []);
         return (s, h);
     }
 
@@ -232,8 +260,14 @@ public static class AmsuReader
     /// matches ±s px around itself), so each box is taken once and its scores reused: 45 boxes instead of 125 at 100%, the
     /// same answer (AmsuMatchTests). Every box's thumbnail comes from one table of sums over the slot, and a box's hue only
     /// when a kind's best moves to it (icon-gates.plan.md, 1a): the same numbers as a crop per box.</summary>
-    internal static (Bomb Kind, double Score, int X)? Around(Image r, int x, int y)
+    internal static (Bomb Kind, double Score, int X)? Around(Image r, int x, int y) =>
+        Around(Bombs, r, x, y) is { } a ? ((Bomb)a.Kind, a.Score, a.X) : null;
+
+    /// <summary><see cref="Around(Image, int, int)"/> for any <paramref name="set"/>: its kind (template index) over its
+    /// <see cref="IconSet.Min"/>.</summary>
+    internal static (int Kind, double Score, int X)? Around(IconSet set, Image r, int x, int y)
     {
+        var Kinds = set.Kinds;
         var inner = BuffReader.Interior(new PixelRect(x, y, Icon, Icon));
         int s = Math.Max(1, inner.Width / 12), span = MatchSlack + s, w = 2 * span + 1;
         int x0 = Math.Max(0, inner.X - span), y0 = Math.Max(0, inner.Y - s);
@@ -255,13 +289,13 @@ public static class AmsuReader
             {
                 sums.Thumb(rect, thumb);
                 double squares = BuffReader.Centre(thumb, centred);
-                box = new double[KindThumbs.Length];
-                for (int k = 0; k < box.Length; k++) box[k] = BuffReader.ChannelNcc(centred, squares, KindCentred[k]);
+                box = new double[set.Thumbs.Length];
+                for (int k = 0; k < box.Length; k++) box[k] = BuffReader.ChannelNcc(centred, squares, set.Centred[k]);
             }
             return box;
         }
         double HueAt(int dx, int dy) => hues[Slot(dx, dy)] ??= SlotClassifier.ColourStats(r, RectAt(dx, dy)).MeanHue;
-        (Bomb Kind, double Score, int X)? hit = null;
+        (int Kind, double Score, int X)? hit = null;
         var best = new double[Kinds.Length];
         var hue = new double[Kinds.Length];
         for (int at = -MatchSlack; at <= MatchSlack; at++)
@@ -273,12 +307,12 @@ public static class AmsuReader
                 {
                     if (Box(at + dx, dy) is not { } b) continue;
                     for (int k = 0; k < Kinds.Length; k++)
-                        if (b[k] > best[k]) (best[k], hue[k]) = (b[k], BuffReader.HueDistance(HueAt(at + dx, dy), KindHues[k]));
+                        if (b[k] > best[k]) (best[k], hue[k]) = (b[k], BuffReader.HueDistance(HueAt(at + dx, dy), set.Hues[k]));
                 }
             int pick = -1;
             for (int k = 0; k < Kinds.Length; k++)
-                if (hue[k] <= BuffReader.MaxHueDistance && best[k] >= MinBomb && (pick < 0 || best[k] > best[pick])) pick = k;
-            if (pick >= 0 && (hit is null || best[pick] > hit.Value.Score)) hit = ((Bomb)Kinds[pick], best[pick], x + at);
+                if (hue[k] <= BuffReader.MaxHueDistance && best[k] >= set.Min && (pick < 0 || best[k] > best[pick])) pick = k;
+            if (pick >= 0 && (hit is null || best[pick] > hit.Value.Score)) hit = (Kinds[pick], best[pick], x + at);
         }
         return hit;
     }
@@ -296,40 +330,65 @@ public static class AmsuReader
         return best < 0 ? null : ((Bomb)Kinds[best], s[best]);
     }
 
-    /// <summary>The seconds under <paramref name="at"/>; <paramref name="textScale"/> = Geometry.BuffScale at the 보스 디버프 크기.</summary>
-    public static double? ReadSeconds(Image strip, BombAt at, double textScale)
+    /// <summary>The seconds under <paramref name="at"/>; <paramref name="textScale"/> = Geometry.BuffScale at the 타겟 UI 버프 크기.</summary>
+    public static double? ReadSeconds(Image strip, BombAt at, double textScale) =>
+        ReadSeconds(strip, at.Icon, textScale, Domain.Amsu.Duration(at.Kind));
+
+    /// <summary>The seconds under the icon <paramref name="box"/>, never more than <paramref name="most"/> (what the debuff lasts, and a
+    /// little over: a misread longer than that is dropped).</summary>
+    public static double? ReadSeconds(Image strip, PixelRect box, double textScale, double most)
     {
-        var box = at.Icon;
-        int top = box.Bottom, height = (int)Math.Round(TimerHeight * textScale), pad = (int)Math.Round(TimerPad * textScale);
-        // Wider on the right (TimerReach): a box a px or two left of its icon cut the "초" off and read nothing; the next icon's text
-        // starts well past it.
-        int reach = (int)Math.Round(TimerReach * textScale);
-        if (Math.Min(height, strip.Height - top) <= 0) return null;
+        if (Math.Min((int)Math.Round(TimerHeight * textScale), strip.Height - box.Bottom) <= 0) return null;
+        var readers = Readers(textScale);
         // Both scales, a value only when they agree or one is unread, and never more than the bomb lasts: a scale just off reads
         // a digit short ("22" as "2" at 110% × 0.95), the same way every read, so the countdown's second read can't catch it. The
         // window at the box first, then a step either side (the text cut by a box a px or two off its icon: amsu_live_120_slot3).
         int step = Math.Max(1, (int)Math.Round(TimerShift * textScale));
         foreach (int dx in new[] { 0, step, -step })
         {
-            int left = Math.Max(0, box.X + dx - pad);
-            var timer = new PixelRect(left, top, Math.Min(strip.Width - left, box.Width + 2 * pad + reach), Math.Min(height, strip.Height - top));
-            var reads = TextLeads.Select(lead => new BuffReader(textScale * lead).ReadTimer(strip, timer)).OfType<double>().Distinct().ToList();
-            if (reads is [var seconds] && seconds <= Domain.Amsu.Duration(at.Kind)) return seconds;
+            var timer = TimerWindow(strip, box, textScale, dx);
+            var reads = readers.Select(r => r.ReadTimer(strip, timer)).OfType<double>().Distinct().ToList();
+            if (reads is [var seconds] && seconds <= most) return seconds;
         }
         return null;
     }
 
+    /// <summary>The "N초" window under <paramref name="box"/>, moved <paramref name="dx"/>, inside <paramref name="strip"/>. Wider on
+    /// the right (TimerReach): a box a px or two left of its icon cut the "초" off and read nothing; the next icon's text starts well
+    /// past it.</summary>
+    internal static PixelRect TimerWindow(Image strip, PixelRect box, double textScale, int dx = 0)
+    {
+        int top = box.Bottom, height = (int)Math.Round(TimerHeight * textScale), pad = (int)Math.Round(TimerPad * textScale);
+        int reach = (int)Math.Round(TimerReach * textScale), left = Math.Max(0, box.X + dx - pad);
+        return new PixelRect(left, top, Math.Min(strip.Width - left, box.Width + 2 * pad + reach), Math.Min(height, strip.Height - top));
+    }
+
+    /// <summary>Two leads, so a scale just off can't read a digit short unchecked: under <see cref="BossGlyphsBelow"/> the boss
+    /// text's own glyphs (80%, 90% at 1080) at <see cref="BossLeads"/>, from it the buff glyphs at <see cref="TextLeads"/>, which
+    /// read 100–120% and score the smaller boss text too low.</summary>
+    static BuffReader[] Readers(double textScale) => textScale < BossGlyphsBelow
+        ? [.. BossLeads.Select(lead => BuffReader.ForBossText(textScale * lead))]
+        : [.. TextLeads.Select(lead => new BuffReader(textScale * lead))];
+
+    // BossTimerTests, 빛암 80_90: ×0.95 alone drops tens ("22" as "2"), so with ×1.00 they disagree and nothing reads; ×1.05 alone
+    // reads "14" in an empty slot, which ×1.00's null would let through. 1.00 + 0.95 reads every labelled timer.
+    static readonly double[] BossLeads = [1.0, 0.95];
+
+    // The old timed floor (100%): every scale the buff glyphs never read (replay 5 misread 90%) goes to the boss glyphs.
+    const double BossGlyphsBelow = 0.995;
+
     const double TimerShift = 2;   // ref px the timer window moves when the box's own reads nothing
 
-    // The boss row's "N초" runs a little larger than a buff's at the same size. Text scales that read (bitam_*, 1080p): 90% 0.90–0.95,
-    // 100% 1.00–1.05, 110% 1.15–1.20 (1.05 misreads "22" as "2"), 120% 1.15–1.30; 80% none (the glyphs are too small: unread, never
-    // wrong). ×1.05 reads 90–120%; ×1.00 read the 21:9 clip and no size wrong; ReadSeconds wants them to agree.
+    // The boss row's "N초" runs a little larger than a buff's at the same size. Buff-glyph text scales that read (bitam_*, 1080p):
+    // 90% 0.90–0.95, 100% 1.00–1.05, 110% 1.15–1.20 (1.05 misreads "22" as "2"), 120% 1.15–1.30; 80% none. ×1.05 reads 90–120%;
+    // ×1.00 read the 21:9 clip and no size wrong; ReadSeconds wants them to agree. Under BossGlyphsBelow the boss glyphs read instead.
     static readonly double[] TextLeads = [1.05, 1.0];
 
-    /// <summary>The 보스 디버프 크기 from which the "N초" is read (user, 2026-11-01: down to the smallest size whose replays pass). 100%
-    /// passes (replay 5); at 90% the tens digit and the 암수/빛암 kind were misread in the game (replay 5), 80% has no readable text.
-    /// Under it the icons alone count (Amsu.Timed).</summary>
-    public const int ReadableFrom = 100;
+    /// <summary>The 타겟 UI 버프 크기 (on screen, at 1080) from which the "N초" is read: 80%, with the boss text's own glyphs under
+    /// <see cref="BossGlyphsBelow"/> (user, 2026-11-18; BossTimerTests: every labelled 80% and 90% timer of 빛암 80_90 reads, one
+    /// over glare unread). The buff glyphs alone needed 100% (replay 5 misread 90%). Under it the icons alone count (Amsu.Timed);
+    /// in practice the icons stop first (Amsu.Readable).</summary>
+    public const int ReadableFrom = 80;
 
     const double TimerHeight = 14, TimerPad = 4, TimerReach = 4;   // ref px under the icon box, and either side of it
 

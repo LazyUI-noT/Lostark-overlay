@@ -8,10 +8,11 @@ namespace GaugeOverlay.Core.Domain;
 /// (<see cref="RaidSettings.ShadowHpOff"/>) hides only the display. Pure.</summary>
 public static class ShadowRead
 {
-    /// <summary><paramref name="gate"/> when its number is read now: a 그림자 gate, with the meter on or the boss HP read wanted
-    /// (<see cref="BossHpPlan.Wanted"/>, <paramref name="homework"/> its fallback).</summary>
-    public static RaidGate? Gate(RaidSettings? s, RaidGate? gate, IReadOnlyList<RaidGate> gates, bool meterOn, bool homework) =>
-        s is not null && gate is { IsShadow: true } && (meterOn || BossHpPlan.Wanted(s, gates, homework)) ? gate : null;
+    /// <summary><paramref name="gate"/> when its number is read now: a 그림자 gate, with the meter on, the boss HP read wanted
+    /// (<see cref="BossHpPlan.Wanted"/>, <paramref name="homework"/> its fallback) or <paramref name="movedRow"/> (암수 or 낙인 on: the number
+    /// tells 대난투 is on, which moves the boss debuff row: AmsuLayout.Daenantu).</summary>
+    public static RaidGate? Gate(RaidSettings? s, RaidGate? gate, IReadOnlyList<RaidGate> gates, bool meterOn, bool homework, bool movedRow = false) =>
+        s is not null && gate is { IsShadow: true } && (meterOn || movedRow || BossHpPlan.Wanted(s, gates, homework)) ? gate : null;
 
     /// <summary>대난투 체력 shows for <paramref name="gate"/>'s raid (its switch on).</summary>
     public static bool Shown(RaidSettings? s, RaidGate? gate) => gate is not null && s?.ShadowHpOn(gate.Raid) == true;

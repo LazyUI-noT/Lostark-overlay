@@ -36,6 +36,32 @@ public class StackLearningTests
         Assert.NotEmpty(counted);   // and Q's is seen
     }
 
+    // The play read's stroke gate is lowered at a smaller HUD (DigitReader, 2026-11-18), the fit's ready check keeps the
+    // HUD 110 gate: on the ready icons box-scaled to HUD 90 and 80, the lowered gate also passed 발키리's 초각스 and 워로드's
+    // second C at HUD 80. Box-scaled art of 워로드's C (HUD 90 on) and 초각스 (HUD 80) passes even the HUD 110 gate; no
+    // recording is below HUD 100, so those two stay listed until one shows whether real art does.
+    [Theory]
+    [InlineData(90)]
+    [InlineData(80)]
+    public void No_ready_icon_shows_a_count_at_a_smaller_hud_but_the_stack_skill_Q(int hud)
+    {
+        double k = hud / Geometry.ReferenceHud;
+        var counted = new List<string>();
+        foreach (var json in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Fixtures"), "*.json"))
+        {
+            var name = Path.GetFileNameWithoutExtension(json);
+            using var doc = JsonDocument.Parse(File.ReadAllText(json));
+            if (!doc.RootElement.TryGetProperty("slot", out var s) || !Enum.TryParse<SlotId>(s.GetString(), out var slot)
+                || !doc.RootElement.TryGetProperty("hud", out var h)) continue;
+            var digits = new DigitReader(h.GetDouble() / Geometry.ReferenceHud);
+            var small = new DigitReader(h.GetDouble() / Geometry.ReferenceHud * k);
+            if (Fixture.Load(name).Frames.Any(img => SlotClassifier.Read(slot, img, TimeSpan.Zero, null, digits).Kind == ReadKind.Ready
+                    && small.ShowsCount(GaugeDef.Scale(img, (int)Math.Round(img.Width * k), (int)Math.Round(img.Height * k)))))
+                counted.Add(name);
+        }
+        Assert.Subset(new HashSet<string>([.. StackQ, "war_C", "subclass_war"]), counted.ToHashSet());
+    }
+
     // ── During play: the count beside a timer on separate casts ────────────────────────────────────────────────
 
     static readonly TimeSpan T0 = TimeSpan.FromSeconds(100);

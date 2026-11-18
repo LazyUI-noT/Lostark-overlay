@@ -1,3 +1,4 @@
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -23,8 +24,8 @@ public class DetectPlaceTests
         var panel = Fixture.Load("jeonbun_1").Frames[0];
         var at = new PixelRect(100, 100, panel.Width, panel.Height);
 
-        Assert.True(PictureReads.Panel(panel));
-        Assert.False(PictureReads.Panel(new Image(panel.Width, panel.Height)));
+        Assert.True(PictureReads.Panel(panel, 1.0));
+        Assert.False(PictureReads.Panel(new Image(panel.Width, panel.Height), 1.0));
         Assert.True(PictureReads.Of(AdjustPart.전분, panel, at, Fhd, new Fit(100), 100, Geometry.BuffBoxCount, 100, at));
         Assert.Null(PictureReads.Of(AdjustPart.전분, panel, at, Fhd, new Fit(100), 100, Geometry.BuffBoxCount, 100, at with { X = 900 }));
     }
@@ -106,4 +107,12 @@ public class DetectPlaceTests
     [InlineData(AdjustPart.보스)]
     public void A_row_is_not_judged_on_a_picture_that_leaves_it_out(AdjustPart part) =>
         Assert.Null(PictureReads.Of(part, new Image(50, 50), new PixelRect(0, 0, 50, 50), Fhd, new Fit(110), 120, Geometry.BuffBoxCount, 100));
+
+    [Fact]   // rail-split.plan.md 4: the 기능 맵's chip row names every box on 화면 인식 설정, once each
+    public void The_map_chip_row_holds_every_reading_box_once()
+    {
+        var page = ReadingShots.BoxesOf(ReadingShotKind.Select).Concat(ReadingShots.BoxesOf(ReadingShotKind.Raid)).ToHashSet();
+        Assert.Equal(page, DetectPlace.Chips.Select(c => c.Id).ToHashSet());
+        Assert.Equal(DetectPlace.Chips.Length, DetectPlace.Chips.Select(c => c.Id).Distinct().Count());
+    }
 }

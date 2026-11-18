@@ -100,13 +100,13 @@ public sealed partial class Engine
         _loading = _loading.HudBack(t);
     }
 
-    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수, the raid's 디버프 창, and a buff bar on 자동. They need
+    /// <summary>Raid reads that run only in a dungeon are on: the boss name, 줄 수, 암수, 낙인, the raid's 디버프 창, and a buff bar, the gauge or the skill boxes on 자동. They need
     /// the probes when nothing else tells where the player is (the overlay's meter off).</summary>
     bool RaidReadsOn(Config config)
     {
         var plan = config.Raids is { } s ? RaidReadPlan.Of(s, config.RaidGates ?? [], _raidRec.Gate) : default;
-        return plan.ReadName || plan.ReadCount || config.AmsuOn || config.DebuffPick != Raid.없음 || config.Raids?.DebuffsAuto == true   // the 디버프 창 waits for a dungeon too
-            || config.BuffsInRaidOnly;
+        return plan.ReadName || plan.ReadCount || config.AmsuOn || config.BrandOn || config.DebuffPick != Raid.없음 || config.Raids?.DebuffsAuto == true   // the 디버프 창 waits for a dungeon too
+            || config.PartsInRaidOnly;
     }
 
     /// <summary>At each step: on leaving a dungeon, 줄 수 and 암수 stop reading, so their state is cleared here (a read that just
@@ -122,8 +122,9 @@ public sealed partial class Engine
         bool inside = _presence.InDungeon(now);
         if (_wasInDungeon && !inside)
         {
-            (_amsuWatch, _bar, _raid, _bossHp) = (new AmsuWatch(), BarCountState.None, null, BossHpLabel.None);
+            (_amsuWatch, _bar, _raid, _bossHp, _lastBossMax) = (new AmsuWatch(), BarCountState.None, null, BossHpLabel.None, null);
             ShadowReset();
+            _bossFight.Reset();
             Ocr = NewOcr();   // the OCR engine is let go until the next dungeon, which starts with a fresh one (user, 2026-11-03)
             Trace.WriteLine("[presence] left the dungeon: 줄 수 and 암수 cleared, OCR closed");
             Publish(now);
@@ -154,6 +155,7 @@ public sealed partial class Engine
     // alone (the 줄 수 창's, which reads from the right and stops at the count) each at most once a step.
     Image? _barRow;
     TimeSpan _barAt;   // the step's time, for the 강화 HP reader
+    readonly BossHpFight _bossFight = new();   // the normal read checked against the fight (강화 has _bossSoft)
     readonly BossHpSoftReader _bossSoft = new();   // 테스트 모드 강화 읽기: the HP checked against the fight (max holds, HP falls)
     (TimeSpan At, (long Current, long Max, long Shield)? Hp)? _softHp;   // its read this step (another row capture reads afresh)
     bool _reinforcedWas;
@@ -163,7 +165,8 @@ public sealed partial class Engine
     {
         _bossSoft.Reset();
         _jeonbunSoft.Reset();
-        _softHp = null;
+        (_softHp, _lastBossMax) = (null, null);
+        _bossFight.Reset();
         ResetIconGates();
     }
 
@@ -175,6 +178,7 @@ public sealed partial class Engine
         _debuffIdentify.Reset();
         _judgmentIcon.Reset();
         _amsuWatch.ResetGate();
+        _brand.ResetGate();
     }
 
     /// <summary>At each step: 강화 읽기 switched since the last one starts its readers over.</summary>
@@ -201,12 +205,23 @@ public sealed partial class Engine
         double scale = Geometry.Scale(_vp, _fit!);
         if (!hp) return _barCount ??= BossDigits.ReadBar(row, scale, hp: false);
         if (_barFull is { } read) return read;
-        var bar = BossDigits.ReadBar(row, scale, hp: !GameWindow.ReadsReinforced);   // 강화: the count as captured, the HP below
-        var full = (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) } : bar).Value;
+        var bar = BossDigits.ReadBar(row, scale, hp: !GameWindow.ReadsReinforced, knownMax: _lastBossMax);   // 강화: the count as captured, the HP below
+        var full = (_barFull = GameWindow.ReadsReinforced ? bar with { Hp = SoftHp(row, scale) }
+            : bar with { Hp = _bossFight.Step(bar.Hp, barUp: bar.Count is not null, _barAt) }).Value;   // spikes dropped (BossHpFight)
+        _barHeld = !GameWindow.ReadsReinforced && _bossFight.Held;
+        if (_barHeld) return full;   // the kept read: the label holds on its own, 숙제 and the max wait for a new one
         StepBossHp(full.Hp);
-        if (full.Hp is var (current, max, _)) BossRead?.Invoke(current, max);
+        if (full.Hp is var (current, max, _)) { _lastBossMax = max; BossRead?.Invoke(current, max); }
         return full;
     }
+
+    // This row's HP is BossHpFight's kept read (a spike dropped, or no read with the bar up): the 그림자 gimmick reads its
+    // number as with no HP (ShadowStep), whose read then wins.
+    bool _barHeld;
+
+    // The last max read: when the strict read fails, a max of its digit layout reads as it (a fading digit, a cursor; BossDigits
+    // knownMax). A strict read of a new max replaces it; leaving the dungeon or a new gate clears it.
+    long? _lastBossMax;
 
     /// <summary>The boss bar's HP and max HP, once per captured row (engine thread; 숙제's fallback, HomeworkFallback).</summary>
     public event Action<long, long>? BossRead;
@@ -226,14 +241,15 @@ public sealed partial class Engine
     PixelRect? MeterProbeRect(Config config, TimeSpan now) =>
         !_meterOn && RaidReadsOn(config) && Elapsed(now, _lastMeterProbe, MeterProbeEvery) ? PanelSpot(config) : null;
 
-    void ReadMeterProbe(Image spot, TimeSpan t)
+    void ReadMeterProbe(Image spot, double scale, TimeSpan t)
     {
         _lastMeterProbe = t;
-        Saw(meter: MeterPresent(spot), boss: false, t);
+        Saw(meter: MeterPresent(spot, scale), boss: false, t);
     }
 
-    /// <summary>The in-game meter in a capture of its spot (its scale follows the spot's width: the screen's height, not the HUD).</summary>
-    static bool MeterPresent(Image spot) => JeonbunFinder.Present(spot, spot.Width / JeonbunReader.RefW);
+    /// <summary>The in-game meter in a capture of its spot, at the spot's <see cref="Geometry.PanelScale"/> (the screen's height,
+    /// not the HUD).</summary>
+    static bool MeterPresent(Image spot, double scale) => JeonbunFinder.Present(spot, scale);
 
     void Saw(bool meter, bool boss, TimeSpan t)
     {

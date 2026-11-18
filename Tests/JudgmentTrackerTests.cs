@@ -116,6 +116,18 @@ public class JudgmentTrackerTests
     // The icon's timer (user, 2026-10-13): "N초" is N to N+1 seconds left, the moment it ticks down exactly N+1.
     static JudgmentRead Timer(double seconds) => new(true, false, seconds);
 
+    /// <summary>In 심판's last second a whole read is tenths whose leading 0 was lost (0.1 read as 1, 0.6 as 6), also once the
+    /// held end has passed with the icon still up (a late poll): it never pushes the end back up.</summary>
+    [Theory]
+    [InlineData(5.9, 1)]   // 0.1 left
+    [InlineData(5.4, 6)]   // 0.6 left
+    [InlineData(6.3, 1)]   // the held end 0.3 s past, the icon still up
+    public void A_whole_read_in_the_last_second_is_tenths_with_the_zero_lost(double at, double shown)
+    {
+        var s = Run((0, Icon), (at, Timer(shown)));
+        Assert.True(s.TriggeredAt + JudgmentState.Duration <= At(Math.Max(6, at) + 0.15), $"end {(s.TriggeredAt + JudgmentState.Duration - T0)?.TotalSeconds}");
+    }
+
     [Fact]
     public void A_tick_of_the_icons_timer_dates_the_trigger_exactly()
     {
@@ -351,4 +363,28 @@ public class JudgmentTrackerTests
     [Fact]
     public void 단죄_seen_while_심판_runs_is_ignored() =>
         Assert.Null(Run((0, Icon), (1, Conv()), (2, Conv(2))).ConvictionAt);
+
+    /// <summary>hud100_buff100 wrong단심time.mp4 (HUD 100, buff 100%): 심판 in box 1 counts "1초", "0,9초" … "0,0초" over a fire
+    /// and goes at 8.05 s (1.25 s into the fixture). The reader takes "0,1초" for 1 (and "0,9초" for 9) there; in its last second 심판's countdown can
+    /// only go down, so those reads must not push its end later (it showed 0, then 1 again for two seconds).</summary>
+    [Fact]
+    public void 심판_in_its_last_second_never_counts_back_up_on_a_misread()
+    {
+        var f = Fixture.Load("buffrow_judg");
+        var vp = new Viewport(0, 0, 1920, 1080);
+        var box = Core.Vision.Geometry.BuffBoxes(vp, new Fit(100), 100, Core.Vision.Geometry.JudgmentBoxCount)[1];
+        PixelRect Local(PixelRect r) => r with { X = r.X - f.Rect[0], Y = r.Y - f.Rect[1] };
+        var reader = new Core.Vision.BuffReader(Core.Vision.Geometry.BuffScale(vp, 100));
+        const double end = 1.25;   // the icon gone (8.05 s in the clip; the fixture's times start at 6.82 s)
+        var s = JudgmentTracker.Update(JudgmentState.Ready, Icon, At(end - 6), hudVisible: true);
+        for (int i = 0; i < f.Frames.Count; i++)
+        {
+            double t = f.Pts[i].TotalSeconds;
+            bool icon = Core.Vision.JudgmentReader.IsIcon(f.Frames[i], Local(box.Icon));
+            var read = new JudgmentRead(icon, false, icon ? reader.ReadTimer(f.Frames[i], Local(box.Timer)) : null);
+            s = JudgmentTracker.Update(s, read, At(t), hudVisible: true);
+            Assert.True(s.TriggeredAt + JudgmentState.Duration <= At(end + 0.2), $"at {t:0.000} s the end moved to {(s.TriggeredAt + JudgmentState.Duration - T0)?.TotalSeconds:0.00} s");
+        }
+        Assert.Equal(JudgmentPhase.Cooldown, s.Phase(At(end + 0.2)));
+    }
 }

@@ -48,6 +48,7 @@ public sealed partial class OverlayRenderer
     {
         if (_player?.Snapshot.Judgment is not { } state) return;
         var j = Settings.Judgment;
+        if (!ShowHidden && j.OutOfRaid(_player.Snapshot.AutoShows(now))) return;   // 자동 (or the tray's 자동 → 항상 test)
         var cell = JudgmentCell();
         bool icon = j.Display == JudgmentDisplay.ReadyIcon, conviction = state.ConvictionLeft(now) is not null;
         bool waiting = state.Phase(now) == JudgmentPhase.Ready && !conviction;   // ready with nothing running: blinks

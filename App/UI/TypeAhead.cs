@@ -20,7 +20,7 @@ static class TypeAhead
         var list = new ListBox { MaxHeight = MaxListHeight, BorderThickness = new(0), Background = System.Windows.Media.Brushes.Transparent, Focusable = false };
         list.ItemContainerStyle = new Style(typeof(ListBoxItem), box.TryFindResource(typeof(ListBoxItem)) as Style)
             { Setters = { new Setter(UIElement.FocusableProperty, false) } };
-        var drop = new Border { Child = list, BorderThickness = new(1), CornerRadius = new(6), Padding = new(2) };
+        var drop = new Border { Child = list, BorderThickness = new(1), CornerRadius = new(Tokens.Radius.Card), Padding = new(Tokens.Space.Hair) };
         drop.SetResourceReference(Border.BackgroundProperty, "ComboBoxDropDownBackground");   // the theme's dropdown look
         drop.SetResourceReference(Border.BorderBrushProperty, "ComboBoxDropDownBorderBrush");
         var popup = new Popup { PlacementTarget = box, Placement = PlacementMode.Bottom, AllowsTransparency = true, Child = drop };

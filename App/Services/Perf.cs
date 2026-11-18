@@ -37,13 +37,19 @@ public static partial class Perf
         string? line = null;
         lock (Gate)
         {
+            long now = Stopwatch.GetTimestamp();
             if (_watch is not null)
             {
                 _watch[part] = _watch.GetValueOrDefault(part) + ticks;
-                if (!part.EndsWith(CpuTag)) _sinceFrame[part] = _sinceFrame.GetValueOrDefault(part) + ticks;
+                if (!part.EndsWith(CpuTag))
+                {
+                    _sinceFrame[part] = _sinceFrame.GetValueOrDefault(part) + ticks;
+                    string row = ResourceCheck.RowOf(part);
+                    if (!_active.TryGetValue(row, out var on)) _active[row] = on = new ActiveTime(ResourceCheck.ActiveGrace);
+                    on.Hit(Math.Max(0, WatchSeconds(now - ticks)), WatchSeconds(now));   // a run begun before the check counts from its start
+                }
             }
             Ticks[part] = Ticks.GetValueOrDefault(part) + ticks;
-            long now = Stopwatch.GetTimestamp();
             double seconds = (now - _since) / (double)Stopwatch.Frequency;
             if (seconds >= Every.TotalSeconds)
             {
@@ -88,17 +94,27 @@ public static partial class Perf
     // 리소스 검사: kept only while it is on (null: off), apart from the minute's figures above.
     static Dictionary<string, long>? _watch;
     static readonly Dictionary<string, long> _sinceFrame = [];
+    static readonly Dictionary<string, ActiveTime> _active = [];   // by 리소스 검사 row: when its parts ran
+    static long _watchStart;
+
+    static double WatchSeconds(long now) => (now - _watchStart) / (double)Stopwatch.Frequency;
 
     /// <summary>Starts or stops keeping every part's running total (<see cref="Seconds"/>) and the parts since the last frame (<see cref="TakeSinceFrame"/>).</summary>
     public static void Watch(bool on)
     {
-        lock (Gate) { _watch = on ? [] : null; _sinceFrame.Clear(); }
+        lock (Gate) { _watch = on ? [] : null; _sinceFrame.Clear(); _active.Clear(); _watchStart = Stopwatch.GetTimestamp(); }
     }
 
     /// <summary>Every part's time since <see cref="Watch"/> started, in seconds (a CPU part under its name plus " [CPU]").</summary>
     public static Dictionary<string, double> Seconds()
     {
         lock (Gate) return (_watch ?? []).ToDictionary(kv => kv.Key, kv => kv.Value / (double)Stopwatch.Frequency);
+    }
+
+    /// <summary>Seconds each 리소스 검사 row was active since <see cref="Watch"/> started (<see cref="ActiveTime"/>).</summary>
+    public static Dictionary<string, double> ActiveSeconds()
+    {
+        lock (Gate) return _active.ToDictionary(kv => kv.Key, kv => kv.Value.Seconds);
     }
 
     /// <summary>The parts' wall ms that ended since the last call (the engine calls it at each captured frame while watching).</summary>

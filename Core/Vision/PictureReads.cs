@@ -16,13 +16,13 @@ public static class PictureReads
             (row, icons) => BuffReader.ReadRow(icons.Length, i => BuffReader.Framed(row, icons[i]), i => BuffReader.Read(row, icons[i])).Any(k => k is not null)),
         AdjustPart.디버프 => Row(picture, at, Geometry.DebuffArea(vp, fit, buffSize), Geometry.DebuffBoxes(vp, fit, buffSize),
             (row, icons) => icons.Any(icon => DebuffReader.Classify(row, icon) is not null)),
-        AdjustPart.전분 => panel is { } r && Holds(at, r) ? Panel(picture.Crop(r with { X = r.X - at.X, Y = r.Y - at.Y })) : null,
+        AdjustPart.전분 => panel is { } r && Holds(at, r) ? Panel(picture.Crop(r with { X = r.X - at.X, Y = r.Y - at.Y }), Geometry.PanelScale(r, vp)) : null,
         _ => Boss(picture, at, vp, fit, bossSize),
     };
 
     /// <summary>Whether <paramref name="crop"/>, the 전분 box's pixels, holds the panel: it reads, or its green cell is there before the
-    /// first hit. The scale comes from the box's width, as the reader's.</summary>
-    public static bool Panel(Image crop) => JeonbunReader.Read(crop) is not null || JeonbunFinder.Present(crop, crop.Width / JeonbunReader.RefW);
+    /// first hit, at <paramref name="scale"/> (<see cref="Geometry.PanelScale"/>).</summary>
+    public static bool Panel(Image crop, double scale) => JeonbunReader.Read(crop, scale) is not null || JeonbunFinder.Present(crop, scale);
 
     static bool Holds(PixelRect at, PixelRect area) => area.Width > 0 && area.Height > 0 && at.Intersect(area) == area;
 

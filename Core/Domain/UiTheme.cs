@@ -39,4 +39,20 @@ public sealed record UiPalette(bool Dark, IReadOnlyDictionary<string, string> Co
         UiTheme.Light => new(false, new Dictionary<string, string>()),
         _ => new(theme == UiTheme.Dark, new Dictionary<string, string>()),
     };
+
+    /// <summary>Text of a control that can't be used now, and of a destructive button (.interface-design/system.md "Colour
+    /// roles"). Every theme has both, unlike <see cref="Colors"/>; <see cref="UiTheme.System"/> follows
+    /// <paramref name="systemDark"/> (Windows' 앱 모드). Danger in the dark themes and 밝게 is Fluent's critical colour.</summary>
+    public static (string Disabled, string Danger) States(UiTheme theme, bool systemDark) => theme switch
+    {
+        UiTheme.DeepTeal => ("#7C8894", FluentDarkDanger),
+        UiTheme.LostArk => ("#857F77", FluentDarkDanger),
+        UiTheme.Graphite => ("#7E8086", FluentDarkDanger),
+        UiTheme.ArkesiaNight => ("#7D8191", FluentDarkDanger),
+        UiTheme.Dark => ("#8A8A8A", FluentDarkDanger),
+        UiTheme.System when systemDark => States(UiTheme.Dark, false),
+        _ => ("#8A8A8A", "#C42B1C"),   // 밝게, and Windows' light mode
+    };
+
+    const string FluentDarkDanger = "#FF99A4";
 }

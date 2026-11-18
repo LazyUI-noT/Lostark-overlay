@@ -47,7 +47,7 @@ public sealed class FightRecorder(int maxEntries = FightRecorder.MaxEntries)
     public bool InRaid { get; set; } = true;
     /// <summary>How long the timer may stay stopped or hidden before the fight ends (설정 → 전투 기록).</summary>
     public TimeSpan PauseLimit { get; set; } = EndAfterFrozen;
-    static readonly BuffKind[] Windows = [BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증];
+    static readonly IReadOnlyList<BuffKind> Windows = BuffLock.MeterKinds(locked: false);
 
     /// <summary>암흑수류탄 is read (its switch): only then are the bombs recorded, as one window "a bomb is up" with the bomb shown.</summary>
     public bool AmsuOn { get; set; }

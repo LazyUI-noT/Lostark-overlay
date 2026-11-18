@@ -12,7 +12,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     /// <summary>The gauge's options; shown while the gauge is the part picked (<see cref="ShowBox"/>).</summary>
-    internal CardStack GaugeBox { get; } = new() { Margin = new(16, 0, 16, 12), Visibility = Visibility.Collapsed };
+    internal CardStack GaugeBox { get; } = new() { Margin = new(Tokens.Space.Card, 0, Tokens.Space.Card, Tokens.Space.Block), Visibility = Visibility.Collapsed };
 
     void FillGauge()
     {
@@ -27,6 +27,11 @@ public partial class SettingsWindow
         p.Children.Add(SwitchBadge());   // 합쳐서 / 따로 is one per profile (프로필 N 공통): its chip first, then 편집 중's look
         p.Children.Add(ApartRow());   // outside the look group: 모든 프로필에 적용 doesn't copy it
         p.Children.Add(CardBadge(LookGroup.게이지));
+        // 편집 중's show switch, as 스킬창 → 내 스킬's group switches: 표시 and the tray change only the character played
+        // (user, 2026-11-15: 수라의길's gauge was off with no switch for it here).
+        p.Children.Add(Check("아덴 게이지 표시", ClassProfiles.Of(_s, ShownClass).Mine.Gauge, v => ClassProfiles.EditShown(_s, BoxKey).Mine.Gauge = v,
+                () => { Changed(); Dispatcher.BeginInvoke(BuildAll); }, "고른 직업각인의 아덴 게이지입니다. 기본을 따르는 직업각인이면 기본이 바뀝니다." + (EditedHasRing() ? " 전투자원 창은 아래에서 따로 켭니다." : "")));
+        p.Children.Add(Defaulted(Row("표시", GaugeAutoCheck()), s => s.Gauge.RaidOnly, (s, v) => s.Gauge.RaidOnly = v));
         // 편집 중's 직업각인 (ShownSubclass), not the character's.
         // 기본 has no 직업각인 to read for: BarRows says so.
         if (ShownClass != ClassProfiles.Template && !(ShownSubclass is { } shown && shown.Class.Subclasses.GetValueOrDefault(shown.Sub) is not null))
@@ -44,21 +49,29 @@ public partial class SettingsWindow
             (GaugeReadMode.Predicted, "스킬별 예측으로 빠르게 반영 (베타)")], _s.Gauge.ReadMode, v => _s.Gauge.ReadMode = v)));
         // Shown for every reading: gains learned under 스킬별 예측 stay saved after switching to another reading, and are used again on
         // switching back.
-        var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 8),
+        var forget = new Button { Content = "이 캐릭터의 배운 값 지우기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, Tokens.Space.Gap),
             ToolTip = "스킬별 예측에서 배운 게이지 값을 지웁니다. 스킬창의 스킬을 바꿨을 때 쓰세요." };
         forget.Click += (_, _) => GainsResetRequested?.Invoke();
         p.Children.Add(forget);
         BarRows(p);
-        if (ShownSubclass is { } edited && _chars.HasRing(edited.Class.Name)) RingRows(p);   // the edited class's name (ShownClass is the entry key), not the one read
+        if (EditedHasRing()) RingRows(p);
         return p;
     }
 
-    /// <summary>기력·충격 창 (브레이커): its own switch, colours and 불투명도, shown while 편집 중 is a class with a ring.</summary>
+    /// <summary>Whether 편집 중 is a class with a ring (브레이커): its 전투자원 창 rows show only then. The edited class's
+    /// name (ShownClass is the entry key), not the one read.</summary>
+    bool EditedHasRing() => ShownSubclass is { } edited && _chars.HasRing(edited.Class.Name);
+
+    /// <summary>전투자원 창 (브레이커's 기력·충격, user 2026-11-18: one name for any class's resource): its own switch, colours
+    /// and 불투명도, shown while 편집 중 is a class with a ring.</summary>
     void RingRows(Panel p)
     {
         var r = _s.Ring;
-        p.Children.Add(Heading("기력·충격 창"));
+        p.Children.Add(Heading("전투자원 창"));
         p.Children.Add(Check("켜기", r.On, v => r.On = v, Changed, "링의 기력(왼쪽)과 충격(오른쪽)을 막대 하나로 보여 줍니다. 아덴 게이지를 꺼도 따로 켜집니다."));
+        p.Children.Add(Row("표시", RingAutoCheck()));
+        p.Children.Add(HelpRow("빛나는 테두리", "수라의길: 다음에 쓸 쪽(기력 또는 충격)을 테두리로 보여 줍니다. Z를 쓰면 다음 스킬까지 굵게 깜빡입니다.",
+            EnumCombo([(RingGlow.항상, "항상"), (RingGlow.Z후, "Z 쓴 동안과 뒤에만"), (RingGlow.끄기, "끄기")], r.Glow, v => r.Glow = v)));
         p.Children.Add(ColorRow(Label("기력 색"), r.LeftFill, v => r.LeftFill = v, swatch: false));
         p.Children.Add(ColorRow(Label("충격 색"), r.RightFill, v => r.RightFill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), r.Empty, v => r.Empty = v, swatch: false));
@@ -72,7 +85,7 @@ public partial class SettingsWindow
     {
         if (ShownSubclass is not { } picked)
         {
-            p.Children.Add(Note("막대 설정은 편집 중에서 직업각인을 고르면 나옵니다."));
+            p.Children.Add(Note("막대 설정은 편집할 직업각인을 고르면 나옵니다."));
             return;
         }
         var shown = (Class: picked.Class.Name, picked.Sub, Rule: picked.Class.Subclasses[picked.Sub]);
@@ -89,7 +102,7 @@ public partial class SettingsWindow
         var splits = new WrapPanel();
         foreach (double split in bar.Splits)
         {
-            var box = new TextBox { Text = $"{split * 100:0.#}", Width = 44, Margin = new(0, 0, 2, 0) };
+            var box = new TextBox { Text = $"{split * 100:0.#}", Width = 44, Margin = new(0, 0, Tokens.Space.Hair, 0) };
             box.LostKeyboardFocus += (_, _) =>
             {
                 if ((double.TryParse(box.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out var pct)
@@ -97,10 +110,10 @@ public partial class SettingsWindow
                     SetSplits(bar.Splits.Where(x => x != split).Append(pct / 100));
                 else box.Text = $"{split * 100:0.#}";
             };
-            var remove = new Button { Content = "✕", ToolTip = "이 구분선 지우기", Margin = new(0, 0, 10, 0) };
-            System.Windows.Automation.AutomationProperties.SetName(remove, "이 구분선 지우기");   // read aloud instead of "✕"
+            var remove = new Button { Content = "✕", ToolTip = "이 구분선 삭제", Margin = new(0, 0, Tokens.Space.Gap, 0) };
+            System.Windows.Automation.AutomationProperties.SetName(remove, "이 구분선 삭제");   // read aloud instead of "✕"
             remove.Click += (_, _) => SetSplits(bar.Splits.Where(x => x != split));
-            splits.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { box, new TextBlock { Text = "%", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 4, 0) }, remove } });
+            splits.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { box, new TextBlock { Text = "%", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Tight, 0) }, remove } });
         }
         var add = new Button { Content = "구분선 추가", ToolTip = "가장 넓은 구간의 가운데에 구분선을 넣습니다." };
         add.Click += (_, _) => { var (from, to) = bar.Segments.MaxBy(s => s.To - s.From); SetSplits(bar.Splits.Append(Math.Round((from + to) / 2, 3))); };

@@ -59,7 +59,7 @@ public partial class OverlayWindow : Window
         if (amsu) Title = "GaugeOverlay - 암수";
         if (raid) Title = "GaugeOverlay - 레이드";
         if (meter) Title = "GaugeOverlay - DPS 미터기";
-        if (ring) Title = "GaugeOverlay - 기력·충격";
+        if (ring) Title = "GaugeOverlay - 전투자원";
         Renderer.Settings = settings;
         Renderer.Peer = peer;
         Renderer.BuffsOnly = buffs;
@@ -170,7 +170,7 @@ public partial class OverlayWindow : Window
     void ShowLabel()
     {
         EditLabel.Visibility = _editMode ? Visibility.Visible : Visibility.Collapsed;
-        string who = _ring ? " (기력·충격)" : _amsu ? " (암수)" : _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _gauge ? " (아덴 게이지)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
+        string who = _ring ? " (전투자원)" : _amsu ? " (암수)" : _meter ? " (DPS 미터기)" : _raid ? " (레이드 줄 수)" : _judgment ? " (단심)" : _debuffs ? " (디버프)" : _buffs ? " (버프 막대)" : _gauge ? " (아덴 게이지)" : _peer < 0 ? "" : $" (파티원 {PartySlots.Label(_peer, _settings.Party.MyNumber)} · {ShownClass ?? "기본"} 파티원 설정)";
         EditLabelText.Text = $"편집 중{who} · {KeyNames.Display(_settings.Hotkeys.EditMode)}로 끝내기 · Shift: 자석 끄기";
         EditLabel.ToolTip = EditLabelText.Text;
     }

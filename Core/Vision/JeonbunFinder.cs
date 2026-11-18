@@ -4,15 +4,18 @@ namespace GaugeOverlay.Core.Vision;
 
 /// <summary>전분 위치 찾기 (spec § C): finds the 전분 panel anywhere on the game screen. Its first cell is a green block of a known
 /// size (112×23 at 1080p, times the panel's scale: it follows the screen's height, not the HUD); from a green block's top-left
-/// the panel's spot follows, for the first row or the second (a saved record compared above mine). A spot counts only when
-/// JeonbunReader reads it, so before a fight starts (no green row) nothing is found. Pure.</summary>
+/// the panel's spot follows, for the first row or the second (a saved record compared above mine), and its width from the
+/// columns measured to the block's right (<see cref="JeonbunLayout.Widths"/>: any width, count and order of columns,
+/// jeonbun-columns.plan.md). A spot counts only when JeonbunReader reads it, so before a fight starts (no green row) nothing is
+/// found. Pure.</summary>
 public static class JeonbunFinder
 {
     const double CellW = 112, CellH = 23, CellLeft = 2, CellTop = 63, RowPitch = 26;   // the first cell in the 1080p crop
     const double EdgeW = 8;   // the green strip checked at the cell's left
+    // The widest crop the columns are measured on, at 1080p: the game's most columns (JeonbunLayout's 8) of 139 px and some.
+    const double MaxPanelW = 1200;
 
-
-    /// <summary>The panel's crop (470 × up to 114, times <paramref name="scale"/>) in <paramref name="screen"/>'s pixels, or null.</summary>
+    /// <summary>The panel's crop (its own width × up to 114, times <paramref name="scale"/>) in <paramref name="screen"/>'s pixels, or null.</summary>
     public static PixelRect? Find(Image screen, double scale)
     {
         foreach (var (left, top) in Blocks(screen, scale))
@@ -64,7 +67,8 @@ public static class JeonbunFinder
         return candidate;
     }
 
-    static bool Reads(Image crop, int row) => JeonbunReader.MyRow(crop) == row && JeonbunReader.Read(crop) is not null;
+    // My row is checked once per spot, on its wide crop (At), which every width shares.
+    static bool Reads(Image crop, int row, double scale) => JeonbunReader.Read(crop, scale) is not null;
 
     // The cell's top edge is blurred in video: in serka-g1-90s it starts 1 px above where the text puts it, and the crop 1 px
     // too high doesn't read. So a spot is tried as found, then 1 and 2 px down and up.
@@ -83,19 +87,24 @@ public static class JeonbunFinder
 
     /// <summary>The panel whose first cell (my row: the first, or the second) has its top-left at (left, top) at
     /// <paramref name="scale"/>, when <paramref name="isPanel"/> takes its crop; <paramref name="onlyRow"/> tries one row.</summary>
-    static (PixelRect Rect, int Row)? At(Image screen, int left, int top, double scale, Func<Image, int, bool> isPanel, int? onlyRow = null,
-        bool nudge = true, bool pastRight = false)
+    static (PixelRect Rect, int Row)? At(Image screen, int left, int top, double scale, Func<Image, int, double, bool> isPanel,
+        int? onlyRow = null, bool nudge = true, bool pastRight = false)
     {
         for (int row = onlyRow ?? 0; row <= (onlyRow ?? 1); row++)
         {
             int px = (int)Math.Round(left - CellLeft * scale), py = (int)Math.Round(top - (CellTop + row * RowPitch) * scale);
-            // A crop whose green row isn't this one isn't the panel at any nudge: one check spares the reads.
-            if (Spot(screen, px, py, scale, pastRight) is not { } at || Cut(screen, at) is var crop && JeonbunReader.MyRow(crop) != row) continue;
-            if (isPanel(crop, row)) return (at, row);
-            // Nudged only when the frame shows here: green effects that aren't the panel cost one more check, not four.
-            if (!nudge || !JeonbunReader.Shows(crop, row)) continue;
+            // The columns are measured on a crop as wide as the screen allows (past it, black, when pastRight); a crop whose
+            // green row isn't this one isn't the panel at any width or nudge: one check spares the reads.
+            int reach = (int)Math.Round(MaxPanelW * scale);
+            if (Spot(screen, px, py, pastRight ? reach : Math.Min(reach, screen.Width - px), scale, pastRight: true) is not { } wideAt
+                || Cut(screen, wideAt) is var wide && JeonbunReader.MyRow(wide, scale) != row) continue;
+            var spots = JeonbunLayout.Widths(wide, scale, row).Select(w => Spot(screen, px, py, w, scale, pastRight)).OfType<PixelRect>().ToList();
+            foreach (var at in spots)
+                if (isPanel(Cut(screen, at), row, scale)) return (at, row);
+            // Nudged only where the frame shows: green effects that aren't the panel cost one more check, not four.
+            if (!nudge || spots.FirstOrDefault(at => JeonbunReader.Shows(Cut(screen, at), row, scale)) is not { Width: > 0 } shown) continue;
             foreach (int dy in Nudges)
-                if (Spot(screen, px, py + dy, scale, pastRight) is { } r && isPanel(Cut(screen, r), row)) return (r, row);
+                if (Spot(screen, px, py + dy, shown.Width, scale, pastRight) is { } r && isPanel(Cut(screen, r), row, scale)) return (r, row);
         }
         return null;
     }
@@ -123,11 +132,12 @@ public static class JeonbunFinder
         return false;
     }
 
-    /// <summary>The panel's crop at (x, y), as tall as fits (one row needs 88, two 114), or null when it runs off the screen.</summary>
-    static PixelRect? Spot(Image screen, int x, int y, double scale, bool pastRight = false)
+    /// <summary>A crop <paramref name="w"/> wide at (x, y), as tall as fits (one row needs 88, two 114), or null when it runs off
+    /// the screen.</summary>
+    static PixelRect? Spot(Image screen, int x, int y, int w, double scale, bool pastRight = false)
     {
-        int w = (int)Math.Round(JeonbunReader.RefW * scale), h = Math.Min((int)Math.Round(JeonbunReader.RefH * scale), screen.Height - y);
-        return x < 0 || y < 0 || !pastRight && x + w > screen.Width || h < 88 * scale ? null : new PixelRect(x, y, w, h);
+        int h = Math.Min((int)Math.Round(JeonbunReader.RefH * scale), screen.Height - y);
+        return x < 0 || y < 0 || w <= 0 || !pastRight && x + w > screen.Width || h < 88 * scale ? null : new PixelRect(x, y, w, h);
     }
 
     /// <summary><paramref name="r"/> of <paramref name="screen"/>, black past its right edge.</summary>

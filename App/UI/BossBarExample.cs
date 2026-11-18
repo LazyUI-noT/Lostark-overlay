@@ -53,8 +53,8 @@ static class BossBarExample
         var frame = new Border
         {
             Child = new Viewbox { Child = canvas, Stretch = Stretch.Uniform },
-            MaxWidth = MaxWidth, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(Indent, 0, 0, 10),
-            CornerRadius = new(4), BorderThickness = new(1), ClipToBounds = true,
+            MaxWidth = MaxWidth, HorizontalAlignment = HorizontalAlignment.Left, Margin = new(Indent, 0, 0, Tokens.Space.Block),
+            CornerRadius = new(Tokens.Radius.Control), BorderThickness = new(1), ClipToBounds = true,
         };
         frame.SetResourceReference(Border.BorderBrushProperty, Themes.StrokeBrushKey);
         return frame;

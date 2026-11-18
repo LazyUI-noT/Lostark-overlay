@@ -108,7 +108,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
     readonly Dictionary<SlotId, ImageSource> _icons = [], _targetIcons = [];
 
-    static BitmapSource ToBitmap(Image icon)
+    internal static BitmapSource ToBitmap(Image icon)   // also 인게임 설정's saved skills
     {
         var bmp = BitmapSource.Create(icon.Width, icon.Height, 96, 96, PixelFormats.Bgr32, null, icon.Bgra, icon.Stride);
         bmp.Freeze();
@@ -149,7 +149,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         IsVisibleChanged += (_, _) =>
         {
             if (!IsVisible) { SetLoop(false); return; }
-            _boxes.Clear(); _gauges.Clear(); _changed.Clear(); _barColors.Clear();
+            _boxes.Clear(); _arrivals.Clear(); _gauges.Clear(); _changed.Clear(); _barColors.Clear(); _meterBars.Clear(); _meterScene = null;
             InvalidateVisual();
         };
     }
@@ -165,7 +165,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
         // A still window whose part of the snapshot is the same as last drawn: nothing it shows changes (9/s each before).
         if (!_loop && frozenAt is null && _frozenAt is null && player is not null && _player is not null
             && SameDrawn(player.Snapshot, _player.Snapshot)) { _player = player; return; }
-        if ((frozenAt is null) != (_frozenAt is null)) { _boxes.Clear(); _gauges.Clear(); _changed.Clear(); _barColors.Clear(); }
+        if ((frozenAt is null) != (_frozenAt is null)) { _boxes.Clear(); _arrivals.Clear(); _gauges.Clear(); _changed.Clear(); _barColors.Clear(); _meterBars.Clear(); _meterScene = null; }
+        if (!ReferenceEquals(player?.Snapshot.MeterView, _player?.Snapshot.MeterView)) _meterScene = null;   // a loop frame records it again
         _player = player;
         _frozenAt = frozenAt;
         // 초당 그리기 횟수 caps every draw: while the loop runs, its next frame draws the new snapshot (up to one frame
@@ -181,14 +182,18 @@ public sealed partial class OverlayRenderer : FrameworkElement
     bool SameDrawn(Snapshot a, Snapshot b) =>
         MeterOnly ? ReferenceEquals(a.MeterView, b.MeterView)
         : DebuffsOnly ? Equals(a.Debuffs, b.Debuffs)
-        : JudgmentOnly ? Equals(a.Judgment, b.Judgment)
+        : JudgmentOnly ? Equals(a.Judgment, b.Judgment) && (!Settings.Judgment.RaidOnly || SameAutoShown(a, b))
         : AmsuOnly ? Equals(a.Amsu, b.Amsu) && a.AmsuTimed == b.AmsuTimed
-        : RingOnly ? Equals(a.Ring, b.Ring)
+        : RingOnly ? Equals(a.Ring, b.Ring) && Equals(a.RingCue, b.RingCue) && (!Settings.Ring.RaidOnly || SameAutoShown(a, b))
         : RaidOnly && Equals(a.Raid, b.Raid);
+
+    /// <summary>A window on 자동 redraws when where the player is changes, or the tray's 자동 → 항상 test.</summary>
+    static bool SameAutoShown(Snapshot a, Snapshot b) => Equals(a.Presence, b.Presence) && a.AutoAsAlways == b.AutoAsAlways;
 
     /// <summary>Call after <see cref="Settings"/> changed.</summary>
     public void Refresh()
     {
+        _meterScene = null;   // a settings change mid-ease: the next draw, even a loop frame, records the meter anew
         InvalidateMeasure();
         InvalidateVisual();
     }
@@ -236,7 +241,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         (double X, double Y) scale = (bw / Box, bh / Box);
         Rect At(Part part)
         {
-            var c = cells.TryGetValue(part, out var v) ? v : fallback[part];
+            var c = FreeLayout.CellOf(cells, part, fallback);   // 낙인 in a layout saved before it: under its lowest bar
             if (part >= FreeLayout.FirstBuff && Settings.Buffs.Of((BuffKind)(part - FreeLayout.FirstBuff)) is var bar)
                 c = BarSizes.Sized(c, BarSizes.Length(bar), BarSizes.Thickness(bar));   // 길이 and 두께 apply here too
             double x = Math.Round(c.X * scale.X), y = Math.Round(c.Y * scale.Y);
@@ -283,7 +288,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>The buff bars to draw: yours only, while the buff row is read, the ones whose 표시 is on; on the plate,
     /// or in the buffs' own window (<see cref="BuffsOnly"/>) with 버프 막대 따로 두기.</summary>
     List<BuffKind> ShownBuffs(Snapshot s) => Peer >= 0 || s.Buffs.IsDefaultOrEmpty || Settings.Buffs.Detached != BuffsOnly ? []
-        : [.. Enum.GetValues<BuffKind>().Where(k => ClassProfiles.BuffShown(Settings, k, Target?.Key))];
+        : [.. BuffOrder.Shown.Where(k => ClassProfiles.BuffShown(Settings, k, Target?.Key))];
 
     /// <summary>The point the window keeps still on screen when the layout changes (NaN when nothing is laid out): the
     /// top of the fixed grid, so a thicker gauge grows upwards, or where the free layout's cell (0, 0) is drawn, so
@@ -323,13 +328,13 @@ public sealed partial class OverlayRenderer : FrameworkElement
         else if (JudgmentOnly) DrawJudgment(dc, now, ms, reduced);
         else if (AmsuOnly) DrawAmsu(dc, now, ms, reduced);
         else if (RaidOnly) DrawRaid(dc, ms, reduced);
-        else if (MeterOnly) DrawMeter(dc);
-        else if (RingOnly) DrawRing(dc);
+        else if (MeterOnly) DrawMeterFrame(dc, ms);
+        else if (RingOnly) DrawRing(dc, now, ms, reduced);
         else if (_layout is { } l) DrawPlayer(dc, l, now, ms, reduced);
         // 초당 그리기 횟수: one rate for every moving part; a slow fade alone at most 15 (DrawSteps).
         _frameMs = Math.Max(MinFrameMs, DrawSteps.FrameMs(Settings.DrawsPerSecond, fadeOnly: !_animating && !_moving));
         SetLoop(_moving || _animating || _blinking);
-        string part = RingOnly ? "그리기: 기력·충격 창" : DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
+        string part = RingOnly ? "그리기: 전투자원 창" : DebuffsOnly ? "그리기: 디버프 창" : JudgmentOnly ? "그리기: 단심 창" : AmsuOnly ? "그리기: 암수 창" : RaidOnly ? "그리기: 줄 수 창" : MeterOnly ? "그리기: 미터기 창"
             : BuffsOnly ? "그리기: 버프 창" : GaugeOnly ? "그리기: 게이지 창" : Peer >= 0 ? "그리기: 파티 창" : "그리기: 스킬 창";
         Services.Perf.AddCpu(part, Stopwatch.GetTimestamp() - (long)(ms * Stopwatch.Frequency / 1000.0), Services.Perf.ThreadCpu() - cpu0);
         Services.Perf.Count(part);   // draws a second, per window (perf-trace)
@@ -341,6 +346,18 @@ public sealed partial class OverlayRenderer : FrameworkElement
     {
         var s = l.Player.Snapshot;
         var hidden = HiddenBoxes(l, now);
+        // 게이지 / 스킬 자동 (user, 2026-11-15): yours only, outside a raid; a preview draws as in a raid, as for the buff bars.
+        bool inRaid = s.AutoShows(now);   // or the tray's 자동 → 항상 test
+        bool gaugeGone = !l.Peer && !ShowHidden && Settings.Gauge.OutOfRaid(inRaid);
+        bool skillsGone = !l.Peer && !ShowHidden && Settings.Overlay.SkillsOutOfRaid(inRaid);
+        bool buffsGone = !ShowHidden && Settings.Buffs.OutOfRaid(inRaid);
+        // Every part that isn't drawn now: a plate goes when all its members are in it (the gauge and the buff bars as members too).
+        var away = new HashSet<int>(hidden);
+        foreach (var (key, _, _) in l.Boxes)
+            if (key <= ChangedKey ? skillsGone : key >= (int)FreeLayout.FirstBuff && buffsGone) away.Add(key);
+        if (gaugeGone) away.Add(GaugeKey);
+        if (skillsGone) hidden.UnionWith(away.Where(k => k <= ChangedKey));
+        var members = l.Boxes.Select(b => b.Key).Concat(l.Gauge is null ? [] : [GaugeKey]);
         // Plate, gauge and boxes each have their own opacity setting. The detached buff window has no plate.
         if (Settings.Overlay.ShowPlate && !BuffsOnly && !GaugeOnly)
         {
@@ -348,12 +365,12 @@ public sealed partial class OverlayRenderer : FrameworkElement
             var plate = Solid(Color.FromArgb((byte)(PlateColor.A * Math.Clamp(Settings.Overlay.Opacity, MinOpacity, 1)), rgb.R, rgb.G, rgb.B));
             if (l.Split is null)
             {
-                if (ShowHidden || hidden.Count == 0 || l.Gauge is not null || !l.Boxes.All(b => hidden.Contains(b.Key)))   // every box hid: the plate too
+                if (ShowHidden || away.Count == 0 || !members.All(away.Contains))   // every part hid: the plate too
                     dc.DrawRoundedRectangle(plate, null, l.Plate, PlateRadius, PlateRadius);
             }
             else
                 foreach (var (r, keys) in l.Split)
-                    if (ShowHidden || !keys.All(hidden.Contains))   // a plate whose boxes all hid goes with them
+                    if (ShowHidden || !keys.All(away.Contains))   // a plate whose parts all hid goes with them
                         dc.DrawRoundedRectangle(plate, null, r, PlateRadius, PlateRadius);
         }
 
@@ -374,7 +391,7 @@ public sealed partial class OverlayRenderer : FrameworkElement
         if (l.Number is { } slotLabel)
             dc.DrawText(NameText(slotLabel, NameFont(l.Unit)), l.NumberAt);
 
-        if (l.Gauge is { } g && s.Gauge is { } value)
+        if (l.Gauge is { } g && s.Gauge is { } value && !gaugeGone)
         {
             double v = Get(_gauges, l.Key).Value(Math.Clamp(value, 0, 1), ms, ref _animating);
             dc.PushOpacity(Math.Clamp(Settings.Gauge.Opacity, MinOpacity, 1));
@@ -397,15 +414,21 @@ public sealed partial class OverlayRenderer : FrameworkElement
             if (key >= (int)FreeLayout.FirstBuff)
             {
                 var kind = (BuffKind)(key - (int)FreeLayout.FirstBuff);
-                var st = s.Buffs.IsDefaultOrEmpty ? null : s.Buffs[(int)kind];
+                var st = (int)kind < s.Buffs.Length ? s.Buffs[(int)kind] : null;
+                double arrive = Arriving(l.Key, kind, st is { Active: true }, ms);
+                // 비었을 때 숨기기: the whole bar is new, so it all fades in; else only its fill (the track was there).
+                bool whole = Settings.Buffs.HideWhenEmpty && arrive < 1;
+                if (whole) dc.PushOpacity(arrive);
                 // A preview (ShowHidden) draws as in a raid: a 자동 bar full, not faint (user, 2026-11-12: 위치 조정 too).
-                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true } || !ShowHidden && Settings.Buffs.OutOfRaid(s.Presence.InDungeon(now)),
-                    () => DrawBuff(dc, r, c, st, Settings.Buffs.Of(kind).ShowLabel, Settings.Buffs.EndFlash(kind), now, reduced));
+                Faint(dc, Settings.Buffs.HideWhenEmpty && st is not { Active: true } || !ShowHidden && Settings.Buffs.OutOfRaid(s.AutoShows(now)),
+                    () => DrawBuff(dc, r, c, st, Settings.Buffs.Of(kind).ShowLabel, Settings.Buffs.EndFlash(kind), now, reduced, whole ? 1 : arrive));
+                if (whole) dc.Pop();
                 continue;
             }
             if (key == ChangedKey)
             {
                 double level = Get(_changed, l.Key).Value(s.AwakeningChanged ? 1 : ChangedOffLevel, ms, ref _animating);
+                if (hidden.Contains(key)) continue;   // 스킬 자동 outside a raid (never set in a preview); stepped above
                 dc.DrawRoundedRectangle(Solid(Level(c, level)), null, r, BoxRadius, BoxRadius);
                 continue;
             }

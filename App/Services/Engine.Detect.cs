@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -9,6 +10,7 @@ public sealed partial class Engine
 {
     ImmutableDictionary<string, Detection> _detect = DetectBoard.Empty;
     ImmutableDictionary<string, PixelRect> _detectAreas = ImmutableDictionary<string, PixelRect>.Empty;
+    ImmutableDictionary<string, IReadOnlyList<GridLine>> _detectGrid = ImmutableDictionary<string, IReadOnlyList<GridLine>>.Empty;
     ImmutableDictionary<string, DetectPicture> _detectPictures = ImmutableDictionary<string, DetectPicture>.Empty;
     DetectPicture? _detectLivePicture;
     volatile string? _detectLiveId;
@@ -25,11 +27,23 @@ public sealed partial class Engine
     /// <summary>The 감지 page's Live box (null: off, also when paused or the page closes). From the UI thread.</summary>
     public void DetectLive(string? id) => _detectLiveId = id;
 
+    /// <summary>A raid reader turned ! (<see cref="ReadingShots.ShootsOnFail"/>): the whole game area at that moment, for 읽는 자리's
+    /// raid pictures. On the engine thread; the image is the handler's to keep.</summary>
+    public event Action<Viewport, Image>? RaidShotTaken;
+
+    /// <summary>The wanted-picture id of the whole game area (no reader's box has it).</summary>
+    const string RaidShotId = "reading-place:raid";
+    /// <summary>At most one raid picture this often: a reader flapping ✓ ! would otherwise push the kept three out in seconds.</summary>
+    static readonly TimeSpan RaidShotEvery = TimeSpan.FromSeconds(30);
+    TimeSpan _lastRaidShot = TimeSpan.MinValue;
+
     /// <summary>The pictures StepDetect asked for, each reader's area plus its margin: they ride on the next step's capture (a
     /// capture of their own would wait for a new frame and take it from the reads).</summary>
     List<(string Id, PixelRect Area, bool Live)> PictureRects()
     {
-        var rects = _pictureWanted.Select(w => (w.Id, Area: _detectAreas.TryGetValue(w.Id, out var a) ? DetectBoard.Around(a, _vp) : null, w.Live))
+        var game = new PixelRect(_vp.X, _vp.Y, _vp.Width, _vp.Height);
+        var rects = _pictureWanted.Select(w => (w.Id, Area: w.Id == RaidShotId ? (game.Width > 0 && game.Height > 0 ? game : null)
+                : _detectAreas.TryGetValue(w.Id, out var a) ? DetectBoard.Around(a, _vp) : null, w.Live))
             .Where(w => w.Area is not null).Select(w => (w.Id, w.Area!.Value, w.Live)).ToList();
         _pictureWanted.Clear();
         return rects;
@@ -37,7 +51,7 @@ public sealed partial class Engine
 
     /// <summary>No frame this step: a mark's moment is asked for again (Live asks on its own).</summary>
     void PicturesMissed(List<(string Id, PixelRect Area, bool Live)> wanted) =>
-        _pictureWanted.AddRange(wanted.Where(w => !w.Live).Select(w => (w.Id, false)));
+        _pictureWanted.AddRange(wanted.Where(w => !w.Live && w.Id != RaidShotId).Select(w => (w.Id, false)));   // a raid picture isn't retried: the next ! takes one
 
     /// <summary>Keeps the captured pictures (their own images, not the reused buffers).</summary>
     void TakePictures(List<(string Id, PixelRect Area, bool Live)> wanted, List<Image> images, int at, TimeSpan t)
@@ -45,7 +59,7 @@ public sealed partial class Engine
         for (int i = 0; i < wanted.Count; i++)
         {
             int k = i;
-            if (wanted[k].Live) Perf.Run("감지 Live", () => Keep(k));   // timed for 리소스 검사's Live row
+            if (wanted[k].Live) Perf.Run("Live", () => Keep(k));   // timed for 리소스 검사's Live row
             else Keep(k);
         }
 
@@ -53,6 +67,12 @@ public sealed partial class Engine
         {
             var img = images[at + i];
             for (int b = 3; b < img.Bgra.Length; b += 4) img.Bgra[b] = 255;   // the desktop's alpha is undefined
+            if (wanted[i].Id == RaidShotId)
+            {
+                System.Diagnostics.Trace.WriteLine($"[detect] raid picture {img.Width}x{img.Height}");   // no path or content (plan B)
+                RaidShotTaken?.Invoke(_vp, img);
+                return;
+            }
             var p = new DetectPicture(img, wanted[i].Area, t, wanted[i].Id);
             if (wanted[i].Live) _detectLivePicture = _detectLiveId == wanted[i].Id ? p : null;
             else
@@ -69,7 +89,7 @@ public sealed partial class Engine
     {
         var areas = ImmutableDictionary.CreateBuilder<string, PixelRect>();
         if (_fit is not { } fit) return areas.ToImmutable();
-        var slots = SlotInfo.All.Select(s => Geometry.Slot(s, _vp, fit)).ToList();
+        var slots = SlotInfo.All.Select(s => Geometry.Slot(s, _vp, fit, config.AdenRects)).ToList();
         int left = slots.Min(r => r.X), top = slots.Min(r => r.Y);
         areas["skill"] = new PixelRect(left, top, slots.Max(r => r.X + r.Width) - left, slots.Max(r => r.Y + r.Height) - top);
         areas["buff"] = Geometry.BuffArea(_vp, fit, config.DebuffSize, config.BuffCount);
@@ -78,8 +98,7 @@ public sealed partial class Engine
         areas["amsu"] = Geometry.BossDebuffStrip(_vp, fit, config.BossSize);
         areas["judg"] = Geometry.JudgmentBand(_vp);
         if (ShownPanel(config) is { } panel) areas["g-jeonbun"] = panel;
-        double s = Geometry.Scale(_vp, fit);
-        areas["dungeon"] = new PixelRect(_vp.X, _vp.Y + (int)(RefDungeonPanel.Y * s), (int)(RefDungeonPanel.Width * s), (int)(RefDungeonPanel.Height * s));
+        areas["dungeon"] = Geometry.DungeonPanel(_vp, fit);
         areas["char"] = Geometry.MenuArea(_vp, Geometry.RefMenuPanel);   // the ESC 게임 메뉴's panel, read while it is open
         return areas.ToImmutable();
     }
@@ -108,17 +127,24 @@ public sealed partial class Engine
         if (_gaugeOn) on.Add("aden");
         if (_meterOn) { on.Add("g-jeonbun"); on.Add("dungeon"); }
         if (_meterOn || BossHpPlan.Wanted(config.Raids, config.RaidGates ?? [], config.HomeworkRead)) on.Add("boss");
-        if (_amsuOn) on.Add("amsu");
+        if (_amsuOn || _brandOn) on.Add("amsu");   // the boss debuff row: 암수 and 낙인 read it
         if (_judgmentOn) on.Add("judg");
         if (Ocr.Value is not null) on.Add("char");   // the game menu read has no switch: on wherever Windows OCR is
         // Without a fit the skill reader already fails at once and there is no strip, so 암수 isn't failed for size too.
         var inputs = new DetectInputs(Seen, _fit is not null, _hud.Visible, _buffs.Any(b => b.Active), _gauge is not null,
             _presence.InDungeon(t), _presence.BossUp(t), _meter.PanelFound, _bossHp.View is not null, _dungeon is not null,
             _fit is not { } fit || Amsu.Readable(_vp, fit, config.BossSize), _amsu.Up.Count > 0, _judgment.IconSeen,
-            Interlocked.Read(ref _menuNamedTicks) is var named && named > 0 && t - TimeSpan.FromTicks(named) <= CharacterNamedFor);
+            Interlocked.Read(ref _menuNamedTicks) is var named && named > 0 && t - TimeSpan.FromTicks(named) <= CharacterNamedFor,
+            (_amsuOn && _amsuWatch.Filled > 0) || (_brandOn && _brand.Filled > 0), _panelSeen, _panelNoColumn);
         var next = DetectBoard.Step(_detect, inputs, on, t);
-        bool changed = next.Count != _detect.Count || next.Any(kv => _detect.GetValueOrDefault(kv.Key)?.Mark != kv.Value.Mark);
+        bool changed = next.Count != _detect.Count || next.Any(kv => _detect.GetValueOrDefault(kv.Key) is var was && (was?.Mark != kv.Value.Mark || was?.Why != kv.Value.Why));
         foreach (var id in DetectBoard.Moments(_detect, next)) _pictureWanted.Add((id, false));   // the moment a mark turns, next step
+        if (next.Any(kv => ReadingShots.ShootsOnFail(kv.Key) && kv.Value.Mark == DetectMark.Failed && _detect.GetValueOrDefault(kv.Key)?.Mark != DetectMark.Failed)
+            && !_pictureWanted.Any(w => w.Id == RaidShotId) && Elapsed(t, _lastRaidShot, RaidShotEvery))
+        {
+            _lastRaidShot = t;
+            _pictureWanted.Add((RaidShotId, false));
+        }   // 전분 or 암수 turned !: the whole game area too (reading-place.plan.md B)
         _detectPictures = _detectPictures.RemoveRange(_detectPictures.Keys.Where(id => !next.ContainsKey(id)).ToList());   // switched off
         if (_detectLiveId is not { } live) { changed |= _detectLivePicture is not null; _detectLivePicture = null; }
         else if (Seen && Elapsed(t, _lastLive, LiveEvery)) { _lastLive = t; _pictureWanted.Add((live, true)); }
@@ -128,9 +154,11 @@ public sealed partial class Engine
             if (_detect.GetValueOrDefault(id)?.Mark != d.Mark && d.Mark != DetectMark.Waiting)
                 System.Diagnostics.Trace.WriteLine($"[detect] {id} {(d.Mark == DetectMark.Concrete ? "✓" : "!")} at {t.TotalSeconds:0.0}s{(d.Why is { } why ? $": {why}" : "")}");
         _detect = next;
-        var areasKey = (_vp, _fit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config));
+        var areasKey = (_vp, _fit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config), config.AdenRects);   // AdenRects: a class switch to 발키리 moves Z/C
         if (areasKey.Equals(_areasKey)) return changed;
         (_areasKey, _detectAreas) = (areasKey, Areas(config));   // only when the layout moves
+        _detectGrid = _fit is not { } gridFit ? ImmutableDictionary<string, IReadOnlyList<GridLine>>.Empty
+            : _detectAreas.Keys.ToImmutableDictionary(id => id, id => ReadingGrid.Of(id, _vp, gridFit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config), config.AdenRects));
         return true;
     }
 }

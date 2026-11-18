@@ -83,25 +83,28 @@ public class AmsuTests
     [InlineData(1080, 100, 100, true)]
     [InlineData(1440, 110, 80, true)]    // 1440p: 80% is 27 px
     [InlineData(810, 110, 90, false)]    // forced 21:9 at 1920×1080: 90% is 17 px
+    [InlineData(1080, 80, 90, false)]    // HUD 80 packs the row: 90% is 21.3 px (the 설정 note: one size up)
+    [InlineData(1080, 80, 100, true)]
+    [InlineData(810, 110, 110, true)]    // forced 21:9: 110% is 21.8 px
+    [InlineData(810, 110, 100, false)]
     public void Bombs_are_read_only_where_the_icons_are_big_enough(int gameHeight, double hud, int bossSize, bool readable) =>
         Assert.Equal(readable, Amsu.Readable(new Viewport(0, 0, gameHeight * 2, gameHeight), new Fit(hud), bossSize));
 
     [Theory]
-    [InlineData(80, false)]
-    [InlineData(90, false)]
-    [InlineData(100, true)]
+    [InlineData(80, true)]
+    [InlineData(90, true)]
     [InlineData(120, true)]
-    public void The_time_is_read_from_100_percent(int bossSize, bool timed) => Assert.Equal(timed, Amsu.Timed(bossSize));
+    public void The_time_is_read_from_80_percent(int bossSize, bool timed) => Assert.Equal(timed, Amsu.Timed(bossSize));
 
     // The text's size on screen, not the setting alone (user, 2026-11-01): a 21:9 game shown at 1920×810 draws 100% at 75%
-    // (replay 14 misread its digits); 1440p draws it larger.
+    // (replay 14 misread its digits); 1440p draws it larger. The boss glyphs read from 80% on screen (BossTimerTests).
     [Theory]
-    [InlineData(1080, 100, true)]
-    [InlineData(810, 100, false)]    // forced 21:9 at 1920×1080, or a 2560×1080 game on a 1920 screen
-    [InlineData(810, 120, false)]    // 90% on screen
+    [InlineData(1080, 80, true)]
+    [InlineData(810, 100, false)]    // forced 21:9 at 1920×1080, or a 2560×1080 game on a 1920 screen: 75% on screen
+    [InlineData(810, 110, true)]     // 82.5% on screen
     [InlineData(1440, 80, true)]     // 107% on screen
     [InlineData(1620, 100, true)]    // 4K forced 21:9
-    public void The_time_is_read_where_the_text_is_100_percent_on_screen(int gameHeight, int bossSize, bool timed) =>
+    public void The_time_is_read_where_the_text_is_80_percent_on_screen(int gameHeight, int bossSize, bool timed) =>
         Assert.Equal(timed, Amsu.Timed(new Viewport(0, 0, gameHeight * 2, gameHeight), bossSize));
 
     [Fact]
@@ -115,8 +118,8 @@ public class AmsuTests
     public void Out_of_view_it_keeps_counting_to_zero_then_hides()
     {
         var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.암수, 19)));
-        for (double t = 0.5; t < 19; t += 0.5) s = Step(s, t, Full());   // pushed out of a full row ("+N"): not seen
-        Assert.Equal((Bomb.암수, 0.5, false), View(s, 18.5));
+        for (double t = 0.5; t < 19; t += 0.5) s = Step(s, t, Full());   // pushed out of a full row ("+N"): counts on, drawn as normal
+        Assert.Equal((Bomb.암수, 0.5, true), View(s, 18.5));
         s = Step(s, 19, Full());
         Assert.Null(View(s, 19).Shown);
     }
@@ -424,4 +427,35 @@ public class AmsuTests
     }
 
     static (Bomb? Shown, double Left, bool Seen) View(AmsuState s, double at) => Amsu.View(s, T(at));
+
+    // Pushed out (boss-row-count.plan.md, phase 2): a full row hides a bomb behind "+N", so it counts on, drawn as normal.
+    static AmsuRow FullRow() => new([], Full: true, Seen: true);
+    static AmsuRow RoomRow() => new([], Full: false, Seen: true);
+
+    [Fact]
+    public void A_bomb_gone_from_a_full_row_counts_on_drawn_normal()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.암수, 19)));
+        s = Step(s, 4, FullRow());
+        Assert.Equal((Bomb.암수, 15.0, true), View(s, 4));
+        s = Step(s, 19, FullRow());
+        Assert.Null(View(s, 19).Item1);   // its end
+    }
+
+    [Fact]
+    public void A_bomb_gone_from_a_row_with_room_ends_after_the_grace()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.암수, 19)));
+        s = Step(s, 4, RoomRow());
+        Assert.Null(View(s, 4).Item1);
+    }
+
+    [Fact]
+    public void A_bomb_in_an_unseen_row_counts_on_faded()
+    {
+        var s = Step(AmsuState.None, 0, Row(new BombRead(Bomb.암수, 19)));
+        s = Step(s, 2, FullRow());
+        s = Step(s, 4, new AmsuRow([], Full: false, Seen: false));
+        Assert.Equal((Bomb.암수, 15.0, false), View(s, 4));
+    }
 }

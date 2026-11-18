@@ -49,7 +49,7 @@ public partial class SettingsWindow
         var effective = HpChange.Effective(RaidGates, r, _fightHp);
         void Button(List<UIElement> to, string text, string tip, Action click)
         {
-            var b = new System.Windows.Controls.Button { Content = text, Padding = new(10, 3, 10, 3), Margin = new(to.Count == 0 ? 8 : 6, 0, 0, 0), ToolTip = tip };
+            var b = new System.Windows.Controls.Button { Content = text, Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(to.Count == 0 ? 8 : 6, 0, 0, 0), ToolTip = tip };
             b.Click += (_, _) => { click(); Changed(); again(); };
             to.Add(b);
         }
@@ -61,7 +61,7 @@ public partial class SettingsWindow
                 () => { if (HpChange.Confirm(RaidGates, r, f.Gate.Id, f.Difficulty)) Drop(); });
             if (!f.Pending)
             {
-                var copy = new System.Windows.Controls.Button { Content = "복사", Padding = new(10, 3, 10, 3), Margin = new(6, 0, 0, 0), ToolTip = "raids.json 줄 복사" };
+                var copy = new System.Windows.Controls.Button { Content = "복사", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(Tokens.Space.Gap, 0, 0, 0), ToolTip = "raids.json 줄 복사" };
                 copy.Click += (_, _) => Clipboard.SetText(HpChange.HpLine(RaidData.Find(effective, f.Gate.Id)!));
                 buttons.Add(copy);
             }
@@ -84,7 +84,7 @@ public partial class SettingsWindow
     /// <summary>The boss HP table: a toggle (closed by default), then per raid × difficulty raids.json's value and the 확정 one.</summary>
     void HpTable(StackPanel p, RaidSettings r, Action again)
     {
-        var toggle = new System.Windows.Controls.Button { Content = _hpTableOpen ? "보스 체력 표 접기" : "보스 체력 표 펼치기", Padding = new(10, 3, 10, 3) };
+        var toggle = new System.Windows.Controls.Button { Content = _hpTableOpen ? "보스 체력 표 접기" : "보스 체력 표 펼치기", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight) };
         toggle.Click += (_, _) => { _hpTableOpen = !_hpTableOpen; again(); };
         p.Children.Add(Row("", toggle));
         if (!_hpTableOpen) return;
@@ -98,7 +98,7 @@ public partial class SettingsWindow
             foreach (var gate in raid.GroupBy(x => x.Gate))
             {
                 var name = Label(string.IsNullOrWhiteSpace(gate.Key.Gate) ? gate.Key.Raid : gate.Key.Gate);
-                name.Margin = new(16, 0, 0, 0);
+                name.Margin = new(Tokens.Space.Card, 0, 0, 0);
                 p.Children.Add(Row(name, [.. gate.Select(x => HpCell(r, x, again))]));
             }
         }
@@ -112,31 +112,31 @@ public partial class SettingsWindow
     /// under it with 되돌리기.</summary>
     UIElement HpCell(RaidSettings r, HpTableRow row, Action again)
     {
-        var cell = new StackPanel { Width = HpCellWidth, Margin = new(0, 2, 6, 2) };
+        var cell = new StackPanel { Width = HpCellWidth, Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
         cell.Children.Add(RaidBadgeView.Of(null, row.Difficulty, 11));
         long? shown = row.Fixed ?? row.Shipped;
         var value = new System.Windows.Controls.Button
         {
-            Content = shown is { } v ? BossHpGraph.AmountText(v) : "없음", Padding = new(4, 2, 4, 2), Margin = new(-4, 2, 0, 0),
+            Content = shown is { } v ? BossHpGraph.AmountText(v) : "없음", Padding = new(Tokens.Space.Tight, Tokens.Space.Hair, Tokens.Space.Tight, Tokens.Space.Hair), Margin = new(-4, Tokens.Space.Hair, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left, Background = System.Windows.Media.Brushes.Transparent,
             BorderBrush = System.Windows.Media.Brushes.Transparent, ToolTip = shown is { } t ? $"{t:N0} · 눌러서 고치기" : "눌러서 넣기",
         };
         System.Windows.Automation.AutomationProperties.SetName(value, $"{RaidData.Label(row.Gate)} {row.Difficulty} 체력 {value.Content}");
         if (row.Fixed is not null) value.SetResourceReference(ForegroundProperty, "AccentTextFillColorPrimaryBrush");
         cell.Children.Add(value);
-        var error = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+        var error = new TextBlock { FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
         error.SetResourceReference(TextBlock.ForegroundProperty, "SystemFillColorCriticalBrush");
         value.Click += (_, _) => EditHp(cell, value, error, r, row, again);
         if (row.Fixed is not null)
         {
             var app = new StackPanel { Orientation = Orientation.Horizontal };
-            app.Children.Add(Muted(new TextBlock { Text = row.Shipped is { } s ? $"앱 {BossHpGraph.AmountText(s)}" : "앱 값 없음", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }));
+            app.Children.Add(Muted(new TextBlock { Text = row.Shipped is { } s ? $"앱 {BossHpGraph.AmountText(s)}" : "앱 값 없음", FontSize = Tokens.Font.Hint, VerticalAlignment = VerticalAlignment.Center }));
             var undo = new System.Windows.Controls.Button
             {
-                Content = "", FontFamily = IconFont, FontSize = 11, Padding = new(4, 2, 4, 2), Margin = new(4, 0, 0, 0),
-                Background = System.Windows.Media.Brushes.Transparent, BorderBrush = System.Windows.Media.Brushes.Transparent, ToolTip = "앱 값으로 되돌리기",
+                Content = "", FontFamily = IconFont, FontSize = Tokens.Font.Hint, Padding = new(Tokens.Space.Tight, Tokens.Space.Hair, Tokens.Space.Tight, Tokens.Space.Hair), Margin = new(Tokens.Space.Tight, 0, 0, 0),
+                Background = System.Windows.Media.Brushes.Transparent, BorderBrush = System.Windows.Media.Brushes.Transparent, ToolTip = "앱 값으로",
             };
-            System.Windows.Automation.AutomationProperties.SetName(undo, "앱 값으로 되돌리기");
+            System.Windows.Automation.AutomationProperties.SetName(undo, "앱 값으로");
             undo.Click += (_, _) => { HpChange.Undo(r, row.Gate.Id, row.Difficulty); Changed(); again(); };
             app.Children.Add(undo);
             cell.Children.Add(app);
@@ -149,7 +149,7 @@ public partial class SettingsWindow
     void EditHp(StackPanel cell, System.Windows.Controls.Button value, TextBlock error, RaidSettings r, HpTableRow row, Action again)
     {
         long? shown = row.Fixed ?? row.Shipped;
-        var box = new TextBox { Text = shown is { } v ? $"{v:N0}" : "", Margin = new(0, 2, 0, 0), ToolTip = "숫자 또는 1조 2985억처럼" };
+        var box = new TextBox { Text = shown is { } v ? $"{v:N0}" : "", Margin = new(0, Tokens.Space.Hair, 0, 0), ToolTip = "숫자 또는 1조 2985억처럼" };
         System.Windows.Automation.AutomationProperties.SetName(box, $"{RaidData.Label(row.Gate)} {row.Difficulty} 체력");
         int at = cell.Children.IndexOf(value);
         cell.Children[at] = box;
@@ -165,7 +165,7 @@ public partial class SettingsWindow
             if (done) return;
             if (HpChange.ParseHp(box.Text) is not { } hp || hp <= 0)
             {
-                error.Text = "숫자나 1조 2985억처럼 넣어 주세요.";
+                error.Text = "숫자나 1조 2985억처럼 넣으세요.";
                 error.Visibility = Visibility.Visible;
                 return;
             }

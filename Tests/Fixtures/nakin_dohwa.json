@@ -1,0 +1,9 @@
+{
+  "source": "reference/낙인/도화가 3rd Icon.png (1920x1080, 보스 디버프 크기 about 100): 도화가 낙인 3rd in the boss debuff row; crop at x 700, y 100",
+  "slot": "bossrow",
+  "hud": 110,
+  "rect": [700, 100, 600, 160],
+  "width": 600,
+  "height": 160,
+  "pts": [0]
+}

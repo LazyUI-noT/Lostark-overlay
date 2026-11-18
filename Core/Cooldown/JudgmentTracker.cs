@@ -76,9 +76,15 @@ public static class JudgmentTracker
     /// or false sighting, the icon blinking back mid-buff, a retrigger) moves to it; never into the future.</summary>
     static TimeSpan? Dated(TimeSpan? start, double? before, double shown, TimeSpan now, TimeSpan length)
     {
+        double left = start is { } t ? (length - (now - t)).TotalSeconds : double.NaN;
+        // In its last second a whole read that matches the held end as tenths is 0.N with its leading 0 lost over a bright
+        // floor (hud100_buff100 wrong단심time.mp4: 0.1 read as 1 pushed the end back up). A real whole N there is a second off;
+        // past the held end with the icon still up (a late poll) any whole 1–9 is one (a lost "0." leaves one digit). No pending
+        // step as BuffTracker's: the read is pulled down to the held end, never up. `before` stays the raw read: a tick from
+        // it to a rewritten tenths read can't match (b == shown + 1 needs a whole shown).
+        if (shown >= 1 && shown < 10 && left < 1 && (left <= 0 || Math.Abs(left - shown / 10) <= Agree)) shown /= 10;
         bool tenths = shown < 1, tick = !tenths && before is { } b && b == shown + 1;
         double? exact = tenths ? shown : tick ? shown + 1 : null;
-        double left = start is { } t ? (length - (now - t)).TotalSeconds : double.NaN;
         bool agrees = tenths ? Math.Abs(left - shown) <= Agree : left >= shown - Agree && left <= shown + 1 + Agree;
         if (exact is null && agrees) return start;
         return now - (length - TimeSpan.FromSeconds(Math.Min(exact ?? shown + 0.5, length.TotalSeconds)));

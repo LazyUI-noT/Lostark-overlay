@@ -31,7 +31,7 @@ public sealed class ResourceMeter : IDisposable
         double seconds = Stopwatch.GetElapsedTime(_started).TotalSeconds;
         double cpu = (Process.GetCurrentProcess().TotalProcessorTime - _cpuStarted).TotalSeconds;
         if (_gpu is not null) _lastGpu = _gpu.Read() ?? _lastGpu;
-        return new(ResourceCheck.Build(Perf.Seconds(), cpu, seconds, Environment.ProcessorCount), _gpu is null ? null : _lastGpu, _gaps.Summary(), seconds);
+        return new(ResourceCheck.Build(Perf.Seconds(), cpu, seconds, Environment.ProcessorCount, Perf.ActiveSeconds()), _gpu is null ? null : _lastGpu, _gaps.Summary(), seconds);
     }
 
     public void Dispose()

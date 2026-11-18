@@ -35,7 +35,7 @@ public sealed partial class OverlayRenderer
     /// <summary>The 암수 창: the bombs on the boss alone.</summary>
     public bool AmsuOnly { get; set; }
 
-    /// <summary>Whether the window counts down: the "N초" is read only from 보스 디버프 크기 100% (Amsu.Timed); under it, the icon alone.</summary>
+    /// <summary>Whether the window counts down: the "N초" is read from 타겟 UI 버프 크기 80% on screen (Amsu.Timed); under it, the icon alone.</summary>
     // In game the engine's answer (the game area too: 90% on a 1440p screen is timed); in previews the size alone.
     bool AmsuTimed => _player?.Snapshot.AmsuTimed ?? Amsu.Timed(Settings.Debuffs.BossIconSize);
 

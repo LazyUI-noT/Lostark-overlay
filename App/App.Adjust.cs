@@ -29,10 +29,10 @@ public partial class App
             engine.Preview(new(0, null));   // the layer opens when the session starts
         };
         _layer.Dismissed += () => { wanted = false; engine.EndPreview(keep: false); };               // closed without 적용: back to the saved fit
-        engine.PreviewStarted += (gen, vp, fit, buffSize, test, panel) => Dispatcher.BeginInvoke(() =>
+        engine.PreviewStarted += (gen, vp, fit, buffSize, test, panel, aden) => Dispatcher.BeginInvoke(() =>
         {
-            if (wanted) _layer.Open(gen, vp, fit, buffSize, test, settings.Buffs.Count, settings.Debuffs.BossIconSize, panel);
-            else if (placeWanted) _settingsWindow.PlaceStarted(gen, vp, fit, buffSize, test, settings.Buffs.Count, settings.Debuffs.BossIconSize, panel);
+            if (wanted) _layer.Open(gen, vp, fit, buffSize, test, settings.Buffs.Count, settings.Debuffs.BossIconSize, panel, aden);
+            else if (placeWanted) _settingsWindow.PlaceStarted(gen, vp, fit, buffSize, test, settings.Buffs.Count, settings.Debuffs.BossIconSize, panel, aden);
         });
         engine.GameRunningChanged += running => Dispatcher.BeginInvoke(() =>
         {
@@ -84,7 +84,7 @@ public partial class App
         };
         _settingsWindow.PlaceRequested += () =>
         {
-            if (_layer.IsVisible) { _settingsWindow.PlaceStopped("위치 조정 화면을 닫은 뒤에 옮길 수 있습니다."); return; }
+            if (_layer.IsVisible) { _settingsWindow.PlaceStopped("수동 위치 조정 화면을 닫은 뒤에 옮길 수 있습니다."); return; }
             placeWanted = true;
             engine.Preview(new(0, null));   // the page starts its edit when the session starts
         };
@@ -94,14 +94,14 @@ public partial class App
         engine.PreviewCommitted += (ready, test) => Dispatcher.BeginInvoke(() =>
         {
             Report((test ? "테스트 모드: " : "") + (ready >= 0
-                ? $"수동 조정을 적용했습니다 (준비된 칸 {ready}/{SlotInfo.All.Length}개 기준 저장)."
-                : "수동 조정을 적용했습니다. 게임이 앞에 없어 칸 기준은 저장하지 못했습니다. 게임을 앞에 두고 다시 적용해 주세요."));
+                ? $"수동 조정을 적용했습니다. 준비된 칸 {ready}/{SlotInfo.All.Length}개를 기준으로 저장했습니다."
+                : "수동 조정을 적용했습니다. 게임이 앞에 없어 칸 기준은 저장하지 못했습니다. 게임을 앞에 두고 다시 적용하세요."));
         });
         engine.TestBuffSizeFound += size => Dispatcher.BeginInvoke(() =>
-            _tray.Notify($"테스트 모드: 영상의 버프 크기 {size}%로 읽습니다 (설정은 그대로 둡니다)."));
+            _tray.Notify($"테스트 모드: 영상의 버프 크기가 {size}%라 그 크기로 읽습니다. 설정은 바꾸지 않습니다."));
         engine.PictureNotFound += () => Dispatcher.BeginInvoke(() =>
-            _tray.Notify("테스트 모드: 영상 화면을 찾지 못해 창 전체를 게임 화면으로 씁니다. 위치 조정에서 맞춰 주세요.", kind: NoticeKind.Problem));
+            _tray.Notify("테스트 모드: 창 안에서 영상 화면을 찾지 못해 창 전체를 게임 화면으로 읽습니다. 어긋나면 수동 위치 조정에서 맞추세요.", kind: NoticeKind.Problem));
         engine.PreviewWithoutFit += test => Dispatcher.BeginInvoke(() =>
-            _tray.Notify((test ? "테스트 모드: 스킬창을 찾지 못해" : "맞춘 스킬창이 없어") + " HUD 100% 위치에서 시작합니다. 위치 조정 화면에서 맞게 옮긴 뒤 적용하세요.", kind: NoticeKind.Problem));
+            _tray.Notify((test ? "테스트 모드: 스킬창을 찾지 못해" : "맞춘 스킬창이 없어") + " 스킬 칸을 HUD 100% 위치에 두었습니다. 수동 위치 조정에서 칸을 옮긴 뒤 적용하세요.", kind: NoticeKind.Problem));
     }
 }

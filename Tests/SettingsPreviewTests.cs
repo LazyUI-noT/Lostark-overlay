@@ -52,4 +52,13 @@ public class SettingsPreviewTests
     {
         Assert.False(SettingsPreview.Beside(width));
     }
+    [Theory]
+    [InlineData(SettingsPreview.FormWidth + SettingsPreview.Gap + SettingsPreview.PreviewWidth, SettingsPreview.FormWidth)]   // just fits: the narrowest form
+    [InlineData(SettingsPreview.FormWidth + SettingsPreview.Gap + SettingsPreview.PreviewWidth + 50, SettingsPreview.FormWidth + 50)]   // the form takes what is left
+    [InlineData(5000, SettingsPreview.FormWidest)]   // never wider than the content column
+    [InlineData(0, SettingsPreview.FormWidth)]
+    public void FormBeside_TakesTheRoomLeftByThePreview_BetweenNarrowestAndWidest(double page, double expected)
+    {
+        Assert.Equal(expected, SettingsPreview.FormBeside(page));
+    }
 }

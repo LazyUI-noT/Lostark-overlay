@@ -75,7 +75,7 @@ public static class CooldownTracker
         ReadKind.Minutes => prev.Phase == SlotPhase.LongCooldown && r.Value <= prev.Minutes
             ? prev with { Minutes = r.Value, Estimated = false }
             : Enter(prev, SlotPhase.LongCooldown, r.At) with { Minutes = r.Value, CastSeen = prev.Phase != SlotPhase.Unknown },
-        ReadKind.Seconds => Seconds(prev, r) with { Stacked = r.Stacked },
+        ReadKind.Seconds => WithCount(prev, r, Seconds(prev, r)),
         // Digits present but illegible: keep everything. In the last second this is the 99% hold.
         ReadKind.CooldownIllegible => prev,
         ReadKind.Unavailable => prev.Phase == SlotPhase.Unavailable ? prev with { Estimated = false } : Enter(prev, SlotPhase.Unavailable, r.At),
@@ -148,6 +148,25 @@ public static class CooldownTracker
         else if (end <= lo)
             end = lo + ChaseLead;                                    // edge predicted but not on screen yet
         return Lock(prev, end);
+    }
+
+    /// <summary>A stack skill pressed while it recharges (수라 sample.mp4 S: "4s, 1" → a grey "1s" with no count) never goes
+    /// back to Ready: <see cref="SlotState.SpentAt"/> marks that cast, true on the one update that sets it.</summary>
+    public static bool SpentCharge(SlotState prev, SlotState next) => next.SpentAt is { } at && at != prev.SpentAt;
+
+    /// <summary>The count of a Seconds read. During the re-use lockout's "1s" well before the recharge ends, the uses left
+    /// from before the press are kept: once the "1s" has held <see cref="LockoutConfirm"/> (a misread "11s" or "14s" as 1
+    /// with the count missed is a frame or two), fewer uses than that is the press (the count may drop after the "1s"), and
+    /// the lower count is kept for the rest of the lockout, so a flicker back up never counts it twice. A recharge only
+    /// raises the count.</summary>
+    private static SlotState WithCount(SlotState prev, Reading r, SlotState next)
+    {
+        int uses = r.Charges > 0 ? r.Charges : r.Stacked ? 1 : 0;
+        next = next with { Stacked = r.Stacked };
+        if (!(r.Value == 1 && prev is { Phase: SlotPhase.Cooldown, EndsAt: { } end } && end - (r.At + Second) >= Second))
+            return next with { Charges = uses };
+        bool held = prev.Pending is { Value: 1 } p && r.At - FirstSeen(p) >= LockoutConfirm;
+        return held && uses < prev.Charges ? next with { Charges = uses, SpentAt = r.At } : next with { Charges = prev.Charges };
     }
 
     private static bool Off(TimeSpan end, TimeSpan lo, TimeSpan hi) => lo - end >= Second || end - hi >= Second;

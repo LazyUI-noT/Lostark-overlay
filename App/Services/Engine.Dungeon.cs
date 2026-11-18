@@ -14,7 +14,6 @@ namespace GaugeOverlay.App.Services;
 public sealed partial class Engine
 {
     static readonly TimeSpan DungeonForget = TimeSpan.FromSeconds(60);
-    static readonly PixelRect RefDungeonPanel = new(0, 25, 450, 230);   // "N막 : name", [난이도], the gates, 재시작 (1080p, from the game area's top-left)
     // Made when first used in a dungeon, let go on leaving it (Engine.Presence) and made again after a failed recognition: an
     // engine can break for good in a long session (2026-11-03: every read of a 0.16.2 session failed with "target of an
     // invocation", while a fresh app read the same panel from the video). A read in flight keeps the engine it started with.
@@ -46,8 +45,7 @@ public sealed partial class Engine
     {
         // Only in a dungeon (the in-game meter, or a boss bar for players who hide it): 지옥 and the field show neither.
         if (Ocr.Value is null || !_presence.InDungeon(now) || !Elapsed(now, _lastDungeon, _dungeonPace.Every) || Volatile.Read(ref _dungeonBusy) == 1) return null;
-        double s = Geometry.Scale(_vp, _fit!);
-        var r = new PixelRect(_vp.X, _vp.Y + (int)(RefDungeonPanel.Y * s), (int)(RefDungeonPanel.Width * s), (int)(RefDungeonPanel.Height * s));
+        var r = Geometry.DungeonPanel(_vp, _fit!);
         return r.Inside(_vp) ? r : null;   // outside, it would fail the shared capture and every read in it
     }
 

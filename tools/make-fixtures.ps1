@@ -566,3 +566,23 @@ CutFps 'chan_wide2' (Join-Path $load 'Lost Ark 2026.11.03 - 02.10.28.02.mp4') 'c
 CutRect 'chan_user' (Join-Path $ref 'channel_town_1080.png') 'channel' 100 @(1810, 0, 110, 40)
 CutRect 'chan_4k' (Join-Path $ref '4k_screenshot_bard.jpg') 'channel' 100 @(3620, 0, 220, 80)
 CutRect 'chan_4k219' (Join-Path $ref '4k_21_9_screenshot_bard.png') 'channel' 100 @(3675, 270, 165, 60)
+
+# The boss row's "N초" at 보스 디버프 크기 80% (0–48 s) and 90% (54–96 s), 1920×1080, HUD 110 (BossGlyphs, BossTimerTests):
+# 빛암 80_90.mp4 at 1 fps, the debuff slots and their text (first icon at x 928).
+CutFps 'bosstext_8090' (Join-Path $ref '빛암/빛암 80_90.mp4') 'bossrow' 110 @(900, 160, 400, 56) 1
+
+# The 전분 with wider columns (jeonbun-columns.plan.md): the user's raid saves at 1080p, columns 피해량 · DPS · 헤드어택 비중 ·
+# 시너지B 유효율, each 139 px for 117 before. The panel grows left from the same right edge: 559×114 at (1359, 846), the green
+# cell at (1361, 909). wide_0: one row, 00:08; wide_1: two rows, mine second, 00:12; wide_2: two rows, mine first, 00:09.
+# jeonbun_wide_scene: wide_0's panel with the game around it, the screen's right edge 2 px past the panel.
+$jc = Join-Path $ref 'jeonbun-columns'
+CutRect 'jeonbun_wide_0' (Join-Path $jc 'raid-20261118-213440.png') '' 100 @(1359, 846, 559, 114)
+CutRect 'jeonbun_wide_1' (Join-Path $jc 'raid-20261118-214007.png') '' 100 @(1359, 846, 559, 114)
+CutRect 'jeonbun_wide_2' (Join-Path $jc 'raid-20261118-214433.png') '' 100 @(1359, 846, 559, 114)
+CutRect 'jeonbun_wide_scene' (Join-Path $jc 'raid-20261118-213440.png') '' 100 @(1220, 780, 700, 300)
+
+# Buff row at HUD 100, buff 100%, 1920×1080 (the user's clips, 2026-11-19). buffrow_judg: 심판 in box 1 counting
+# "1초" → "0,9초" … "0,0초" over a bright fire (the leading 0 scores 0.52–0.73, so "0,1초" reads as 1), 60 fps, 6.8–8.2 s.
+# buffrow_pz: another class's orange sword buff ("9초" from 6.1 s, boxes 4–5) that matched 아덴피증 at 0.62–0.64; 2 fps.
+CutFps 'buffrow_judg' (Join-Path $ref 'hud100_buff100 wrong단심time.mp4') 'buffs' 100 @(760, 880, 110, 80) 60 6.8 1.4
+CutFps 'buffrow_pz' (Join-Path $ref 'hud100_buff100 wrong피증.mp4') 'buffs' 100 @(600, 880, 260, 80) 2

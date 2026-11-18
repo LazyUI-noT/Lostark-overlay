@@ -7,7 +7,7 @@ public static class Membership
     public const int MaxMembers = 8;
     /// <summary>One party: the party windows show the other three of mine (the 공대's other party only in the meter).</summary>
     public const int PartySize = 4;
-    public static readonly string Full = $"공유 방이 가득 찼습니다 ({MaxMembers}/{MaxMembers}).";
+    public static readonly string Full = $"파티 공유가 가득 찼습니다 ({MaxMembers}/{MaxMembers}).";
 
     /// <summary>Null to accept, else the refusal text shown to the joining user.
     /// <paramref name="members"/> are the confirmed members' sender ids, the host included (a join still in progress
@@ -17,10 +17,10 @@ public static class Membership
     public static string? Refusal(IReadOnlyCollection<ulong> members, ulong joining, byte version,
         IReadOnlyCollection<ulong>? everAdmitted = null)
     {
-        if (version != Protocol.Version) return "프로그램 버전이 호스트와 다릅니다. 같은 버전으로 맞춘 뒤 다시 참가해 주세요.";
+        if (version != Protocol.Version) return "프로그램 버전이 호스트와 다릅니다. 같은 버전으로 맞춘 뒤 다시 참가하세요.";
         if (members.Count >= MaxMembers) return Full;
         if ((everAdmitted ?? members).Any(m => SessionCrypto.NoncePrefix(m) == SessionCrypto.NoncePrefix(joining)))
-            return "연결 식별자가 겹쳤습니다. 다시 참가해 주세요.";
+            return "연결 번호가 다른 파티원과 겹쳤습니다. 다시 참가하세요.";
         return null;
     }
 
@@ -32,7 +32,7 @@ public static class Membership
         Version h = Short(host), j = Short(joiner);
         if ((h.Major, h.Minor) == (j.Major, j.Minor)) return null;
         var who = j < h ? "설정 → 업데이트 확인으로 업데이트한 뒤" : "호스트가 업데이트한 뒤";
-        return $"버전이 다릅니다 (호스트 v{h}, 내 버전 v{j}). {who} 다시 참가해 주세요.";
+        return $"버전이 다릅니다 (호스트 v{h}, 내 버전 v{j}). {who} 다시 참가하세요.";
     }
 
     static Version Short(Version v) => new(v.Major, v.Minor, Math.Max(v.Build, 0));

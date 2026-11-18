@@ -1,8 +1,15 @@
 namespace GaugeOverlay.Core.Domain;
 
-/// <summary>The four party buffs shown as indicators under the skill boxes (PLAN §4 버프). The icons are the same for
-/// every class.</summary>
-public enum BuffKind { 공증, 아덴피증, 초각스피증, 뎀증 }
+/// <summary>The party buffs shown as indicators under the skill boxes (PLAN §4 버프), the same icons for every class: four read
+/// from my own buff row, and 낙인 (a support's debuff on the boss, read from the boss debuff row: BrandWatch). New kinds go at the
+/// end: saved records and layouts keep the numbers.</summary>
+public enum BuffKind { 공증, 아덴피증, 초각스피증, 뎀증, 낙인 }
+
+/// <summary>The order the bars are laid out and listed in 설정: 낙인 beside 공증 (user, 2026-11-15: "display together").</summary>
+public static class BuffOrder
+{
+    public static readonly IReadOnlyList<BuffKind> Shown = [BuffKind.공증, BuffKind.낙인, BuffKind.아덴피증, BuffKind.초각스피증, BuffKind.뎀증];
+}
 
 /// <summary>One buff icon found in the buff row at <paramref name="At"/>. <paramref name="Seconds"/> is the timer
 /// shown ("7초" = 7, "0.7초" = 0.7), or null when the icon is there but its timer can't be read.</summary>

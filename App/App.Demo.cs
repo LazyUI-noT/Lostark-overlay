@@ -162,6 +162,7 @@ public partial class App
             _settingsWindow.Records = store;
             _settingsWindow.RefreshRecords();        }
         _tray.SetParty("호스트 중 (3/4)");
+        if (args.Contains("--auto-test")) SetAutoAsAlways(true);   // the 설정 banner and the tray check, for shot.ps1
         var demoFit = FitText(new Viewport(0, 0, 1920, 1080), new Fit(100), "");
         _settingsWindow.RefitRequested += () => _settingsWindow.SetFitResult(demoFit);
 
@@ -208,10 +209,12 @@ public partial class App
         if (args.Contains("--no-key")) CredentialVault.PretendNoKey();   // the key gate as a new install without a key sees it
         if (args.Contains("--homework-demo")) DemoHomework(settings);
         if (args.Contains("--settings")) _settingsWindow.Show();
-        if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut" }.Any(f => Flag(f) is not null))
-            _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"));
+        if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut", "map-hover" }.Any(f => Flag(f) is not null))
+            _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"), Flag("map-hover"));
         if (Flag("hp-table") is { } hpScroll) _settingsWindow.DemoHpTable(hpScroll);
         if (Flag("raid-open") is { } raidOpen) _settingsWindow.DemoRaidOpen(raidOpen, Flag("raid-scroll"));
+        if (Flag("scroll") is { } scroll) _settingsWindow.DemoScroll(scroll);
+        if (Flag("reading") is { } readingPng) _settingsWindow.DemoReading(readingPng, Flag("reading-show"), Flag("reading-open"), args.Contains("--reading-sample"));
         if (args.Contains("--resources")) _settingsWindow.DemoResources();
         if (args.Contains("--map-hover-test")) _settingsWindow.DemoHoverTest();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
@@ -220,7 +223,14 @@ public partial class App
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));
         if (Flag("edit-as") is { } entry) _settingsWindow.PickEntry(entry);
-        if (args.Contains("--first-run")) { var first = ShowFirstRun(ApplyUi); first.FitRequested += () => first.SetFitResult(true, demoFit); }
+        if (args.Contains("--first-run"))
+        {
+            var first = ShowFirstRun(ApplyUi, fitted: false);
+            first.FitRequested += () => first.SetFitResult(true, demoFit);
+            // --first-run-page=2|3: that step, for a screenshot (shot.ps1 -Window 시작하기)
+            for (int page = int.TryParse(Flag("first-run-page"), out int n) ? n : 1; page > 1; page--)
+                first.NextButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        }
         if (args.Contains("--debug")) _settingsWindow.ShowDiagnostics();
         if (args.Contains("--adjust"))   // the layer over the primary screen, as over a 1920×1080 game at HUD 100 (no engine: edits go nowhere)
         {
@@ -235,7 +245,10 @@ public partial class App
         else if (Flag("pick") == "plate") _settingsWindow.Inspect(new("Plate", null, null));
         else if (Flag("pick") is "Judgment" or "Amsu" or "Raid") _settingsWindow.Inspect(new(Flag("pick")!, null, null));   // a window picked whole: its outline handles
         else if (Flag("pick") == "copy") { _settingsWindow.ShowCopy(); if (Flag("copy-demo") is { } copyDemo) _settingsWindow.DemoCopy(copyDemo); }   // the 복사 page
-        if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(_tray.DemoShowMenu, DispatcherPriority.ApplicationIdle);
+        if (Flag("motion") is { } motion)
+            _ = RecordMotion(motion, Flag("motion-out") ?? Path.Combine(Path.GetTempPath(), "GaugeOverlay-motion", motion), settings,
+                double.TryParse(Flag("motion-slow"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var slow) ? slow : 4);
+        if (args.Contains("--tray-menu")) Dispatcher.BeginInvoke(() => _tray.DemoShowMenu(Flag("tray-shot")), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--join")) Dispatcher.BeginInvoke(() => JoinDialog.Ask(settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--token")) Dispatcher.BeginInvoke(() => TokenDialog.ShowToken("demo-token-1234567890abcdef", settings.Party.HostPort, settings.Theme), DispatcherPriority.ApplicationIdle);
         if (args.Contains("--countdown")) _ = CountdownWindow.Run(new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight), capturable: true);

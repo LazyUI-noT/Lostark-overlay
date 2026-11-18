@@ -5,15 +5,16 @@ namespace GaugeOverlay.Core.Domain;
 /// <summary>A level band: a fight whose entry item level is <paramref name="UpTo"/> or less is capped at <paramref name="Cap"/> %.</summary>
 public sealed record BuffBand(int UpTo, int Cap);
 
-/// <summary>The buff lock's caps (Profiles/raids.json "buffCaps"; user, 2026-11-13): the first band a fight's entry level fits, else
+/// <summary>The buff lock's caps (Profiles/raids.json "buffCaps"; user, 2026-11-13, numbers 2026-11-18): the first band a fight's entry level fits, else
 /// <paramref name="Fallback"/> % (also for a fight whose raid or difficulty isn't known). A gate's own "buffCap" goes over the bands.</summary>
 public sealed record BuffCapRules(int Fallback, IReadOnlyList<BuffBand> Bands)
 {
-    public static readonly BuffCapRules Default = new(85, []);
+    public static readonly BuffCapRules Default = new(95, []);
 }
 
-/// <summary>What the buff lock leaves of 버프 적용률 on this PC's screen (buff-lock.design.md; user, 2026-11-12): 공증 only, shown
-/// as "85+%" from 85% up; the cap is per fight since 2026-11-13 (<see cref="CapFor"/>: 80, 85, 90 or no lock). The live buff bars, saved fights and what a party member sends stay complete.</summary>
+/// <summary>What the buff lock leaves of 버프 적용률 on this PC's screen (buff-lock.design.md; user, 2026-11-12): 공증 and 낙인 (its own
+/// figure under the same cap, user 2026-11-15), shown
+/// as "95+%" from 95% up; the cap is per fight since 2026-11-13 (<see cref="CapFor"/>: 90, 95 or no lock). The live buff bars, saved fights and what a party member sends stay complete.</summary>
 public static class BuffLock
 {
     /// <summary>The cap (0 → 1) on a locked PC for a fight in <paramref name="gate"/> at <paramref name="difficulty"/>: the gate's own
@@ -35,7 +36,7 @@ public static class BuffLock
     public static double? CapFor(IReadOnlyList<RaidGate> gates, BuffCapRules rules, long? bossMax, RaidGate? named, string? difficulty) =>
         RaidData.ByHp(gates, bossMax) is { } byHp ? CapFor(byHp.Gate, byHp.Difficulty, rules) : CapFor(named, difficulty, rules);
 
-    /// <summary>A share as the label shows it: "85+%" once it would read the <paramref name="cap"/> (here 85%) or more; null: unlocked.</summary>
+    /// <summary>A share as the label shows it: "95+%" once it would read the <paramref name="cap"/> (here 95%) or more; null: unlocked.</summary>
     public static string Figure(double share, double? cap)
     {
         double percent = Math.Round(Math.Clamp(share, 0, 1) * 100, MidpointRounding.AwayFromZero);   // as "{x:0}" rounds
@@ -45,28 +46,41 @@ public static class BuffLock
     /// <summary>A bar's filled part, 0 → 1; locked it stops at the <paramref name="cap"/>.</summary>
     public static double Bar(double share, double? cap) => Math.Min(Math.Clamp(share, 0, 1), cap ?? 1);
 
-    /// <summary>The meter's buff rows cut to 공증's (the first, by <see cref="BuffKind"/>) and marked with the cap; null: unlocked.</summary>
+    /// <summary>The kinds 버프 적용률 counts, in its rows' order (MeterHistory's lists); locked, the ones kept.</summary>
+    public static IReadOnlyList<BuffKind> MeterKinds(bool locked) => locked ? Kept : Counted;
+
+    /// <summary>The rows the meter draws, as indices into <see cref="MeterKinds"/>(locked) and the view's buff lists: 낙인's
+    /// left out while its bar is off, since nothing reads it then and 0% would read as "never up".</summary>
+    public static IReadOnlyList<int> MeterRows(bool locked, bool brandRead) =>
+        [.. MeterKinds(locked).Select((k, i) => (k, i)).Where(p => brandRead || p.k != BuffKind.낙인).Select(p => p.i)];
+
+    static readonly BuffKind[] Counted =[BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증, BuffKind.낙인];
+    static readonly BuffKind[] Kept = [BuffKind.공증, BuffKind.낙인];
+
+    /// <summary>The meter's buff rows cut to <see cref="MeterKinds"/>(locked) and marked with the cap; null: unlocked.</summary>
     public static MeterView Apply(MeterView v, double? cap) => cap is null ? v : v with
     {
         BuffCap = cap,
-        BuffCover = v.BuffCover?.Take(1).ToList(),
-        BuffParty = v.BuffParty?.Take(1).ToList(),
-        BuffSplit = v.BuffSplit?.Take(1).ToList(),
+        BuffCover = KeptOf(v.BuffCover),
+        BuffParty = KeptOf(v.BuffParty),
+        BuffSplit = KeptOf(v.BuffSplit),
     };
 
+    static List<T>? KeptOf<T>(IReadOnlyList<T>? rows) =>
+        rows is null ? null : [.. rows.Where((_, i) => i < Counted.Length && Kept.Contains(Counted[i]))];
+
     /// <summary>The timeline's buff lanes: locked, 초각스 피증 has none.</summary>
-    public static IReadOnlyList<BuffKind> TimelineKinds(bool locked) =>
-        locked ? [BuffKind.공증, BuffKind.아덴피증] : [BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증];
+    public static IReadOnlyList<BuffKind> TimelineKinds(bool locked) => locked ? [.. Counted.Where(k => k != BuffKind.초각스피증)] : Counted;
 
     /// <summary>Whether a buff's line (and its hover tag) is drawn for <paramref name="r"/> at <paramref name="now"/> (local, as
     /// <see cref="FightRecord.StartedAt"/>).</summary>
     public static bool LineShown(BuffKind kind, bool locked, FightRecord r, DateTime now) => !locked || kind switch
     {
-        BuffKind.공증 => true,
+        BuffKind.공증 or BuffKind.낙인 => true,
         BuffKind.아덴피증 => now >= r.StartedAt.AddSeconds(r.Duration) + AdenAfter,
         _ => false,
     };
 
-    /// <summary>Locked, only 공증 keeps a % (capped by <see cref="Figure"/>).</summary>
-    public static bool PercentShown(BuffKind kind, bool locked) => !locked || kind == BuffKind.공증;
+    /// <summary>Locked, only 공증 and 낙인 keep a % (capped by <see cref="Figure"/>).</summary>
+    public static bool PercentShown(BuffKind kind, bool locked) => !locked || Kept.Contains(kind);
 }

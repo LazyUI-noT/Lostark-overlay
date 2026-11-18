@@ -3,12 +3,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>화면·인식 → 감지: placing a box. The same edit as 위치 조정's layer (<see cref="FitAdjust"/>, the engine's preview session,
+/// <summary>화면 인식 설정: placing a box. The same edit as 위치 조정's layer (<see cref="FitAdjust"/>, the engine's preview session,
 /// App.Adjust.cs applies and saves), done on the page's picture: pressing a box <see cref="DetectPlace.PartOf"/> knows starts the
 /// session and drags it, its corner dot sizes it, 되돌리기 (<see cref="PlaceHistory"/>, also Ctrl+Z) / 처음으로 / 적용 sit with the other
 /// buttons. It is green when it reads: the engine's live reads while Live runs, else one read of the picture shown
@@ -54,7 +55,7 @@ public partial class SettingsWindow
     {
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
         (int dx, int dy) = e.Key switch { Key.Left => (-1, 0), Key.Right => (1, 0), Key.Up => (0, -1), Key.Down => (0, 1), _ => (0, 0) };
-        if ((dx, dy) == (0, 0) || _placeDrag is not null || _place is not { } a || _detectPicked is not { } id || DetectPlace.PartOf(id) is not { } part) return;
+        if ((dx, dy) == (0, 0) || _placeWindow is null || _placeDrag is not null || _place is not { } a || _detectPicked is not { } id || DetectPlace.PartOf(id) is not { } part) return;
         int step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1;
         var next = a.Arrow(part, dx * step, dy * step, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
         e.Handled = true;   // also at a wall: the arrow never moves the page's focus or scroll
@@ -69,10 +70,10 @@ public partial class SettingsWindow
         [AdjustPart.스킬창] = ("place-skillbar.png", "각 스킬 아이콘이 가는 네모 안에 꼭 맞게 들어가도록 맞춥니다."),
         [AdjustPart.버프] = ("place-buffs.png", "아이콘은 세로선 사이 칸마다 하나씩, 가로선 위에 오고 남은 시간 글자는 가로선 아래에 오게 맞춥니다."),
         [AdjustPart.디버프] = ("place-debuffs.png", "버프 줄과 같습니다: 아이콘은 칸마다 하나씩 가로선 위에, 남은 시간은 그 아래에 옵니다."),
-        [AdjustPart.보스] = ("place-boss.png", "세로선이 위의 \"모든 면역 / 관통 면역\" 글자의 / 에 오게 맞춥니다. 디버프 아이콘은 그 오른쪽 줄 안에 들어옵니다."),
+        [AdjustPart.보스] = ("place-boss.png", "세로선을 초록 테두리 아이콘(보스 버프)과 빨간 테두리 아이콘(보스 디버프) 사이 빈틈에 맞춥니다. \"모든 면역 / 관통 면역\" 글자가 보이면 그 / 자리입니다."),
         [AdjustPart.전분] = ("place-jeonbun.png", "전투 분석기 창 전체(시간 줄부터 숫자 줄까지)가 칸 안에 꼭 맞게 들어오도록 맞춥니다."),
     };
-    readonly StackPanel _placeExample = new() { Margin = new(0, 8, 0, 0) };
+    readonly StackPanel _placeExample = new() { Margin = new(0, Tokens.Space.Gap, 0, 0) };
     AdjustPart? _placeExampleShown;
 
     /// <summary>The picked box's example while it can be placed.</summary>
@@ -83,7 +84,7 @@ public partial class SettingsWindow
         _placeExampleShown = part;
         _placeExample.Children.Clear();
         if (part is not { } p || !PlaceExamples.TryGetValue(p, out var ex) || BossBarExample.Load(ex.File) is not { } picture) return;
-        _placeExample.Children.Add(new TextBlock { Text = "예시: " + ex.Text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 4) });
+        _placeExample.Children.Add(new TextBlock { Text = "예시: " + ex.Text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, Tokens.Space.Tight) });
         _placeExample.Children.Add(new System.Windows.Controls.Image { Source = picture, MaxWidth = 560, MaxHeight = 160, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left });
     }
 
@@ -101,14 +102,18 @@ public partial class SettingsWindow
         id == DetectPlace.DebuffRow ? (DetectPlace.DebuffRowTitle, "#8A8F98")
         : FeatureMap.Boxes.FirstOrDefault(b => b.Id == id) is { } box ? (box.Title, box.Color) : null;
 
-    /// <summary>The areas drawn: the engine's, and while placing the four boxes at the edit's own rects (instant, as the layer shows them).</summary>
+    /// <summary>The areas drawn: the engine's, and while placing the four boxes at the edit's own rects (instant, as the layer shows them).
+    /// A box not on the saved picture behind them stays, drawn as an outline only (<see cref="OffPicture"/>).</summary>
     IReadOnlyDictionary<string, PixelRect> ShownAreas()
     {
-        if (_place is not { } a) return _detectAreas;
+        if (_place is null) return _detectAreas;
         var shown = _detectAreas.ToDictionary(k => k.Key, k => k.Value);
-        foreach (var id in DetectPlace.Movable) shown[id] = a.RectOf(DetectPlace.PartOf(id)!.Value);
+        foreach (var id in DetectPlace.Movable) shown[id] = _place.RectOf(DetectPlace.PartOf(id)!.Value);
         return shown;
     }
+
+    /// <summary>A saved picture is shown and box <paramref name="id"/> isn't on that screen (캐릭터 선택 has no boss row).</summary>
+    bool OffPicture(string id) => _readingShown is { } picture && !ReadingShots.BoxesOf(picture.Kind).Contains(id);
 
     bool? Green(string id) => _placeGreen.GetValueOrDefault(id);
 
@@ -132,7 +137,7 @@ public partial class SettingsWindow
     {
         if (_detectLiveId == id && _detectLive is { } live) yield return (live.Picture, live.Area);
         else if (_detect.GetValueOrDefault(id) is { Mark: not DetectMark.Waiting } && _detectPictures.GetValueOrDefault(id) is { } kept) yield return (kept.Picture, kept.Area);
-        if (_detectShotImage is { } shot && _detectShot is { } at) yield return (shot, at.Area);
+        if (_detectShotImage is { } shot && _detectShot is { } at && !OffPicture(id)) yield return (shot, at.Area);
     }
 
     /// <summary>The screen as shown against the screen as it is: how much a screen pixel is shrunk.</summary>
@@ -153,8 +158,10 @@ public partial class SettingsWindow
 
     void PlacePress(object sender, MouseButtonEventArgs e)
     {
+        if (_placeWindow is null) return;   // the page only picks: placing is in the zoom window
         if (e.OriginalSource is Rectangle { Tag: string over } && DetectPlace.PartOf(over) is null) return;   // a box nothing moves
         var at = e.GetPosition(_detectScreen);
+        if (at.Y >= _detectShown.Height) return;   // the 예시 panel under the capture only shows: a press there picked another box at that height, and the panel went with it
         if (_place is not { } a)
         {
             if (e.OriginalSource is Rectangle { Tag: string id } && DetectPlace.PartOf(id) is { } part) PlacePressBeforeSession(id, part, OnHost(e));
@@ -182,8 +189,8 @@ public partial class SettingsWindow
         DrawDetect();
     }
 
-    /// <summary>The mouse on the screen's Viewbox, which stays put: 확대 reframes and rescales the screen inside it as the picked box
-    /// changes or moves, so a drag measured on the screen itself would count that as the mouse moving.</summary>
+    /// <summary>The mouse on the screen's Viewbox (the zoom window's, framed by <c>_placeFrame</c>): measured there rather than on the
+    /// screen itself, so a redraw of the screen under the mouse never counts as the mouse moving.</summary>
     Point OnHost(MouseEventArgs e) => e.GetPosition((IInputElement)_detectScreen.Parent);
 
     /// <summary>The mouse let go or taken away: a finished drag is one step to go back over.</summary>
@@ -208,7 +215,7 @@ public partial class SettingsWindow
 
     void PlaceChange(FitAdjust next)
     {
-        _place = next;
+        _place = next with { BuffFollowsBar = _s.BuffFollowsBar };   // a step 되돌리기 brings back keeps today's check
         RefreshGreen();
         PlaceEdited?.Invoke(_placeGen, next);
         DrawDetect();
@@ -235,37 +242,28 @@ public partial class SettingsWindow
         PlaceChange(start);
     }
 
-    void PlaceTools()
-    {
-        if (_place is { } a)
-        {
-            Tool("되돌리기", () => PlaceBack(), _placeHistory.CanGoBack);
-            Tool("처음으로", PlaceReset, a.Changed);
-            UiBuild.MarkUnapplied(Tool("적용", ApplyPlace), a.Changed);
-            Tool("그만두기", EndPlace);
-        }
-        else if (_placeWanted) Tool("그만두기", EndPlace);
-    }
-
     string PlaceLine()
     {
         if (_placeNote != "") return "\n" + _placeNote;
         if (_place is { } a)
             return (a.Changed ? "\n아직 저장되지 않았습니다. 적용을 누르지 않고 이 화면을 나가면 옮긴 자리는 사라집니다." : "")
-                + "\n옮기는 중입니다. 칸을 끌어 옮기고, 칸 모서리의 흰 점을 끌어 크기를 바꿉니다. 누른 칸은 화살표 키로 1px씩(Shift 10px) 옮기고, Ctrl+화살표로 모양을 유지한 채 크기를 바꿉니다(→↑ 크게, ←↓ 작게). 칸 안의 가는 선은 아이콘이 들어갈 자리이니, 아이콘이 선 안에 맞게 들어가도록 맞추세요. 초록 칸은 지금 읽히는 칸입니다. 전분은 게임에서 전투 분석기를 열어 둔 채로 맞추세요. 아무것도 안 보이는 칸은 틀린 게 아니라 색이 없을 뿐입니다. "
-                + $"버프가 사라졌다면 Live를 켜고 일시정지로 그림을 멈춘 뒤 맞추세요. 되돌리기(Ctrl+Z)는 {PlaceHistory.MaxSteps}번까지 한 번씩 되돌리고, 처음으로는 처음 자리로 돌아갑니다. 적용하면 저장하고, 그만두기는 저장하지 않고 원래 자리로 돌아갑니다.";
-        if (_placeWanted) return "\n게임 화면을 찾는 중입니다. 위치 조정 화면이 열려 있으면 먼저 닫아 주세요.";
+                // Only what the buttons don't say (critique, 2026-11-17): 적용·취소·되돌리기·처음으로 name themselves.
+                + "\n끌어서 옮기고 모서리의 흰 점으로 크기를 바꿉니다 · 화살표 1px (Shift 10px) · Ctrl+화살표 크기 (→↑ 크게) · Enter 적용 · Esc 취소"
+                + "\n칸 안의 가는 선에 아이콘이 들어가게 맞추세요. 초록 칸은 지금 읽히는 칸이고, 아무것도 안 보이는 칸은 틀린 게 아닙니다."
+                + "\n전분은 게임에서 열어 둔 채로, 사라지는 버프는 Live를 일시정지해 멈춘 뒤 맞추세요.";
+        if (_placeWanted) return "\n게임 화면을 찾는 중입니다. 수동 위치 조정 화면이 열려 있으면 먼저 닫으세요.";
         return _detectPicked is not { } id ? ""
-            : DetectPlace.PartOf(id) is null ? "\n이 칸은 옮길 수 없습니다. 자리는 해상도, HUD 크기, 스킬창 위치로 정해집니다."
-            : "\n이 칸은 바로 끌어 옮길 수 있습니다. 한 번 누르면 크기를 바꾸는 흰 점이 나옵니다.";
+            : DetectPlace.PartOf(id) is null ? "\n이 칸은 옮길 수 없습니다. 자리는 해상도와 HUD 크기로 정해집니다."
+            : "\n자리 맞추기(Enter)를 누르면 크게 보며 이 칸을 옮깁니다.";
     }
 
     /// <summary>The engine's preview session began (or its game area changed): the edit starts on <paramref name="fit"/>.</summary>
-    public void PlaceStarted(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize, PixelRect? panel)
+    public void PlaceStarted(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize, PixelRect? panel,
+        IReadOnlyDictionary<SlotId, PixelRect>? aden = null)
     {
         if (!_placeWanted) return;
         (_placeGen, _placeTest, _placeBuffCount, _placeBossSize, _placeLive, _placeDrag) = (gen, test, buffCount, bossSize, null, null);
-        _place = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize, panel);
+        _place = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize, panel) with { BuffFollowsBar = _s.BuffFollowsBar, AdenRects = aden };
         (_placeHistory, _placeNote) = (PlaceHistory.Empty, "");   // a new session: its steps are for another fit or game area; an earlier 적용's note would hide the not-saved line
         if (_placePress is { } held) (_placeDrag, _placePress) = ((_place, held.Part, false, held.At), null);
         PlaceEdited?.Invoke(gen, _place);   // the 전분 box to look at, and a start outside the game area clamped

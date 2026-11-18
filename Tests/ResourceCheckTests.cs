@@ -15,6 +15,18 @@ public class ResourceCheckTests
         foreach (var (part, id) in ResourceCheck.PartRows) Assert.Contains(id, ids);
     }
 
+    [Theory]
+    [InlineData("그리기: 스킬 창", "skillview")]   // OverlayRenderer's names, one per window kind
+    [InlineData("그리기: 파티 창", "peers")]
+    [InlineData("그리기: 전투자원 창", "ring")]
+    [InlineData("그리기: 보스 체력 창", "boss")]   // OverlayTextWindow's
+    [InlineData("그리기: 대난투 체력 창", "shadow")]
+    public void Every_overlay_window_draw_counts_in_its_box(string part, string box)
+    {
+        var report = ResourceCheck.Build(new Dictionary<string, double> { [part + Cpu] = 1.0 }, 10, 10, 12);
+        Assert.Equal(10, report.Rows.First(r => r.Id == box).Percent, 6);
+    }
+
     [Fact]
     public void A_box_adds_up_its_parts_in_percent_of_one_core()
     {
@@ -122,4 +134,64 @@ public class ResourceCheckTests
         Assert.Equal(7, GpuLoad.Percent(counters, 100));
         Assert.Equal(0, GpuLoad.Percent(counters, 7));
     }
+}
+
+/// <summary>리소스 검사 over each box's active time (user, 2026-11-18): 암수 in town doesn't water its figure down.</summary>
+public class ResourceCheckActiveTests
+{
+    const string Cpu = ResourceCheck.CpuTag;
+
+    [Fact]
+    public void A_box_is_averaged_over_the_time_it_was_active()
+    {
+        var parts = new Dictionary<string, double> { ["암수" + Cpu] = 1.0 };
+        var report = ResourceCheck.Build(parts, 10, 100, 12, new Dictionary<string, double> { ["amsu"] = 10 });
+        Assert.Equal(10, report.Rows.First(r => r.Id == "amsu").Percent, 6);
+    }
+
+    [Fact]
+    public void Shared_rows_and_the_total_stay_over_the_whole_time()
+    {
+        var parts = new Dictionary<string, double> { ["암수" + Cpu] = 1.0, ["화면 캡처 (새 프레임 대기 포함)" + Cpu] = 5.0 };
+        var report = ResourceCheck.Build(parts, 20, 100, 12, new Dictionary<string, double> { ["amsu"] = 10, [ResourceCheck.Capture] = 10 });
+        Assert.Equal(5, report.Rows.First(r => r.Id == ResourceCheck.Capture).Percent, 6);
+        Assert.Equal(14, report.Rows.First(r => r.Id == ResourceCheck.Render).Percent, 6);
+        Assert.Equal(20, report.Total, 6);
+    }
+
+    [Fact]
+    public void A_box_that_never_ran_is_listed_as_not_run()
+    {
+        var report = ResourceCheck.Build(new Dictionary<string, double> { ["버프" + Cpu] = 1.0 }, 10, 100, 12,
+            new Dictionary<string, double> { ["buff"] = 50 });
+        var amsu = report.Rows.First(r => r.Id == "amsu");
+        Assert.False(amsu.Ran);
+        Assert.True(report.Rows.First(r => r.Id == "buff").Ran);
+    }
+
+    [Fact]
+    public void A_box_with_time_but_no_active_record_falls_back_to_the_whole_time()
+    {
+        var report = ResourceCheck.Build(new Dictionary<string, double> { ["버프" + Cpu] = 1.0 }, 10, 100, 12, new Dictionary<string, double>());
+        var buff = report.Rows.First(r => r.Id == "buff");
+        Assert.True(buff.Ran);
+        Assert.Equal(1, buff.Percent, 6);
+    }
+
+    [Fact]
+    public void Active_time_is_never_taken_as_longer_than_the_window()
+    {
+        var report = ResourceCheck.Build(new Dictionary<string, double> { ["버프" + Cpu] = 1.0 }, 10, 10, 12,
+            new Dictionary<string, double> { ["buff"] = 13 });   // the grace after the last run reaches past "now"
+        Assert.Equal(10, report.Rows.First(r => r.Id == "buff").Percent, 6);
+    }
+
+    [Theory]
+    [InlineData("암수", "amsu")]
+    [InlineData("보스 이름 (Windows OCR)", "boss")]
+    [InlineData("그리기: 암수 창", "amsu")]
+    [InlineData("화면 캡처 (새 프레임 대기 포함)", ResourceCheck.Capture)]
+    [InlineData("새 일", ResourceCheck.Other)]
+    public void A_part_is_kept_active_under_its_row(string part, string row) =>
+        Assert.Equal(row, ResourceCheck.RowOf(part));
 }

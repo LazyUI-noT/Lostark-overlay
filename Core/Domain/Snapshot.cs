@@ -49,6 +49,8 @@ public sealed record Snapshot(
     /// <summary>Where each reader looks (screen pixels), for 감지; the game area is <see cref="DetectView"/>.</summary>
     public System.Collections.Immutable.ImmutableDictionary<string, PixelRect> DetectAreas { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, PixelRect>.Empty;
     public Viewport DetectView { get; init; }
+    /// <summary>The grid lines inside each <see cref="DetectAreas"/> box (reading-place.plan.md C), keyed the same.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, IReadOnlyList<GridLine>> DetectGrid { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, IReadOnlyList<GridLine>>.Empty;
     /// <summary>Each reader's picture from the moment its mark turned ✓ or ! (in memory only).</summary>
     public System.Collections.Immutable.ImmutableDictionary<string, DetectPicture> DetectPictures { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, DetectPicture>.Empty;
     /// <summary>The 감지 page's Live box, captured 2/s while it is on; null otherwise.</summary>
@@ -57,11 +59,14 @@ public sealed record Snapshot(
     /// <summary>The ring's halves (기력·충격 창, 브레이커); yours only, never sent; null for a class without one or while it is off.</summary>
     public RingState? Ring { get; init; }
 
+    /// <summary>수라의길's cue on the 기력·충격 창 (<see cref="Domain.RingCue"/>); null before the first 기력 or 충격 skill or without a ring.</summary>
+    public RingCue? RingCue { get; init; }
+
     /// <summary>The DPS 미터기's own reads (yours; the party's figures travel as MeterSample); null while it is off.</summary>
     public MeterStatus? Meter { get; init; }
 
-    /// <summary>Whether the 암수 창 counts down: the "N초" is read where it is 100% on screen (Amsu.Timed with the game area); null
-    /// where no game is read (previews, demos), which then follow the 보스 디버프 크기 alone.</summary>
+    /// <summary>Whether the 암수 창 counts down: the "N초" is read where it is 80% on screen (Amsu.Timed with the game area); null
+    /// where no game is read (previews, demos), which then follow the 타겟 UI 버프 크기 alone.</summary>
     public bool? AmsuTimed { get; init; }
 
     /// <summary>The dungeon the top-left panel last showed (read while the meter is on); null while unknown or the meter is off.</summary>
@@ -69,6 +74,13 @@ public sealed record Snapshot(
 
     /// <summary>Where the player is (the in-game meter, the boss bar: RaidPresence); local only, not sent to the party.</summary>
     public RaidPresence Presence { get; init; } = RaidPresence.None;
+
+    /// <summary>The tray's 자동 → 항상 test (user, 2026-11-18, for 수련장): parts on 자동 show and read anywhere. Memory
+    /// only, never saved; local, not sent to the party.</summary>
+    public bool AutoAsAlways { get; init; }
+
+    /// <summary>A part on 자동 shows (and is read) now: in a raid, or while <see cref="AutoAsAlways"/>.</summary>
+    public bool AutoShows(TimeSpan now) => AutoAsAlways || Presence.InDungeon(now);
 
     /// <summary>What the meter window draws (built by App from mine and the party's, once a second); null while it is off.</summary>
     public MeterView? MeterView { get; init; }

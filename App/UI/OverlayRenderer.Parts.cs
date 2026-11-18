@@ -73,14 +73,17 @@ public sealed partial class OverlayRenderer
     /// room for the time. A buff whose timer was never read shows full.</summary>
     /// 마지막 1초 깜빡임 (<paramref name="flash"/>): below <see cref="EndFlashFrom"/> s left, a white band sweeps the bar in its drain
     /// direction <see cref="EndFlashSweeps"/> times, the last one ending at 0 (steady under reduced motion).
-    void DrawBuff(DrawingContext dc, Rect r, Color c, BuffState? st, bool label, bool flash, TimeSpan now, bool reduced)
+    /// <paramref name="fill"/>: the fill's opacity while it arrives (<see cref="Arriving"/>), 1 once there.
+    void DrawBuff(DrawingContext dc, Rect r, Color c, BuffState? st, bool label, bool flash, TimeSpan now, bool reduced, double fill = 1)
     {
         dc.DrawRoundedRectangle(Solid(Level(c, BuffTrackLevel)), null, r, BoxRadius, BoxRadius);
         if (st is not { Active: true }) return;
         dc.PushClip(BoxClip(r));
         bool upright = r.Height > r.Width;
         double left = Settings.Buffs.Drain ? st.Progress(now) : 1;   // 버프 막대 줄어듦 off: full while on
+        if (fill < 1) dc.PushOpacity(fill);
         dc.DrawRectangle(Solid(c), null, upright ? new Rect(r.X, r.Bottom - r.Height * left, r.Width, r.Height * left) : new Rect(r.X, r.Y, r.Width * left, r.Height));
+        if (fill < 1) dc.Pop();
         dc.Pop();
         if (st.EndsAt is null) return;
         if (_frozenAt is null) _moving = true;
@@ -92,6 +95,23 @@ public sealed partial class OverlayRenderer
         string text = sec >= 1 ? $"{Math.Floor(sec).ToString(CultureInfo.InvariantCulture)}s"
             : $"{(Math.Floor(sec * 10) / 10).ToString("0.0", CultureInfo.InvariantCulture)}s";
         DrawOutlined(dc, r, text, Math.Floor((r.Height - 2) / DigitPair.Height / TimerFontStep) * TimerFontStep);
+    }
+
+    /// <summary>A buff bar's arrivals, per layout and kind; cleared with the other per-box state.</summary>
+    readonly Dictionary<(string, BuffKind), Arrival> _arrivals = [];
+
+    /// <summary>The new motion (overlay-motion.plan.md) runs on the live overlay only: not in previews or edit mode
+    /// (<see cref="ShowHidden"/>, frozen sample time), not in a party member's window, and only while <see cref="UiMotion.On"/>.</summary>
+    bool NewMotion => _frozenAt is null && !ShowHidden && Peer < 0 && UiMotion.On;
+
+    /// <summary>A buff bar's opacity this frame: a buff just come on fades in from half over <see cref="OverlayMotion.BarInMs"/>.</summary>
+    double Arriving(string layout, BuffKind kind, bool on, double ms)
+    {
+        var a = _arrivals.GetValueOrDefault((layout, kind), Arrival.Unseen).Next(on, ms, NewMotion);
+        _arrivals[(layout, kind)] = a;
+        if (!a.Moving(ms, OverlayMotion.BarInMs)) return 1;
+        _animating = true;
+        return a.Opacity(ms, OverlayMotion.BarInMs);
     }
 
     /// <summary>Draws a part that 비었을 때 숨기기 hides while <paramref name="hidden"/>: not at all, or faintly where hidden parts

@@ -12,13 +12,28 @@ public static class FitList
     /// <param name="testHud">The HUD 테스트 모드 found on the video (kept in memory only); null before it is found.</param>
     public static IReadOnlyList<FitRow> Rows(Settings s, string? areaKey, bool testMode, double? testHud)
     {
-        string? gameKey = !testMode && areaKey is not null ? areaKey : s.DetectedScreen is { } d ? ScreenSummary.AreaKey(d) : null;
+        string? gameKey = GameKey(s, areaKey, testMode);
         var game = gameKey is null ? new FitRow("게임", "아직 맞춘 적이 없습니다", false)
             : new FitRow($"게임 {gameKey}", GameValue(s, gameKey), InUse: !testMode && areaKey is not null);
         var test = !testMode || areaKey is null ? new FitRow("테스트", "테스트 모드에서 영상마다 맞춥니다 (저장 안 함)", false)
             : new FitRow($"테스트 {areaKey}", testHud is { } hud ? $"HUD {hud:0.#}%" : "찾는 중", InUse: true);
         return [game, test];
     }
+
+    public const string FirstFit = "스킬창 맞추기";
+    public const string Refit = "스킬창 다시 맞추기";
+
+    /// <summary>The fit button's name: 다시 only once the game row's screen has a fit or a 수동 조정, so a player who never
+    /// fitted isn't told to fit "again" (ui-audit-2026-11-18). The notices that name the button use the same rule.</summary>
+    public static string FitButton(Settings s, string? areaKey, bool testMode) => HasFit(s, areaKey, testMode) ? Refit : FirstFit;
+
+    /// <summary>The game's screen has a saved fit or 수동 조정: the fit button says 다시, and 시작하기 opened again starts as
+    /// fitted (its closing notice then skips how to fit later).</summary>
+    public static bool HasFit(Settings s, string? areaKey, bool testMode) =>
+        GameKey(s, areaKey, testMode) is { } key && (s.Fits.ContainsKey(key) || s.Adjusts.ContainsKey(key));
+
+    static string? GameKey(Settings s, string? areaKey, bool testMode) =>
+        !testMode && areaKey is not null ? areaKey : s.DetectedScreen is { } d ? ScreenSummary.AreaKey(d) : null;
 
     static string GameValue(Settings s, string key)
     {

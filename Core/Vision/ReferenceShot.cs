@@ -64,9 +64,9 @@ public static class ReferenceShot
         var (foundEmpty, foundFull) = (Find(empty), Find(full));
         bool sameSize = (empty.Width, empty.Height) == (full.Width, full.Height);
         if (foundEmpty is null && foundFull is null)
-            throw new InvalidDataException("두 스크린샷 모두에서 스킬창을 찾지 못했습니다. 수련장에서 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍어 주세요.");
+            throw new InvalidDataException("두 스크린샷 모두에서 스킬창을 찾지 못했습니다. 수련장에서 모든 스킬이 준비된 상태로, 화면 전체를 다시 찍으세요.");
         if ((foundEmpty is null || foundFull is null) && !sameSize)
-            throw new InvalidDataException("한 장에서만 스킬창을 찾았는데 두 스크린샷의 크기가 달라, 같은 자리로 맞출 수 없습니다. 같은 설정으로 두 장을 다시 찍어 주세요.");
+            throw new InvalidDataException("한 장에서만 스킬창을 찾았는데 두 스크린샷의 크기가 달라, 같은 자리로 맞출 수 없습니다. 같은 설정으로 두 장을 다시 찍으세요.");
 
         var (vpE, fitE) = sameSize ? (foundEmpty ?? foundFull)!.Value : foundEmpty!.Value;
         var (vpF, fitF) = sameSize ? (vpE, fitE) : foundFull!.Value;

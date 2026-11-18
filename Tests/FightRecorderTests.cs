@@ -266,6 +266,18 @@ public class FightRecorderTests
     }
 
     [Fact]
+    public void 낙인_windows_are_kept()
+    {
+        Tick(0, 0); Tick(1, 1);
+        See("나", Snap(SlotPhase.Unknown, 1.1), 1.1);
+        See("나", Snap(SlotPhase.Unknown, 1.2, on: BuffKind.낙인), 1.2);
+        See("나", Snap(SlotPhase.Unknown, 1.7), 1.7);
+        Tick(2, 2);
+        Assert.Equal([(RecordEventKind.버프시작, (int)BuffKind.낙인), (RecordEventKind.버프끝, (int)BuffKind.낙인)],
+            _r.Finish()!.Events.Select(e => (e.Kind, e.What)));
+    }
+
+    [Fact]
     public void My_attack_buff_windows_are_kept_too()
     {
         Tick(0, 0); Tick(1, 1);

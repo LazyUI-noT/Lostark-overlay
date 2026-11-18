@@ -74,14 +74,14 @@ public static class RaidBadgeView
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (Logo(raid) is { } logo)
         {
-            var image = new System.Windows.Controls.Image { Source = logo, Height = size * 1.7, Width = size * 1.7, Margin = new(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+            var image = new System.Windows.Controls.Image { Source = logo, Height = size * 1.7, Width = size * 1.7, Margin = new(0, 0, Tokens.Space.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
             System.Windows.Automation.AutomationProperties.SetName(image, raid);   // a screen reader says the raid (impeccable audit, 2026-11-09)
             row.Children.Add(image);
         }
         if (!string.IsNullOrWhiteSpace(difficulty))
             row.Children.Add(new Border
             {
-                Background = Fill(RaidBadge.Tier(difficulty)), CornerRadius = new(size * CornerPerSize), Padding = new(size * 0.7, 1, size * 0.7, 1.5),
+                Background = Fill(RaidBadge.Tier(difficulty)), CornerRadius = new(size * CornerPerSize), Padding = new(size * 0.7, 1, size * 0.7, 1.5),   // scales with size, off the 4 px grid on purpose
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock { Text = RaidBadge.Label(difficulty), FontSize = size, FontWeight = FontWeights.SemiBold, Foreground = Frozen(Ink(RaidBadge.Tier(difficulty))) },
             });

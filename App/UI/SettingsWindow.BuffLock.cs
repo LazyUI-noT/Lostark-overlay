@@ -25,7 +25,7 @@ public partial class SettingsWindow
         var p = _buffLockRows;
         p.Children.Clear();
         p.Children.Add(Heading("버프 잠금"));
-        p.Children.Add(Note("잠겨 있으면 DPS 미터기와 타임라인의 버프 적용률은 공증만 보이고, 상한 이상은 85+%처럼 보입니다. "
+        p.Children.Add(Note("잠겨 있으면 DPS 미터기와 타임라인의 버프 적용률은 공증만 보이고, 상한 이상은 95+%처럼 보입니다. "
             + "상한은 레이드와 난이도마다 다르고, 잠기지 않는 레이드도 있습니다. 타임라인의 아덴 피증은 "
             + "전투가 끝나고 10분 뒤에 % 없이 보이고, 초각스 피증은 보이지 않습니다. 버프 막대, 저장된 전투와 파티원에게 보내는 값은 그대로입니다."));
         bool locked = BuffUnlock.Locked;
@@ -41,7 +41,7 @@ public partial class SettingsWindow
         copy.Click += (_, _) =>
         {
             try { Clipboard.SetText(pcCode);_buffLockStatus = "PC 코드를 복사했습니다."; }
-            catch (System.Runtime.InteropServices.COMException) { _buffLockStatus = "다른 프로그램이 클립보드를 쓰고 있습니다. 잠시 뒤 다시 눌러 주세요."; }
+            catch (System.Runtime.InteropServices.COMException) { _buffLockStatus = "다른 프로그램이 클립보드를 쓰고 있습니다. 잠시 뒤 다시 누르세요."; }
             FillBuffLock();
         };
         p.Children.Add(Row("PC 코드", Label(pcCode), copy));

@@ -93,14 +93,14 @@ public sealed class MeterHistory
     /// <summary>My casts this record, for 스킬 사용 횟수.</summary>
     public CastLog Casts { get; } = new();
 
-    // 버프 적용률 for this 전분 record: my damage in all, and the part dealt while 공증 / 아덴 피증 / 초각스 피증 was on. Each
+    // 버프 적용률 for this 전분 record: my damage in all, and the part dealt while 공증 / 아덴 피증 / 초각스 피증 / 낙인 was on. Each
     // second's new damage goes to each buff by the part of that second it was on (a buff on from halfway takes half: the
     // damage is taken as even over the second, the panel updating once a second). A guide, not what each buff added.
-    static readonly BuffKind[] Covering = [BuffKind.공증, BuffKind.아덴피증, BuffKind.초각스피증];
-    readonly double[] _under = new double[Covering.Length];
+    static readonly IReadOnlyList<BuffKind> Covering = BuffLock.MeterKinds(locked: false);   // 공증 first: the party sends its own
+    readonly double[] _under = new double[Covering.Count];
     long _total, _lastDamage;
     TimeSpan? _lastAt;
-    // The other dealers (버프 분배): their damage under 아덴 피증 / 초각스 피증 by this screen's timing (party-wide buffs), and
+    // The other dealers (버프 분배): their damage under 아덴 피증 / 초각스 피증 / 낙인 by this screen's timing (party-wide), and
     // under 공증 as each sent it (a 공증 field counts only for who stands in it).
     readonly Dictionary<ulong, (string Name, long Last, double[] Under)> _others = [];
     int _coverFight = -1;
@@ -109,7 +109,7 @@ public sealed class MeterHistory
     // The party's (4-man raids, user 2026-11-04): the boss HP lost this record and the part lost while each buff was on, in
     // 1,000,000 HP units (BossUnit); the boss figure is the whole party's damage when only one party hits it.
     const long BossUnit = 1_000_000;
-    readonly double[] _bossUnder = new double[Covering.Length];
+    readonly double[] _bossUnder = new double[Covering.Count];
     long _bossTotal, _lastBoss;
 
     // Seconds left out of all of it: the boss bar unread, or my skill bar tinted (dead, disabled) and 5 s after (LeftOut).
@@ -136,9 +136,9 @@ public sealed class MeterHistory
         var from = _lastAt;
         _lastAt = now;
         _buffsRead = buffs is { Count: > 0 };
-        var on = new double[Covering.Length];
+        var on = new double[Covering.Count];
         if (_buffsRead)
-            for (int i = 0; i < Covering.Length; i++)
+            for (int i = 0; i < Covering.Count; i++)
                 if ((int)Covering[i] < buffs!.Count) on[i] = OnFor(buffs[(int)Covering[i]], from, now);
         long added = damage - _lastDamage, lost = boss - _lastBoss;
         (_lastDamage, _lastBoss) = (damage, boss);
@@ -147,19 +147,19 @@ public sealed class MeterHistory
         if (added > 0 && _buffsRead && !left)
         {
             _total += added;
-            for (int i = 0; i < Covering.Length; i++) _under[i] += added * on[i];
+            for (int i = 0; i < Covering.Count; i++) _under[i] += added * on[i];
         }
         if (lost > 0 && _buffsRead && !_left.BossOut)
         {
             _bossTotal += lost;
-            for (int i = 0; i < Covering.Length; i++) _bossUnder[i] += lost * on[i];
+            for (int i = 0; i < Covering.Count; i++) _bossUnder[i] += lost * on[i];
         }
         foreach (var s in otherDealers ?? [])
         {
             // First seen (joined or started sharing mid-fight): counted from here on, not their whole record at once.
-            if (!_others.TryGetValue(s.Id, out var o)) { _others[s.Id] = (s.Name, s.Damage, [double.NaN, 0, 0]); continue; }
+            if (!_others.TryGetValue(s.Id, out var o)) { _others[s.Id] = (s.Name, s.Damage, [double.NaN, .. new double[Covering.Count - 1]]); continue; }
             long d = s.Damage - o.Last;
-            if (d > 0 && _buffsRead && !left) for (int i = 1; i < Covering.Length; i++) o.Under[i] += d * on[i];
+            if (d > 0 && _buffsRead && !left) for (int i = 1; i < Covering.Count; i++) o.Under[i] += d * on[i];
             o.Under[0] = s.AtkBuffed is { } atk ? atk : double.NaN;
             _others[s.Id] = (s.Name, s.Damage, o.Under);
         }
@@ -175,7 +175,7 @@ public sealed class MeterHistory
         if (!_buffsRead || _others.Count + (iDeal ? 1 : 0) < 2) return null;
         var who = _others.Select(o => (Id: o.Key, o.Value.Name, o.Value.Under)).ToList();
         if (iDeal) who.Add((me, myName, _under));
-        return [.. Enumerable.Range(0, Covering.Length).Select(i =>
+        return [.. Enumerable.Range(0, Covering.Count).Select(i =>
         {
             var parts = who.Where(w => double.IsFinite(w.Under[i]) && w.Under[i] > 0).ToList();
             double sum = parts.Sum(w => w.Under[i]);

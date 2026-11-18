@@ -290,4 +290,39 @@ public sealed class JeonbunReaderTests
             dir = dir.Parent;
         return dir?.FullName ?? throw new DirectoryNotFoundException("repo root");
     }
+
+    /// <summary><paramref name="src"/> under another app's see-through overlay: every pixel blended toward a colour.</summary>
+    static Image Tinted(Image src, byte grey, double alpha)
+    {
+        var img = src.Copy();
+        for (int i = 0; i < img.Bgra.Length; i++)
+            if (i % 4 != 3) img.Bgra[i] = (byte)(img.Bgra[i] * (1 - alpha) + grey * alpha);
+        return img;
+    }
+
+    // A 30% dark or grey overlay over the whole panel (another overlay on top of 전분): before the dimmed floor 4 of these 5
+    // read nothing; at 50% only some read (the green row and titles fade too).
+    [Theory]
+    [InlineData(0, 20)] [InlineData(2, 20)] [InlineData(4, 20)] [InlineData(8, 20)] [InlineData(15, 20)]
+    [InlineData(0, 90)] [InlineData(2, 90)] [InlineData(4, 90)] [InlineData(8, 90)] [InlineData(15, 90)]
+    public void A_panel_under_a_see_through_overlay_reads_as_without_it(int i, int grey)
+    {
+        var tinted = Tinted(Labelled(i), (byte)grey, 0.3);
+        Assert.Equal(Labels[i].Timer, JeonbunReader.TimerText(tinted));
+        Assert.Equal(Labels[i].Cells, JeonbunReader.Cells(tinted));
+    }
+
+    [Fact]
+    public void A_timer_box_with_only_faint_warm_noise_reads_nothing()
+    {
+        var img = Labelled(0).Copy();
+        var rng = new Random(7);
+        for (int y = 0; y < 31; y++)   // the timer box wiped to a dark fill with faint orange specks (a flash behind the panel edge)
+            for (int x = 230; x < 312; x++)
+            {
+                int i = (y * img.Width + x) * 4, warm = rng.Next(45);
+                (img.Bgra[i], img.Bgra[i + 1], img.Bgra[i + 2]) = ((byte)20, (byte)(20 + warm), (byte)(25 + warm));
+            }
+        Assert.Null(JeonbunReader.TimerText(img));
+    }
 }

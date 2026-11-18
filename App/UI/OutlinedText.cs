@@ -5,8 +5,9 @@ using System.Windows.Media;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>A line of bold text with a black outline like the game's, sized to its height: what <see cref="OverlayTextWindow"/>
-/// draws over the game and what 설정 → 레이드's examples (<see cref="BossBarExample"/>) draw over a boss-bar picture.</summary>
-sealed class OutlinedText(Brush ink, bool centred, double textShare) : FrameworkElement
+/// draws over the game and what 설정 → 레이드's examples (<see cref="BossBarExample"/>) draw over a boss-bar picture.
+/// <paramref name="perfPart"/>: the Perf part its draws count in, as the overlay's part windows do (none in 설정).</summary>
+sealed class OutlinedText(Brush ink, bool centred, double textShare, string? perfPart = null) : FrameworkElement
 {
     static readonly Typeface Face = new(new FontFamily("Malgun Gothic"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
     const double OutlineShare = 0.2;   // the outline pen × the font size (half of it shows round the glyphs)
@@ -18,6 +19,15 @@ sealed class OutlinedText(Brush ink, bool centred, double textShare) : Framework
     public string Text { get => _text; set { if (value == _text) return; _text = value; InvalidateVisual(); } }
 
     protected override void OnRender(DrawingContext dc)
+    {
+        if (perfPart is null) { Draw(dc); return; }
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp(), cpu0 = Services.Perf.ThreadCpu();
+        Draw(dc);
+        Services.Perf.AddCpu(perfPart, System.Diagnostics.Stopwatch.GetTimestamp() - t0, Services.Perf.ThreadCpu() - cpu0);
+        Services.Perf.Count(perfPart);   // draws a second (perf-trace)
+    }
+
+    void Draw(DrawingContext dc)
     {
         double size = Math.Max(8, ActualHeight * textShare);
         var geo = new FormattedText(_text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Face, size, ink, 1.0)

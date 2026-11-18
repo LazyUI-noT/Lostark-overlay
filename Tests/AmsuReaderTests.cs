@@ -137,7 +137,8 @@ public class AmsuReaderTests
         var found = Find(Strip("amsu_15"), Scale, WideSlots).Bombs;
         var at = Assert.Single(found);
         Assert.Equal(Bomb.암수, at.Kind);
-        Assert.InRange(at.Icon.X, AmsuBox15.X - (1084 - 1000) - 3, AmsuBox15.X - (1084 - 1000) + 3);   // strip px: the fixture's box, moved
+        int x = AmsuBox15.X - (Geometry.BossDebuffStrip(Wide, Hud100, 100).X - 1000);   // strip px: the fixture's box, moved
+        Assert.InRange(at.Icon.X, x - 3, x + 3);
         Assert.Equal(15, AmsuReader.ReadSeconds(Strip("amsu_15"), at, TextScale));
     }
 
@@ -161,12 +162,12 @@ public class AmsuReaderTests
     [Theory]
     [InlineData(100, 14, 14)]
     [InlineData(100, 5, 5)]
-    [InlineData(110, 14, 12)]
-    [InlineData(120, 14, 10)]
+    [InlineData(110, 17, 13)]
+    [InlineData(120, 17, 12)]
     [InlineData(120, 4, 4)]
     [InlineData(100, 0, 1)]
-    public void The_count_caps_the_slots_the_size_shows(int size, int count, int most) =>
-        Assert.Equal(most, Geometry.BossSlotsIn(Hd, Hud110, size, count).Most);
+    public void The_count_caps_the_slots_read_within_what_the_size_shows(int size, int count, int reads) =>
+        Assert.Equal(reads, Geometry.BossSlotsIn(Hd, Hud110, size, null, count).Reads);
 
     [Theory]
     [InlineData(80)]
@@ -174,32 +175,32 @@ public class AmsuReaderTests
     [InlineData(120)]
     public void Without_a_count_the_slots_and_layout_are_as_before(int size)
     {
-        Assert.Equal(Geometry.BossSlotsIn(Hd, Hud110, size), Geometry.BossSlotsIn(Hd, Hud110, size, Geometry.MaxBossSlots));
-        Assert.Equal(AmsuLayout.Of(Hd, Hud110, size), AmsuLayout.Of(Hd, Hud110, size, Geometry.MaxBossSlots));
-        Assert.Equal(Geometry.MaxBossDebuffs(size), AmsuLayout.Of(Hd, Hud110, size).Slots.Most);
+        Assert.Equal(Geometry.BossSlotsIn(Hd, Hud110, size), Geometry.BossSlotsIn(Hd, Hud110, size, null, Geometry.MaxIconsAny));
+        Assert.Equal(AmsuLayout.Of(Hd, Hud110, size), AmsuLayout.Of(Hd, Hud110, size, null, Geometry.MaxIconsAny));
+        Assert.Equal(Geometry.MaxIcons(size), AmsuLayout.Of(Hd, Hud110, size).Slots.Most);
     }
 
     [Fact]
     public void The_boss_count_is_unset_by_default_and_repaired_from_a_hand_edit()
     {
-        Assert.Equal(Geometry.MaxBossSlots, new DebuffSettings().BossCount);
+        Assert.Equal(Geometry.MaxIconsAny, new DebuffSettings().BossCount);
         var s = new Settings();
         s.Debuffs.BossCount = 40;
         Core.Data.SettingsStore.Normalize(s);
-        Assert.Equal(Geometry.MaxBossSlots, s.Debuffs.BossCount);
+        Assert.Equal(Geometry.MaxIconsAny, s.Debuffs.BossCount);
         s.Debuffs.BossCount = -3;
         Core.Data.SettingsStore.Normalize(s);
         Assert.Equal(1, s.Debuffs.BossCount);
     }
 
     [Theory]
-    [InlineData(80, 14)]
+    [InlineData(80, 17)]
     [InlineData(100, 14)]
-    [InlineData(110, 12)]
-    [InlineData(120, 10)]
+    [InlineData(110, 13)]
+    [InlineData(120, 12)]
     public void The_strip_reaches_the_last_debuff_slot_at_every_size(int size, int slots)
     {
-        Assert.Equal(slots, Geometry.MaxBossDebuffs(size));
+        Assert.Equal(slots, Geometry.MaxIcons(size));
         var s = Geometry.BossDebuffStrip(Hd, Hud110, size);
         Assert.True(s.Right >= 929 + slots * 34 * Geometry.BossScale(Hd, Hud110, size), $"strip ends at {s.Right}");
     }
@@ -412,6 +413,7 @@ public class AmsuReaderTests
     }
 
     [Theory]
+    [InlineData("bitam_80", 80, 11)]   // the boss glyphs (BossGlyphs); the buff glyphs left "11초" unread here
     [InlineData("bitam_90", 90, 6)]
     [InlineData("bitam_100", 100, 13)]
     [InlineData("bitam_110", 110, 22)]
@@ -441,14 +443,5 @@ public class AmsuReaderTests
         var row = AmsuReader.Locate(strip, scale, HdSlots(100), LineOf(full, scale, HdSlots(100)));
         Assert.Empty(row.Bombs);
         Assert.True(row.Seen);
-    }
-
-    [Fact]
-    public void At_80_percent_the_bomb_is_found_but_its_seconds_stay_unread()
-    {
-        var (strip, scale, text) = HdStrip("bitam_80", 80);
-        var bomb = Assert.Single(Find(strip, scale, HdSlots(80)).Bombs);
-        Assert.Equal(Bomb.빛암, bomb.Kind);
-        Assert.Null(AmsuReader.ReadSeconds(strip, bomb, text));   // "11초" is too small for the glyphs: unread, never wrong
     }
 }

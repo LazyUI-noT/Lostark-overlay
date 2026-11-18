@@ -13,7 +13,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     const string AllClasses = "*";   // 복사 → 대상: every 직업각인 and the template
-    const string CopyHelp = "프로필 복사는 고른 설정을 덮어쓰고, 바로 되돌릴 수 있습니다. 직업각인 복사는 고른 부분만 덮어씁니다. 크기는 파티원 설정에만 있습니다.";
+    const string CopyHelp = "프로필 복사는 고른 설정을 덮어쓰고, 바로 되돌릴 수 있습니다. 직업각인 복사는 복사할 것에서 고른 항목만 덮어씁니다. 크기는 파티원 설정에만 있습니다.";
     static readonly TimeSpan ConfirmWindow = TimeSpan.FromSeconds(5);
 
     readonly CardStack _secCopyLink = new();   // the 전체 view's way in
@@ -88,7 +88,7 @@ public partial class SettingsWindow
     }
 
     /// <summary>What a copy button's second click is for, right under it (it was in the footer, far from the buttons).</summary>
-    static TextBlock ConfirmNote(string text) => new() { Text = text, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) };
+    static TextBlock ConfirmNote(string text) => UiBuild.Muted(new() { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Hair, 0, 0) });
 
     string RunClassCopy(string from, string? target)
     {
@@ -144,10 +144,10 @@ public partial class SettingsWindow
     void FillCopyInspector()
     {
         InspectorHead.Children.Clear();
-        var back = new Button { Content = "← 전체", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, 10), Padding = new(8, 1, 8, 2) };
+        var back = new Button { Content = "← 전체", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 0, 0, Tokens.Space.Block), Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
         back.Click += (_, _) => { _canvas?.Select(null); ShowInspector(null); };
         InspectorHead.Children.Add(back);
-        InspectorHead.Children.Add(new TextBlock { Text = "복사", FontSize = 18, FontWeight = FontWeights.SemiBold });
+        InspectorHead.Children.Add(new TextBlock { Text = "복사", FontSize = Tokens.Font.Section, FontWeight = FontWeights.SemiBold });
         Detach(_secCopy);
         Inspector.Children.Clear();
         Inspector.Children.Add(_secCopy);

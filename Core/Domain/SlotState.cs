@@ -33,6 +33,10 @@ public enum SlotPhase
 /// still pressable): the last flash. Local only.</param>
 /// <param name="StackSkill">The slot has shown a stack count since it was last unreadable. The count is gone at 0 uses,
 /// so this is what tells a stack skill with no use left (drawn grey) from an ordinary cooldown. Sent to the party.</param>
+/// <param name="Charges">Uses left by the stack count (<see cref="Reading.Charges"/>), kept through a re-use lockout.
+/// Local only.</param>
+/// <param name="SpentAt">The last use spent while recharging (<see cref="Cooldown.CooldownTracker.SpentCharge"/>), a cast with no
+/// ready → cooldown edge. Local only.</param>
 public sealed record SlotState(
     SlotId Slot,
     SlotPhase Phase,
@@ -46,7 +50,9 @@ public sealed record SlotState(
     bool CastSeen = true,
     bool Gold = false,
     bool StackSkill = false,
-    TimeSpan? UsedAt = null)
+    TimeSpan? UsedAt = null,
+    int Charges = 0,
+    TimeSpan? SpentAt = null)
 {
     public static SlotState Unknown(SlotId slot) => new(slot, SlotPhase.Unknown, null, null, false, TimeSpan.Zero);
 

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 using GaugeOverlay.App.Services;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
@@ -15,12 +16,13 @@ namespace GaugeOverlay.App.UI;
 /// buttons over one section's form. The Fill methods fill the sections' panels.</summary>
 public partial class SettingsWindow
 {
-    const string AreaOverlay = "내 오버레이", AreaCharacter = "직업 인식", AreaParty = "파티 공유", AreaFit = "화면·인식", AreaKeys = "키·단축키";
-    const string AreaApp = "테마·업데이트", AreaScreens = "표시할 화면", AreaSkills = "스킬창", AreaGauge = "아덴 게이지", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고", AreaPerformance = "시스템 성능";
+    internal const string AreaOverlay = "내 오버레이", AreaCharacter = "직업 인식", AreaParty = "파티 공유", AreaFit = "인게임 설정", AreaDetect = "화면 인식 설정", AreaKeys = "키·단축키";   // 화면·인식's two sections are tabs (rail-split.plan.md)
+    const string AreaApp = "테마·업데이트", AreaSkills = "스킬창", AreaGauge = "아덴 게이지", AreaJudgment = "단심", AreaBuffs = "버프 줄", AreaAmsu = "암수", AreaApi = "로아 API", AreaWarnings = "경고", AreaPerformance = "시스템 성능";
     /// <summary>A form's width at most: rows don't stretch across a wide window (user, 2026-11-05: long blocks sideways).</summary>
-    const double FormMaxWidth = 620;
-    const string SecFit = "스킬창 맞추기";   // not "스킬창": that is the rail's area for the boxes' look
+    const double FormMaxWidth = Tokens.Row.ContentWidth;
+    internal const string SecFit = AreaFit;   // was 스킬창 맞추기; 표시할 화면's rows are here too (reading-place.plan.md A)
     const string FluentDarkNav = "#202020", FluentLightNav = "#F3F3F3";   // the themes that leave the rail to Fluent
+    const string FluentDarkCard = "#2B2B2B", FluentLightCard = "#FBFBFB";   // and their cards
     readonly List<(TextBlock Heading, string Color)> _railHeadings = [];
     readonly Dictionary<string, string> _areaHelp = [];
     const string SecMembers = "파티원 모양";
@@ -48,7 +50,7 @@ public partial class SettingsWindow
     // becomes "vX 받기", and pressing that is the user's go-ahead to download and install.
     static readonly string BaseTitle = $"GaugeOverlay {Updater.CurrentTag} 설정";
     static readonly TimeSpan CheckMessageFor = TimeSpan.FromSeconds(3);
-    readonly Button _update = new() { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 6, 0, 0), Content = "업데이트 확인" };
+    readonly Button _update = new() { HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, Tokens.Space.Gap, 0, 0), Content = "업데이트 확인" };
     Release? _release;
 
     /// <summary>The update button was pressed with a newer release known: download and install it.</summary>
@@ -71,7 +73,7 @@ public partial class SettingsWindow
         _update.IsEnabled = !busy;
         _update.Content = busy ? "업데이트 받는 중…" : _release is { } r ? UpdateLabel(r) : "업데이트 확인";
         _update.ToolTip = !busy && _release is { } b && UpdateCheck.BreaksParty(b.Version, Updater.Current)
-            ? "큰 업데이트입니다. 이전 버전을 쓰는 파티원과는 공유 방을 함께 쓸 수 없으니, 파티원도 모두 업데이트하세요." : null;
+            ? "큰 업데이트입니다. 이전 버전을 쓰는 파티원과는 파티 공유를 함께 쓸 수 없으니, 파티원도 모두 업데이트하세요." : null;
     }
 
     /// <summary>"vX 받기", with a yellow warning triangle in front when the update changes A or B of A.B.x (user, 2026-10-13).</summary>
@@ -80,7 +82,7 @@ public partial class SettingsWindow
         var text = UpdateCheck.IsDowngrade(r, Updater.CurrentTag) ? $"{r.Tag}(안정)으로 되돌리기" : $"{r.Tag} 받기";
         if (!UpdateCheck.BreaksParty(r.Version, Updater.Current)) return text;
         const double Size = 14;
-        var sign = new Grid { Width = Size, Height = Size, Margin = new(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        var sign = new Grid { Width = Size, Height = Size, Margin = new(0, 0, Tokens.Space.Gap, 0), VerticalAlignment = VerticalAlignment.Center };
         sign.Children.Add(new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M 7,0.5 L 13.5,13 L 0.5,13 Z"), Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xC8, 0x00)),
@@ -119,7 +121,6 @@ public partial class SettingsWindow
             new(AreaFavorites, "★를 단 설정을 한곳에서 바꿉니다. 설정 행을 오른쪽 클릭하거나, 검색 결과의 ☆로 답니다.", (AreaFavorites, _secFavorites)),
             new(AreaShow, "오버레이 창을 한눈에 보고 켜고 끕니다. 언제 보일지도 여기서 정합니다.", (AreaShow, _secShow)),
             new(AreaOverlay, ""),
-            new(AreaScreens, "오버레이를 띄울 모니터와 언제 보일지를 정합니다.", (AreaScreens, _secScreens)),
             new(AreaCharacter, "지금 플레이하는 캐릭터와 코어 빌드입니다.", (AreaCharacter, _secCharacter)),
             new(AreaSkills, "스킬 칸을 켜고 끄고, 스킬마다 보이기와 색을 정합니다. 칸 모양은 모든 칸의 쿨 표시입니다.", ("창 구성", _secApart), ("내 스킬", _secSkillList), ("칸 모양", _secSkillLook)),   // 창 구성 first (user, 2026-11-13)
             new(AreaGauge, "아덴 게이지를 읽는 직업각인의 막대입니다. 따로로 하면 자기 창에 그려집니다.", (AreaGauge, GaugeBox)),
@@ -132,12 +133,13 @@ public partial class SettingsWindow
             new(AreaRaid, "보스를 인식하고, 줄 수 창과 디버프 창을 관문마다 켭니다.", ("레이드", _secRaid)),
             new(AreaRecords, "캐릭터마다 저장된 전투를 보고, 열어서 시간 순으로 봅니다. 둘을 골라 비교합니다.", (AreaRecords, _secRecords)),
             new(AreaHomework, "캐릭터마다 이번 주에 클리어한 레이드를 봅니다.", (AreaHomework, _secHomework)),
-            new(AreaFit, "게임 화면의 스킬창을 맞추고, 게임 설정 값을 앱에 알려 줍니다. 감지에서 칸을 눌러 칸마다 읽은 값을 봅니다.", (SecFit, _secFit), (SecDetect, _secDetect)),
+            new(AreaFit, "게임 화면에 스킬창을 맞추고, 게임 설정 값과 오버레이를 띄울 모니터를 정합니다.", (SecFit, _secFit)),
+            new(AreaDetect, "기능마다 게임 화면의 어디를 읽는지 보고, 어긋난 칸을 맞춥니다.", (SecDetect, _secDetect)),
             new(AreaKeys, "게임에서 쓰는 스킬 키와 이 앱의 단축키입니다.", ("게임 키", _secKeys), ("앱 단축키", _secHotkeys)),
             new(AreaApi, "로스트아크 오픈 API 키를 넣으면 캐릭터 정보를 서버에서 직접 받아 옵니다.", (AreaApi, _secApi)),
             new(AreaPerformance, "화면을 읽고 오버레이를 그리는 횟수입니다. 프레임이 떨어지면 낮춰 보세요.", (AreaPerformance, _secPerformance)),
             new(AreaWarnings, "작업 전에 묻는 경고와 Windows 알림을 켜고 끕니다.", (AreaWarnings, _secWarnings)),
-            new(AreaApp, "화면 테마, 업데이트, 전체 초기화, 버프 잠금입니다.", (AreaApp, _secApp)),
+            new(AreaApp, "화면 테마, 애니메이션, 업데이트, 버프 잠금, 전체 초기화입니다.", (AreaApp, _secApp)),
         ];
         _area = _areas.First(a => a.Name == AreaShow);
 
@@ -148,7 +150,7 @@ public partial class SettingsWindow
             bool lone = group.Areas.Count == 1 && group.Areas[0] == group.Name;
             if (group.Name.Length > 0 && !lone)
             {
-                var heading = new TextBlock { Text = group.Name, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new(4, 6, 0, 1) };
+                var heading = new TextBlock { Text = group.Name, FontSize = Tokens.Font.Hint, FontWeight = FontWeights.SemiBold, Margin = new(Tokens.Space.Tight, Tokens.Space.Gap, 0, 0) };
                 if (group.Color.Length > 0) _railHeadings.Add((heading, group.Color));
                 Nav.Children.Add(heading);
             }
@@ -156,8 +158,9 @@ public partial class SettingsWindow
             {
                 var area = _areas.First(a => a.Name == name);
                 var b = Toggle(name, "area", area == _area);
-                b.Margin = new(0, lone ? 8 : 0, 0, 2);
-                b.Padding = new(8, 3, 8, 3);
+                // The item's gap is its own padding (4 + 4, as tall as the old 3 + 3 + 2), so the rail keeps every area in view.
+                b.Margin = new(0, lone ? Tokens.Space.Gap : 0, 0, 0);
+                b.Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight);
                 b.Style = RailRow(b.Style);   // the rail is a list: only the picked row is filled
                 // Full width with the group's bar: the areas read as one list, not as buttons of different widths.
                 var label = AreaLabel(b, name, color, RailOrbsFor(name));   // the dots light when something under it is new (RefreshRailOrbs)
@@ -172,11 +175,9 @@ public partial class SettingsWindow
             _s.Theme, v => { _s.Theme = v; ApplyTheme(); });
         theme.MinWidth = 150;
         _secApp.Children.Add(Wrap(Label("테마"), theme));
+        _secApp.Children.Add(Check("애니메이션", _s.Animations, v => _s.Animations = v, Changed,
+            "끄면 설정 창이 움직임 없이 바로 바뀝니다. 게임 오버레이와 상관없습니다. Windows 애니메이션 효과가 꺼져 있거나 원격 데스크톱이면 늘 꺼집니다."));
         _secApp.Children.Add(_navNote);
-        _secApp.Children.Add(ResetButton("전체 초기화",
-            "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
-            + "캐릭터, 프로필, 창 위치, 배운 게이지 값과 테마는 남습니다.",
-            () => SettingsResets.All(_s)));
         _update.Click += (_, _) =>
         {
             if (_release is { } r) { UpdateRequested?.Invoke(r); return; }
@@ -198,6 +199,11 @@ public partial class SettingsWindow
         _secApp.Children.Add(Wrap(Label("업데이트 채널"), channel));
         _secApp.Children.Add(Check("시작할 때 자동 업데이트", _s.Updates.Check, v => _s.Updates.Check = v, Changed));
         BuildBuffLock();
+        // Last on the page and the last tab stop: a destructive button never comes before the ones used often (ui-audit P2).
+        _secApp.Children.Add(UiBuild.Danger(ResetButton("전체 초기화",
+            "키, 단축키, 오버레이 표시, 버프 막대와 디버프 칸 크기, 아덴 게이지, 클래스별 칸, 파티 설정, 스킬창 맞춤을 되돌립니다. "
+            + "캐릭터, 프로필, 창 위치, 배운 게이지 값과 테마는 남습니다.",
+            () => SettingsResets.All(_s))));
         NavHost.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         NavHost.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
         Root.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
@@ -212,52 +218,81 @@ public partial class SettingsWindow
             RefreshRailOrbs();
         };
         ApplyTheme();
+        Themes.FollowWindows(this, ApplyTheme);
     }
 
     readonly TextBlock _navNote = Note("바꾼 설정은 바로 저장되고 오버레이에도 바로 보입니다. 파티원에게 보내려면 파티 공유 → 보내기·받기에서 따로 보내세요.");
 
     const string BackgroundBrushKey = Themes.BackgroundBrushKey, NavBrushKey = Themes.NavBrushKey;
+    const string NewBrushKey = "GaugeNewBrush", GoesNextBrushKey = "GaugeGoesNextBrush";
 
     void ApplyTheme()
     {
         Themes.Apply(this, _s.Theme);
         PaintRail();
+        ShowNews();   // its dots take their colour when drawn
     }
 
     /// <summary>The group names in their map colours, moved only as far as this theme's rail needs to read them.</summary>
     void PaintRail()
     {
+        PaintRailOrbs();   // LegibleBrush leaves them as they are in high contrast
+        // NEW and the records' ! read these keys, so a theme change repaints them on the page already built (2.1:1 and
+        // 3.4:1 on 밝게 before; ui-audit-2026-11-18).
+        Resources[NewBrushKey] = LegibleBrush(NewColor);
+        Resources[GoesNextBrushKey] = LegibleBrush(GoesNextColor);
         if (SystemParameters.HighContrast)   // Fluent draws the system colours: the headings take them too
         {
             foreach (var (heading, _) in _railHeadings) heading.ClearValue(TextBlock.ForegroundProperty);
             return;
         }
-        var palette = UiPalette.Of(_s.Theme);
-        bool dark = _s.Theme == UiTheme.System ? Themes.AppsDark() : palette.Dark;
-        string nav = palette.Colors.GetValueOrDefault(UiPalette.Nav) ?? (dark ? FluentDarkNav : FluentLightNav);
+        string nav = Surface(UiPalette.Nav);
         foreach (var (heading, color) in _railHeadings)
             heading.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(UiContrast.Legible(color, nav)));
     }
 
+    /// <summary>This theme's <paramref name="surface"/> colour (<see cref="UiPalette.Nav"/>, <see cref="UiPalette.Background"/>
+    /// or <see cref="UiPalette.Card"/>); Fluent's own for the themes that leave it to Fluent (its page is about its rail's).</summary>
+    string Surface(string surface)
+    {
+        var palette = UiPalette.Of(_s.Theme);
+        bool dark = _s.Theme == UiTheme.System ? Themes.AppsDark() : palette.Dark;
+        return palette.Colors.GetValueOrDefault(surface) ?? (surface == UiPalette.Card
+            ? (dark ? FluentDarkCard : FluentLightCard)
+            : (dark ? FluentDarkNav : FluentLightNav));
+    }
+
+    /// <summary>A fixed colour that means something (NEW, the records' !, the news dots), moved only as far as this theme's
+    /// <paramref name="surface"/> needs to read it, as the rail's group names are (ui-audit-2026-11-18, P2). High contrast
+    /// leaves it as it is: Fluent draws the system colours there. <paramref name="colour"/> is opaque: its alpha is dropped.</summary>
+    SolidColorBrush LegibleBrush(Color colour, string surface = UiPalette.Card) => SystemParameters.HighContrast
+        ? new(colour)
+        : new((Color)ColorConverter.ConvertFromString(UiContrast.Legible($"#{colour.R:X2}{colour.G:X2}{colour.B:X2}", Surface(surface))));
+
     /// <summary>Segoe icons (Fluent on Windows 11, MDL2 on 10) for the areas: 사람, 보기, 여러 사람, 키보드.</summary>
     static readonly Dictionary<string, string> AreaIcons = new()
     {
-        [AreaApp] = "\uE713", [AreaScreens] = "\uE7F4", [AreaSkills] = "\uE8FD", [AreaGauge] = "\uE790", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA", [AreaPerformance] = "\uEC4A",
+        [AreaApp] = "\uE713",[AreaSkills] = "\uE8FD", [AreaGauge] = "\uE790", [AreaJudgment] = "\uE916", [AreaBuffs] = "\uE945", [AreaAmsu] = "\uE7C1", [AreaFavorites] = "\uE734", [AreaShow] = "\uE890", [AreaOverlay] = "\uE81E", [AreaCharacter] = "\uE77B", [AreaParty] = "\uE716", [AreaRaid] = "\uE7FC", [AreaMeter] = "\uE9D2", [AreaRecords] = "\uE81C", [AreaHomework] = "\uE9D5",[AreaFit] = "\uE7C5", [AreaDetect] = "\uE7B3", [AreaKeys] = "\uE765", [AreaApi] = "\uE8D7", [AreaWarnings] = "\uE7BA", [AreaPerformance] = "\uEC4A",
     };
+
+    // Under Tokens.Font.Hint on purpose until the word list shortens 레이드's line: at 12 px it clips at the rail's edge,
+    // and wrapped it breaks inside 체력 (screenshots, ui-motion-tokens.plan.md phase 2).
+    const double RailSubtitleSize = 10.5;   // the one exception listed in system.md "Type"
+    const double RailBarWidth = 4;          // twice Radius.Mark, so the bar's ends are round
 
     /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name with
     /// <paramref name="marks"/> right after it (on the name's line, so a two-line tab doesn't push them off the rail).</summary>
     static StackPanel AreaLabel(RadioButton row, string name, Brush? color, IEnumerable<UIElement> marks)
     {
-        var bar = new Border { Width = 3, Height = 16, CornerRadius = new(1.5), Margin = new(0, 0, 8, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+        var bar = new Border { Width = RailBarWidth, Height = 16, CornerRadius = new(Tokens.Radius.Mark), Margin = new(0, 0, Tokens.Space.Gap, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
         var icon = new TextBlock
         {
-            Text = AreaIcons[name], FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14,
-            Margin = new(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+            Text = AreaIcons[name], FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = Tokens.Font.Body,
+            Margin = new(0, 0, Tokens.Space.Gap, 0), VerticalAlignment = VerticalAlignment.Center,
         };
         var text = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center };
         // A tab with a second line (settings-reorg order 6): its name over it, smaller.
-        var subtitle = FeatureMap.RailSubtitles.TryGetValue(name, out var line) ? new TextBlock { Text = line, FontSize = 10.5 } : null;
+        var subtitle = FeatureMap.RailSubtitles.TryGetValue(name, out var line) ? new TextBlock { Text = line, FontSize = RailSubtitleSize } : null;
         var title = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { text } };
         foreach (var mark in marks) title.Children.Add(mark);
         UIElement caption = subtitle is null ? title : new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { title, subtitle } };
@@ -284,7 +319,7 @@ public partial class SettingsWindow
     /// <summary>A section button (or area button): one of a group, drawn as a toggle.</summary>
     RadioButton Toggle(string text, string group, bool on) => new()
     {
-        Content = text, GroupName = group, IsChecked = on, Margin = new(0, 0, 6, 6), Padding = new(12, 6, 12, 6),
+        Content = text, GroupName = group, IsChecked = on, Margin = new(0, 0, Tokens.Space.Gap, Tokens.Space.Gap), Padding = new(Tokens.Space.Block, Tokens.Space.Gap, Tokens.Space.Block, Tokens.Space.Gap),
         Style = TryFindResource(typeof(ToggleButton)) as Style,
     };
 
@@ -294,10 +329,24 @@ public partial class SettingsWindow
         _area = _areas.FirstOrDefault(a => a.Name == area) ?? _area;
         if (section is not null && _area.Sections.Any(s => s.Name == section)) _area.Shown = section;
         foreach (var b in Nav.Children.OfType<RadioButton>()) b.IsChecked = (string)b.Tag == _area.Name;
+        // An area picked from elsewhere (search, 기능 맵, --tab) may sit below the rail's fold: scroll its row into view once laid out.
+        if (Nav.Children.OfType<RadioButton>().FirstOrDefault(b => b.IsChecked == true) is { } row)
+            Dispatcher.BeginInvoke(() => row.BringIntoView(), DispatcherPriority.Loaded);
         ShowArea();
     }
 
+    /// <summary>설정 opened on <paramref name="area"/>: a balloon that names a page, clicked (ui-audit-2026-11-18, P2).</summary>
+    public void OpenAt(string area, string? section = null)
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;   // else the click shows nothing
+        Activate();
+        Go(area, section);
+    }
+
     string? _shownArea;
+    /// <summary>The area and section on screen, to tell a page change from a refill (<see cref="UiMotion.Arrive"/>).</summary>
+    (string, string?)? _shownPage;
 
     /// <summary>The 내 오버레이 canvas is on screen (설정 open, on that page): it draws the overlay windows, so the real ones hide.</summary>
     public bool CanvasShown => IsVisible && _area.Name == AreaOverlay && _canvas is not null;
@@ -312,10 +361,16 @@ public partial class SettingsWindow
         if (_area.Name == AreaRecords && _shownArea != AreaRecords) EnterRecords();   // the list, the current character's chip
         if (_area.Name == AreaHomework) FillHomework();
         _shownArea = _area.Name;
+        // Another page (area or section) moves in; the same page shown again is a refill and stays still. The first page
+        // of a window that just opened doesn't count.
+        (string, string?) page = (_area.Name, _area.Shown);
+        bool newPage = _shownPage is { } last && last != page;
+        _shownPage = page;
         bool canvas = _area.Name == AreaOverlay && _canvas is not null;
         CanvasPage.Visibility = Shown(canvas);
         SectionPage.Visibility = Shown(!canvas);
         CanvasShownChanged?.Invoke();
+        if (newPage) UiMotion.Arrive(canvas ? CanvasPage : SectionPage, UiMotion.PageRise, UiMotion.PageTime);
         if (canvas) { RefreshInspector(); RefreshRailOrbs(); return; }
         StopPlay();
         if (_area.Name == AreaFavorites) FillFavorites();
@@ -330,11 +385,11 @@ public partial class SettingsWindow
     void ShowHeader()
     {
         Header.Children.Clear();
-        Header.Children.Add(Helped(new() { FontSize = 22, FontWeight = FontWeights.SemiBold }, _area.Name, _areaHelp.GetValueOrDefault(_area.Name)));
+        Header.Children.Add(Helped(new() { FontSize = Tokens.Font.Title, FontWeight = FontWeights.SemiBold }, _area.Name, _areaHelp.GetValueOrDefault(_area.Name)));
         Header.Children.Add(Note(_area.Lead));
         if (_area.Sections.Length > 1)
         {
-            var sections = new WrapPanel { Margin = new(0, 4, 0, 0) };
+            var sections = new WrapPanel { Margin = new(0, Tokens.Space.Tight, 0, 0) };
             foreach (var (name, _) in _area.Sections)
             {
                 var b = Toggle(name, "section", name == _area.Shown);

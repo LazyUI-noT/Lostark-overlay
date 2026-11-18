@@ -22,7 +22,7 @@ public partial class SettingsWindow
         if (row is not FormRow form) return row;
         var dot = new Run();
         dot.SetResourceReference(TextElement.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
-        var reset = new Button { Content = "↺", Padding = new(6, 0, 6, 0), Margin = new(4, 2, 0, 2), ToolTip = "기본값으로 되돌립니다." };
+        var reset = new Button { Content = "↺", Padding = new(Tokens.Space.Gap, 0, Tokens.Space.Gap, 0), Margin = new(Tokens.Space.Tight, Tokens.Space.Hair, 0, Tokens.Space.Hair), ToolTip = "기본값으로 되돌립니다." };
         AutomationProperties.SetName(reset, $"{form.LabelText} 기본값으로");
         reset.Click += (_, _) =>
         {

@@ -21,15 +21,31 @@ public class FreeLayoutTests
     }
 
     [Fact]
-    public void The_buff_bars_sit_under_the_grid_in_two_rows_and_resize_alone()
+    public void The_buff_bars_sit_under_the_grid_two_to_a_row_낙인_beside_공증_and_resize_alone()
     {
         var d = FreeLayout.Default(gaugeThickness: 6);
 
         Assert.Equal(new Cell(0, 80, 124, 12), d[Part.버프공증]);
-        Assert.Equal(new Cell(126, 80, 124, 12), d[Part.버프아덴]);
-        Assert.Equal(new Cell(0, 94, 124, 12), d[Part.버프초각]);
-        Assert.Equal(new Cell(126, 94, 124, 12), d[Part.버프뎀증]);
+        Assert.Equal(new Cell(126, 80, 124, 12), d[Part.버프낙인]);
+        Assert.Equal(new Cell(0, 94, 124, 12), d[Part.버프아덴]);
+        Assert.Equal(new Cell(126, 94, 124, 12), d[Part.버프초각]);
+        Assert.Equal(new Cell(0, 108, 124, 12), d[Part.버프뎀증]);
         Assert.Equal([Part.버프아덴], FreeLayout.Linked(Part.버프아덴).Parts);
+    }
+
+    [Fact]
+    public void A_layout_saved_before_낙인_gets_it_under_its_lowest_bar()
+    {
+        var fallback = FreeLayout.Default(gaugeThickness: 6);
+        var saved = new Dictionary<Part, Cell>
+        {
+            [Part.일반1] = new(0, 0, 34, 34),
+            [Part.버프공증] = new(10, 40, 100, 12), [Part.버프아덴] = new(120, 40, 100, 12), [Part.버프뎀증] = new(10, 54, 100, 12),
+        };
+        Assert.Equal(new Cell(10, 68, 100, 12), FreeLayout.CellOf(saved, Part.버프낙인, fallback));
+        Assert.Equal(saved[Part.버프아덴], FreeLayout.CellOf(saved, Part.버프아덴, fallback));
+        Assert.Equal(fallback[Part.일반2], FreeLayout.CellOf(saved, Part.일반2, fallback));
+        Assert.Equal(fallback[Part.버프낙인], FreeLayout.CellOf(new Dictionary<Part, Cell>(), Part.버프낙인, fallback));
     }
 
     [Fact]

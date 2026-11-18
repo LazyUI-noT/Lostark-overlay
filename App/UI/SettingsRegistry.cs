@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media.Animation;
 using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
@@ -9,8 +8,6 @@ namespace GaugeOverlay.App.UI;
 sealed class SettingsRegistry
 {
     sealed record Row(SettingEntry Entry, UIElement Element, Func<UIElement>? Build, Action Navigate);
-
-    const double FlashSeconds = 1;
 
     readonly List<Row> _rows = [];
     readonly Dictionary<string, Row> _byId = [];
@@ -34,6 +31,8 @@ sealed class SettingsRegistry
         return row.Entry;
     }
 
+    public UIElement? ElementOf(string id) => _byId.GetValueOrDefault(id)?.Element;
+
     public SettingEntry? Find(string id) => _byId.GetValueOrDefault(id)?.Entry;
 
     /// <summary>The rows on screen whose key (<see cref="RailNews.RowKey"/>) is one of <paramref name="keys"/>: the new ones to mark.</summary>
@@ -52,7 +51,7 @@ sealed class SettingsRegistry
         f.Dispatcher.BeginInvoke(() =>
         {
             f.BringIntoView();
-            f.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromSeconds(FlashSeconds)) { FillBehavior = FillBehavior.Stop });
+            UiMotion.Flash(f);
             if (f.Focusable) f.Focus();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
     }

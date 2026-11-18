@@ -25,7 +25,7 @@ public partial class SettingsWindow
         var p = Refill(_secConnect, "세션", "호스트를 포함해 8명까지 참가할 수 있고, 참가 코드로 연결합니다. 호스트는 공유기에서 이 UDP 포트를 열어 두어야 합니다.");
         bool inSession = _partyStatus is not null;
         bool connecting = _partyStatus is "연결 중…" or "승인 기다리는 중…" or "다시 연결 중…";
-        p.Children.Add(Row("상태", Label(_partyStatus ?? "연결 안 됨")));
+        p.Children.Add(Row("상태", Value(_partyStatus ?? "연결 안 됨")));
         var port = new TextBox { Text = party.HostPort.ToString(), Width = 90, IsEnabled = !inSession };
         var portWarn = new TextBlock { Text = "포트는 1–65535 사이의 숫자여야 합니다", Visibility = Visibility.Collapsed };
         portWarn.SetResourceReference(TextBlock.ForegroundProperty, CautionBrushKey);
@@ -41,13 +41,16 @@ public partial class SettingsWindow
         // The pasted token outlives the rebuilds a status change makes, so a failed join can be retried as is.
         var token = new PasswordBox { Width = 240, IsEnabled = !inSession, Password = _joinToken };
         var join = new Button { Content = connecting ? "연결 중…" : "참가", IsEnabled = !inSession && _joinToken.Trim().Length > 0 };
+        var joinWhy = Why("참가 코드를 넣으면 켜집니다.", !inSession && !join.IsEnabled);
         token.PasswordChanged += (_, _) =>
         {
             _joinToken = token.Password;
             join.IsEnabled = !inSession && _joinToken.Trim().Length > 0;
+            joinWhy.Visibility = !inSession && !join.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
         };
         join.Click += (_, _) => { if (_joinToken.Trim().Length > 0) JoinRequested?.Invoke(_joinToken.Trim()); };
         p.Children.Add(Row("참가 코드", token, join));
+        p.Children.Add(joinWhy);
         if (inSession)
         {
             var leave = new Button { Content = "나가기" };
@@ -56,7 +59,7 @@ public partial class SettingsWindow
             copy.Click += (_, _) => CopyTokenRequested?.Invoke();
             p.Children.Add(Row("", copy, leave));
         }
-        if (_partyNotice is { } notice) p.Children.Add(new TextBlock { Text = notice, TextWrapping = TextWrapping.Wrap, Margin = new(0, 4, 0, 8) });
+        if (_partyNotice is { } notice) p.Children.Add(new TextBlock { Text = notice, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Gap) });
 
         AdmissionRows(p);
 
@@ -67,7 +70,7 @@ public partial class SettingsWindow
         name.TextChanged += (_, _) => { party.DisplayName = PlayerName.Clip(name.Text); Changed(); };
         name.LostKeyboardFocus += (_, _) => name.Text = party.DisplayName;
         p.Children.Add(Row(Described("표시 이름", "한글 7자, 영문 14자까지. 파티원 화면에서 클래스 아이콘 아래에 보입니다."), name));
-        p.Children.Add(ResetButton("기본값", "파티 공유의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
+        p.Children.Add(ResetButton("기본값으로", "파티 공유의 모든 설정(표시, 순서, 역할 색, 보내기·받기, 포트)을 되돌립니다. 표시 이름과 파티원 창의 위치는 남습니다.",
             () => SettingsResets.Party(_s)));
     }
 
@@ -77,10 +80,10 @@ public partial class SettingsWindow
         var party = _s.Party;
         p.Children.Add(Heading("참가 요청"));
         p.Children.Add(Check("참가 승인제", party.ApproveJoins, v => party.ApproveJoins = v, Changed, "켜면, 내가 호스트일 때 처음 보는 기기가 참가하려 하면 화면 오른쪽 아래에 허용·거절 창이 뜹니다. 허용한 기기는 아래 신뢰한 기기에 남아 다음부터 묻지 않습니다. 끄면 참가 코드가 있는 사람은 누구나 참가합니다."));
-        if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰 기기", Label("없음", 0.7)));
+        if (party.TrustedDevices.Count == 0) p.Children.Add(Row("신뢰 기기", Value("없음")));
         foreach (var trusted in party.TrustedDevices.ToList())
         {
-            var remove = new Button { Content = "삭제", ToolTip = "이 기기가 다음에 참가할 때 다시 묻습니다." };
+            var remove = UiBuild.Danger(new Button { Content = "삭제", ToolTip = "이 기기가 다음에 참가할 때 다시 묻습니다." });
             remove.Click += (_, _) =>
             {
                 party.TrustedDevices.RemoveAll(t => t.Device == trusted.Device);
@@ -104,7 +107,7 @@ public partial class SettingsWindow
         var party = _s.Party;
         // party members are per class: a 직업각인 picked shows its class's
         string cls = ClassProfiles.Parent(ShownClass) is { } parent && parent != ClassProfiles.Template ? parent : ShownClass;
-        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})", "이 클래스 파티원의 칸입니다. '내 설정 적용'을 켠 부분은 내 오버레이 → 스킬 칸의 '나' 설정을 그대로 씁니다. 지금 캐릭터가 같은 클래스면 그 직업각인의 것, 아니면 마지막으로 플레이한 직업각인의 것입니다. 아래 파티원 설정은 지워지지 않습니다.");
+        var p = Refill(_secMembers, $"파티원 ({ClassName(cls)})", "이 클래스 파티원의 칸입니다. '내 설정 적용'에서 켠 색·표시·크기는 내 오버레이 → 스킬 칸의 '나' 설정을 그대로 씁니다. 지금 캐릭터가 같은 클래스면 그 직업각인의 것, 아니면 마지막으로 플레이한 직업각인의 것입니다. 아래 파티원 설정은 지워지지 않습니다.");
         if (cls != ShownClass && ClassPicker.SharedPartyNote(_chars.Classes.FirstOrDefault(c => c.Name == cls)) is { } shared) p.Children.Add(Note(shared));
         MembersPart(p, ClassProfiles.Of(_s, cls), () => ClassProfiles.Edit(_s, cls), ClassProfiles.Of(_s, ShownClass).Mine);
 
@@ -136,7 +139,7 @@ public partial class SettingsWindow
         for (int i = 0; i < PeerSlots; i++)
         {
             string? who = i < _partyOrder.Length ? _partyOrder[i] : null;
-            var cells = new List<UIElement> { Label(who ?? "(비어 있음)", 0.7) };
+            var cells = new List<UIElement> { Value(who ?? "(비어 있음)") };
             if (_isHost && who is not null)
             {
                 var kick = new Button { Content = "내보내기", ToolTip = "이 파티원을 내보냅니다. 이번 세션에는 다시 참가할 수 없고(연결 → 다시 허용으로 풀 수 있음), 신뢰한 기기에서도 빠집니다." };
@@ -179,7 +182,8 @@ public partial class SettingsWindow
         var update = new Button { Content = "업데이트", IsEnabled = InParty,
             ToolTip = "지금 쓰는 색, 칸 크기, 칸 배치를 파티원에게 다시 보냅니다." };
         update.Click += (_, _) => LookUpdateRequested?.Invoke();
-        p.Children.Add(Row(Described("내 모양 보내기", InParty ? "색, 칸 크기, 칸 배치" : "공유 방에 있을 때 쓸 수 있습니다"), update));
+        p.Children.Add(Row(Described("내 모양 보내기", "색, 칸 크기, 칸 배치"), update));
+        if (!InParty) p.Children.Add(Why("파티 공유 중일 때 쓸 수 있습니다.", true));
         var send = new List<UIElement>();
         foreach (var g in Enum.GetValues<SlotGroup>())
             send.Add(Check(g.ToString(), party.Send.GetValueOrDefault(g, true), v => party.Send[g] = v, Changed));
@@ -188,7 +192,7 @@ public partial class SettingsWindow
         p.Children.Add(Row("", Check("내 피해량 보내기 (DPS 미터기)", _s.Meter.Send, v => _s.Meter.Send = v, () => { Changed(); FillMeter(); },
             "1초마다 내 피해량(서포터는 조력 피해량)과 DPS를 파티원에게 보냅니다. 끄면 파티원의 수치도 못 받습니다. DPS 미터기에 있는 스위치와 같습니다.")));
 
-        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 공유 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에만 씁니다. 크기와 배치는 아래를 켰을 때만 쓰며, 내가 정한 파티원 칸 크기 안에 비율을 유지해 맞추므로 파티원 창이 커지지 않습니다."));
+        p.Children.Add(Heading("파티원에게서 받기", help: "색은 파티 공유 → 파티원 모양에서 '파티원 설정 받기'를 고른 클래스에만 씁니다. 크기와 배치는 아래를 켰을 때만 씁니다. 내가 정한 파티원 칸 크기 안에 비율을 지켜 맞추므로 파티원 창은 커지지 않습니다."));
         p.Children.Add(Check("파티원 크기 받기", party.ReceiveSize, v => party.ReceiveSize = v, Changed));
         p.Children.Add(Check("배치 받기", party.ReceiveLayout, v => party.ReceiveLayout = v, Changed));
     }

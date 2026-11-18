@@ -14,6 +14,10 @@ public static class Themes
     public const string BackgroundBrushKey = "SettingsBackgroundBrush", NavBrushKey = "SettingsNavBrush";
     public const string CardBrushKey = "CardBackgroundFillColorDefaultBrush", StrokeBrushKey = "CardStrokeColorDefaultBrush";
 
+    /// <summary>The app's own state colours, set in every theme (<see cref="UiPalette.States"/>): not Fluent's keys, which
+    /// Fluent's own controls also draw with.</summary>
+    public const string DisabledBrushKey = "SettingsDisabledBrush", DangerBrushKey = "SettingsDangerBrush";
+
     /// <summary>Which resources each palette colour sets: the window's own, and the Fluent ones the controls draw with.
     /// The Fluent styles read the control keys (ToggleButtonBackgroundChecked…) dynamically but the Accent* brushes
     /// they point at statically, so the accent is set on the control keys.</summary>
@@ -60,9 +64,61 @@ public static class Themes
                 if (palette.Colors.TryGetValue(key, out var hex) && UiColor.TryParse(hex) is { } c)
                     window.Resources[brush] = new SolidColorBrush(c);
                 else window.Resources.Remove(brush);
-        FeatureMapView.SetTheme(window.Resources, theme == UiTheme.System ? AppsDark() : palette.Dark);
+        bool dark = theme == UiTheme.System ? AppsDark() : palette.Dark;
+        SetStates(window.Resources, theme, dark);
+        FeatureMapView.SetTheme(window.Resources, dark);
         window.FontFamily = Pretendard;
         root?.SetResourceReference(Panel.BackgroundProperty, BackgroundBrushKey);
+    }
+
+    /// <summary>Fluent's keys for disabled text (all Fluent's TextFillColorDisabled, white or black at 36 %: too faint, system.md
+    /// "States"). The styles read these dynamically, so setting them here reaches Fluent's own disabled controls.</summary>
+    static readonly string[] FluentDisabledText =
+    [
+        "TextFillColorDisabledBrush", "ButtonForegroundDisabled", "RepeatButtonForegroundDisabled", "ToggleButtonForegroundDisabled",
+        "HyperlinkButtonForegroundDisabled", "HyperlinkForegroundDisabled", "CardForegroundDisabled", "CheckBoxForegroundUncheckedDisabled",
+        "RadioButtonForegroundDisabled", "ComboBoxForegroundDisabled", "ComboBoxDropDownGlyphForegroundDisabled", "TextControlForegroundDisabled",
+        "ToggleSwitchContentForegroundDisabled", "ExpanderHeaderDisabledForeground", "DataGridHeaderForegroundDisabled",
+        "FrameMenuItemForegroundDisabled", "StatusBarItemForegroundDisabled", "TimePickerButtonForegroundDisabled",
+    ];
+
+    /// <summary>Disabled and Danger: the theme's own, or in Windows' high contrast the system's colours, which Fluent's keys
+    /// are then left to (as the palette's are).</summary>
+    static void SetStates(ResourceDictionary resources, UiTheme theme, bool dark)
+    {
+        if (SystemParameters.HighContrast)
+        {
+            resources[DisabledBrushKey] = SystemColors.GrayTextBrush;
+            resources[DangerBrushKey] = SystemColors.WindowTextBrush;
+            foreach (var key in FluentDisabledText) resources.Remove(key);
+            return;
+        }
+        var (disabled, danger) = UiPalette.States(theme, dark);
+        var disabledBrush = Frozen(UiColor.Parse(disabled, Colors.Gray));
+        resources[DisabledBrushKey] = disabledBrush;
+        resources[DangerBrushKey] = Frozen(UiColor.Parse(danger, Colors.IndianRed));
+        foreach (var key in FluentDisabledText) resources[key] = disabledBrush;
+    }
+
+    /// <summary>Calls <paramref name="reapply"/> when Windows' light/dark or colours change while <paramref name="window"/> is
+    /// open: 테마 = Windows 설정 따름 resolves Disabled, Danger and the map's colours at <see cref="Apply"/>, not live.</summary>
+    public static void FollowWindows(Window window, Action reapply)
+    {
+        void OnChanged(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+        {
+            // Light/dark arrives as General (ImmersiveColorSet); high contrast as Color.
+            if (e.Category is Microsoft.Win32.UserPreferenceCategory.General or Microsoft.Win32.UserPreferenceCategory.Color)
+                window.Dispatcher.BeginInvoke(reapply);
+        }
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnChanged;   // a static event: 설정 only hides, so this lasts until the app exits (one window, cheap)
+        window.Closed += (_, _) => Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnChanged;
+    }
+
+    static SolidColorBrush Frozen(Color c)
+    {
+        var brush = new SolidColorBrush(c);
+        brush.Freeze();
+        return brush;
     }
 
     /// <summary>Windows' "앱 모드: 어둡게" (Settings → 개인 설정 → 색), which "Windows 설정 따름" follows. Unreadable: light.</summary>

@@ -33,8 +33,8 @@ public partial class SettingsWindow
     bool Warn(WarningKind kind, string message)
     {
         if (_s.MutedWarnings.Contains(kind)) return true;
-        var mute = new CheckBox { Content = "다시 보지 않기", Margin = new(0, 14, 0, 0) };
-        var ok = new Button { Content = "확인", IsDefault = true, MinWidth = 80, Margin = new(0, 0, 8, 0) };
+        var mute = new CheckBox { Content = "다시 보지 않기", Margin = new(0, Tokens.Space.Block, 0, 0) };
+        var ok = new Button { Content = "확인", IsDefault = true, MinWidth = 80, Margin = new(0, 0, Tokens.Space.Gap, 0) };
         var cancel = new Button { Content = "취소", IsCancel = true, MinWidth = 80 };
         var dialog = new Window
         {
@@ -42,12 +42,12 @@ public partial class SettingsWindow
             ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false,
             Content = new StackPanel
             {
-                Margin = new(20),
+                Margin = new(Tokens.Space.Section),
                 Children =
                 {
                     new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
                     mute,
-                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new(0, 16, 0, 0), Children = { ok, cancel } },
+                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new(0, Tokens.Space.Card, 0, 0), Children = { ok, cancel } },
                 },
             },
         };

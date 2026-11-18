@@ -13,6 +13,13 @@ public static class DetectPlace
     /// <summary>The boxes 위치 조정 moves, in <see cref="AdjustPart"/> order.</summary>
     public static readonly string[] Movable = ["skill", "buff", DebuffRow, "amsu", "g-jeonbun"];
 
+    /// <summary>The 기능 맵's read chips (rail-split.plan.md 4): every box on 화면 인식 설정, in this order, with a short name.</summary>
+    public static readonly (string Id, string Short)[] Chips =
+    [
+        ("skill", "스킬창"), ("buff", "버프"), (DebuffRow, "디버프"), ("aden", "아덴"), ("judg", "단심"), ("char", "캐릭터"),
+        ("g-jeonbun", "전분"), ("boss", "보스 HP"), ("amsu", "암수"), ("dungeon", "콘텐츠"),
+    ];
+
     /// <summary>The table's row groups.</summary>
     public const string Slots = "슬롯", Buffs = "버프", Debuffs = "디버프", Boss = "보스";
 

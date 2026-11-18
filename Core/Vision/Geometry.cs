@@ -69,6 +69,17 @@ public static class Geometry
             (int)Math.Round(JeonbunReader.RefW * s), (int)Math.Round(JeonbunReader.RefH * s));
     }
 
+    /// <summary>The 전분 panel's scale at <paramref name="spot"/>: its height over the 1080p panel's, as the panel keeps its height
+    /// whatever its columns (status/decisions.md, "전분 with any column choice"). A spot the finder cut short at the game area's
+    /// bottom (shorter there than the panel at the screen's height) or one with no height gives the screen's height instead; a
+    /// whole panel touching the bottom (a zoomed video in 테스트 모드) keeps its own.</summary>
+    public static double PanelScale(PixelRect spot, Viewport vp)
+    {
+        double screen = vp.Height / ReferenceHeight;
+        bool cut = spot.Bottom >= vp.Y + vp.Height && spot.Height < JeonbunReader.RefH * screen;
+        return spot.Height <= 0 || cut ? screen : spot.Height / JeonbunReader.RefH;
+    }
+
     /// <summary>The game's forced 21:9: 64:27 in fact (1920×810, 3840×1620).</summary>
     public const double ForcedWide = 64.0 / 27;
 
@@ -96,7 +107,7 @@ public static class Geometry
     /// <summary>How many buff boxes 설정 lets the row read (<see cref="BuffSettings.Count"/>; <see cref="BuffBoxCount"/> by default).
     /// The game draws as many as fit and folds the rest into a "+N" icon: 10 at 1080p, buff 120% (mordum.png), 14 at buff 100%
     /// in an 810-high game area (4k_down.mp4).</summary>
-    public const int MinBuffBoxCount = 1, MaxBuffBoxCount = 14;
+    public const int MinBuffBoxCount = 1;
     /// <summary>심판's icon can sit further along the row than the party buffs (user, 2026-10-13).</summary>
     public const int JudgmentBoxCount = 10;
     const double RefBuffRight = 845, BuffBottomAboveBaseline = 15;
@@ -159,10 +170,6 @@ public static class Geometry
         })];
     }
 
-    /// <summary>The guide lines over a row of <paramref name="boxes"/> (buff or debuff, any order): the x of every edge between two
-    /// boxes and of both ends (the timer cells, a pitch wide, tile the row), and the y where the icons end and the timers begin.</summary>
-    public static (int[] Columns, int IconBottom) RowGrid(IReadOnlyList<BuffBox> boxes) =>
-        ([.. boxes.Select(b => b.Timer.X).Append(boxes.Max(b => b.Timer.Right)).Distinct().Order()], boxes[0].Icon.Bottom);
 
     /// <summary>The one rect to capture for the buff row: every box and timer, of the first <paramref name="count"/> boxes.</summary>
     public static PixelRect BuffArea(Viewport vp, Fit fit, int buffSize, int count = BuffBoxCount)
@@ -252,44 +259,133 @@ public static class Geometry
             (int)Math.Round(r.Width * s), (int)Math.Round(r.Height * s));
     }
 
-    /// <summary>The most icons the boss debuff zone shows before folding the rest into "+N": 14 at 보스 디버프 크기 100% and under,
-    /// 12 at 110%, 10 at 120% (user, 2026-11-01).</summary>
-    public static int MaxBossDebuffs(int bossSize) => bossSize > 110 ? 10 : bossSize > 100 ? 12 : 14;
+    /// <summary>The most icons a buff row shows before folding the rest into "+N", by the game's size (버프 크기, 타겟 UI 버프 크기):
+    /// 17 at 80%, 15 at 90%, 14 at 100%, 13 at 110%, 12 at 120% (user, 2026-11-18; the boss row was 14/12/10 before). A size between
+    /// presets takes the next one up (bigger icons fit fewer), under 80 the most, over 120 the least.</summary>
+    public static int MaxIcons(int size)
+    {
+        foreach (var (preset, most) in IconTable)
+            if (size <= preset) return most;
+        return IconTable[^1].Most;
+    }
 
-    /// <summary>The most slots at any size (100% and under): 감지 개수's top, which caps nothing.</summary>
-    public const int MaxBossSlots = 14;
+    static readonly (int Size, int Most)[] IconTable = [(80, 17), (90, 15), (100, 14), (110, 13), (120, 12)];
 
-    /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 보스 디버프 크기
+    /// <summary>The most icons at any size (80% and under): 감지 개수's top, which caps nothing.</summary>
+    public const int MaxIconsAny = 17;
+
+    /// <summary>The game's fewest 버프 표시 / 타겟 UI 버프 표시.</summary>
+    public const int MinShown = 10;
+
+    /// <summary>The icons a row holds: the game's 표시 count <paramref name="chosen"/> (null: the size's most), never over what the size fits.</summary>
+    public static int Shown(int size, int? chosen) => Math.Min(chosen ?? MaxIcons(size), MaxIcons(size));
+
+    /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 타겟 UI 버프 크기
     /// (x 927–929 at 1080p on the 빛암 clips, which are HUD 110; x 1250 on the 21:9 clip at HUD 100) while the boss's buffs grow
     /// to its left.</summary>
     const int RefFirstBossDebuffX = 928;
 
     /// <summary>The boss debuff zone inside <see cref="BossDebuffStrip"/>: where its first slot starts, and how many it reads: what the
     /// size shows, or fewer with <paramref name="count"/> (감지 개수). The strip is cut the same either way.</summary>
-    public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize, int count = MaxBossSlots) =>
-        new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, Math.Clamp(count, 1, MaxBossDebuffs(bossSize)));
+    public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize, int? shown = null, int count = MaxIconsAny)
+    {
+        int most = Shown(bossSize, shown);
+        return new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, most, Identify: Math.Clamp(count, 1, most));
+    }
 
     /// <summary>The boss debuff zone's first icon's left edge on screen (<see cref="RefFirstBossDebuffX"/>): the 암수 walk starts there.</summary>
     public static int FirstBossDebuffX(Viewport vp, Fit fit) =>
         (int)Math.Round(vp.X + vp.Width / 2.0 + (RefFirstBossDebuffX - RefCenterX) * Scale(vp, fit) + fit.BossShift.X);
 
     /// <summary>The 암수 strip: the boss debuff row and the "N초" under it, no taller. The row's top is set by the HUD and the
-    /// resolution only (its icons grow downward with 보스 디버프 크기; 21:9 the same: the clips, 2026-11-03), so it is placed, not
+    /// resolution only (its icons grow downward with 타겟 UI 버프 크기; 21:9 the same: the clips, 2026-11-03), so it is placed, not
     /// searched for: <see cref="BossDebuffLine"/> px from the top, with <see cref="BossLineSnap"/> px either side for a snap.
-    /// Across: from <see cref="BossRow"/>'s left out to the last debuff slot the size shows at the row's measured spacing.</summary>
+    /// Across: <see cref="RefBossRow"/> at <see cref="BossScale"/> about <see cref="BossSlashX"/> (not <see cref="BossRow"/>'s slash,
+    /// which drifts off HUD 110), out to the last debuff slot the size shows at the row's measured spacing.</summary>
     public static PixelRect BossDebuffStrip(Viewport vp, Fit fit, int bossSize = RefBossSize)
     {
-        var r = BossRow(vp, fit, bossSize);
         double s = BossScale(vp, fit, bossSize), pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
-        int right = Math.Max(r.Right, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxBossDebuffs(bossSize) * pitch + SlotPad * s));
+        double slash = BossSlashX(vp, fit);
+        int left = (int)Math.Round(slash - BossAxis * s), rowRight = (int)Math.Round(slash + (RefBossRow.Width - BossAxis) * s);
+        int right = Math.Max(rowRight, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxIcons(bossSize) * pitch + SlotPad * s));
         int top = BossIconTopY(vp, fit) - BossDebuffLine;
         double icon = DebuffReader.BossIconSize * s, text = BossTimerBelow * BuffScale(vp, bossSize);
         int bottom = (int)Math.Ceiling(BossIconTopY(vp, fit) + icon + text) + BossLineSnap + 1;
-        return new(r.X, top, right - r.X, bottom - top);
+        return new(left, top, right - left, bottom - top);
     }
+
+    /// <summary>The boss debuff zone's slots the size shows, each icon (<see cref="DebuffReader.BossIconSize"/> at
+    /// <see cref="BossScale"/>, from <see cref="FirstBossDebuffX"/> at the strip's spacing) and its timer box under it. Follows the
+    /// resolution and ratio (centre), HUD 크기 and 타겟 UI 버프 크기, as <see cref="BossDebuffStrip"/> does.</summary>
+    public static IReadOnlyList<(PixelRect Icon, PixelRect Timer)> BossDebuffSlots(Viewport vp, Fit fit, int bossSize)
+    {
+        double s = BossScale(vp, fit, bossSize), pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
+        int first = FirstBossDebuffX(vp, fit), top = BossIconTopY(vp, fit), side = (int)Math.Round(DebuffReader.BossIconSize * s);
+        int text = (int)Math.Round(BossTimerBelow * BuffScale(vp, bossSize));
+        return [.. Enumerable.Range(0, MaxIcons(bossSize)).Select(i => (int)Math.Round(first + i * pitch))
+            .Select(x => (new PixelRect(x, top, side, side), new PixelRect(x, top + side, side, text)))];
+    }
+
+    /// <summary>The boss's own buffs' slots: <see cref="BossDebuffSlots"/> (icon and the timer box under it) mirrored about the slash,
+    /// as the game grows them left from it, as many as <see cref="BossDebuffStrip"/> holds. The slash is <see cref="BossSlashX"/>.
+    /// Only drawn (위치 조정 and the page's grid), not read: the 모르둠 count reads the boss buff zone itself; the timer row is
+    /// there for a later read (user, 2026-11-18). Follows what the debuff slots follow.</summary>
+    public static IReadOnlyList<(PixelRect Icon, PixelRect Timer)> BossBuffSlots(Viewport vp, Fit fit, int bossSize)
+    {
+        var strip = BossDebuffStrip(vp, fit, bossSize);
+        double axis = BossSlashX(vp, fit);
+        return [.. BossDebuffSlots(vp, fit, bossSize)
+            .Select(s => (X: (int)Math.Round(2 * axis - s.Icon.Right), Slot: s))
+            .TakeWhile(m => m.X >= strip.X)
+            .Select(m => (m.Slot.Icon with { X = m.X }, m.Slot.Timer with { X = m.X }))];
+    }
+
+    /// <summary>Reference px from the slash to the first debuff's left edge at HUD 110 (<see cref="RefFirstBossDebuffX"/> against
+    /// <see cref="RefBossRow"/>'s slash at x 919).</summary>
+    const double SlashToFirstDebuff = RefFirstBossDebuffX - 919;
+
+    /// <summary>The slash on screen, <see cref="SlashToFirstDebuff"/> left of <see cref="FirstBossDebuffX"/>: both stay put at any
+    /// 타겟 UI 버프 크기, so the gap is the game's boss scale, not the size's. Follows the resolution and ratio, HUD 크기 and the shift.</summary>
+    public static double BossSlashX(Viewport vp, Fit fit) => FirstBossDebuffX(vp, fit) - SlashToFirstDebuff * GameBossScale(vp, fit);
 
     /// <summary>Reference px past the last debuff slot.</summary>
     const int SlotPad = 12;
+
+    // ── 대난투 (그림자 레이드) ─────────────────────────────────────────────────────────────────────────────────────────────
+    // The boss bar gives way to the gimmick's fill bar and the boss debuff row moves under it: centred on the screen (its start
+    // moves with the icon count), its icons the 100% size, 36 px apart (26 px frames, a 10 px gap), their top at 207. Measured
+    // on serka-shadow (1080p, HUD 110, 타겟 UI 버프 크기 120: the usual row there has 33 px frames). Follows the HUD and the
+    // resolution from the top centre, as the boss row does.
+    // ponytail: one clip measured; other HUD sizes, 21:9 and whether it follows 타겟 UI 버프 크기 are unchecked (HANDOFF).
+
+    /// <summary>The boss debuff size 대난투's row shows at, whatever 타겟 UI 버프 크기 says (serka-shadow).</summary>
+    public const int DaenantuBossSize = 100;
+    const double RefDaenantuIconTop = 207, RefDaenantuCentreX = 958.5, RefDaenantuPitch = 36;
+
+    static double DaenantuCentreX(Viewport vp, Fit fit) => vp.X + vp.Width / 2.0 + (RefDaenantuCentreX - RefCenterX) * Scale(vp, fit);
+
+    /// <summary>대난투's boss debuff row and the timer text under it, <see cref="BossDebuffLine"/> px under the strip's top as
+    /// <see cref="BossDebuffStrip"/>, as wide as the most slots centred on the screen.</summary>
+    public static PixelRect DaenantuDebuffStrip(Viewport vp, Fit fit)
+    {
+        double k = Scale(vp, fit), s = BossScale(vp, fit, DaenantuBossSize), cx = DaenantuCentreX(vp, fit);
+        double half = MaxIcons(DaenantuBossSize) / 2.0 * RefDaenantuPitch * k + SlotPad * s;
+        int iconTop = (int)Math.Round(vp.Y + RefDaenantuIconTop * k) + fit.BossShift.Y;
+        int top = iconTop - BossDebuffLine, left = (int)Math.Floor(cx - half) + fit.BossShift.X;
+        double icon = DebuffReader.BossIconSize * s, text = BossTimerBelow * BuffScale(vp, DaenantuBossSize);
+        int bottom = (int)Math.Ceiling(iconTop + icon + text) + BossLineSnap + 1;
+        return new(left, top, (int)Math.Ceiling(2 * half), bottom - top);
+    }
+
+    /// <summary>대난투's slots in <see cref="DaenantuDebuffStrip"/>: centred (the walk starts at the first debuff left of the
+    /// centre), the frames' gap in reference px.</summary>
+    public static BossSlots DaenantuSlotsIn(Viewport vp, Fit fit)
+    {
+        double s = BossScale(vp, fit, DaenantuBossSize);
+        int centre = (int)Math.Round(DaenantuCentreX(vp, fit)) + fit.BossShift.X - DaenantuDebuffStrip(vp, fit).X;
+        int gap = (int)Math.Round(RefDaenantuPitch * Scale(vp, fit) / s) - DebuffReader.BossIconSize;
+        return new(centre, MaxIcons(DaenantuBossSize), gap, Centred: true);
+    }
 
     /// <summary>The row's line (the icons' top) in <see cref="BossDebuffStrip"/>, strip px: room for the walk's row above it
     /// and the snap.</summary>
@@ -303,7 +399,7 @@ public static class Geometry
 
     /// <summary>The boss debuff icons' top on screen: <see cref="RefBossRow"/>'s icon line at the HUD's scale from the top
     /// (169 at 1080p, HUD 110), as <see cref="BossRow"/> places it.</summary>
-    static int BossIconTopY(Viewport vp, Fit fit) =>
+    public static int BossIconTopY(Viewport vp, Fit fit) =>
         (int)Math.Round(vp.Y + (RefBossRow.Y + DebuffReader.BossIconTop) * Scale(vp, fit)) + fit.BossShift.Y;
 
     // ── Boss HP bar (project B) ─────────────────────────────────────────────────────────────────────────────────────
@@ -418,6 +514,16 @@ public static class Geometry
         double s = vp.Height / ReferenceHeight, left = vp.X + vp.Width / 2.0 - ReferenceHeight * 16 / 9 / 2 * s;
         return new((int)Math.Round(left + RefLoadingBar.X * s), (int)Math.Round(vp.Y + RefLoadingBar.Y * s),
             (int)Math.Round(RefLoadingBar.Width * s), (int)Math.Round(RefLoadingBar.Height * s));
+    }
+
+    /// <summary>던전 알아보기's panel ("N막 : name", [난이도], the gates, 재시작) at 1080p from the game area's top-left.</summary>
+    public static readonly PixelRect RefDungeonPanel = new(0, 25, 450, 230);
+
+    /// <summary>The 던전 panel on screen: held to the game area's left edge, so a wider screen doesn't move it; sized by the HUD.</summary>
+    public static PixelRect DungeonPanel(Viewport vp, Fit fit)
+    {
+        double s = Scale(vp, fit);
+        return new(vp.X, vp.Y + (int)(RefDungeonPanel.Y * s), (int)(RefDungeonPanel.Width * s), (int)(RefDungeonPanel.Height * s));
     }
 
     // ── Game menu (ESC) ─────────────────────────────────────────────────────────────────────────────────────────────

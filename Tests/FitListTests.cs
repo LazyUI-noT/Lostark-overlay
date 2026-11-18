@@ -66,4 +66,35 @@ public sealed class FitListTests
 
         Assert.Equal(new FitRow("게임", "아직 맞춘 적이 없습니다", InUse: false), rows[0]);
     }
+
+    // The button names the fit as the player meets it: never fitted for this screen, "다시" would claim a fit (ui-audit P2).
+    [Fact]
+    public void The_fit_button_says_다시_only_once_this_screen_has_a_fit()
+    {
+        Assert.Equal(FitList.Refit, FitList.FitButton(Saved(), areaKey: "1920×1080", testMode: false));
+        Assert.Equal(FitList.FirstFit, FitList.FitButton(Saved(), areaKey: "2560×1440", testMode: false));
+        Assert.Equal(FitList.FirstFit, FitList.FitButton(new Settings(), areaKey: null, testMode: false));
+    }
+
+    [Fact]
+    public void Without_a_game_window_the_button_follows_the_detected_screen()
+    {
+        Assert.Equal(FitList.Refit, FitList.FitButton(Saved(), areaKey: null, testMode: false));
+    }
+
+    [Fact]
+    public void A_수동_조정_counts_as_a_fit()
+    {
+        var s = new Settings { DetectedScreen = new(2560, 1440, false), Adjusts = new() { ["2560×1440"] = new Fit(100) } };
+
+        Assert.Equal(FitList.Refit, FitList.FitButton(s, areaKey: "2560×1440", testMode: false));
+    }
+
+    [Fact]
+    public void 시작하기_opened_again_knows_the_screen_was_fitted()
+    {
+        Assert.True(FitList.HasFit(Saved(), areaKey: "1920×1080", testMode: false));
+        Assert.False(FitList.HasFit(Saved(), areaKey: "2560×1440", testMode: false));
+        Assert.False(FitList.HasFit(new Settings(), areaKey: null, testMode: false));
+    }
 }

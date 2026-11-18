@@ -11,10 +11,16 @@ public sealed record Detection(DetectMark Mark, TimeSpan At, TimeSpan? FoundSinc
 
 /// <summary>What the engine knows each step, from reads it already makes: no capture of its own.</summary>
 public sealed record DetectInputs(bool Seen, bool HasFit, bool? HudVisible, bool AnyBuff, bool GaugeRead, bool InDungeon, bool BossUp,
-    bool PanelFound, bool BossHpRead, bool DungeonKnown, bool AmsuReadable, bool AmsuFound, bool JudgmentSeen, bool CharacterNamed = false);
+    bool PanelFound, bool BossHpRead, bool DungeonKnown, bool AmsuReadable, bool AmsuFound, bool JudgmentSeen, bool CharacterNamed = false,
+    bool BossRowFilled = false,   // any debuff in the boss debuff row, read by 암수 or 낙인
+    bool PanelSeen = false,   // the 전분 panel there (its green row) though it didn't read: covered, not closed
+    bool PanelNoColumn = false);   // ...and its titles read, none of them 피해량 / 조력 피해량 / DPS (JeonbunMiss.NoColumn)
 
 /// <summary>A picture of a reader's area plus a margin (<see cref="DetectBoard.Around"/>): kept from the moment its mark
 /// turned (✓ or !), or Live. Shown once on the 감지 page, never compared as a reference (detection.md).</summary>
+/// <summary>One grid line inside a 읽는 자리 box (<c>ReadingGrid</c>), in screen pixels.</summary>
+public readonly record struct GridLine(int X1, int Y1, int X2, int Y2);
+
 public sealed record DetectPicture(Image Picture, PixelRect Area, TimeSpan At, string? Id = null);   // Id: the box it was taken for
 
 /// <summary>Every reader's 감지 중, keyed by its 표시 map box (<see cref="FeatureMap.Boxes"/>). Pure: the engine steps it with
@@ -53,10 +59,16 @@ public static class DetectBoard
         // ponytail: aden counts any number read while the HUD shows (the reader keeps its last value); a reader stuck on a
         // wrong number stays ✓. Feed a "changed lately" signal if that ever shows up.
         yield return ("aden", (i.GaugeRead && i.HudVisible == true, false, null, false));
-        yield return ("g-jeonbun", (i.PanelFound, i.InDungeon && i.BossUp, "보스와 싸우는데 전투 분석기가 안 보입니다. 게임에서 전투 분석기를 열어 두세요.", false));
+        yield return ("g-jeonbun", (i.PanelFound, i.InDungeon && i.BossUp, (i.PanelSeen, i.PanelNoColumn) switch
+        {
+            (true, true) => "전투 분석기에 피해량, 조력 피해량, DPS 칸이 하나도 없어 읽을 수 없습니다. 게임의 전투 분석기 설정에서 그중 하나를 고르세요.",
+            (true, false) => "전투 분석기는 보이지만 숫자를 읽을 수 없습니다. 다른 창이 가리고 있으면 전투 분석기를 옮기세요.",
+            _ => "보스와 싸우는데 전투 분석기가 안 보입니다. 게임에서 전투 분석기를 열어 두세요.",
+        }, false));
         yield return ("boss", (i.BossHpRead, false, null, false));
         yield return ("dungeon", (i.DungeonKnown, false, null, false));
-        yield return ("amsu", i.AmsuReadable ? (i.AmsuFound, false, null, false)
+        // The boss debuff row (암수 or 낙인 on): any debuff of the row's size counts, a bomb or not (user, 2026-11-17).
+        yield return ("amsu", i.AmsuReadable ? (i.AmsuFound || i.BossRowFilled, false, null, false)
             : (false, true, "보스 디버프 아이콘이 너무 작아 읽을 수 없습니다. 게임의 타겟 UI 버프 크기를 키우세요.", true));
         yield return ("judg", (i.JudgmentSeen, false, null, false));
         yield return ("char", (i.CharacterNamed, false, null, false));   // only while the ESC menu is open: ✓ then stays
@@ -76,7 +88,7 @@ public static class DetectBoard
         var since = d.MissSince ?? t;
         bool fail = o.AtOnce || t - since >= FailAfter;
         return fail && d.Mark != DetectMark.Failed ? d with { Mark = DetectMark.Failed, At = t, FoundSince = null, MissSince = since, Why = o.Why }
-            : d with { FoundSince = null, MissSince = since };
+            : d with { FoundSince = null, MissSince = since, Why = d.Mark == DetectMark.Failed ? o.Why : d.Why };   // a red one's why follows (전분 covered later)
     }
 
     /// <summary>The margin round a reader's area in its pictures: a quarter of its size, at least <see cref="MinMargin"/> px.</summary>

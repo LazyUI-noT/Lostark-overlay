@@ -17,6 +17,15 @@ public sealed class RingSettings : IWindowPlace
     public string Empty { get; set; } = "#3A3A3A";
     public double Opacity { get; set; } = 1.0;
 
+    /// <summary>자동 (user, 2026-11-17): only in a raid, as the gauge's <see cref="GaugeSettings.RaidOnly"/>; unlike the gauge,
+    /// it is then read (and the Z cue run) only in a raid too (user, 2026-11-18, Engine.StepRaidOnlyReads).</summary>
+    public bool RaidOnly { get; set; }
+
+    /// <summary>수라의길's cue outline (user, 2026-11-17).</summary>
+    public RingGlow Glow { get; set; } = RingGlow.항상;
+
+    public bool OutOfRaid(bool inDungeon) => RaidOnly && !inDungeon;
+
     /// <summary>The bar's thickness at <see cref="Height"/> 1, in DIPs (the gauge's default 두께).</summary>
     public const double Thickness = 6;
 
@@ -31,3 +40,4 @@ public sealed class RingSettings : IWindowPlace
 
 /// <summary>The ring bar's fill per half, 0–1 (<see cref="Snapshot.Ring"/>).</summary>
 public sealed record RingState(double Left, double Right);
+

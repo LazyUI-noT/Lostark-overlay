@@ -132,12 +132,14 @@ public sealed class DemoSnapshots
         && a.Buffs.SequenceEqual(b.Buffs) && a.Debuffs == b.Debuffs && a.Judgment == b.Judgment && a.Raid == b.Raid && a.Amsu == b.Amsu;
 
     /// <summary>The buff bars: 뎀증 from 0 s (20 s), 공증 from 1 s (8 s), 아덴피증 from 3 s (12 s) and 초각스피증 from
-    /// 5 s (10 s); absent otherwise.</summary>
+    /// 5 s (10 s), 낙인 from 2 s (15 s, no timer: full); absent otherwise. One per <see cref="BuffKind"/>, in its order.</summary>
     static ImmutableArray<BuffState> Buffs(TimeSpan s, double t) =>
     [
-        .. new[] { (BuffKind.공증, 1.0, 8.0), (BuffKind.아덴피증, 3.0, 12.0), (BuffKind.초각스피증, 5.0, 10.0), (BuffKind.뎀증, 0.0, 20.0) }
+        .. new[] { (BuffKind.공증, 1.0, 8.0), (BuffKind.아덴피증, 3.0, 12.0), (BuffKind.초각스피증, 5.0, 10.0), (BuffKind.뎀증, 0.0, 20.0), (BuffKind.낙인, 2.0, 15.0) }
             .Select(b => t >= b.Item2 && t < b.Item2 + b.Item3
-                ? new BuffState(b.Item1, true, s + Sec(b.Item2 + b.Item3), Sec(b.Item3), false, s + Sec(b.Item2))
+                ? b.Item1 == BuffKind.낙인
+                    ? new BuffState(b.Item1, true, null, null, false, s + Sec(b.Item2))
+                    : new BuffState(b.Item1, true, s + Sec(b.Item2 + b.Item3), Sec(b.Item3), false, s + Sec(b.Item2))
                 : BuffState.Absent(b.Item1, s)),
     ];
 
@@ -168,7 +170,7 @@ public sealed class DemoSnapshots
         return new Snapshot(s + Sec(t), [.. SlotInfo.All.Select(Lit)], t is >= 6 and < 16, gauge, All, [.. Aden]) { Buffs = Buffs(s, t), Debuffs = Debuffs(s, t, duelist),
             Judgment = t < 1 ? JudgmentState.Ready : new JudgmentState(s + Sec(1)),   // 심판 at 1 s: its 6 s, then the 24 s cooldown
             Raid = new RaidStatus(null, 760 - (int)t, t is >= 5 and < 12), MeterView = DemoMeter(60 + (int)t),   // the 줄 수 창 glows at 755 for 7 s
-            Ring = new RingState(Math.Min(1, t % 10 / 8), Math.Min(1, (t + 5) % 10 / 8)) };   // 기력·충격, drawn only for a class with a ring (--as=브레이커:…)
+            Ring = new RingState(Math.Min(1, t % 10 / 8), Math.Min(1, (t + 5) % 10 / 8)), RingCue = new RingCue(t % 10 < 5 ? RingSide.기력 : RingSide.충격, t % 20 >= 10) };   // 기력·충격, drawn only for a class with a ring (--as=브레이커:…)
     }
 
     /// <summary>The debuff window: red with the boss at 6 red 2 blue (bring 1 red), the lightning from 5 s (6 s), a swap
@@ -226,7 +228,7 @@ public sealed class DemoSnapshots
             return new(id, SlotPhase.Cooldown, at + Sec(left), Sec(total), false, at - Sec(total - left), Gold: gold);
         }
         var snap = new Snapshot(at, [.. SlotInfo.All.Select(State)], true, 0.6, All, [.. adenSlots ?? Aden]) { Buffs = Buffs(at - Sec(4), 4), Debuffs = Debuffs(at - Sec(7), 7) with { Swap = new(at, at + Sec(3)) },
-            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true), Ring = new RingState(0.8, 0.35) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
+            Judgment = new JudgmentState(at - Sec(3)), Raid = new RaidStatus(null, 755, true), MeterView = DemoMeter(95), Amsu = DemoAmsu(at, 13, true), Ring = new RingState(0.8, 0.35), RingCue = new RingCue(RingSide.기력) };   // 심판 on, half its 6 s left; 줄 수 창 glowing
         var peer = snap with { AwakeningChanged = false, Gauge = 0.35 };
         return (new Player("", snap),
             [new("파티원1", peer with { AdenSlots = [.. Aden], ClassId = 1 }), new("파티원2", peer with { Groups = [SlotGroup.일반스킬], AdenSlots = [], ClassId = 19 }),

@@ -1,4 +1,5 @@
 using System.Text;
+using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 using GaugeOverlay.Core.Vision;
 
@@ -84,6 +85,34 @@ public class DigitReaderTests
     [InlineData("lt2_count2_일반1")]
     [InlineData("lt_count2_일반1")]
     public void Sees_a_count_of_two(string name) => Assert.True(new DigitReader(1).ShowsCount(Fixture.Load(name).Frames[0]));
+
+    // The number of uses left, so a use spent while recharging shows on any stack skill (3 uses: "2" → "1").
+    [Theory]
+    [InlineData("lt2_count2_일반1", 2)]
+    [InlineData("lt_count2_일반1", 2)]
+    [InlineData("lt2_stack1_일반3", 1)]
+    [InlineData("lt_stack1_일반1", 1)]
+    [InlineData("lt2_11_일반4", 0)]
+    [InlineData("lt2_19_초각스", 0)]
+    public void Reads_how_many_uses_are_left(string name, int count) =>
+        Assert.Equal(count, new DigitReader(1).Count(Fixture.Load(name).Frames[0]));
+
+    // A smaller HUD draws the count smaller and its stroke weaker (lower HUD 크기, 2026-11-18): the HUD 110 counts
+    // box-scaled to HUD 90 stand in for it, as no recording is below HUD 100. A fixed stroke gate missed all four.
+    [Theory]
+    [InlineData("lt2_count2_일반1", 2)]
+    [InlineData("lt_count2_일반1", 2)]
+    [InlineData("lt2_stack1_일반3", 1)]
+    [InlineData("lt_stack1_일반1", 1)]
+    [InlineData("lt2_11_일반4", 0)]
+    [InlineData("lt2_clear_일반6", 0)]
+    public void Reads_the_uses_left_at_hud_90(string name, int count)
+    {
+        var f = Fixture.Load(name).Frames[0];
+        double k = 90 / Geometry.ReferenceHud;
+        var small = GaugeDef.Scale(f, (int)Math.Round(f.Width * k), (int)Math.Round(f.Height * k));
+        Assert.Equal(count, new DigitReader(k).Count(small));
+    }
 
     [Fact]
     public void Reads_the_gameplay_D_countdown_at_hud_100()

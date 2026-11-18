@@ -49,7 +49,7 @@ public partial class SettingsWindow
     void ApiLookupRows(Panel p, ApiService api)
     {
         string last = api.Last is { } l
-            ? $"{l.At.ToLocalTime():HH:mm} {(l.Status != ApiStatus.정상 ? LostArkApi.Message(l.Status) : l.Characters > 0 ? $"원정대 {l.Characters}명 받음" : $"'{ApiRoster.Root(_s.ApiMainCharacter, Homework?.Current)}' 캐릭터를 찾지 못했습니다 (대표 캐릭터 이름을 확인하거나 게임 메뉴를 다시 열어 주세요)")}"
+            ? $"{l.At.ToLocalTime():HH:mm} {(l.Status != ApiStatus.정상 ? LostArkApi.Message(l.Status) : l.Characters > 0 ? $"원정대 {l.Characters}명 받음" : $"'{ApiRoster.Root(_s.ApiMainCharacter, Homework?.Current)}' 캐릭터를 찾지 못했습니다 (대표 캐릭터 이름을 확인하거나 게임 메뉴를 다시 여세요)")}"
             : "아직 없음 (ESC로 게임 메뉴를 열면 받아 옵니다)";
         var refresh = ApiButton("새로고침");
         refresh.IsEnabled = !api.Busy && ApiRoster.Root(_s.ApiMainCharacter, Homework?.Current) is not null;
@@ -97,7 +97,7 @@ public partial class SettingsWindow
         foreach (var (name, subs) in _s.CombatPower.OrderBy(c => c.Key))
             foreach (var (sub, value) in subs.OrderByDescending(s => s.Value))
             {
-                var delete = ApiButton("삭제");
+                var delete = UiBuild.Danger(ApiButton("삭제"));
                 delete.Click += (_, _) =>
                 {
                     _s.CombatPower = CombatPowerBook.Delete(_s.CombatPower, name, sub);
@@ -115,14 +115,14 @@ public partial class SettingsWindow
         check.Click += async (_, _) => await Guarded(async () =>
         {
             check.IsEnabled = false;
-            if (ApiKey.Clean(CredentialVault.Read()) is not { } key) { _apiStatus = "저장된 키가 없거나 키 형식이 아닙니다. 교체로 다시 넣어 주세요."; return; }
+            if (ApiKey.Clean(CredentialVault.Read()) is not { } key) { _apiStatus = "저장된 키가 없거나 키 형식이 아닙니다. 교체로 다시 넣으세요."; return; }
             var status = await Api.CheckAsync(key, CancellationToken.None);
             Trace.WriteLine($"[api] check: {status}");
             _apiStatus = LostArkApi.Message(status);
         });
         var replace = ApiButton("교체");
         replace.Click += (_, _) => { (_apiReplacing, _apiStatus) = (true, ""); FillApi(); };
-        var delete = ApiButton("삭제");
+        var delete = UiBuild.Danger(ApiButton("삭제"));
         delete.Click += (_, _) =>
         {
             if (MessageBox.Show(this, "저장한 API 키를 지울까요? 다시 쓰려면 키를 새로 붙여 넣어야 합니다.", AreaApi, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
@@ -158,7 +158,7 @@ public partial class SettingsWindow
     {
         var key = ApiKey.Clean(box.Password);
         box.Clear();
-        if (key is null) { _apiStatus = "API 키 형식이 아닙니다. 사이트에서 복사한 키를 그대로 붙여 넣어 주세요."; return; }
+        if (key is null) { _apiStatus = "API 키 형식이 아닙니다. 사이트에서 복사한 키를 그대로 붙여 넣으세요."; return; }
         save.IsEnabled = false;
         var status = await Api.CheckAsync(key, CancellationToken.None);
         if (status == ApiStatus.키오류) _apiStatus = LostArkApi.Message(status) + " 저장하지 않았습니다.";
@@ -193,5 +193,5 @@ public partial class SettingsWindow
         catch (System.Runtime.InteropServices.COMException) { }   // another app holds the clipboard: leave it
     }
 
-    static Button ApiButton(string text) => new() { Content = text, Margin = new(8, 0, 0, 0), Padding = new(10, 2, 10, 2) };
+    static Button ApiButton(string text) => new() { Content = text, Margin = new(Tokens.Space.Gap, 0, 0, 0), Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
 }

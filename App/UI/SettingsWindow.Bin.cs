@@ -33,7 +33,7 @@ public partial class SettingsWindow
     {
         p.Children.Add(BinScheduleRow());
         var next = BinSchedule.Next(DateTime.Now, _s.BinEmptyDay, _s.BinEmptyHour);
-        p.Children.Add(Note($"밀려난 기록과 삭제한 기록입니다. 되돌리기를 누르면 원래 캐릭터의 보관 기록으로 돌아갑니다(시각은 처음 기록된 그대로). " +
+        p.Children.Add(Note($"밀려난 기록과 삭제한 기록입니다. 복원을 누르면 원래 캐릭터의 보관 기록으로 돌아갑니다(시각은 처음 기록된 그대로). " +
             $"다음 비우기: {next:MM-dd} ({DayNames[(int)next.DayOfWeek]}) {next:HH:mm}"));
         foreach (var (key, r) in bin) p.Children.Add(BinRow(key, r));
     }
@@ -70,7 +70,7 @@ public partial class SettingsWindow
         Thickness gap = new(12, 0, 0, 0);
         var restore = new Button
         {
-            Content = "되돌리기", Margin = gap, VerticalAlignment = VerticalAlignment.Center,
+            Content = "복원", Margin = gap, VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "원래 캐릭터의 기록으로 되돌려 보관합니다.",
         };
         restore.Click += (_, _) => RecordAction(() => home?.Restore(name, _s.RecordKeep));
@@ -79,6 +79,6 @@ public partial class SettingsWindow
         {
             if (Warn(WarningKind.EraseFromBin, "이 기록을 휴지통에서 지울까요? 되돌릴 수 없습니다.")) RecordAction(() => bin?.Delete(name));
         };
-        return NameButtons(new WrapPanel { Margin = new(0, 4, 0, 4), Children = { RecordText(inner, r, inBin: true), restore, erase } }, r);
+        return NameButtons(new WrapPanel { Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Tight), Children = { RecordText(inner, r, inBin: true), restore, erase } }, r);
     }
 }

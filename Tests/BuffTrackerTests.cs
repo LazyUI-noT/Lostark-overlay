@@ -386,4 +386,58 @@ public class BuffTrackerTests
         }
         Assert.True(at[7.0].Total == T(1) && at[7.0].Remaining(T(7.0)).TotalSeconds is >= 0.2 and <= 0.6, log);
     }
+
+    [Fact]
+    public void A_buff_gone_from_a_full_row_counts_to_its_end()
+    {
+        var on = Run(BuffKind.공증, (0, [8]));
+        var gone = BuffTracker.Update(on, [], T(2), true, rowFull: true);
+        var past = BuffTracker.Update(gone, [], T(9.5), true, rowFull: true);
+
+        Assert.True(gone.Active);
+        Assert.False(gone.Estimated);
+        Assert.Equal(on.EndsAt, gone.EndsAt);
+        Assert.False(past.Active);
+    }
+
+    [Fact]
+    public void A_buff_gone_from_a_row_with_room_ends_after_the_miss()
+    {
+        var on = Run(BuffKind.공증, (0, [8]));
+        var first = BuffTracker.Update(on, [], T(2), true);
+        var ended = BuffTracker.Update(first, [], T(2.2), true);
+
+        Assert.False(ended.Active);
+    }
+
+    [Fact]
+    public void An_untimed_buff_gone_from_a_full_row_ends_as_before()
+    {
+        var on = new BuffState(BuffKind.공증, true, null, null, false, T(0));
+        var first = BuffTracker.Update(on, [], T(1), true, rowFull: true);
+        var ended = BuffTracker.Update(first, [], T(1.2), true, rowFull: true);
+
+        Assert.False(ended.Active);
+    }
+
+    [Fact]
+    public void A_hidden_hud_freezes_a_buff_even_in_a_full_row()
+    {
+        var on = Run(BuffKind.공증, (0, [8]));
+        var frozen = BuffTracker.Update(on, [], T(3), false, rowFull: true);
+
+        Assert.True(frozen.Active);
+        Assert.True(frozen.Estimated);
+    }
+
+    [Fact]
+    public void A_buff_back_before_its_end_in_a_full_row_goes_on()
+    {
+        var on = Run(BuffKind.공증, (0, [8]));
+        var gone = BuffTracker.Update(on, [], T(3), true, rowFull: true);
+        var back = BuffTracker.Update(gone, [R(BuffKind.공증, 4, 4)], T(4), true, rowFull: true);
+
+        Assert.True(back.Active);
+        Assert.False(back.Estimated);
+    }
 }

@@ -30,6 +30,9 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     public PixelRect Panel { get; init; }
     /// <summary>The spot the window opened on: the one in use, or <see cref="Geometry.UsualPanel"/> with none.</summary>
     public PixelRect StartPanel { get; init; }
+    /// <summary>The class's own 아덴1/아덴2 spots (classes.json "adenRects", 발키리 and 브레이커): the bar's guides frame Z and C
+    /// there, as the reader and 읽는 자리's grid do.</summary>
+    public IReadOnlyDictionary<SlotId, PixelRect>? AdenRects { get; init; }
 
     /// <param name="panel">The 전분 spot in use; null: none yet, the box starts on the usual spot.</param>
     public static FitAdjust Begin(Viewport vp, int buffSize, Fit fit, int buffCount = Geometry.BuffBoxCount, int bossSize = Geometry.RefBossSize, PixelRect? panel = null)
@@ -50,21 +53,29 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
 
     double K => Geometry.Scale(Vp, Current);
 
-    public FitAdjust Move(AdjustPart part, double dx, double dy) => part == AdjustPart.전분
-        ? this with { Panel = Placed(Panel with { X = Panel.X + (int)Math.Round(dx), Y = Panel.Y + (int)Math.Round(dy) }) }
-        : this with
+    public FitAdjust Move(AdjustPart part, double dx, double dy) => part switch
     {
-        Current = Clamp(part switch
-        {
-            AdjustPart.스킬창 => Current with { NudgeX = Current.NudgeX + dx / K, NudgeY = Current.NudgeY + dy / K },
-            AdjustPart.버프 => Current with { BuffShift = By(Current.BuffShift, dx, dy) },
-            AdjustPart.디버프 => Current with { DebuffShift = By(Current.DebuffShift, dx, dy) },
-            _ => Current with { BossShift = By(Current.BossShift, dx, dy) },
-        }),
+        AdjustPart.전분 => this with { Panel = Placed(Panel with { X = Panel.X + (int)Math.Round(dx), Y = Panel.Y + (int)Math.Round(dy) }) },
+        AdjustPart.스킬창 => BarTo(Current with { NudgeX = Current.NudgeX + dx / K, NudgeY = Current.NudgeY + dy / K }),
+        AdjustPart.버프 => this with { Current = Clamp(Current with { BuffShift = By(Current.BuffShift, dx, dy) }) },
+        AdjustPart.디버프 => this with { Current = Clamp(Current with { DebuffShift = By(Current.DebuffShift, dx, dy) }) },
+        _ => this with { Current = Clamp(Current with { BossShift = By(Current.BossShift, dx, dy) }) },
     };
 
+    /// <summary>스킬창과 함께 움직임 (zoom window, saved): off, moving or sizing the bar leaves the buff row where it is on screen.</summary>
+    public bool BuffFollowsBar { get; init; } = true;
+
+    /// <summary>The bar edited to <paramref name="bar"/>; the buff row follows it, or with <see cref="BuffFollowsBar"/> off keeps its screen spot.</summary>
+    FitAdjust BarTo(Fit bar)
+    {
+        var moved = this with { Current = Clamp(bar) };
+        if (BuffFollowsBar) return moved;
+        var (was, now) = (RectOf(AdjustPart.버프), moved.RectOf(AdjustPart.버프));
+        return moved with { Current = Clamp(moved.Current with { BuffShift = By(moved.Current.BuffShift, was.X - now.X, was.Y - now.Y) }) };
+    }
+
     /// <summary>The bar at HUD <paramref name="hud"/>, scaled about the HUD's anchor: its x/y (<see cref="Offset"/>) stay.</summary>
-    public FitAdjust ScaleTo(double hud) => this with { Current = Clamp(Geometry.Rescale(Vp, Current, Math.Clamp(hud, MinHud, MaxHud))) };
+    public FitAdjust ScaleTo(double hud) => BarTo(Geometry.Rescale(Vp, Current, Math.Clamp(hud, MinHud, MaxHud)));
 
     /// <summary>The bar's bottom-left corner dragged: its left edge to screen x <paramref name="left"/>, its x/y kept.</summary>
     public FitAdjust DragLeftTo(double left) => ScaleTo(Geometry.HudForLeft(Vp, Current, left));
@@ -80,13 +91,14 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
         return a with { Current = a.Clamp(Current) };
     }
 
-    /// <summary>The 전분 box <paramref name="width"/> wide in the reader's shape (it scales from the width), its top left kept unless
-    /// that would leave the game area.</summary>
+    /// <summary>The 전분 box <paramref name="width"/> wide in the start's shape (a found wide spot stays wide, the usual spot is
+    /// 470:114; the reader takes its scale from the height), its top left kept unless that would leave the game area.</summary>
     FitAdjust PanelTo(double width)
     {
-        double max = Math.Min(Vp.Width, Vp.Height * JeonbunReader.RefW / JeonbunReader.RefH);
+        double ratio = StartPanel.Height > 0 ? (double)StartPanel.Width / StartPanel.Height : JeonbunReader.RefW / JeonbunReader.RefH;
+        double max = Math.Min(Vp.Width, Vp.Height * ratio);
         int w = (int)Math.Round(Math.Clamp(width, MinPanelWidth, Math.Max(MinPanelWidth, max)));
-        return this with { Panel = Placed(Panel with { Width = w, Height = (int)Math.Round(w * JeonbunReader.RefH / JeonbunReader.RefW) }) };
+        return this with { Panel = Placed(Panel with { Width = w, Height = (int)Math.Round(w / ratio) }) };
     }
 
     /// <summary>+ / − on the layer: the bar or the 전분 box <paramref name="step"/> screen pixels wider, the buff and debuff rows' 버프 크기
@@ -103,29 +115,26 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
     /// <paramref name="resize"/> (Ctrl) a size step in the part's own shape (<see cref="Resize"/>), → and ↑ bigger, ← and ↓ smaller.</summary>
     public FitAdjust Arrow(AdjustPart part, int dx, int dy, bool resize) => resize ? Resize(part, dx - dy) : Move(part, dx, dy);
 
-    /// <summary>The lines inside a part where its icons belong, in screen pixels: the bar's slot outlines, the buff and debuff rows'
-    /// box edges and the line between icons and timers, the boss row's slash. None for the 전분 box.</summary>
+    /// <summary>The lines inside a part where its icons belong, in screen pixels: the same <see cref="ReadingGrid"/> the page draws
+    /// (the bar's slots, each buff and debuff icon and timer, the boss row's slots), the boss row's slash first. None for the 전분 box.</summary>
     public IReadOnlyList<(int X1, int Y1, int X2, int Y2)> Guides(AdjustPart part)
     {
+        if (GridId(part) is not { } id) return [];
+        var grid = ReadingGrid.Of(id, Vp, Current, BuffSize, BuffCount, BossGameSize, null, AdenRects).Select(l => (l.X1, l.Y1, l.X2, l.Y2));
+        if (part != AdjustPart.보스) return [.. grid];
         var r = RectOf(part);
-        switch (part)
-        {
-            case AdjustPart.스킬창:
-                return [.. SlotInfo.All.Select(s => Geometry.Slot(s, Vp, Current)).SelectMany(s => new[]
-                {
-                    (s.X, s.Y, s.Right, s.Y), (s.X, s.Bottom, s.Right, s.Bottom), (s.X, s.Y, s.X, s.Bottom), (s.Right, s.Y, s.Right, s.Bottom),
-                })];
-            case AdjustPart.버프 or AdjustPart.디버프:
-                var boxes = part == AdjustPart.버프 ? Geometry.BuffBoxes(Vp, Current, BuffSize, BuffCount) : Geometry.DebuffBoxes(Vp, Current, BuffSize);
-                var (columns, iconBottom) = Geometry.RowGrid(boxes);
-                return [.. columns.Select(x => (x, r.Y, x, r.Bottom)).Append((r.X, iconBottom, r.Right, iconBottom))];
-            case AdjustPart.보스:
-                int axis = (int)Math.Round(r.X + Geometry.BossAxis * Geometry.BossScale(Vp, Current, BossGameSize));
-                return [(axis, r.Y, axis, r.Bottom)];
-            default:
-                return [];
-        }
+        int axis = (int)Math.Round(r.X + Geometry.BossAxis * Geometry.BossScale(Vp, Current, BossGameSize));
+        return [(axis, r.Y, axis, r.Bottom), .. grid];
     }
+
+    static string? GridId(AdjustPart part) => part switch
+    {
+        AdjustPart.스킬창 => "skill",
+        AdjustPart.버프 => "buff",
+        AdjustPart.디버프 => DetectPlace.DebuffRow,
+        AdjustPart.보스 => "amsu",
+        _ => null,
+    };
 
     /// <summary>A part's size handle, on the edge a size change moves: the bar's bottom-left (its left edge follows the pointer),
     /// the buff row's bottom-left (it keeps its right end and grows left), the debuff and boss rows' and the 전분 box's bottom-right.</summary>
@@ -172,19 +181,22 @@ public sealed record FitAdjust(Viewport Vp, int BuffSize, Fit Start, Fit Current
         AdjustPart.버프 => Geometry.BuffArea(Vp, f, BuffSize, BuffCount),
         AdjustPart.디버프 => Geometry.DebuffArea(Vp, f, BuffSize),
         AdjustPart.전분 => Panel,
-        _ => Geometry.BossRow(Vp, f, BossGameSize),
+        _ => Geometry.BossDebuffStrip(Vp, f, BossGameSize),   // the whole 암수 strip: boss buffs and debuffs as one box (user, 2026-11-18)
     };
 
-    /// <summary>The biggest boss size whose row still fits in the game area on both sides of the slash, which a size keeps in
-    /// place: so <see cref="Clamp"/> never has to push the row (and keep that push after the size shrinks again).</summary>
+    /// <summary>The biggest boss size whose 암수 strip still fits in the game area on both sides of the slash, which a size keeps in
+    /// place: so <see cref="Clamp"/> never has to push the strip (and keep that push after the size shrinks again).</summary>
     int MaxBossPercent()
     {
-        var row = Geometry.BossRow(Vp, Current, BossGameSize);
         double scale = Geometry.BossScale(Vp, Current, BossGameSize), game = scale / (BossPercent / 100.0);
-        double axis = row.X + Geometry.BossAxis * scale;
+        double axis = Geometry.BossSlashX(Vp, Current);
         double left = Geometry.BossAxis, right = Geometry.RefBossRow.Width - Geometry.BossAxis;
         double s = Math.Min((axis - Vp.X) / left, (Vp.X + Vp.Width - axis) / right) - 1.0 / Geometry.RefBossRow.Width;   // 1 px for rounding
-        return Math.Min(MaxBoss, (int)Math.Floor(s / game * 100));
+        int max = Math.Min(MaxBoss, (int)Math.Floor(s / game * 100));
+        // The box is the 암수 strip, which reaches past the row's right end, and rounds on its own: step down until it fits too
+        // (a few steps at most).
+        while (max > MinBoss && Inside(Geometry.BossDebuffStrip(Vp, Current with { BossSize = max }, BossGameSize)).Dx != 0) max--;
+        return max;
     }
 
     /// <summary>What a press at screen pixel (<paramref name="x"/>, <paramref name="y"/>) takes: a size handle (<see cref="Handle"/>,

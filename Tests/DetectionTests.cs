@@ -10,9 +10,9 @@ public class DetectionTests
     static TimeSpan S(double s) => TimeSpan.FromSeconds(s);
 
     static DetectInputs In(bool hud = true, bool fit = true, bool buff = false, bool dungeon = false, bool boss = false, bool panel = false,
-        bool amsuReadable = true) =>
+        bool amsuReadable = true, bool panelSeen = false, bool panelNoColumn = false) =>
         new(Seen: true, HasFit: fit, HudVisible: hud, AnyBuff: buff, GaugeRead: false, InDungeon: dungeon, BossUp: boss, PanelFound: panel,
-            BossHpRead: false, DungeonKnown: false, AmsuReadable: amsuReadable, AmsuFound: false, JudgmentSeen: false);
+            BossHpRead: false, DungeonKnown: false, AmsuReadable: amsuReadable, AmsuFound: false, JudgmentSeen: false, PanelSeen: panelSeen, PanelNoColumn: panelNoColumn);
 
     static readonly ImmutableHashSet<string> All = ["skill", "buff", "aden", "g-jeonbun", "boss", "dungeon", "amsu", "judg"];
 
@@ -65,6 +65,26 @@ public class DetectionTests
     }
 
     [Fact]
+    public void A_meter_panel_seen_but_not_read_fails_with_its_own_why()
+    {
+        var b = DetectBoard.Empty;
+        for (double t = 0; t <= 5; t += 1) b = DetectBoard.Step(b, In(dungeon: true, boss: true, panelSeen: true), All, S(t));
+        Assert.Equal(DetectMark.Failed, b["g-jeonbun"].Mark);
+        Assert.Contains("가리고", b["g-jeonbun"].Why);   // covered, not closed: move it (reading-place-fixes item 3)
+        b = DetectBoard.Step(b, In(dungeon: true, boss: true), All, S(6));   // then closed: the why follows
+        Assert.Contains("열어 두세요", b["g-jeonbun"].Why);
+    }
+
+    [Fact]
+    public void A_meter_panel_without_a_column_it_reads_says_to_pick_one()
+    {
+        var b = DetectBoard.Empty;
+        for (double t = 0; t <= 5; t += 1) b = DetectBoard.Step(b, In(dungeon: true, boss: true, panelSeen: true, panelNoColumn: true), All, S(t));
+        Assert.Equal(DetectMark.Failed, b["g-jeonbun"].Mark);
+        Assert.Contains("DPS 칸이 하나도 없어", b["g-jeonbun"].Why);   // jeonbun-columns: the titles read, none is 피해량 / 조력 피해량 / DPS
+    }
+
+    [Fact]
     public void Without_a_fit_the_skill_bar_fails_at_once()
     {
         var b = DetectBoard.Step(DetectBoard.Empty, In(hud: false, fit: false), All, S(0));
@@ -77,6 +97,16 @@ public class DetectionTests
     {
         var b = DetectBoard.Step(DetectBoard.Empty, In(amsuReadable: false), All, S(0));
         Assert.Equal(DetectMark.Failed, b["amsu"].Mark);
+    }
+
+    [Fact]
+    public void The_boss_debuff_row_is_certain_on_any_debuff_in_it_with_no_bomb()
+    {
+        var filled = In() with { BossRowFilled = true };
+        var b = DetectBoard.Step(DetectBoard.Empty, filled, All, S(0));
+        b = DetectBoard.Step(b, filled, All, S(1));
+        Assert.Equal(DetectMark.Concrete, b["amsu"].Mark);
+        Assert.Equal(DetectMark.Waiting, DetectBoard.Step(DetectBoard.Empty, In(), All, S(1))["amsu"].Mark);
     }
 
     [Fact]

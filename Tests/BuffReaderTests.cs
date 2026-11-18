@@ -104,7 +104,7 @@ public class BuffReaderTests
         ("buffrow_v1empty", Fhd, new Fit(110), 120, new(354, 892, 493, 50));
 
     /// <summary>The row as the engine reads it: <see cref="BuffReader.ReadRow"/> over the boxes inside the crop.</summary>
-    static BuffKind?[] Row(Image frame, (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) src, int count = Geometry.MaxBuffBoxCount)
+    static BuffKind?[] Row(Image frame, (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) src, int count = Geometry.MaxIconsAny)
     {
         var boxes = Geometry.BuffBoxes(src.Vp, src.Fit, src.Buff, count)
             .Select(b => b.Icon with { X = b.Icon.X - src.Rect.X, Y = b.Icon.Y - src.Rect.Y })
@@ -116,7 +116,7 @@ public class BuffReaderTests
     public void Empty_boxes_over_the_scenery_read_no_buff()
     {
         var f = Fixture.Load(V1Empty.Fixture);
-        var icons = Geometry.BuffBoxes(V1Empty.Vp, V1Empty.Fit, V1Empty.Buff, Geometry.MaxBuffBoxCount)
+        var icons = Geometry.BuffBoxes(V1Empty.Vp, V1Empty.Fit, V1Empty.Buff, Geometry.MaxIconsAny)
             .Select(b => b.Icon with { X = b.Icon.X - V1Empty.Rect.X, Y = b.Icon.Y - V1Empty.Rect.Y }).ToArray();
         for (int i = 0; i < f.Frames.Count; i++)
         {
@@ -184,7 +184,7 @@ public class BuffReaderTests
     }
 
     /// <summary>Rewrites Core/Vision/BuffTemplates.cs from buff_gameplay frames where each icon is clean (no glare):
-    /// 5 s (공증 box 0, 초각스피증 box 1, 뎀증 box 2) and 7 s (아덴피증 box 3), and the look-alikes from buff_wrong_detect. Runs only with GAUGE_BUILD_TEMPLATES=1.</summary>
+    /// 5 s (공증 box 0, 초각스피증 box 1, 뎀증 box 2) and 7 s (아덴피증 box 3), and the look-alikes from buff_wrong_detect and hud100_buff100 wrong피증. Runs only with GAUGE_BUILD_TEMPLATES=1.</summary>
     [Fact]
     public void Build_buff_templates_when_requested()
     {
@@ -219,8 +219,24 @@ public class BuffReaderTests
         sb.AppendLine("    [");
         var dome = Fixture.Load("buffrow_wrong").Frames[25];
         sb.AppendLine($"        (BuffKind.아덴피증, \"{Convert.ToBase64String(Crop(dome, BuffReader.Interior(boxes[1].Icon)).ToBytes())}\"),   // 발키리's own gold dome (buff_wrong_detect.mp4, 5 s, box 1), 0.63");
+        var pz = Fixture.Load(Pz.Fixture).Frames[16];
+        sb.AppendLine($"        (BuffKind.아덴피증, \"{Convert.ToBase64String(Crop(pz, BuffReader.Interior(Boxes(Pz)[5].Icon)).ToBytes())}\"),   // another class's orange figure (hud100_buff100 wrong피증.mp4, 8 s, box 5), 0.63");
         sb.AppendLine("    ];");
         sb.AppendLine("}");
         File.WriteAllText(Path.Combine(RepoRoot(), "Core", "Vision", "BuffTemplates.cs"), sb.ToString().ReplaceLineEndings("\r\n"));
+    }
+
+    static readonly (string Fixture, Viewport Vp, Fit Fit, int Buff, PixelRect Rect) Pz = ("buffrow_pz", Fhd, new Fit(100), 100, new(600, 880, 260, 80));
+
+    /// <summary>hud100_buff100 wrong피증.mp4 (HUD 100, buff 100%, 2 fps): no party buff is up, but another class's orange figure
+    /// buff ("9초" from 6.1 s) matched 아덴피증 at 0.62–0.64 within its hue, so a 피증 bar ran on the sword's timer.</summary>
+    [Fact]
+    public void Another_class_orange_figure_buff_is_not_아덴피증()
+    {
+        var f = Fixture.Load(Pz.Fixture);
+        var boxes = Boxes(Pz).Where(b => b.Icon.X >= 0 && b.Icon.Right <= f.Frames[0].Width).ToList();
+        var found = Enumerable.Range(0, f.Frames.Count).SelectMany(i => boxes.Select((b, k) => (i, k, kind: BuffReader.Classify(f.Frames[i], b.Icon))))
+            .Where(r => r.kind is not null).Select(r => $"{f.Pts[r.i].TotalSeconds:0.0} s box {r.k}: {r.kind}").ToList();
+        Assert.True(found.Count == 0, string.Join(" | ", found));
     }
 }

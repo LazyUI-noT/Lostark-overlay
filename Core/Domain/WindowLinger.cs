@@ -21,6 +21,11 @@ public static class WindowLinger
     /// <summary>The last read after this step.</summary>
     public static TimeSpan? Seen(TimeSpan? lastRead, bool readNow, TimeSpan now) => readNow ? now : lastRead;
 
+    /// <summary>The meter stopped showing because its linger ran out (it fades, overlay-motion.plan.md), not because its source
+    /// went: no read at all (the meter off), or the channel box's gold arrow after the last read (out of the dungeon).</summary>
+    public static bool LingerEnded(TimeSpan? lastRead, RaidPresence presence) =>
+        lastRead is not null && !(lastRead <= presence.OutSeen + RaidPresence.OutBlock);
+
     /// <summary>The meter's last read: the later of its 전분 panel and boss HP reads (null: neither yet).</summary>
     public static TimeSpan? LastRead(MeterStatus? status)
     {

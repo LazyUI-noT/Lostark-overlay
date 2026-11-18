@@ -31,7 +31,7 @@ public partial class SettingsWindow
         s => s.Apart, (s, v) => s.Apart = v);
 
     /// <summary>The chip for the switch (one per profile, like all of 버프 막대) on the 스킬창 page; hidden in the inspector, whose tab chip covers it.</summary>
-    UIElement SwitchBadge() => new Border { Child = ProfileBadgeChip(profileOnly: true), Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
+    UIElement SwitchBadge() => new Border { Child = ProfileBadgeChip(profileOnly: true), Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Tight), Tag = CardBadgeTag };
 
     /// <summary>A change of the switch: every panel that shows it (and what depends on it) is built again.</summary>
     void RefillApart()
@@ -42,9 +42,11 @@ public partial class SettingsWindow
         RefreshInspector();
     }
 
-    /// <summary>A row that only means something under 따로: greyed with <paramref name="why"/> under it on 합쳐서; its value is kept.</summary>
+    /// <summary>A row that only means something under 따로: greyed with <paramref name="why"/> under it on 합쳐서, in the row's
+    /// own card row (one CardStack child, so no divider between them; <see cref="UiBuild.Why"/>, not a between-cards note);
+    /// its value is kept.</summary>
     UIElement[] ApartOnly(UIElement row, string why) =>
-        _s.Apart ? [row] : [Greyed(row), Note(why)];
+        _s.Apart ? [row] : [new StackPanel { Children = { Greyed(row), Why(why, true) } }];
 
     static UIElement Greyed(UIElement row)
     {

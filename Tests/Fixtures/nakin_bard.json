@@ -1,0 +1,9 @@
+{
+  "source": "reference/바드debuff.PNG (a crop of the boss debuff row, source size unknown; icons 26 px): 바드 낙인 3rd, circled by hand to its left and right (the marks miss the icon)",
+  "slot": "bossrow",
+  "hud": 110,
+  "rect": [0, 0, 337, 91],
+  "width": 337,
+  "height": 91,
+  "pts": [0]
+}

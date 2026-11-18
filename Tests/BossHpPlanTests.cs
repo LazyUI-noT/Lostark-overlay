@@ -64,6 +64,10 @@ public class BossHpPlanTests
         Assert.Equal(Shadow, ShadowRead.Gate(Off(), Shadow, [Shadow], meterOn: false, homework: true));
 
     [Fact]
+    public void Daenantu_s_number_is_read_for_amsu_which_moves_with_it() =>   // 대난투 moves the boss debuff row (AmsuLayout.Daenantu)
+        Assert.Equal(Shadow, ShadowRead.Gate(Off(), Shadow, [Shadow], meterOn: false, homework: false, movedRow: true));
+
+    [Fact]
     public void Daenantu_s_number_is_not_read_when_nothing_needs_it() =>
         Assert.Null(ShadowRead.Gate(Off(), Shadow, [Shadow], meterOn: false, homework: false));
 

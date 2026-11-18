@@ -6,12 +6,16 @@ namespace GaugeOverlay.Core.Domain;
 public sealed class DebuffSettings : IWindowPlace
 {
     public Raid Raid { get; set; } = Raid.없음;
-    /// <summary>The game's 보스 디버프 크기 setting (%): how big the boss's effect icons and "X n" counts are, apart from 버프 크기.</summary>
+    /// <summary>The game's 타겟 UI 버프 크기 setting (%): how big the boss's effect icons and "X n" counts are, apart from 버프 크기.</summary>
     public int BossIconSize { get; set; } = Vision.Geometry.RefBossSize;
     /// <summary>감지 개수 (user, 2026-11-05): the most slots of the boss debuff row the 암수 walk reads, from the first. The size fixes
-    /// how many the row shows (<see cref="Vision.Geometry.MaxBossDebuffs"/>); this caps it, so the default (all) changes nothing. A bomb
+    /// how many the row shows (<see cref="Vision.Geometry.MaxIcons"/>); this caps it, so the default (all) changes nothing. A bomb
     /// past the cap is not found.</summary>
-    public int BossCount { get; set; } = Vision.Geometry.MaxBossSlots;
+    public int BossCount { get; set; } = Vision.Geometry.MaxIconsAny;
+    /// <summary>The game's 타겟 UI 버프 표시 (10–17); null = the size's most (<see cref="Vision.Geometry.Shown"/>).</summary>
+    public int? BossShown { get; set; }
+    /// <summary>The slots read: 감지 개수 within what the row shows.</summary>
+    public int ReadCount => Math.Min(BossCount, Vision.Geometry.Shown(BossIconSize, BossShown));
     /// <summary>비었을 때 숨기기 (user, 2026-10-13): a box disappears while nothing is on it; the others keep their place.</summary>
     public bool HideWhenEmpty { get; set; }
     public double Left { get; set; } = double.NaN;

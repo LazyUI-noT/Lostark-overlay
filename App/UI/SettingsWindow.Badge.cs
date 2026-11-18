@@ -22,12 +22,12 @@ public partial class SettingsWindow
     /// setting every class in the profile shares (버프 막대), so the chip names no class.</summary>
     UIElement ProfileBadgeChip(bool profileOnly = false)
     {
-        var text = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Text = BadgeText(profileOnly) };
+        var text = new TextBlock { FontSize = Tokens.Font.Hint, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Text = BadgeText(profileOnly) };
         text.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
         _badgeTexts.Add((text, profileOnly));
-        var chip = new Border { CornerRadius = new(10), BorderThickness = new(1), Padding = new(10, 2, 10, 3), Child = text, HorizontalAlignment = HorizontalAlignment.Left,
+        var chip = new Border { CornerRadius = new(10), BorderThickness = new(1), Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Tight), Child = text, HorizontalAlignment = HorizontalAlignment.Left,
             ToolTip = profileOnly ? "지금 편집하는 프로필입니다. 이 값은 이 프로필의 모든 직업각인이 같이 씁니다."
-                : "지금 편집하는 프로필과 편집 중 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
+                : "지금 편집하는 프로필과 편집할 직업각인입니다. 이 값은 이 프로필의 이 직업각인에 저장됩니다." };
         chip.SetResourceReference(Border.BorderBrushProperty, "AccentTextFillColorPrimaryBrush");
         return chip;
     }
@@ -41,7 +41,7 @@ public partial class SettingsWindow
         var chip = ProfileBadgeChip(profileOnly: look == LookGroup.버프막대);
         // 스킬창: the boxes' 색과 효과 are the class's (Settings.Classes), not in any profile; one note says so (plan, phase 2).
         UIElement child = look == LookGroup.스킬칸 ? UiBuild.Stack(chip, UiBuild.Note(SkillColorsNote)) : chip;
-        return new Border { Child = child, Margin = new(0, 2, 0, 4), Tag = CardBadgeTag };
+        return new Border { Child = child, Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Tight), Tag = CardBadgeTag };
     }
 
     /// <summary>The chips under <paramref name="element"/> shown (on a rail page) or hidden (the panel sits in the inspector,

@@ -101,7 +101,7 @@ public sealed class AmsuSimulationTests
     {
         var data = new TheoryData<int, int>();
         foreach (int size in new[] { 120, 110, 100, 90, 80 })
-            for (int ahead = 0; ahead < Geometry.MaxBossDebuffs(size); ahead++) data.Add(size, ahead);
+            for (int ahead = 0; ahead < Geometry.MaxIcons(size); ahead++) data.Add(size, ahead);
         return data;
     }
 
@@ -142,5 +142,32 @@ public sealed class AmsuSimulationTests
         Assert.All(seen, s => Assert.NotNull(s.Slot));   // up the whole time, never lost on a shift
         Assert.Equal(0, seen[^1].Slot);                   // and on the first slot at the end
         Assert.Equal(Bomb.빛암, Amsu.View(w.State, TimeSpan.FromSeconds(4)).Shown);
+    }
+
+    [Fact]
+    public void Thirteen_filled_slots_at_110_percent_are_a_full_row()   // the game's count at 110% (Geometry.MaxIcons)
+    {
+        var (row, layout, line) = RowAt(110, BombBehind(12));
+        var walk = AmsuReader.Walk(row, layout.Scale, layout.Slots, line);
+        Assert.Equal(13, layout.Slots.Most);
+        Assert.Equal(13, walk.Filled.Count);
+        Assert.True(walk.Full);
+        var twelve = AmsuReader.Walk(RowAt(110, BombBehind(11)).Row, layout.Scale, layout.Slots, line);
+        Assert.False(twelve.Full);
+    }
+
+    [Fact]
+    public void With_a_detection_count_of_three_only_the_first_three_of_thirteen_filled_slots_are_matched()
+    {
+        // A 빛암 in slot 2 and another in slot 12 of a full row: 감지 개수 3 matches the first only, the walk still counts 13.
+        var cells = new int?[13];
+        for (int i = 0; i < 13; i++) cells[i] = Debuff1;
+        cells[2] = Bitam;
+        cells[12] = Bitam;
+        var layout = AmsuLayout.Of(Hd, Hud, 110, shown: null, count: 3);
+        var (row, _, line) = RowAt(110, cells);
+        var found = AmsuReader.Locate(row, layout.Scale, layout.Slots, line);
+        Assert.Equal(13, AmsuReader.Walk(row, layout.Scale, layout.Slots, line).Filled.Count);
+        Assert.Equal([2], found.Bombs.Select(b => b.Slot ?? -1));
     }
 }

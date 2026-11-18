@@ -23,7 +23,7 @@ public partial class SettingsWindow
     /// <summary>가져오기 and 내보내기 above the list: <paramref name="shown"/> is what 내보내기 saves.</summary>
     UIElement ShareRow(IReadOnlyList<(string File, FightRecord Record)> shown)
     {
-        var import = new Button { Content = "가져오기…", Margin = new(0, 0, 8, 0) };
+        var import = new Button { Content = "가져오기…", Margin = new(0, 0, Tokens.Space.Gap, 0) };
         import.Click += (_, _) =>
         {
             var pick = new Microsoft.Win32.OpenFileDialog { Filter = ShareFilter, Multiselect = true };
@@ -31,12 +31,13 @@ public partial class SettingsWindow
         };
         var export = new Button { Content = $"이 목록 내보내기 ({shown.Count})", IsEnabled = shown.Count > 0 };
         export.Click += (_, _) => ExportFights([.. shown.Select(x => x.Record)]);
-        var row = new WrapPanel { Margin = new(0, 4, 0, 6), Children = { import, export } };
-        row.Children.Add(new TextBlock
+        UiBuild.WhyTip(export, "이 목록에 내보낼 기록이 없습니다.");
+        var row = new WrapPanel { Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Gap), Children = { import, export } };
+        row.Children.Add(UiBuild.Muted(new TextBlock
         {
             Text = "다른 사람에게 보낼 파일로 저장합니다. 캐릭터와 파티원 이름은 빠지고, 클래스 · 직업각인은 남습니다. 받은 파일은 가져오기를 누르거나 이 창에 끌어다 놓으세요.",
-            Opacity = 0.7, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-        });
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(Tokens.Space.Block, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+        }));
         HookDrop();
         return row;
     }

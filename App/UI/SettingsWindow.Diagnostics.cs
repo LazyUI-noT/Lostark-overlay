@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.App.UI;
 
-/// <summary>The read-out table that was the debug window's, now under the screen on 화면·인식 → 감지: the picked box's rows
+/// <summary>The read-out table that was the debug window's, now under the screen on 화면 인식 설정: the picked box's rows
 /// (<see cref="DetectPlace.TableOf"/>). It fills only while shown (<see cref="DiagnosticsShown"/>, which App passes to the engine as
 /// Config.Debug), so it costs nothing otherwise.</summary>
 public partial class SettingsWindow
@@ -14,8 +14,8 @@ public partial class SettingsWindow
     /// <summary><see cref="DiagnosticsShown"/> may have changed.</summary>
     public event Action? DiagnosticsShownChanged;
 
-    /// <summary>설정 is open on 화면·인식 → 감지 with a box picked that has table rows: the engine sends the rows.</summary>
-    public bool DiagnosticsShown => IsVisible && _area.Name == AreaFit && _area.Shown == SecDetect && _detectPicked is { } id && DetectPlace.TableOf(id) is not null;
+    /// <summary>설정 is open on 화면 인식 설정 with a box picked that has table rows: the engine sends the rows.</summary>
+    public bool DiagnosticsShown => IsVisible && _area.Name == AreaDetect && _detectPicked is { } id && DetectPlace.TableOf(id) is not null;
 
     void DiagnosticsMaybeChanged()
     {
@@ -30,7 +30,7 @@ public partial class SettingsWindow
         Show();
         Activate();
         if (_detectPicked is not { } id || DetectPlace.TableOf(id) is null) _detectPicked = "skill";
-        Go(AreaFit, SecDetect);
+        Go(AreaDetect);
         DrawDetect();
     }
 

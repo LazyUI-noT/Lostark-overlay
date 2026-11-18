@@ -27,6 +27,22 @@ public class FitAdjustTests
     }
 
     [Fact]
+    public void With_buff_not_following_the_bar_moving_or_sizing_the_bar_leaves_the_buff_row_where_it_is()
+    {
+        var a = Session() with { BuffFollowsBar = false };
+        var buff = a.RectOf(AdjustPart.버프);
+        var moved = a.Move(AdjustPart.스킬창, 12, -7);
+        Assert.NotEqual(a.RectOf(AdjustPart.스킬창), moved.RectOf(AdjustPart.스킬창));
+        Assert.Equal(buff, moved.RectOf(AdjustPart.버프));
+        foreach (var sized in new[] { a.Resize(AdjustPart.스킬창, 40), a.DragCorner(AdjustPart.스킬창, -30) })
+        {
+            var r = sized.RectOf(AdjustPart.버프);   // the spot stays; its size may round by a pixel
+            Assert.Equal((buff.X, buff.Y), (r.X, r.Y));
+        }
+        Assert.NotEqual(Session().RectOf(AdjustPart.디버프), moved.RectOf(AdjustPart.디버프));   // only the buff row stays
+    }
+
+    [Fact]
     public void Arrow_moves_and_ctrl_arrow_sizes_up_on_right_and_up_down_on_left_and_down()
     {
         var a = Session();
@@ -47,7 +63,7 @@ public class FitAdjustTests
         var a = Session();
         foreach (var part in new[] { AdjustPart.스킬창, AdjustPart.버프, AdjustPart.디버프, AdjustPart.보스 })
         {
-            var r = a.RectOf(part);
+            var r = a.RectOf(part);   // 보스: the whole 암수 strip, so the boss buffs' and debuffs' slots are one box
             var guides = a.Guides(part);
             Assert.NotEmpty(guides);
             Assert.All(guides, g => Assert.True(g.X1 >= r.X - 1 && g.X2 <= r.Right + 1 && g.Y1 >= r.Y - 1 && g.Y2 <= r.Bottom + 1, $"{part} {g} outside {r}"));
@@ -56,6 +72,34 @@ public class FitAdjustTests
         }
         Assert.Equal(SlotInfo.All.Length * 4, a.Guides(AdjustPart.스킬창).Count);
         Assert.Empty(a.Guides(AdjustPart.전분));
+    }
+
+    [Fact]
+    public void Bar_guides_frame_a_class_s_own_Z_and_C_spots()
+    {
+        var own = new Dictionary<SlotId, PixelRect> { [SlotId.아덴1] = new(888, 1026, 40, 43) };   // 발키리's round Z (classes.json)
+        var a = FitAdjust.Begin(Fhd, 120, new Fit(110.05)) with { AdenRects = own };
+        var (z, usual) = (Geometry.Slot(SlotId.아덴1, Fhd, a.Current, own), Geometry.Slot(SlotId.아덴1, Fhd, a.Current));
+
+        var guides = a.Guides(AdjustPart.스킬창);
+
+        Assert.Contains((z.X, z.Y, z.Right, z.Y), guides);
+        Assert.DoesNotContain((usual.X, usual.Y, usual.Right, usual.Y), guides);
+    }
+
+    [Fact]
+    public void Guides_are_the_reading_grid_and_the_boss_row_keeps_its_slash_first()
+    {
+        var a = Session();
+        foreach (var (part, id) in new[] { (AdjustPart.스킬창, "skill"), (AdjustPart.버프, "buff"), (AdjustPart.디버프, DetectPlace.DebuffRow), (AdjustPart.보스, "amsu") })
+        {
+            var grid = ReadingGrid.Of(id, a.Vp, a.Current, a.BuffSize, a.BuffCount, a.BossGameSize, null).Select(l => (l.X1, l.Y1, l.X2, l.Y2));
+            var guides = a.Guides(part);
+            Assert.Equal(grid, part == AdjustPart.보스 ? guides.Skip(1) : guides);
+        }
+        var r = a.RectOf(AdjustPart.보스);
+        int axis = (int)Math.Round(r.X + Geometry.BossAxis * Geometry.BossScale(a.Vp, a.Current, a.BossGameSize));
+        Assert.Equal((axis, r.Y, axis, r.Bottom), a.Guides(AdjustPart.보스)[0]);
     }
 
     [Fact]
@@ -133,13 +177,36 @@ public class FitAdjustTests
         Assert.Equal((120, false), (back.BuffSize, back.Changed));
     }
 
+    /// <summary>The boss's buffs grow left of the slash as its debuffs grow right (user, 2026-11-18): one icon slot per debuff slot,
+    /// mirrored with its timer box under it, as many as the strip holds left of the slash.</summary>
+    [Theory]
+    [InlineData(100, 100)]
+    [InlineData(110, 120)]
+    [InlineData(80, 80)]
+    public void Boss_buff_slots_mirror_the_debuff_slots_about_the_slash(double hud, int bossSize)
+    {
+        var fit = new Fit(hud);
+        var strip = Geometry.BossDebuffStrip(Fhd, fit, bossSize);
+        var (buffs, debuffs) = (Geometry.BossBuffSlots(Fhd, fit, bossSize), Geometry.BossDebuffSlots(Fhd, fit, bossSize));
+        Assert.True(buffs.Count >= 4, $"{buffs.Count} slots");
+        Assert.All(buffs, b => Assert.True(b.Icon.X >= strip.X && b.Icon.Right < debuffs[0].Icon.X && b.Icon.Y == debuffs[0].Icon.Y, $"{b} in {strip}"));
+        double axis = (buffs[0].Icon.Right + debuffs[0].Icon.X) / 2.0;   // the slash sits between the first of each
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            Assert.Equal((debuffs[i].Icon.Width, debuffs[i].Icon.Height), (buffs[i].Icon.Width, buffs[i].Icon.Height));
+            Assert.InRange(axis - buffs[i].Icon.Right - (debuffs[i].Icon.X - axis), -1.5, 1.5);   // mirrored about the slash
+            Assert.Equal(debuffs[i].Timer with { X = buffs[i].Icon.X }, buffs[i].Timer);   // its timer box right under it
+            Assert.True(buffs[i].Timer.Bottom <= strip.Bottom, $"{buffs[i].Timer} in {strip}");
+        }
+    }
+
     /// <summary>위치 조정 draws the rows the engine reads: the buff row at 버프 읽을 칸 수, the boss row at the game's 보스 디버프 크기.</summary>
     [Fact]
     public void The_session_draws_the_buff_count_and_boss_size_that_are_read()
     {
         var a = FitAdjust.Begin(Fhd, 120, new Fit(100), buffCount: 12, bossSize: 100);
         Assert.Equal(Geometry.BuffArea(Fhd, a.Current, 120, 12), a.RectOf(AdjustPart.버프));
-        Assert.Equal(Geometry.BossRow(Fhd, a.Current, 100), a.RectOf(AdjustPart.보스));
+        Assert.Equal(Geometry.BossDebuffStrip(Fhd, a.Current, 100), a.RectOf(AdjustPart.보스));
         Assert.Equal((12, 100), (a.WithBuffSize(110).BuffCount, a.BossTo(130).BossGameSize));   // edits keep them
     }
 
@@ -161,7 +228,7 @@ public class FitAdjustTests
         Assert.Equal(s0 * 1.3, s1, 6);
         double axis0 = old.X + Geometry.BossAxis * s0, axis1 = now.X + Geometry.BossAxis * s1;
         Assert.InRange(axis1 - axis0, -1, 1);                               // the slash between buffs and debuffs stays
-        Assert.InRange(now.Y + DebuffReader.BossIconTop * s1 - (old.Y + DebuffReader.BossIconTop * s0), -1, 1);   // the icons' top too
+        Assert.Equal(old.Y, now.Y);   // the 암수 strip's top: the icons' top stays, they grow down
         Assert.Equal(a.Start, b.Reverted().Current);
     }
 
@@ -177,6 +244,12 @@ public class FitAdjustTests
         Assert.True(r.X >= Fhd.X && r.Right <= Fhd.X + Fhd.Width, r.ToString());
         Assert.True(b.BossPercent > 100);
         Assert.Equal((0.0, 0.0), b.BossTo(60).Offset(AdjustPart.보스));
+        var moved = a.Move(AdjustPart.보스, 100, 0);   // the strip reaches past the row's right: its end caps the size too
+        Assert.Equal((100.0, 0.0), moved.BossTo(9999).Offset(AdjustPart.보스));
+        Assert.Equal((100.0, 0.0), moved.BossTo(9999).BossTo(60).Offset(AdjustPart.보스));
+        var left = a.Move(AdjustPart.보스, -100, 0);   // pushed left: the strip's left end caps it
+        Assert.Equal((-100.0, 0.0), left.BossTo(9999).Offset(AdjustPart.보스));
+        Assert.True(left.BossTo(9999).RectOf(AdjustPart.보스).X >= Fhd.X);
         Assert.Equal(FitAdjust.MinBoss, a.BossTo(1).BossPercent);
     }
 

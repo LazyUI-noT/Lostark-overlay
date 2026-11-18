@@ -12,7 +12,7 @@ namespace GaugeOverlay.App.UI;
 public partial class SettingsWindow
 {
     /// <summary>The options of the box last picked with <see cref="ShowBox"/>; hosted by the inspector.</summary>
-    internal CardStack BoxTab { get; } = new() { Margin = new(0, 0, 0, 12) };
+    internal CardStack BoxTab { get; } = new() { Margin = new(0, 0, 0, Tokens.Space.Block) };
 
     Part? _box;
     int? _debuffBox;   // a debuff box picked on the canvas (0 내 색, 1 교체, 2 번개) instead of a part
@@ -143,7 +143,7 @@ public partial class SettingsWindow
         MineProfile Fx() => ClassProfiles.EditShown(_s, cls).Mine;
         var fx = Fx();
         bool icons = false, ownIcons = ShownClass == ActiveOrTemplate;   // 아이콘 다시 읽기 reads the character's
-        var reread = new Button { Content = "아이콘 다시 읽기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(24, 4, 0, 4) };
+        var reread = new Button { Content = "아이콘 다시 읽기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(Tokens.Space.Section, Tokens.Space.Tight, 0, Tokens.Space.Tight) };
         var rereadNote = HelpMark("아이콘은 직업각인마다 저장되고, 저장된 아이콘이 없는 칸만 화면에서 다시 읽습니다. 스킬을 바꿨다면 이 버튼으로 모든 칸을 다시 읽으세요.");
         var playNote = Note("아이콘은 그 직업각인으로 플레이할 때 읽습니다. 아이콘 다시 읽기는 지금 플레이 중인 캐릭터를 편집할 때만 쓸 수 있습니다.");
         void ShowIconRows()
@@ -229,13 +229,30 @@ public partial class SettingsWindow
     }
 
     /// <summary>자동 for every buff bar (user, 2026-11-12): on, the 켜기 bars show only in a raid.</summary>
-    CheckBox BuffAutoCheck() => Check("자동 (레이드 안에서만 표시)", _s.Buffs.RaidOnly, v => _s.Buffs.RaidOnly = v, Changed,
+    CheckBox BuffAutoCheck() => Check(RaidOnlyText, _s.Buffs.RaidOnly, v => _s.Buffs.RaidOnly = v, AutoChanged,
         "켜면 켜기로 둔 버프 막대를 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 줍니다. 끄면 (자동 끄기) 늘 보여 줍니다. " +
         "막대가 숨어도 다른 막대는 움직이지 않고, 미리보기와 위치 조정에서는 레이드 안처럼 보입니다. 버프 줄은 어느 쪽이든 읽습니다 (미터기 버프 적용률).");
+
+    /// <summary>게이지 자동 (user, 2026-11-15): on, your gauge shows only in a raid.</summary>
+    CheckBox GaugeAutoCheck() => Check(RaidOnlyText, _s.Gauge.RaidOnly, v => _s.Gauge.RaidOnly = v, AutoChanged,
+        "켜면 내 게이지를 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 줍니다. 숨어도 다른 칸은 움직이지 않고, " +
+        "미리보기와 위치 조정에서는 레이드 안처럼 보입니다. 게이지는 어느 쪽이든 읽습니다.");
+
+    /// <summary>스킬 자동 (user, 2026-11-15): on, your skill boxes show only in a raid; party members' always.</summary>
+    CheckBox SkillsAutoCheck() => Check(RaidOnlyText, _s.Overlay.SkillsRaidOnly, v => _s.Overlay.SkillsRaidOnly = v, AutoChanged,
+        "켜면 내 스킬 칸을 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 줍니다. 파티원 칸은 늘 보입니다. " +
+        "숨어도 버프 막대와 게이지는 움직이지 않고, 미리보기와 위치 조정에서는 레이드 안처럼 보입니다.");
+
+    /// <summary>전투자원 창 자동 (user, 2026-11-17): on, the ring bar shows only in a raid.</summary>
+    CheckBox RingAutoCheck() => Check(RaidOnlyText, _s.Ring.RaidOnly, v => _s.Ring.RaidOnly = v, AutoChanged,
+        "켜면 전투자원 창을 전분이나 보스 체력바가 보일 때(컷신 중에도)만 보여 줍니다. 위치 조정에서는 레이드 안처럼 보입니다.");
+
+    const string RaidOnlyText = "자동 (레이드 안에서만 표시)";
 
     void PlateRows(Panel p)
     {
         p.Children.Add(Heading("창 전체"));
+        p.Children.Add(Defaulted(Row("모든 스킬", SkillsAutoCheck()), s => s.Overlay.SkillsRaidOnly, (s, v) => s.Overlay.SkillsRaidOnly = v));
         ClassCooldownRows(p, ClassProfiles.Of(_s, ShownClass).Mine, () => ClassProfiles.EditShown(_s, BoxKey).Mine);
         CooldownLookRows(p);
     }

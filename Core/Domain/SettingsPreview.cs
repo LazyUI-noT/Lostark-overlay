@@ -4,7 +4,9 @@ namespace GaugeOverlay.Core.Domain;
 /// beside the form or goes above the rows.</summary>
 public static class SettingsPreview
 {
-    public const double FormWidth = 620, Gap = 24, PreviewWidth = 360;
+    /// <summary><see cref="FormWidth"/>: the narrowest a form gets beside the preview. <see cref="FormWidest"/>: the content
+    /// column's widest, on every page (<c>.interface-design/system.md</c>, "Page frame").</summary>
+    public const double FormWidth = 620, FormWidest = 720, Gap = 24, PreviewWidth = 360;
 
     /// <summary>The windows a 설정 area changes the look of; empty for pages without one (the preview isn't shown).
     /// 파티 공유 only for its 파티원 모양 section: the rest of the page is the connection.</summary>
@@ -23,4 +25,8 @@ public static class SettingsPreview
 
     /// <summary>True when the page is wide enough for the form, a gap and the preview side by side (NaN and negative: false).</summary>
     public static bool Beside(double pageWidth) => pageWidth >= FormWidth + Gap + PreviewWidth;
+
+    /// <summary>The form's width beside the preview: what the preview and the gap leave, from <see cref="FormWidth"/> to
+    /// <see cref="FormWidest"/>, so a wider form never pushes the preview off the page.</summary>
+    public static double FormBeside(double pageWidth) => Math.Clamp(pageWidth - Gap - PreviewWidth, FormWidth, FormWidest);
 }

@@ -61,4 +61,33 @@ public class SettingsSearchTests
         Assert.Equal(["hud"], Ids("hud"));
         Assert.Equal(2, SettingsSearch.Find(All, "크기", max: 2).Count);
     }
+
+    [Theory]
+    [InlineData("감지 방식", "읽는 방식")]
+    [InlineData("공유 방", "파티 공유 참가")]
+    [InlineData("편집 중", "편집할 직업각인")]
+    public void An_old_word_still_finds_the_row_under_its_new_word(string typed, string label)
+    {
+        var rows = new[] { new SettingEntry("a", label, "x"), new SettingEntry("b", "다른 것", "x") };
+
+        Assert.Equal(["a"], SettingsSearch.Find(rows, typed).Select(e => e.Id));
+    }
+
+    [Theory]   // reading-place.plan.md A: the fit section and 표시할 화면 became 화면·인식 → 인게임 설정
+    [InlineData("스킬창 맞추기")]
+    [InlineData("표시할 화면")]
+    public void An_old_section_name_finds_the_rows_now_under_in_game_settings(string typed)
+    {
+        var rows = new[] { new SettingEntry("a", "표시 화면", "화면·인식 › 인게임 설정"), new SettingEntry("b", "다른 것", "x") };
+
+        Assert.Equal(["a"], SettingsSearch.Find(rows, typed).Select(e => e.Id));
+    }
+
+    [Fact]
+    public void The_old_boss_debuff_size_name_finds_the_target_ui_row_and_the_shown_rows_are_found()
+    {
+        SettingEntry[] all = [new("size", "타겟 UI 버프 크기 (보스) (%)", "인게임 설정"), new("n1", "버프 표시", "인게임 설정"), new("n2", "타겟 UI 버프 표시", "인게임 설정")];
+        Assert.Equal(["size"], SettingsSearch.Find(all, "보스 디버프 크기").Select(e => e.Id));
+        Assert.Equal(["n1", "n2"], SettingsSearch.Find(all, "버프 표시").Select(e => e.Id));
+    }
 }

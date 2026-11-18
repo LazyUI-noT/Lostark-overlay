@@ -27,5 +27,6 @@ public enum DarkCue { None, Icon, Label }
 /// while it recharges.</param>
 /// <param name="Gold">The game draws a gold frame around the icon (a buff lights some skills; PLAN §3 "Gold frame").</param>
 /// <param name="Flash">The icon's edge is lit white: the skill was just used (chainSkill.mp4).</param>
+/// <param name="Charges">Seconds only: the stack count's number (uses left), 0 when none shows.</param>
 public readonly record struct Reading(SlotId Slot, ReadKind Kind, int Value, TimeSpan At, bool Stacked = false, bool Gold = false,
-    bool Flash = false);
+    bool Flash = false, int Charges = 0);

@@ -48,14 +48,14 @@ public partial class SettingsWindow
     {
         string mine = ChipOf(opened);
         var list = new StackPanel();
-        var others = new CheckBox { Content = "다른 캐릭터", IsChecked = _otherChars, Margin = new(6, 0, 0, 6), ToolTip = "다른 캐릭터와 가져온 기록 중 같은 레이드 · 같은 난이도도 비교합니다." };
+        var others = new CheckBox { Content = "다른 캐릭터", IsChecked = _otherChars, Margin = new(Tokens.Space.Gap, 0, 0, Tokens.Space.Gap), ToolTip = "다른 캐릭터와 가져온 기록 중 같은 레이드 · 같은 난이도도 비교합니다." };
         others.Click += (_, _) => { _otherChars = others.IsChecked == true; FillRecords(); };
         list.Children.Add(others);
         foreach (var x in all.Where(x => ChipOf(x) == mine)) list.Children.Add(SideRow(x, opened));
         if (_otherChars)
             foreach (var x in all.Where(x => ChipOf(x) is var chip && chip != mine && chip != TestChip && Timeline.SameRaid(opened.Record, x.Record)))
                 list.Children.Add(SideRow(x, opened));
-        var side = new ScrollViewer { Content = list, Width = 250, Margin = new(0, 8, 8, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var side = new ScrollViewer { Content = list, Width = 250, Margin = new(0, Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Tight), VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         side.SetBinding(HeightProperty, new System.Windows.Data.Binding(nameof(ActualHeight)) { Source = _timeline });
         if (_timeline.Parent is Panel old) old.Children.Remove(_timeline);
         var grid = new Grid { ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new GridLength(1, GridUnitType.Star) } } };
@@ -76,9 +76,9 @@ public partial class SettingsWindow
         text.Children.Add(new TextBlock { Text = $"{whose}{result}{r.StartedAt:MM-dd HH:mm}", FontWeight = isOpened ? FontWeights.SemiBold : FontWeights.Normal });
         // [logo] raid [difficulty] (user, 2026-11-10); a long raid name shortens, the capsule stays
         var logo = RaidBadgeView.Of(r.Gate, null, size: 10);
-        var gate = Muted(new TextBlock { Text = r.Gate ?? "알 수 없음", FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
+        var gate = Muted(new TextBlock { Text = r.Gate ?? "알 수 없음", FontSize = Tokens.Font.Hint, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
         var difficulty = RaidBadgeView.Of(null, r.Difficulty, size: 10);
-        difficulty.Margin = new(6, 0, 0, 0);
+        difficulty.Margin = new(Tokens.Space.Gap, 0, 0, 0);
         var line = new Grid { HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var (e, i) in new UIElement[] { logo, gate, difficulty }.Select((e, i) => (e, i)))
         {
@@ -88,10 +88,10 @@ public partial class SettingsWindow
         }
         text.Children.Add(line);
         if (!isOpened) text.MouseLeftButtonUp += (_, _) => OpenRecord(x.File);
-        var row = new DockPanel { Margin = new(0, 2, 0, 2), Opacity = isOpened || same ? 1 : 0.45 };
+        var row = new DockPanel { Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Hair), Opacity = isOpened || same ? 1 : 0.45 };
         if (same)
         {
-            var compare = new CheckBox { Content = "비교", IsChecked = _compare.Contains(x.File), VerticalAlignment = VerticalAlignment.Center, Margin = new(6, 0, 0, 0) };
+            var compare = new CheckBox { Content = "비교", IsChecked = _compare.Contains(x.File), VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Gap, 0, 0, 0) };
             compare.Click += (_, _) =>
             {
                 if (!_compare.Remove(x.File)) { _compare.Add(x.File); if (_compare.Count > MaxCompared) _compare.RemoveAt(0); }
@@ -101,7 +101,7 @@ public partial class SettingsWindow
             row.Children.Add(compare);
         }
         row.Children.Add(text);
-        var box = new Border { Child = row, Padding = new(6, 3, 6, 3), CornerRadius = new(4), Background = Brushes.Transparent };
+        var box = new Border { Child = row, Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), CornerRadius = new(Tokens.Radius.Control), Background = Brushes.Transparent };
         if (isOpened) box.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush");   // the theme's, light or dark
         return box;
     }
@@ -157,7 +157,7 @@ public partial class SettingsWindow
         skill.VerticalAlignment = VerticalAlignment.Center;
         skill.ItemsSource = SkillChoices(s => $"{SlotKeyName(s)} · {Name(s)}", SlotInfo.All.Where(used.Contains));
         skill.SelectedItem = skill.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (SlotId?)i.Tag == ClassProfiles.WindowsOf(_s, key).TimelineSkill) ?? skill.Items[0];
-        var exclude = new CheckBox { Content = "보스 타격 불가 제외", IsChecked = _s.Meter.SkillRateExcludes, VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 0, 12, 0),
+        var exclude = new CheckBox { Content = "보스 타격 불가 제외", IsChecked = _s.Meter.SkillRateExcludes, VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Gap, 0, Tokens.Space.Block, 0),
             ToolTip = "평균을 낼 때 보스 타격 불가 시간과 그 사이에 쓴 스킬을 뺍니다." };
         var rate = BarText("", bold: true);
         var sameClass = compared.Where(x => RecordCharacter.ClassOf(x.Record) == RecordCharacter.ClassOf(opened.Record)).ToList();   // a slot is another skill in another class
@@ -177,8 +177,8 @@ public partial class SettingsWindow
         };
         exclude.Click += (_, _) => { _s.Meter.SkillRateExcludes = exclude.IsChecked == true; Changed(); Update(); };
         // One group, so it wraps whole beside the chart's checks (user, 2026-11-09): the skill, its rate, then 제외 for it.
-        rate.Margin = new(8, 0, 0, 0);
-        exclude.Margin = new(16, 0, 0, 0);
+        rate.Margin = new(Tokens.Space.Gap, 0, 0, 0);
+        exclude.Margin = new(Tokens.Space.Card, 0, 0, 0);
         exclude.MinWidth = 0;
         var group = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var e in new UIElement[] { BarText("스킬"), skill, rate, exclude }) group.Children.Add(e);
@@ -213,9 +213,9 @@ public partial class SettingsWindow
     {
         var first = picked[0];
         // Two rows (user, 2026-11-09): what the fight is, then what can be done with it, on the right. One row wrapped anywhere.
-        var bar = new WrapPanel { Margin = new(0, 0, 0, 4) };
-        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new(0, 0, 0, 4) };
-        var back = new Button { Content = "← 목록", Margin = new(0, 0, 12, 0) };
+        var bar = new WrapPanel { Margin = new(0, 0, 0, Tokens.Space.Tight) };
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new(0, 0, 0, Tokens.Space.Tight) };
+        var back = new Button { Content = "← 목록", Margin = new(0, 0, Tokens.Space.Block, 0) };
         back.Click += (_, _) => CloseRecord();
         bar.Children.Add(back);
         bar.Children.Add(BarText(ChipOf(first), bold: true));
@@ -224,9 +224,9 @@ public partial class SettingsWindow
             if (i > 0) bar.Children.Add(BarText("vs"));
             bar.Children.Add(BarText($"{x.Record.StartedAt:MM-dd HH:mm} ·"));
             bar.Children.Add(RaidBadgeView.Of(x.Record.Gate, null));   // [logo] raid [difficulty] (user, 2026-11-10)
-            bar.Children.Add(new TextBlock { Text = x.Record.Gate ?? "알 수 없음", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 6, 0) });
+            bar.Children.Add(new TextBlock { Text = x.Record.Gate ?? "알 수 없음", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Gap, 0) });
             var difficulty = RaidBadgeView.Of(null, x.Record.Difficulty);
-            difficulty.Margin = new(0, 0, 12, 0);
+            difficulty.Margin = new(0, 0, Tokens.Space.Block, 0);
             bar.Children.Add(difficulty);
             bar.Children.Add(BarText($"{(int)x.Record.Duration / 60}:{(int)x.Record.Duration % 60:00}"));
             if (RecordPower.Label(x.Record) is { } power)   // item level · 전투력 when saved (lostark-api.plan.md phase 5), in the 직업각인's role colour
@@ -245,10 +245,10 @@ public partial class SettingsWindow
         }
         else actions.Children.Add(AlignBox(picked));
         if (_hasIcons) AddLaneToggles(actions);
-        var register = new Button { Content = "스킬 등록", Margin = new(12, 0, 0, 0) };
+        var register = new Button { Content = "스킬 등록", Margin = new(Tokens.Space.Block, 0, 0, 0) };
         register.Click += (_, _) => RegisterSkills(first.Record);
         actions.Children.Add(register);
-        var export = new Button { Content = picked.Count > 1 ? $"내보내기 ({picked.Count})" : "내보내기", Margin = new(12, 0, 0, 0), ToolTip = "보이는 전투를 다른 사람에게 보낼 파일로 저장합니다." };
+        var export = new Button { Content = picked.Count > 1 ? $"내보내기 ({picked.Count})" : "내보내기", Margin = new(Tokens.Space.Block, 0, 0, 0), ToolTip = "보이는 전투를 다른 사람에게 보낼 파일로 저장합니다." };
         export.Click += (_, _) => ExportFights([.. picked.Select(x => x.Record)]);
         actions.Children.Add(export);
         return new StackPanel { Children = { bar, actions } };
@@ -257,11 +257,11 @@ public partial class SettingsWindow
     /// <summary>What the chart shows: its kinds of line, 보스 HP, 보스 타격 불가, and each player.</summary>
     WrapPanel ChartChecks(FightRecord r)
     {
-        var row = new WrapPanel { Margin = new(0, 0, 0, 4) };
+        var row = new WrapPanel { Margin = new(0, 0, 0, Tokens.Space.Tight) };
         CheckBox Box(string text, bool on, Action<bool> set)
         {
             // MinWidth 0: Fluent's 120 left a wide gap after a short label (user, 2026-11-09)
-            var box = new CheckBox { Content = text, IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 16, 0), MinWidth = 0 };
+            var box = new CheckBox { Content = text, IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Card, 0), MinWidth = 0 };
             box.Click += (_, _) => set(box.IsChecked == true);
             row.Children.Add(box);
             return box;
@@ -279,7 +279,7 @@ public partial class SettingsWindow
 
     static TextBlock BarText(string text, bool bold = false) => new()
     {
-        Text = text, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0),
+        Text = text, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Block, 0),
     };
 
     /// <summary>보관 as a button, gold (the theme's on colour) while kept (user, 2026-11-10). Off on a fight past the newest
@@ -289,7 +289,7 @@ public partial class SettingsWindow
         var (store, name) = StoreOf(file);
         var keep = new System.Windows.Controls.Primitives.ToggleButton
         {
-            Content = "보관", IsChecked = kept, Margin = margin, Padding = new(10, 5, 10, 5), VerticalAlignment = VerticalAlignment.Center,
+            Content = "보관", IsChecked = kept, Margin = margin, Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), VerticalAlignment = VerticalAlignment.Center,
             Style = TryFindResource(typeof(System.Windows.Controls.Primitives.ToggleButton)) as Style,
             ToolTip = kept ? "보관을 풉니다. 최근 기록 수 밖의 기록이면 바로 휴지통으로 갑니다." : "보관하면 최근 기록에서 밀려나도 보관 탭에 남습니다.",
         };
@@ -297,7 +297,7 @@ public partial class SettingsWindow
         {
             bool on = keep.IsChecked == true;
             if (!on && store?.UnkeepWouldBin(name, _s.RecordKeep) == true
-                && !Warn(WarningKind.UnkeepToBin, "이 기록은 최근 기록 수 밖이라 보관을 풀면 바로 휴지통으로 갑니다. 휴지통에서 되돌리기를 누르면 돌아옵니다."))
+                && !Warn(WarningKind.UnkeepToBin, "이 기록은 최근 기록 수 밖이라 보관을 풀면 바로 휴지통으로 갑니다. 휴지통에서 복원을 누르면 돌아옵니다."))
             {
                 keep.IsChecked = true;
                 return;
@@ -317,7 +317,7 @@ public partial class SettingsWindow
         align.SelectionChanged += (_, _) => { if (align.SelectedItem is ComboBoxItem { Tag: int i }) { _comparePhase = i; FillRecords(); } };
         return new StackPanel
         {
-            Orientation = Orientation.Horizontal, Margin = new(0, 0, 12, 0),
+            Orientation = Orientation.Horizontal, Margin = new(0, 0, Tokens.Space.Block, 0),
             Children = { BarText("비교 맞추기"), align },
         };
     }
@@ -349,10 +349,10 @@ public partial class SettingsWindow
         {
             SkillRegister.Go => null,
             SkillRegister.SetClassFirst => "이 전투에는 클래스가 없습니다. 전투 기록 목록에서 이 전투의 편집을 눌러 클래스와 직업각인을 정한 뒤 스킬 등록을 누르세요.",
-            SkillRegister.PlayThatCharacter => $"이 전투의 캐릭터({character})로 게임에 접속해, 스킬을 쓸 수 있는 곳에서 일반스킬이 모두 준비됐을 때 여기의 스킬 등록을 누르세요. 화면·인식 → 스킬창 맞추기의 스킬 등록이나 트레이 메뉴에서도 됩니다.",
+            SkillRegister.PlayThatCharacter => $"이 전투의 캐릭터({character})로 게임에 접속해, 스킬을 쓸 수 있는 곳에서 일반스킬이 모두 준비됐을 때 여기의 스킬 등록을 누르세요. 인게임 설정의 스킬 등록이나 트레이 메뉴에서도 됩니다.",
             _ => $"게임이 켜져 있을 때 등록합니다. 이 전투의 캐릭터({character})로 접속해, 일반스킬이 모두 준비됐을 때 스킬 등록을 누르세요.",
         };
-        if (_registerNote is null) SkillsSubmitRequested?.Invoke();   // the result comes back through SetSkillsResult
+        if (_registerNote is null) SkillsSubmitRequested?.Invoke(null);   // null: the played character, which the note asks for   // the result comes back through SetSkillsResult
         FillRecords();
     }
 

@@ -66,12 +66,13 @@ public partial class SettingsWindow
     {
         if (key != ShownClass) { RecordStep(); _box = null; }   // a slot of the 직업각인 left must not stay selected
         _classShown = key;
+        _skillsResult = null;   // the last 스킬 등록 result was for the 직업각인 shown before
         ResetBaseline();
         RefreshPick();
         RefreshBadges();
         Dispatcher.BeginInvoke(() =>
         {
-            FillClassSections(); FillBox(); FillDisplay(); FillMeter(); FillGauge(); FillCharacter(); RefreshInspector();   // FillDisplay: 칸 모양, 단심, 암수; FillMeter: its look; FillCharacter: 코어 빌드
+            FillClassSections(); FillBox(); FillDisplay(); FillMeter(); FillGauge(); FillCharacter(); FillFit(); RefreshInspector();   // FillDisplay: 칸 모양, 단심, 암수; FillMeter: its look; FillCharacter: 코어 빌드; FillFit: 스킬 등록
             _pickCombo?.Focus();   // the rebuild replaced the combo the keyboard was on
         });
     }
@@ -90,6 +91,7 @@ public partial class SettingsWindow
         }
         _canvas?.SetTarget(PreviewTarget);
         _canvas?.SetEdit(Target);   // its windows' spots and sizes are 편집 중's too
-        PreviewChanged();   // the page's preview is redrawn for the pick (the 기력·충격 창 only for a class with a ring)
+        PreviewChanged();   // the page's preview is redrawn for the pick (the 전투자원 창 only for a class with a ring)
+        FillAutoBox();      // its 전투자원 창 switch too
     }
 }

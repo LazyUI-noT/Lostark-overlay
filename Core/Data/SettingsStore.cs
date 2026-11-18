@@ -81,12 +81,32 @@ public sealed class SettingsStore(string path)
     /// <summary>A hand-edited ★ list: no blanks, each once, order kept.</summary>
     static List<string> Distinct(List<string>? list) => [.. (list ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()];
 
+    /// <summary>A 표시 count outside the game's 10–17 (a hand edit) means unset.</summary>
+    static int? ShownOrNull(int? n) => n is >= Vision.Geometry.MinShown and <= Vision.Geometry.MaxIconsAny ? n : null;
+
     static ManualScreen? Screenable(ManualScreen? s) =>
         s is { Width: >= 640 and <= 16384, Height: >= 480 and <= 16384 } ? s : null;
 
     /// <summary>The repairs every loaded file gets (hand edits, lists saved by older beta builds), pure. Files from
     /// before the beta (settings version below 4) are no longer migrated: every beta release saved version 4.</summary>
     const int OldRecordKeep = 20;   // 전투 기록's default before it went per character
+
+    /// <summary>Seen rows under today's ids and tabs (a hand edit: a null list); a renamed tab's rows move to their new key,
+    /// 화면·인식's split by id (<see cref="FeatureMap.SeenKey"/>).</summary>
+    static Dictionary<string, List<string>> MigrateSeen(Dictionary<string, List<string>> seen)
+    {
+        var moved = new Dictionary<string, List<string>>();
+        foreach (var (key, ids) in seen)
+        {
+            moved.TryAdd(FeatureMap.SeenKey(key, ""), []);
+            foreach (var id in (ids ?? []).Select(FeatureMap.MigrateSettingId))
+            {
+                var rows = moved.TryGetValue(FeatureMap.SeenKey(key, id), out var r) ? r : moved[FeatureMap.SeenKey(key, id)] = [];
+                if (!rows.Contains(id)) rows.Add(id);
+            }
+        }
+        return moved;
+    }
 
     internal static Settings Normalize(Settings s)
     {
@@ -116,9 +136,12 @@ public sealed class SettingsStore(string path)
             if (slots is null) s.StackSkills.Remove(key);
             else s.StackSkills[key] = [.. s.StackSkillsOf(key).Select(x => x.ToString())];
         (s.ManualScreen, s.DetectedScreen) = (Screenable(s.ManualScreen), Screenable(s.DetectedScreen));
-        s.Debuffs.BossCount = Math.Clamp(s.Debuffs.BossCount, 1, Vision.Geometry.MaxBossSlots);
+        if (!s.ShownMigrated) (s.Debuffs.BossCount, s.ShownMigrated) = (s.Debuffs.BossCount == 14 ? Vision.Geometry.MaxIconsAny : s.Debuffs.BossCount, true);
+        s.Debuffs.BossCount = Math.Clamp(s.Debuffs.BossCount, 1, Vision.Geometry.MaxIconsAny);
+        s.Debuffs.BossShown = ShownOrNull(s.Debuffs.BossShown);
+        s.Buffs.Shown = ShownOrNull(s.Buffs.Shown);
         s.Buffs.Migrate();   // per-bar 자동 → one 자동 (user, 2026-11-12)
-        s.Buffs.Count = Math.Clamp(s.Buffs.Count, Vision.Geometry.MinBuffBoxCount, Vision.Geometry.MaxBuffBoxCount);   // a hand edit
+        s.Buffs.Count = Math.Clamp(s.Buffs.Count, Vision.Geometry.MinBuffBoxCount, Vision.Geometry.MaxIconsAny);   // a hand edit
         if (s.Debuffs.BossIconSize is < Vision.FitAdjust.MinBuffSize or > Vision.FitAdjust.MaxBuffSize) s.Debuffs.BossIconSize = Vision.Geometry.RefBossSize;
         s.Raids ??= new();
         s.Raids.Normalize(s.Debuffs);
@@ -129,7 +152,7 @@ public sealed class SettingsStore(string path)
         s.MigrateClasses();   // a 0.22 file: its 직업각인 spots become class entries, its 게이지 bars every profile's (after the fill and marks: entries clone them)
         s.BossBook ??= [];
         s.MutedNotices ??= [];   // a hand edit: null
-        if (s.RailSeen is not null) s.RailSeen = s.RailSeen.ToDictionary(kv => kv.Key, kv => kv.Value ?? []);   // a hand edit: a null list
+        if (s.RailSeen is not null) s.RailSeen = MigrateSeen(s.RailSeen);
         s.Homework ??= new();
         s.RaidCapsules ??= new();
         s.RaidCapsules.Colors ??= [];

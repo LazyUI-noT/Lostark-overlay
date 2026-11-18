@@ -130,6 +130,25 @@ public class FeatureMapBoxesTests
     static Dictionary<string, Detection> Marked(string id, DetectMark mark) => new() { [id] = new Detection(mark, TimeSpan.Zero) };
 
     [Fact]
+    public void Below_a_failed_reader_a_block_with_no_other_input_stops_and_one_with_another_works_in_part()
+    {
+        var board = new Dictionary<string, Detection>(Marked("g-jeonbun", DetectMark.Failed))
+        {
+            ["skill"] = new(DetectMark.Concrete, TimeSpan.Zero), ["boss"] = new(DetectMark.Concrete, TimeSpan.Zero),
+            ["dungeon"] = new(DetectMark.Concrete, TimeSpan.Zero),
+        };
+        Assert.Equal(new BoxImpact(Impact.Stopped, "g-jeonbun"), FeatureMap.ImpactOf("meter", board));
+        Assert.Equal(new BoxImpact(Impact.Partial, "g-jeonbun"), FeatureMap.ImpactOf("rec", board));   // skill use still records
+        Assert.Equal(new BoxImpact(Impact.Partial, "g-jeonbun"), FeatureMap.ImpactOf("hw", board));    // works without the timeline
+        Assert.Null(FeatureMap.ImpactOf("g-jeonbun", board));   // a reader shows its own mark
+        Assert.Null(FeatureMap.ImpactOf("skillview", board));
+        static MapEdge Edge(string from, string to) => FeatureMap.Edges.Single(e => !e.Party && e.From == from && e.To == to);
+        Assert.False(FeatureMap.Lit(Edge("meter", "rec"), board));   // a stopped block's lines carry no lights
+        Assert.False(FeatureMap.Lit(Edge("rec", "hw"), board));      // a record without 내 전분: 숙제 falls back to the boss bar
+        Assert.Null(FeatureMap.ImpactOf("meter", Marked("g-jeonbun", DetectMark.Waiting)));
+    }
+
+    [Fact]
     public void A_failed_reader_sends_lights_back_to_each_game_setting_it_uses()
     {
         var back = FeatureMap.Edges.Where(e => FeatureMap.FlowsBack(e, Marked("amsu", DetectMark.Failed))).Select(e => e.From);
@@ -145,17 +164,6 @@ public class FeatureMapBoxesTests
     [Fact]
     public void A_failed_box_sends_nothing_back_along_lines_that_do_not_start_at_a_game_setting() =>
         Assert.DoesNotContain(FeatureMap.Edges, e => FeatureMap.FlowsBack(e, Marked("rec", DetectMark.Failed)));
-
-    [Fact]
-    public void Ports_stand_apart_between_groups_and_centre_on_the_side() =>
-        Assert.Equal([-16.0, -7.0, 7.0, 16.0], FeatureMap.SpreadPorts([0, 0, 1, 1], 9, 14, 50));
-
-    [Fact]
-    public void Ports_draw_closer_when_they_would_not_fit() =>
-        Assert.Equal([-12.0, 0.0, 12.0], FeatureMap.SpreadPorts([0, 1, 2], 6, 14, 24));
-
-    [Fact]
-    public void A_lone_port_is_in_the_middle() => Assert.Equal([0.0], FeatureMap.SpreadPorts([2], 6, 14, 24));
 
     [Fact]
     public void A_certain_reader_lights_its_lines_and_the_game_settings_feeding_it()
@@ -219,5 +227,38 @@ public class FeatureMapBoxesTests
     {
         Assert.True(FeatureMap.LinkShown(Line("skill", "party"), null, Line("skill", "party")));
         Assert.False(FeatureMap.LinkShown(Line("skill", "party"), null, Line("aden", "party")));
+    }
+
+    [Fact]
+    public void A_yellow_block_keeps_its_lights_on_a_line_its_missing_reader_does_not_feed()
+    {
+        // 스킬창 읽기 red (user, 2026-11-17): DPS 미터기 loses 스킬 횟수 and 타임라인 사용 기록, but 내 전분 and the clears
+        // 레이드 숙제 takes from the record don't use them: those lines stay lit and 숙제 is not marked.
+        string[] readers = ["skill", "buff", "aden", "g-jeonbun", "boss", "dungeon", "amsu", "judg", "char"];
+        var board = readers.ToDictionary(x => x, x => new Detection(x == "skill" ? DetectMark.Failed : DetectMark.Concrete, TimeSpan.Zero));
+        static MapEdge Edge(string from, string to) => FeatureMap.Edges.Single(e => !e.Party && e.From == from && e.To == to);
+        Assert.Equal(new BoxImpact(Impact.Partial, "skill"), FeatureMap.ImpactOf("meter", board));
+        Assert.True(FeatureMap.Lit(Edge("meter", "rec"), board));
+        Assert.Equal(new BoxImpact(Impact.Partial, "skill"), FeatureMap.ImpactOf("rec", board));
+        Assert.True(FeatureMap.Lit(Edge("rec", "hw"), board));
+        Assert.Null(FeatureMap.ImpactOf("hw", board));
+        // 콘텐츠 인식 red: the record has no raid name, so the line to 숙제 goes dark.
+        board["skill"] = new(DetectMark.Concrete, TimeSpan.Zero);
+        board["dungeon"] = new(DetectMark.Failed, TimeSpan.Zero);
+        Assert.False(FeatureMap.Lit(Edge("rec", "hw"), board));
+    }
+
+    [Theory]
+    [InlineData("g-jeonbun")]
+    [InlineData("dungeon")]
+    public void A_second_red_reader_is_not_hidden_behind_one_the_line_runs_without(string other)
+    {
+        // 스킬창 읽기 red alone leaves 숙제's line lit; with 내 전분 or 콘텐츠 인식 red too, the record lacks what 숙제 takes.
+        string[] readers = ["skill", "buff", "aden", "g-jeonbun", "boss", "dungeon", "amsu", "judg", "char"];
+        var board = readers.ToDictionary(x => x, x => new Detection(x == "skill" || x == other ? DetectMark.Failed : DetectMark.Concrete, TimeSpan.Zero));
+        var toHomework = FeatureMap.Edges.Single(e => !e.Party && e.From == "rec" && e.To == "hw");
+
+        Assert.False(FeatureMap.Lit(toHomework, board));
+        Assert.Equal(other, FeatureMap.ImpactOf("hw", board)?.Root);   // the chip names the reader 숙제 misses, not 스킬창 읽기
     }
 }

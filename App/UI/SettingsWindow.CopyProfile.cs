@@ -67,7 +67,7 @@ public partial class SettingsWindow
     /// <summary>The three modes, one filled (the same toggle as the profile buttons).</summary>
     UIElement CopyModes(Action refill)
     {
-        var modes = new WrapPanel { Margin = new(0, 0, 0, 8) };
+        var modes = new WrapPanel { Margin = new(0, 0, 0, Tokens.Space.Gap) };
         foreach (var (mode, text) in new[] { (CopyMode.AllClasses, "모든 클래스에"), (CopyMode.ClassToClass, "클래스 → 클래스"), (CopyMode.WholeProfile, "프로필 전체") })
         {
             var b = Toggle(text, "copyMode", mode == _copyMode);
@@ -96,7 +96,7 @@ public partial class SettingsWindow
         classOnly.IsEnabled = allowed;
         boxes.Add(classOnly);
         var what = Stack(Row("복사할 것", [.. boxes]));
-        if (!allowed) what.Children.Add(Muted(new TextBlock { Text = ProfileCopy.ClassOnlyReason(r), TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 6) }));
+        if (!allowed) what.Children.Add(Muted(new TextBlock { Text = ProfileCopy.ClassOnlyReason(r), TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Gap) }));
         return what;
     }
 
@@ -120,7 +120,7 @@ public partial class SettingsWindow
     /// <summary>되돌리기 for the latest 복사 only: until the next one (not saved).</summary>
     UIElement UndoButton(CopyUndo undo, Action refill)
     {
-        var b = new Button { Content = "되돌리기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 4, 0, 0),
+        var b = new Button { Content = "되돌리기", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, Tokens.Space.Tight, 0, 0),
             ToolTip = "방금 한 복사를 취소합니다. 다음 복사 전까지 쓸 수 있습니다." };
         b.Click += (_, _) =>
         {

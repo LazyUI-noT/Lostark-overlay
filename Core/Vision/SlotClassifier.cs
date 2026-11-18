@@ -100,7 +100,7 @@ public static class SlotClassifier
     public static Reading Read(SlotId slot, Image crop, TimeSpan at, SlotCalibration? cal, DigitReader digits, DarkCue dark = DarkCue.None)
     {
         var (kind, value) = digits.Read(crop, slot);
-        bool stacked = kind == ReadKind.Seconds && digits.ShowsCount(crop);
+        int charges = kind == ReadKind.Seconds ? digits.Count(crop) : 0;
         if (kind is not (ReadKind.Seconds or ReadKind.Minutes))
         {
             if (cal != null && cal.Similarity(crop) < MinSimilarity) return new(slot, ReadKind.Unreadable, 0, at);
@@ -109,8 +109,8 @@ public static class SlotClassifier
             if (kind == ReadKind.Ready && IsDark(crop, dark)) kind = ReadKind.Unavailable;
         }
         // Only the eight keys and 초각스 get the gold frame (각성기's is gold all the time, 아덴 skills never light).
-        return new(slot, kind, value, at, stacked, slot is not (SlotId.각성기 or SlotId.아덴1 or SlotId.아덴2) && GoldFrame(crop),
-            RingWhite(crop) >= FlashRing);
+        return new(slot, kind, value, at, charges > 0, slot is not (SlotId.각성기 or SlotId.아덴1 or SlotId.아덴2) && GoldFrame(crop),
+            RingWhite(crop) >= FlashRing, charges);
     }
 
     // A use lights the icon's edge white for about 7 frames (chainSkill.mp4): 0.65–0.99 of the outer 3 px ring is near-white

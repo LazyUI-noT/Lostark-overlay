@@ -27,6 +27,12 @@ public sealed partial class Settings : IJsonOnDeserializing
     public HotkeySettings Hotkeys { get; set; } = new();
     public PartySettings Party { get; set; } = new();
     public BuffSettings Buffs { get; set; } = new();
+    /// <summary>A 자동 (raid only) on for a shown buff bar, the gauge, the skill boxes, the 전투자원 창 or this character's
+    /// 단심: the engine must watch where the player is, even with the overlay's meter off.</summary>
+    [JsonIgnore] public bool AnyInRaidOnly => Buffs.AnyInRaidOnly || Gauge.RaidOnly || Overlay.SkillsRaidOnly || Ring is { On: true, RaidOnly: true }
+        || JudgmentInRaidOnly;
+    /// <summary>단심 on for the active character and on 자동.</summary>
+    [JsonIgnore] public bool JudgmentInRaidOnly => Judgment.RaidOnly && Judgment.On(ActiveCharacter);
     /// <summary>합쳐서 / 따로: false = skill boxes, gauge and buff bars in one window, true = each in its own. The one value
     /// <c>Buffs.Detached</c> (per profile and class in <see cref="ProfileEntry.BuffsDetached"/>), read by all three panels.</summary>
     [JsonIgnore] public bool Apart { get => Buffs.Detached; set => Buffs.Detached = value; }
@@ -89,6 +95,13 @@ public sealed partial class Settings : IJsonOnDeserializing
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UiTheme? Palette { get => Theme > UiTheme.Dark ? Theme : null; set { if (value is { } v) Theme = v; } }
 
+    /// <summary>일반 → 애니메이션: 설정's own motion (<see cref="Motion.Runs"/>); default on, local display only (older
+    /// versions ignore it).</summary>
+    public bool Animations { get; set; } = true;
+
+    /// <summary>읽는 자리 → 자리 맞추기 → 스킬창과 함께 움직임 (<see cref="Vision.FitAdjust.BuffFollowsBar"/>); default on, local only.</summary>
+    public bool BuffFollowsBar { get; set; } = true;
+
     /// <summary>Tray → 표시's memory for this session (fields: never saved): what turning a part off hid, which turning it
     /// on brings back (<see cref="TrayToggles"/>).</summary>
     internal (string? Key, SlotGroup[] Groups)? TrayHiddenGroups;
@@ -96,11 +109,14 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
     void IJsonOnDeserializing.OnDeserializing() =>
-        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved, SplitMigrated) = (UiTheme.DeepTeal, false, false, false, false, true, false, false);
+        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved, SplitMigrated, ShownMigrated) = (UiTheme.DeepTeal, false, false, false, false, true, false, false, false);
 
     /// <summary>The global 쿨 진행 표시 & co. (<see cref="OverlaySettings.CooldownStyle"/>) have moved into 기본 and every 개별
     /// class (<see cref="ClassProfileMigration.MoveCooldownViews"/>); false in an older file.</summary>
     public bool CooldownLooksMoved { get; set; } = true;
+
+    /// <summary>A saved 보스 감지 개수 of 14 (the old "모두") became 17 once, so it still means all (false in an older file).</summary>
+    public bool ShownMigrated { get; set; } = true;
 
     /// <summary>숙제 without an API key: kept by installs from before the key gate (a file without this value), not by new ones
     /// (settings-access.plan.md B, user 2026-11-11).</summary>

@@ -72,6 +72,76 @@ public class CooldownTrackerTests
         Assert.False(CooldownTracker.Update(s, R(ReadKind.Ready, 8)).Stacked);
     }
 
+    /// <summary>A stack skill recharging with <paramref name="charges"/> uses left, its recharge ending at 6 s.</summary>
+    private static SlotState Recharging(int charges)
+    {
+        var s = CooldownTracker.Update(ReadyAt(-1), Sec(8, 0) with { Stacked = true, Charges = charges });
+        return CooldownTracker.Update(s, Sec(6, 1) with { Stacked = true, Charges = charges });
+    }
+
+    private static Reading Lockout(double t, int charges) => Sec(1, t) with { Stacked = charges > 0, Charges = charges };
+
+    /// <summary>Casts <see cref="CooldownTracker.SpentCharge"/> finds over <paramref name="reads"/>.</summary>
+    private static int Casts(SlotState s, params Reading[] reads)
+    {
+        int casts = 0;
+        foreach (var r in reads)
+        {
+            var next = CooldownTracker.Update(s, r);
+            if (CooldownTracker.SpentCharge(s, next)) casts++;
+            s = next;
+        }
+        return casts;
+    }
+
+    // 수라 sample.mp4 S (일반6, 2 uses): pressed while recharging its second use, "4s, 1" turns to a grey "1s" with no
+    // count. The slot never goes back to Ready, so there was no ready → cooldown edge and the cast was lost.
+    [Theory]
+    [InlineData(1, 0)]   // the last use of a 2-use skill
+    [InlineData(2, 1)]   // a 3-use skill: one of two left
+    [InlineData(3, 2)]
+    public void A_use_spent_while_recharging_is_a_cast(int before, int after) =>
+        Assert.Equal(1, Casts(Recharging(before), Lockout(2, after), Lockout(2.12, after)));
+
+    [Fact]
+    public void A_spent_use_is_one_cast_however_long_the_lockout_shows() =>
+        Assert.Equal(1, Casts(Recharging(1), Lockout(2, 0), Lockout(2.12, 0), Lockout(2.3, 0), Lockout(2.6, 0), Sec(4, 2.9)));
+
+    [Fact]
+    public void The_count_dropping_after_the_lockout_shows_is_still_one_cast() =>
+        Assert.Equal(1, Casts(Recharging(2), Lockout(2, 2), Lockout(2.12, 2), Lockout(2.2, 1), Lockout(2.3, 1)));
+
+    [Fact]
+    public void A_count_flickering_back_up_in_the_lockout_is_not_a_second_cast() =>
+        Assert.Equal(1, Casts(Recharging(3), Lockout(2, 0), Lockout(2.12, 2), Lockout(2.2, 3), Lockout(2.3, 2)));
+
+    // A cast flash streaks "11s" or "14s" into 1 for a frame or two (CooldownTracker.Seconds); with the count missed too,
+    // it must not read as a spent use.
+    [Fact]
+    public void A_short_misread_1_without_the_count_is_no_cast() =>
+        Assert.Equal(0, Casts(Recharging(1), Lockout(2, 0), Lockout(2 + Frame, 0), Sec(4, 2.05) with { Stacked = true, Charges = 1 }));
+
+    [Theory]
+    [InlineData(1, 1)]   // "1s" misread with the count still there
+    [InlineData(1, 2)]   // a recharge raised it
+    public void A_lockout_without_a_lower_count_is_no_cast(int before, int after) =>
+        Assert.Equal(0, Casts(Recharging(before), Lockout(2, after), Lockout(2.12, after)));
+
+    [Fact]
+    public void A_count_missed_on_the_timer_is_no_cast() =>
+        Assert.Equal(0, Casts(Recharging(1), Sec(4, 2), Sec(4, 2.12)));
+
+    [Fact]
+    public void The_recharges_own_last_second_is_no_cast() =>
+        Assert.Equal(0, Casts(Recharging(1), Lockout(5.2, 0), Lockout(5.35, 0)));
+
+    [Fact]
+    public void An_ordinary_cooldowns_last_second_is_no_cast()
+    {
+        Assert.Equal(0, Casts(Locked(5, 3.9), Sec(1, 4.1), Sec(1, 4.3)));
+        Assert.Equal(0, Casts(Locked(9, 2), Sec(1, 2.1), Sec(1, 2.25)));
+    }
+
     /// <summary>The count vanishes at 0 uses, so a stack skill with none left looks like any cooldown: the slot is
     /// remembered as a stack skill from its first count until it can't be read (a loading screen, maybe another character).</summary>
     [Fact]

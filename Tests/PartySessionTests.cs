@@ -492,7 +492,7 @@ public sealed class PartySessionTests : IDisposable
 
         var again = Join(host, "민수", At(2, 40001));
         Assert.True(again.Ended);
-        Assert.Contains("내보낸", again.TakeChanges().Notice);
+        Assert.Equal(PartySession.BlockedText, again.TakeChanges().Notice);
         Assert.Single(host.TakeChanges().Admission.Refused);
     }
 
@@ -613,7 +613,7 @@ public sealed class PartySessionTests : IDisposable
         var b = Join(host, "민수", At(5));
 
         Assert.True(a.Ended);
-        Assert.Contains("같은 기기", a.TakeChanges().Notice);
+        Assert.Equal(PartySession.Replaced, a.TakeChanges().Notice);
         Assert.False(a.CanRejoin);
         Assert.Equal("참가 중 (3/8)", b.Status);
     }

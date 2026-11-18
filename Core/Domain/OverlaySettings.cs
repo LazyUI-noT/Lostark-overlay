@@ -15,6 +15,12 @@ public sealed class OverlaySettings : IWindowPlace
     public string PlateColor { get; set; } = DefaultPlate;
     public const string DefaultPlate = "#0C0D10";
     public double BoxOpacity { get; set; } = 1.0;     // boxes (and their timers)
+    /// <summary>스킬 자동 (user, 2026-11-15): your skill boxes only in a raid, as the buff bars' <see cref="BuffSettings.RaidOnly"/>.
+    /// Party members' boxes always show; the skills are still read.</summary>
+    public bool SkillsRaidOnly { get; set; }
+
+    /// <summary>Your skill boxes while 자동 is on and the player isn't in a raid: not drawn, their places kept.</summary>
+    public bool SkillsOutOfRaid(bool inDungeon) => SkillsRaidOnly && !inDungeon;
     /// <summary>남은 쿨 (초) with <see cref="CooldownStyle"/> and <see cref="FillFrom"/>, before they went per class
     /// (<see cref="MineProfile.Cooldown"/>): read only to move an older file's once
     /// (<see cref="ClassProfileMigration.MoveCooldownViews"/>), and kept so an older version opening the file finds them.</summary>

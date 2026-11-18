@@ -85,9 +85,10 @@ public class MeterViewTests
         Assert.Equal(["나"], v.Rows.Select(r => r.Name));
     }
 
-    static BuffState[] Buffs(bool 공증, bool 아덴, bool 초각스) =>
+    static BuffState[] Buffs(bool 공증, bool 아덴, bool 초각스, bool 낙인 = false) =>
         [new(BuffKind.공증, 공증, null, null, false, S(0)), new(BuffKind.아덴피증, 아덴, null, null, false, S(0)),
-         new(BuffKind.초각스피증, 초각스, null, null, false, S(0)), new(BuffKind.뎀증, false, null, null, false, S(0))];
+         new(BuffKind.초각스피증, 초각스, null, null, false, S(0)), new(BuffKind.뎀증, false, null, null, false, S(0)),
+         new(BuffKind.낙인, 낙인, null, null, false, S(0))];
 
     static MeterStatus At(long damage, int fight = 1) =>
         MeterStatus.None with { Panel = new(damage, 0, 10, false), PanelFound = true, Clock = FightClockState.None with { Fight = fight } };
@@ -129,7 +130,18 @@ public class MeterViewTests
         V(60 * Eok, Buffs(true, true, false));    // +60: 공증 and 아덴 on
         V(80 * Eok, Buffs(true, false, false));   // +20: 공증 only
         var v = V(100 * Eok, Buffs(false, false, true));   // +20: 초각스 only
-        Assert.Equal([0.8, 0.6, 0.2], v.BuffCover!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([0.8, 0.6, 0.2, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
+    }
+
+    [Fact]
+    public void 낙인_counts_as_its_own_row_last()
+    {
+        var h = new MeterHistory();
+        MeterView V(long damage, BuffState[] b) => MeterView.Build(At(damage), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(1), buffs: b);
+        V(0, Buffs(false, false, false));
+        V(50 * Eok, Buffs(true, false, false, 낙인: true));   // +50: 공증 and 낙인
+        var v = V(100 * Eok, Buffs(false, false, false));     // +50: none
+        Assert.Equal([0.5, 0.0, 0.0, 0.5], v.BuffCover!.Select(x => Math.Round(x, 6)));
     }
 
     static MeterStatus AtBoss(long damage, long bossTaken) => At(damage) with { Boss = BossDamageState.None with { Done = bossTaken } };
@@ -144,8 +156,8 @@ public class MeterViewTests
         V(60 * Eok, 100 * Eok, Buffs(true, true, false));    // the boss lost 100: 공증 and 아덴 on
         V(80 * Eok, 300 * Eok, Buffs(true, false, false));   // 200: 공증 only
         var v = V(100 * Eok, 400 * Eok + 999_999, Buffs(false, false, true));   // 100 (and under a million, not counted): 초각스 only
-        Assert.Equal([0.75, 0.25, 0.25], v.BuffParty!.Select(x => Math.Round(x, 6)));
-        Assert.Equal([0.8, 0.6, 0.2], v.BuffCover!.Select(x => Math.Round(x, 6)));   // mine as before
+        Assert.Equal([0.75, 0.25, 0.25, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([0.8, 0.6, 0.2, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));   // mine as before
         Assert.Null(V(110 * Eok, 500 * Eok, Buffs(true, false, false), small: false).BuffParty);   // 8-man: the boss mixes two parties
     }
 
@@ -162,11 +174,11 @@ public class MeterViewTests
         Bar(h, 2, 2, 100 * Eok, 100 * Eok, Buffs(true, false, false));    // +100 under 공증
         Bar(h, 4, 2, 200 * Eok, 100 * Eok, Buffs(true, true, true));      // the bar unread: +100 left out, whatever the buffs
         var v = Bar(h, 5, 5, 300 * Eok, 400 * Eok, Buffs(false, false, false));   // back: +100 unbuffed counts
-        Assert.Equal([0.5, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
-        Assert.Equal([1.0, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));   // the 300 lost meanwhile came in one jump: not counted
+        Assert.Equal([0.5, 0.0, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([1.0, 0.0, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));   // the 300 lost meanwhile came in one jump: not counted
         Bar(h, 6, 6, 300 * Eok, 400 * Eok, Buffs(false, false, false));
         v = Bar(h, 7, 7, 300 * Eok, 500 * Eok, Buffs(false, false, false));          // settled: the boss figure counts again
-        Assert.Equal([0.5, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([0.5, 0.0, 0.0, 0.0], v.BuffParty!.Select(x => Math.Round(x, 6)));
     }
 
     [Theory]
@@ -193,7 +205,7 @@ public class MeterViewTests
             MeterView.Build(MeterStatus.None with { HpAt = S(2), Clock = FightClockState.None with { Fight = 1 } }, MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(t));
         Bar(h, 7, 7, 300 * Eok, 0, Buffs(false, false, false));           // +200 dealt across it: left out
         var v = Bar(h, 8, 8, 300 * Eok, 0, Buffs(false, false, false));
-        Assert.Equal([1.0, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
+        Assert.Equal([1.0, 0.0, 0.0, 0.0], v.BuffCover!.Select(x => Math.Round(x, 6)));
     }
 
     [Fact]
@@ -202,12 +214,12 @@ public class MeterViewTests
         var never = new MeterHistory();
         Bar(never, 5, 0, 0, 0, Buffs(false, false, false));
         Bar(never, 6, 0, 100 * Eok, 0, Buffs(true, false, false));
-        Assert.Equal([1.0, 0.0, 0.0], Bar(never, 7, 7, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
+        Assert.Equal([1.0, 0.0, 0.0, 0.0], Bar(never, 7, 7, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
 
         var gimmick = new MeterHistory();
         Bar(gimmick, 1, 1, 0, 0, Buffs(false, false, false));
         Bar(gimmick, 4, 1, 100 * Eok, 0, Buffs(true, false, false), gimmick: true);
-        Assert.Equal([1.0, 0.0, 0.0], Bar(gimmick, 5, 5, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
+        Assert.Equal([1.0, 0.0, 0.0, 0.0], Bar(gimmick, 5, 5, 100 * Eok, 100 * Eok, Buffs(false, false, false)).BuffCover!);
     }
 
     [Fact]
@@ -225,7 +237,7 @@ public class MeterViewTests
         var h = new MeterHistory();
         MeterView.Build(At(50 * Eok), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(1), buffs: Buffs(true, true, true));
         var v = MeterView.Build(At(10 * Eok, fight: 2), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), h, S(2), buffs: Buffs(false, false, false));
-        Assert.Equal([0.0, 0.0, 0.0], v.BuffCover!);
+        Assert.Equal([0.0, 0.0, 0.0, 0.0], v.BuffCover!);
         Assert.Null(MeterView.Build(At(50 * Eok), MeterRole.딜러, "나", 3, [], 0, 0, new MeterSettings(), new MeterHistory(), S(1), buffs: []).BuffCover);
     }
 

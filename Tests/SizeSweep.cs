@@ -14,7 +14,7 @@ public sealed class SizeSweep
     // so it is read as a whole frame; GAUGE_SIZES_BOXES: how many buff boxes each size tries (default 14).
     static readonly int[] Area = Environment.GetEnvironmentVariable("GAUGE_SIZES_VP")?.Split(',').Select(int.Parse).ToArray() ?? [0, 0, 1920, 1080];
     static readonly Viewport Vp = new(0, 0, Area[2], Area[3]);
-    static readonly int Boxes = int.TryParse(Environment.GetEnvironmentVariable("GAUGE_SIZES_BOXES"), out int n) ? n : Geometry.MaxBuffBoxCount;
+    static readonly int Boxes = int.TryParse(Environment.GetEnvironmentVariable("GAUGE_SIZES_BOXES"), out int n) ? n : Geometry.MaxIconsAny;
 
     [Fact]
     public void Sizes_of_a_video_when_requested()

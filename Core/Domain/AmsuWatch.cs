@@ -8,9 +8,14 @@ namespace GaugeOverlay.Core.Domain;
 /// HUD and resolution place it, user 2026-11-03).</summary>
 public sealed record AmsuLayout(double Scale, double TextScale, BossSlots Slots, bool Timed, int Line)
 {
-    public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize, int bossCount = Geometry.MaxBossSlots) =>
-        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize, bossCount), Amsu.Timed(vp, bossSize),
+    public static AmsuLayout Of(Viewport vp, Fit fit, int bossSize, int? shown = null, int count = Geometry.MaxIconsAny) =>
+        new(Geometry.BossScale(vp, fit, bossSize), Geometry.BuffScale(vp, bossSize), Geometry.BossSlotsIn(vp, fit, bossSize, shown, count), Amsu.Timed(vp, bossSize),
             Geometry.BossDebuffLine);
+
+    /// <summary>대난투's row (<see cref="Geometry.DaenantuDebuffStrip"/>): centred under the gimmick's fill bar at the 100% size.</summary>
+    public static AmsuLayout Daenantu(Viewport vp, Fit fit) =>
+        new(Geometry.BossScale(vp, fit, Geometry.DaenantuBossSize), Geometry.BuffScale(vp, Geometry.DaenantuBossSize), Geometry.DaenantuSlotsIn(vp, fit),
+            Amsu.Timed(vp, Geometry.DaenantuBossSize), Geometry.BossDebuffLine);
 }
 
 /// <summary>The 암수 read loop (amsu.design.md) as the engine runs it on its captures and the dev sweep on a video, on the cadence
@@ -35,6 +40,21 @@ public sealed class AmsuWatch
     /// <summary>Every slot matched again (강화 읽기 switched: the strip is prepared differently).</summary>
     public void ResetGate() => _gate.Reset();
 
+    /// <summary>How many slot matches the gate let through (tests).</summary>
+    internal int Matches => _gate.Identifies;
+
+    /// <summary>How many times a pass resampled the strip to reference size (tests: one per pass, bombs and 낙인 together).</summary>
+    internal int Resizes { get; private set; }
+
+    /// <summary>Bombs are matched (암수 on). Off with <see cref="Brand"/> on: the row is only walked for the 낙인, with no boss HP text.</summary>
+    public bool Bombs { get; set; } = true;
+
+    /// <summary>낙인's bar when it is on: it reads from this watch's strip, snap and walk (phase 4: one capture for both).</summary>
+    public BrandWatch? Brand { get; set; }
+
+    // A 낙인 asks for more than the 0.5 s identification passes only under 2 s left (replays br1, br2: 5/s passes for it cost 2.5×).
+    bool BrandUp(TimeSpan now) => Brand?.Fast(now) == true;
+
     /// <summary>설정's 읽기 빈도 (AmsuPace): 높음 reads on the shared cadence, 낮음 far less.</summary>
     public AmsuRate Rate { get; set; } = AmsuRate.높음;
 
@@ -42,6 +62,9 @@ public sealed class AmsuWatch
 
     /// <summary>When the bombs were last identified (matched against the templates).</summary>
     internal TimeSpan ClassifiedAt { get; private set; } = TimeSpan.MinValue;
+
+    /// <summary>The debuffs in the row at the last pass, bombs or not (읽는 자리's boss debuff box turns ✓ on any).</summary>
+    public int Filled => _filled;
 
     /// <summary>The last row read (the dev sweep's log).</summary>
     public AmsuRow? LastRow => _last;
@@ -62,19 +85,19 @@ public sealed class AmsuWatch
         // Unseen at the last frame pass on a row that showed and had room (behind "+N" or in a cutscene it is rightly unseen).
         bool missed = _framesAt != TimeSpan.MinValue && _seen && !_full && State.Up.Values.Any(b => b.LastSeen < _framesAt);
         bool pending = State.Up.Values.Any(b => b.Pending is not null);   // a timer jump waiting for its second read
-        return AmsuPace.Of(Rate, timed, _found.Count, left, _foundSince is { } f ? now - f : TimeSpan.Zero, missed, pending);
+        return AmsuPace.Of(Rate, timed, _found.Count + (BrandUp(now) ? 1 : 0), left, _foundSince is { } f ? now - f : TimeSpan.Zero, missed, pending);
     }
 
     /// <summary>The pass due at <paramref name="now"/>, and whether it reads the boss's HP text (a frame pass due to identify).</summary>
     public (RowPass Pass, bool BossText) Due(TimeSpan now, bool timed)
     {
-        bool fast = timed && _found.Any(Fast);
+        bool fast = timed && (_found.Any(Fast) || Brand?.Fast(now) == true);
         var (frames, classify) = Pace(now, timed);
         var pass = RowCadence.Due(_framesAt, _timersAt, fast, now, frames);
         // No line to walk yet, or no bomb in the row: the next identification finds a new one (within 0.5 s at 높음: user,
         // 2026-11-01; 1 s at 낮음).
-        if (pass == RowPass.Frames && (Line is null || _found.Count == 0) && !IdentifyDue(now, classify)) pass = RowPass.None;
-        return (pass, pass == RowPass.Frames && IdentifyDue(now, classify));
+        if (pass == RowPass.Frames && (Line is null || _found.Count == 0 && !BrandUp(now)) && !IdentifyDue(now, classify)) pass = RowPass.None;
+        return (pass, Bombs && pass == RowPass.Frames && IdentifyDue(now, classify));
     }
 
     /// <summary>One <paramref name="pass"/> at <paramref name="t"/> with the boss's max HP (null: unread or not read this pass).
@@ -97,7 +120,7 @@ public sealed class AmsuWatch
     AmsuRow? Frames(AmsuLayout layout, long? boss, Image strip, TimeSpan t)
     {
         var (_, classify) = Pace(t, layout.Timed);
-        bool bossRead = IdentifyDue(t, classify);
+        bool bossRead = Bombs && IdentifyDue(t, classify);
         (_framesAt, _timersAt) = (t, t);
         if (layout != _layout) (_layout, _snap, _snapped, _gate) = (layout, 0, false, AmsuReader.Gate());   // another HUD, size or resolution: placed again
         // The strip at reference size, once for the pass: the walk and the identification both use it.
@@ -108,8 +131,23 @@ public sealed class AmsuWatch
         {
             if (sized is not null) return sized;
             sized = DebuffReader.ToReference(strip, layout.Scale, _sized);
+            Resizes++;
             if (sized != strip) _sized = sized;
             return sized;
+        }
+        // The placed line, snapped once to the boss's debuff frames (an empty row snaps nothing: the placed line until one with debuffs does).
+        void Snap()
+        {
+            if (!_snapped && AmsuReader.SnapIn(Sized(), layout.Scale, layout.Slots, layout.Line, Geometry.BossLineSnap) is { } snapped)
+                (_snap, _snapped) = (snapped - layout.Line, true);
+        }
+        if (!Bombs)   // 낙인 alone: walk the row and look for it; no bombs matched, no HP text asked
+        {
+            Snap();
+            var only = AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, layout.Line + _snap);
+            (_full, _seen, _filled, ClassifiedAt) = (only.Full, only.Seen, only.Filled.Count, t);
+            Brand?.ReadWalk(layout, Sized(), strip, only, layout.Line + _snap, t);
+            return new AmsuRow([], _full, _seen);
         }
         // Identifying due by time or an unread timer: no walk first (the match walks the row itself).
         var walk = !bossRead && Line is { } y ? AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, y) : null;
@@ -122,16 +160,22 @@ public sealed class AmsuWatch
         // unread "N초" asked for one every pass, each dropped the bombs, and they went unseen until a missed match ended one).
         if (identify && !allowed && _found.Count > 0 && Line is { } kept)
             (walk, identify) = (AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, kept), false);
+        // The 낙인 reads the walk of this pass (made here when the identification took the pass: it walks the row itself).
+        void StepBrand()
+        {
+            if (Brand is null) return;
+            int line = layout.Line + _snap;
+            Brand.ReadWalk(layout, Sized(), strip, walk ?? AmsuReader.WalkIn(Sized(), layout.Scale, layout.Slots, line), line, t);
+        }
         if (identify)
         {
+            Snap();   // then read there alone
             if (!allowed)
             {
                 (_found, _unread) = ([], false);
+                StepBrand();   // the 낙인 needs no HP text
                 return null;
             }
-            // The placed line, snapped once to the boss's debuff frames, then read there alone.
-            if (!_snapped && AmsuReader.SnapIn(Sized(), layout.Scale, layout.Slots, layout.Line, Geometry.BossLineSnap) is { } snapped)
-                (_snap, _snapped) = (snapped - layout.Line, true);
             var find = AmsuReader.LocateIn(Sized(), layout.Scale, layout.Slots, layout.Line + _snap, _gate);
             (_found, _full, _seen, _filled, ClassifiedAt) = (find.Bombs, find.Full, find.Seen, find.Filled, t);
         }
@@ -141,6 +185,7 @@ public sealed class AmsuWatch
                 .OfType<BombAt>()];
             (_full, _seen, _filled) = (walk.Full, walk.Seen, walk.Filled.Count);
         }
+        StepBrand();
         _foundSince = _found.Count == 0 ? null : _foundSince ?? t;
         var row = Read(strip, layout, _found, _ => true);
         _unread = layout.Timed && row.Bombs.Any(b => b.Seconds is null);
@@ -152,6 +197,7 @@ public sealed class AmsuWatch
     AmsuRow Timers(AmsuLayout layout, Image strip, TimeSpan t)
     {
         _timersAt = t;
+        Brand?.Timer(layout, strip, t);
         var row = Read(strip, layout, _found, Fast);   // the others unread this pass
         foreach (var b in row.Bombs.Where(b => b.Seconds is not null)) _seconds[b.Kind] = b.Seconds!.Value;
         return row;

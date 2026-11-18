@@ -28,6 +28,11 @@ public sealed class JudgmentSettings : IWindowPlace
     public bool ShowLabel { get; set; } = true;
     /// <summary>불투명도, 0.2–1.</summary>
     public double Opacity { get; set; } = 1;
+    /// <summary>자동 (user, 2026-11-18): the 단심 창 only in a raid, and 단심 read only there, as the buff bars'
+    /// <see cref="BuffSettings.RaidOnly"/>.</summary>
+    public bool RaidOnly { get; set; }
+
+    public bool OutOfRaid(bool inDungeon) => RaidOnly && !inDungeon;
 
     public double Left { get; set; } = double.NaN;
     public double Top { get; set; } = double.NaN;

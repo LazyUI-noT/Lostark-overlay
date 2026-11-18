@@ -190,6 +190,13 @@ public partial class App
         _settingsWindow.DetectLive = engine.DetectLive;
         _settingsWindow.WatchFrames = engine.WatchFrames;
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
+        // 읽는 자리's pictures (reading-place.plan.md B): 전분 or 암수 turning ! saves a raid one, encoded off the engine thread.
+        var readingShots = new ReadingShotStore(ReadingShots.Dir);
+        engine.RaidShotTaken += (vp, game) => Task.Run(() =>
+        {
+            if (readingShots.SaveRaid(vp, game, DateTime.Now) is { } failed) Trace.WriteLine($"[reading-place] raid picture not saved: {failed}");
+        });
+        _settingsWindow.ReadingStore = readingShots;
         _settingsWindow.Records = records;
         _settingsWindow.TestRecords = testRecords;
         _settingsWindow.ImportedRecords = new RecordStore(Path.Combine(RecordStore.DefaultDir, "imported"));   // other users' fights: apart, never pruned
@@ -310,8 +317,8 @@ public partial class App
             bool warn = settings.Gauge.ReadMode == GaugeReadMode.Predicted && characters.ClassMismatch;
             if (warn && !_overlay.Renderer.ClassWarning)
                 _tray.Notify(characters.ShownClass is { } shown
-                    ? $"스킬창 가운데가 {Josa.By(shown)} 보입니다. 고른 클래스({characters.ActiveClass?.Name})를 확인하세요. 게이지 예측은 멈췄습니다."
-                    : $"초각스 아이콘이 고른 클래스({characters.ActiveClass?.Name})와 다릅니다. 클래스를 확인하세요. 게이지 예측은 멈췄습니다.", kind: NoticeKind.Problem);
+                    ? $"게이지 예측 멈춤: 스킬창 가운데 아이콘은 {shown}인데 고른 클래스는 {characters.ActiveClass?.Name}입니다. 클래스를 확인하세요."
+                    : $"게이지 예측 멈춤: 초각스 아이콘이 고른 클래스({characters.ActiveClass?.Name})와 다릅니다. 클래스를 확인하세요.", kind: NoticeKind.Problem);
             _overlay.Renderer.ClassWarning = _gauge.Renderer.ClassWarning = warn;
             // About 10 s of flashing with no fix: back to 기본, so a wrong class doesn't stay on.
             if (warn) { if (!wrongClassTimer.IsEnabled) wrongClassTimer.Start(); }
@@ -324,7 +331,7 @@ public partial class App
             if (!_overlay.Renderer.ClassWarning) return;
             characters.PickDefault();
             _settingsWindow.Reload();
-            _tray.Notify($"클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬창 다시 맞추기({SettingsWindow.KeyOrNone(_settings.Hotkeys.DetectCharacter)})나 트레이에서 클래스를 고르세요.", kind: NoticeKind.Problem);
+            _tray.Notify($"클래스가 맞지 않아 기본으로 돌아갔습니다. 스킬창 다시 맞추기({SettingsWindow.KeyOrNone(_settings.Hotkeys.DetectCharacter)})를 누르거나 트레이에서 클래스를 고르세요.", kind: NoticeKind.Problem);
             OnSettingsChanged();
         };
 
@@ -383,7 +390,7 @@ public partial class App
         // 아이콘 다시 읽기 (tray, 설정, hotkey): the 직업각인's saved icons are dropped and every slot is copied at its next ready read.
         void RereadIcons()
         {
-            if (NeededIcons().Count == 0) { _tray.Notify("아이콘으로 표시가 켜진 칸이 없습니다. 설정 → 내 오버레이 → 스킬 칸에서 켜세요.", kind: NoticeKind.Problem); return; }
+            if (NeededIcons().Count == 0) { _tray.Notify("'아이콘으로 표시'를 켠 칸이 없습니다. 설정 → 내 오버레이 → 스킬 칸에서 켜세요.", () => _settingsWindow.OpenAt(SettingsWindow.AreaOverlay), NoticeKind.Problem); return; }
             if (IconKey() is { } k)
             {
                 try { iconStore.Clear(k.Cls, k.Sub); }
@@ -395,7 +402,7 @@ public partial class App
             copyingIcons = false;   // a new run, even if one was on
             engine.CopyIcons(false);
             UpdateIconCopy();
-            _tray.Notify("아이콘을 다시 읽습니다. 스킬이 준비되면 칸마다 읽습니다.");
+            _tray.Notify("아이콘을 다시 읽습니다. 칸마다 스킬이 준비되면 읽습니다.");
         }
 
         void Configure()
@@ -418,11 +425,14 @@ public partial class App
                 wrongClass || settings.ActiveCharacter is not { } active ? null : settings.StackSkillsOf(active),
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
-                settings.Buffs.Count, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.Buffs.AnyInRaidOnly, settings.Debuffs.BossCount,
+                settings.Buffs.ReadCount, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.AnyInRaidOnly, settings.Debuffs.BossCount, settings.Debuffs.BossShown, Geometry.Shown(settings.Buffs.Size, settings.Buffs.Shown),
                 HomeworkRead: !(settings.Meter.On && settings.Meter.Record), BossHpEvery: MeterSettings.ClampHpEvery(settings.Meter.HpEvery),
                 Ring: !wrongClass && settings.Ring.On ? characters.Ring : null,
-                OrbPick: !wrongClass && characters.OrbAsked ? OrbHue.For(characters.ActiveClass?.Name) : null));   // only after a read asked for (detection.md)   // 숙제 without a recorded fight reads the bar itself
+                OrbPick: !wrongClass && characters.OrbAsked ? OrbHue.For(characters.ActiveClass?.Name) : null,
+                BrandOn: settings.Buffs.Of(BuffKind.낙인).Visible, BuffsRaidOnly: settings.Buffs.AnyInRaidOnly,
+                RingRaidOnly: settings.Ring is { On: true, RaidOnly: true }, JudgmentRaidOnly: settings.JudgmentInRaidOnly,
+                AutoAsAlways: _autoAsAlways));   // the same terms as AnyInRaidOnly, which turns the presence probes on   // only after a read asked for (detection.md)   // 숙제 without a recorded fight reads the bar itself
             engine.ReadBehind = settings.Screens.ReadBehind;
             ApplyUi();
             Draw();
@@ -808,7 +818,7 @@ public partial class App
         });
         engine.FitNeeded += vp => Dispatcher.BeginInvoke(() =>
         {
-            if (settings.FirstRunDone) _tray.Notify($"게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 준비된 상태에서 설정 → 화면·인식 → 스킬창 다시 맞추기를 누르세요.", kind: NoticeKind.Problem);
+            if (settings.FirstRunDone) _tray.Notify($"이 게임 화면 크기({vp.Width}×{vp.Height})에 맞춘 스킬창이 없습니다. 모든 스킬이 준비되면 설정 → 인게임 설정 → 스킬창 맞추기를 누르세요.", () => _settingsWindow.OpenAt(SettingsWindow.AreaFit, SettingsWindow.SecFit), NoticeKind.Problem);
         });
         engine.FitFinished += (vp, fit, message, detected, test, canRevert) => Dispatcher.BeginInvoke(() =>
         {
@@ -820,7 +830,7 @@ public partial class App
             var text = (test ? "테스트 모드: " : "") + (test && fit is not null ? message : FitText(vp, fit, message));
             _settingsWindow.SetFitResult(text, canRevert);
             first?.SetFitResult(fit is not null, text);
-            _tray.Notify(text, kind: fit is null ? NoticeKind.Problem : NoticeKind.Guide);
+            _tray.Notify(text, fit is null ? () => _settingsWindow.OpenAt(SettingsWindow.AreaFit, SettingsWindow.SecFit) : null, fit is null ? NoticeKind.Problem : NoticeKind.Guide);
         });
         engine.EmblemCaptured += emblem => Dispatcher.BeginInvoke(() =>
         {
@@ -945,9 +955,9 @@ public partial class App
             ApplyDisplay();   // after the mode and pick: "the game's display" is the picked window's now
             if (on) engine.RequestDetect();   // the video's character
             _tray.SetTestMode(on, GameWindow.Picked);
-            _tray.Notify(notice ?? (!on ? "테스트 모드를 껐습니다. 로스트아크 창을 찾습니다."
-                : picked != 0 ? "테스트 모드: 고른 창을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다."
-                : "테스트 모드: 맨 앞에 있던 창(영상 플레이어 등)을 게임으로 보고, 그 화면에서 스킬창을 찾습니다. 저장된 맞춤은 쓰지도 바꾸지도 않습니다. 다른 창을 보려면 그 창을 클릭하거나 트레이 → 테스트 모드에서 고르세요."));
+            _tray.Notify(notice ?? (!on ? "테스트 모드 꺼짐: 로스트아크 창을 다시 찾습니다."
+                : picked != 0 ? "테스트 모드 켜짐: 고른 창을 게임 화면처럼 읽습니다. 저장된 세팅에 영향을 주지 않습니다."
+                : "테스트 모드 켜짐: 맨 앞 창을 게임 화면처럼 읽습니다. 저장된 세팅에 영향을 주지 않습니다."));
         }
         void ToggleTestMode()
         {
@@ -959,7 +969,7 @@ public partial class App
         _tray.TestWindowPicked += hwnd =>
         {
             if (GameWindow.Exists(hwnd)) SetTest(true, hwnd);
-            else _tray.Notify("그 창은 이미 닫혔습니다. 트레이 → 테스트 모드를 다시 열어 고르세요.", kind: NoticeKind.Problem);
+            else _tray.Notify("테스트 모드: 고른 창이 이미 닫혔습니다. 트레이 → 테스트 모드에서 다른 창을 고르세요.", kind: NoticeKind.Problem);
         };
         _tray.TestOff += () => SetTest(false, 0);
         _tray.ReinforcedToggled += on => { GameWindow.Reinforced = on; _tray.SetReinforced(on); };
@@ -988,7 +998,7 @@ public partial class App
         {
             if (closedTold == hwnd || !GameWindow.TestMode || GameWindow.Picked != hwnd || GameWindow.Exists(hwnd)) return;
             closedTold = hwnd;
-            _tray.Notify("테스트 모드: 고른 창이 닫혔습니다. 트레이 → 테스트 모드에서 다른 창을 고르거나 끄세요.", kind: NoticeKind.Problem);
+            _tray.Notify("테스트 모드: 고른 창이 닫혔습니다. 트레이 → 테스트 모드에서 다른 창을 고르거나 테스트 모드를 끄세요.", kind: NoticeKind.Problem);
         });
 
         // UI → settings / engine.
@@ -1085,19 +1095,21 @@ public partial class App
         // 스킬 등록 (설정 and the tray): the ready 일반 slots of the next frame the bar is on screen; nothing within 3 s is no bar.
         DispatcherTimer? skillsWait = null;
         void SkillsResult(string text) { engine.CancelSkills(); skillsWait?.Stop(); skillsWait = null; _settingsWindow.SetSkillsResult(text); _tray.Notify(text); }
-        void SubmitSkills()
+        (ClassInfo Class, string Sub)? skillsInto = null;   // whose pool the capture goes to: 설정's 편집할 직업각인, else the played one
+        void SubmitSkills((ClassInfo Class, string Sub)? into)
         {
-            if (characters.SkillsBlocked is { } why) { SkillsResult(why); return; }
+            if (CharacterService.SkillsBlockedFor(into) is { } why) { SkillsResult(why); return; }
+            skillsInto = into;
             skillsWait?.Stop();
             skillsWait = new DispatcherTimer(TimeSpan.FromSeconds(3), DispatcherPriority.Normal,
-                (_, _) => SkillsResult("스킬창이 보이지 않습니다. 게임 화면에 스킬창이 보일 때 다시 눌러 주세요."), Dispatcher);
+                (_, _) => SkillsResult("스킬창이 보이지 않습니다. 게임 화면에 스킬창이 보일 때 다시 누르세요."), Dispatcher);
             FrontForRead(engine);
             engine.RequestSkills();
         }
-        engine.SkillsCaptured += ready => Dispatcher.BeginInvoke(() => { if (skillsWait is not null) SkillsResult(characters.SubmitSkills(ready)); });
-        _settingsWindow.SkillsSubmitRequested += SubmitSkills;
-        _tray.SubmitSkills += SubmitSkills;
-        _settingsWindow.SkillsClearRequested += () => SkillsResult(characters.ClearSkills());
+        engine.SkillsCaptured += ready => Dispatcher.BeginInvoke(() => { if (skillsWait is not null) SkillsResult(characters.SubmitSkills(ready, skillsInto)); });
+        _settingsWindow.SkillsSubmitRequested += into => SubmitSkills(into ?? characters.ActiveSkillTarget);
+        _tray.SubmitSkills += () => SubmitSkills(characters.ActiveSkillTarget);
+        _settingsWindow.SkillsClearRequested += into => SkillsResult(characters.ClearSkills(into));
 
         // Party (background threads → dispatcher). Handlers read the latest values when they run, so the last one wins.
         party.PeersChanged += _ => Dispatcher.BeginInvoke(() => { peers = party.Peers; Draw(); });
@@ -1118,19 +1130,19 @@ public partial class App
             catch (System.Runtime.InteropServices.COMException) { return false; }
         }
         void CopyTokenWithNotice() => _tray.Notify(party.Token is null ? "참가 코드는 호스트만 복사할 수 있습니다."
-            : CopyToken() ? "참가 코드를 복사했습니다." : "클립보드를 쓸 수 없습니다. 잠시 뒤 다시 눌러 주세요.", kind: NoticeKind.Party);
+            : CopyToken() ? "참가 코드를 복사했습니다." : "클립보드를 쓸 수 없습니다. 잠시 뒤 다시 누르세요.", kind: NoticeKind.Party);
         async void HostParty()
         {
             party.PublishLook(MyLook());
             if (!await party.Host(settings.Party.HostPort, PartyName())) return;
             if (party.Token is { } t) TokenDialog.ShowToken(t, settings.Party.HostPort, settings.Theme);
-            else _tray.Notify("공유 방을 열었습니다.", kind: NoticeKind.Party);
+            else _tray.Notify("파티 공유를 열었습니다.", kind: NoticeKind.Party);
         }
         async void JoinParty(string? token)
         {
             if (token is null) return;
             party.PublishLook(MyLook());
-            if (await party.Join(token, PartyName())) _tray.Notify("공유 방에 참가했습니다.", kind: NoticeKind.Party);
+            if (await party.Join(token, PartyName())) _tray.Notify("파티 공유에 참가했습니다.", kind: NoticeKind.Party);
         }
         _tray.HostParty += HostParty;
         _tray.JoinParty += () => JoinParty(JoinDialog.Ask(settings.Theme));
@@ -1156,13 +1168,18 @@ public partial class App
         engine.Start();
         ApplyDisplay();
 
-        if (wasReset) _tray.Notify("설정 파일을 읽지 못해 기본값으로 시작했습니다.", kind: NoticeKind.Problem);
-        if (!settings.FirstRunDone)
+        if (wasReset) _tray.Notify("설정 파일을 읽지 못해 기본값으로 시작했습니다. 읽지 못한 파일은 %APPDATA%\\GaugeOverlay에 settings.json.broken-…으로 남겨 두었습니다.", kind: NoticeKind.Problem);
+        // 시작하기: at the first start, and again from 인게임 설정's 시작하기 다시 보기 (one window at a time).
+        void OpenFirstRun()
         {
-            first = ShowFirstRun(OnSettingsChanged);
-            first.FitRequested += () => { FrontForRead(engine); engine.RequestFit(); };   // as Refit: the game in front
-            first.Completed += () => Save(now: true);
+            if (first is not null) { if (first.WindowState == WindowState.Minimized) first.WindowState = WindowState.Normal; first.Activate(); return; }
+            var w = ShowFirstRun(OnSettingsChanged, FitList.HasFit(settings, engine.GameAreaKey, GameWindow.TestMode));
+            first = w;
+            w.FitRequested += () => { FrontForRead(engine); engine.RequestFit(); };   // as Refit: the game in front
+            w.Completed += () => { first = null; Save(now: true); };
         }
+        if (!settings.FirstRunDone) OpenFirstRun();
+        _settingsWindow.FirstRunRequested += OpenFirstRun;
 
         // 업데이트: checked once per start and installed straight away (user, 2026-10-29); 설정's button does the same by hand.
         string appDir = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
@@ -1200,7 +1217,7 @@ public partial class App
                 // Installed or not, this version keeps running (its exe was only renamed); a restart picks up whatever is in place.
                 Trace.WriteLine($"[update] failed: {ex}");
                 _settingsWindow.SetUpdateBusy(false);
-                MessageBox.Show($"업데이트를 마치지 못했습니다. GaugeOverlay를 다시 실행해 주세요.\n\n{ex.Message}", "GaugeOverlay 업데이트",
+                MessageBox.Show($"업데이트를 마치지 못했습니다. GaugeOverlay를 다시 실행하세요.\n\n{ex.Message}", "GaugeOverlay 업데이트",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

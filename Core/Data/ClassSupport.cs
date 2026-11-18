@@ -30,7 +30,7 @@ public sealed record SupportRow(string Class, string Subclass, bool Detect, Gaug
 }
 
 /// <summary>Which 직업각인 the app supports and how, built from the shipped data only, so a class added to Profiles shows up with
-/// no code change: 직업각인 감지 when every 직업각인 of the class has an icon in Profiles/subclass (and the class's 직업각인 can be
+/// no code change: 직업각인 감지 when every 직업각인 of the class is named by a 초각스 in Profiles/skills or has an icon in Profiles/subclass (and the class's 직업각인 can be
 /// told apart); the 아덴 게이지 from classes.json's "adenGauge" and its Profiles/aden gauge.json; the 아덴 skills when the gauge is
 /// read and the class has "adenSlots".</summary>
 public static class ClassSupport
@@ -40,10 +40,12 @@ public static class ClassSupport
     public static IReadOnlyList<SupportRow> Rows(string profilesDir, IReadOnlyList<ClassInfo> classes, Func<SlotId, string> keyName)
     {
         var rows = new List<SupportRow>();
+        var library = SkillLibrary.Load(Path.Combine(profilesDir, "skills"));
         foreach (var cls in classes)
         {
             var cores = CoreEffects.Load(profilesDir, cls.Name);
-            bool detect = !cls.SameSkills && cls.Subclasses.Keys.All(s => File.Exists(Path.Combine(profilesDir, "subclass", cls.Name, s + ".png")));
+            var named = library.Pool(cls.Name, SlotGroup.초각스).Select(s => s.Subclass).ToHashSet();   // 직업각인 a 초각스 tells (SkillClassFinder)
+            bool detect = !cls.SameSkills && cls.Subclasses.Keys.All(s => named.Contains(s) || File.Exists(Path.Combine(profilesDir, "subclass", cls.Name, s + ".png")));
             foreach (var (sub, rule) in cls.Subclasses)
             {
                 var gauge = rule is not null && GaugeLoader.Folder(profilesDir, cls.Name, sub) is { } dir && OrderKind(dir) is { } kind ? Gauge(kind, rule, keyName) : null;

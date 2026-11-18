@@ -14,7 +14,8 @@ public sealed partial class Engine
     AmsuWatch _amsuWatch = new();
     bool _amsuOn;
     RowPass _amsuPass;
-    bool _amsuTimed = true;   // the "N초" read at this game area and 보스 디버프 크기 (Amsu.Timed): the 암수 창 counts down
+    bool _amsuDaenantu;       // this step's strip is 대난투's (AmsuRects): the read uses the layout it was captured for
+    bool _amsuTimed = true;   // the "N초" read at this game area and 타겟 UI 버프 크기 (Amsu.Timed): the 암수 창 counts down
 
     AmsuState _amsu => _amsuWatch.State;
 
@@ -22,27 +23,45 @@ public sealed partial class Engine
     (PixelRect? Text, PixelRect? Strip) AmsuRects(Config config, bool poll, TimeSpan now)
     {
         if (_amsuOn != config.AmsuOn) (_amsuOn, _amsuWatch) = (config.AmsuOn, new AmsuWatch());
-        _amsuWatch.Rate = config.AmsuRate;
+        if (_brandOn != config.BrandOn) (_brandOn, _brand) = (config.BrandOn, new BrandWatch());
+        (_amsuWatch.Rate, _amsuWatch.Bombs, _amsuWatch.Brand) = (config.AmsuRate, _amsuOn, _brandOn ? _brand : null);   // one strip, snap and walk for both
         // Only in a dungeon (the in-game meter or a boss bar, held through cutscenes); cleared on leaving (StepPresence).
-        if (!_amsuOn || !poll || _fit is null || !_presence.InDungeon(now)) return (null, null);
-        if (!Amsu.Readable(_vp, _fit, config.BossSize))   // icons too small to read (80% at 1080p): nothing shown, a bomb up cleared
+        if (!(_amsuOn || _brandOn) || !poll || _fit is null || !_presence.InDungeon(now)) return (null, null);
+        if (!Amsu.Readable(_vp, _fit, AmsuSize(config)))   // icons too small to read (80% at 1080p): nothing shown, a bomb up cleared
         {
-            if (_amsu.Up.Count > 0) { _amsuWatch = new AmsuWatch(); Publish(now); }
+            if (_amsu.Up.Count > 0) { _amsuWatch = new AmsuWatch(); Publish(now); }   // 낙인 fades on its grace (StepBrand)
             return (null, null);
         }
-        _amsuTimed = Amsu.Timed(_vp, config.BossSize);
+        _amsuTimed = Amsu.Timed(_vp, AmsuSize(config));
         (_amsuPass, bool bossText) = _amsuWatch.Due(now, _amsuTimed);
         if (_amsuPass == RowPass.None) return (null, null);
-        return (bossText ? Geometry.BossTextRow(_vp, _fit) : null, Geometry.BossDebuffStrip(_vp, _fit, config.BossSize));
+        _amsuDaenantu = InDaenantu;   // fixed for this step: the read uses the layout the strip was captured for
+        // 대난투 has no boss bar: no HP text to read (ReadAmsu takes the last bar's).
+        return (bossText && !_amsuDaenantu ? Geometry.BossTextRow(_vp, _fit) : null, AmsuStripNow(config, _amsuDaenantu));
     }
+
+    /// <summary>대난투 is on (its number read, Engine.Shadow; read for 암수 too, ShadowRead.Gate): the boss debuff row sits under
+    /// its fill bar, centred (<see cref="AmsuLayout.Daenantu"/>). For up to ShadowHold (3 s) after it ends the 대난투 row is
+    /// still walked: the bombs go unseen meanwhile, the countdown runs on.</summary>
+    bool InDaenantu => _shadow is not null;
+
+    int AmsuSize(Config config) => InDaenantu ? Geometry.DaenantuBossSize : config.BossSize;
+
+    /// <summary>The boss debuff strip and its layout, 대난투's or the usual row (암수 and 낙인 read the same row).</summary>
+    PixelRect AmsuStripNow(Config config, bool daenantu) =>
+        daenantu ? Geometry.DaenantuDebuffStrip(_vp, _fit!) : Geometry.BossDebuffStrip(_vp, _fit!, config.BossSize);
+
+    AmsuLayout AmsuLayoutNow(Config config, bool daenantu) =>
+        daenantu ? AmsuLayout.Daenantu(_vp, _fit!) : AmsuLayout.Of(_vp, _fit!, config.BossSize, config.BossShown, config.BossCount);
 
     /// <summary>Reads what <see cref="AmsuRects"/> captured and steps the countdown. True when the window changes.</summary>
     bool ReadAmsu(Config config, Image? text, Image? strip, TimeSpan t)
     {
-        long? boss = text is null ? null : BossBar(text).Hp?.Max;
+        // In 대난투 the boss is the last bar's (the same boss: ShadowStep keeps it), so bombs are still identified there.
+        long? boss = _amsuDaenantu ? _lastBar?.Max : text is null ? null : BossBar(text).Hp?.Max;
         // 강화 읽기: the row's levels stretched (Reinforce.Levels; 1440 → 1080 sweep 74 → 100%).
         if (strip is not null && GameWindow.ReadsReinforced) strip = Reinforce.Levels(strip);
-        var (edges, changed) = _amsuWatch.Read(AmsuLayout.Of(_vp, _fit!, config.BossSize, config.BossCount), _amsuPass, boss, strip, t);
+        var (edges, changed) = _amsuWatch.Read(AmsuLayoutNow(config, _amsuDaenantu), _amsuPass, boss, strip, t);
         foreach (var e in edges)
             System.Diagnostics.Trace.WriteLine($"[amsu] {e.Kind} {e.Change}" + (e.Change == AmsuChange.끝 ? "" : $", {e.Left:0.0} s left") + $" (line {_amsuWatch.Line})");
         if (Tracing) TraceRead(config, boss, strip, t);
@@ -59,7 +78,7 @@ public sealed partial class Engine
         var row = _amsuWatch.LastRow;
         var view = Amsu.View(_amsuWatch.State, t);
         System.Diagnostics.Trace.WriteLine($"[amsu-trace] t={t.TotalSeconds:0.00} {_amsuPass} boss={(boss is null ? "-" : "ok")} "
-            + $"rect={Geometry.BossDebuffStrip(_vp, _fit!, config.BossSize)} strip={strip?.Width}x{strip?.Height} line={_amsuWatch.Line} "
+            + $"rect={AmsuStripNow(config, _amsuDaenantu)}{(_amsuDaenantu ? " daenantu" : "")} strip={strip?.Width}x{strip?.Height} line={_amsuWatch.Line} "
             + $"[{string.Join(" ", row?.Bombs.Select(b => $"{b.Kind}@{b.Slot}:{b.Seconds?.ToString() ?? "-"}") ?? [])}] full={row?.Full} seen={row?.Seen} "
             + $"| {view.Shown} {view.Left:0.0}{(view.Seen ? "" : " unseen")} timed={_amsuTimed} vp={_vp} hud={_fit!.Hud:0.##}");
         // A read with the boss's HP that found no bomb: the strip as the game showed it (once a second, at most ShotsMax), so

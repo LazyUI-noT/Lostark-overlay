@@ -143,4 +143,21 @@ public class SkillLibraryTests
             foreach (var kind in new[] { SlotGroup.일반스킬, SlotGroup.초각스, SlotGroup.각성기 })
                 Assert.True(lib.Pool(cls, kind).Count > 0, $"{cls} {kind}");
     }
+
+    /// <summary>자동 직업각인 감지 reads the 직업각인 off the ready 초각스 (SkillClassFinder), so every 직업각인 of a class whose
+    /// skills differ needs a 초각스 that names it. 브레이커's 성운멸쇄권 is shared (the orb colour picks, decisions.md 2026-11-13).</summary>
+    [Fact]
+    public void Every_subclass_of_a_class_with_different_skills_is_named_by_a_shipped_초각스()
+    {
+        var profiles = Path.Combine(RepoRoot(), "Profiles");
+        var lib = SkillLibrary.Load(Path.Combine(profiles, "skills"));
+        var unnamed = new List<string>();
+        foreach (var cls in ProfileLoader.LoadClasses(profiles).Where(c => !c.SameSkills))
+        {
+            var named = lib.Pool(cls.Name, SlotGroup.초각스).Select(s => s.Subclass).OfType<string>().ToHashSet();
+            unnamed.AddRange(cls.Subclasses.Keys.Where(s => !named.Contains(s)).Select(s => $"{cls.Name}/{s}"));
+            unnamed.AddRange(named.Where(s => !cls.Subclasses.ContainsKey(s)).Select(s => $"{cls.Name}/{s} (not a 직업각인)"));   // a typo
+        }
+        Assert.Equal(["브레이커/권왕파천무"], unnamed);
+    }
 }

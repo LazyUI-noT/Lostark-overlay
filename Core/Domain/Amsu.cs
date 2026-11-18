@@ -17,9 +17,10 @@ public enum AmsuChange { 시작, 재시작, 끝 }
 /// <summary>A bomb's change and its seconds left after it (0 when it ended).</summary>
 public sealed record AmsuEdge(Bomb Kind, AmsuChange Change, double Left);
 
-/// <summary>The bombs on the boss and the boss they're on (its max HP: another boss clears them).</summary>
+/// <summary>The bombs on the boss and the boss they're on (its max HP: another boss clears them); <paramref name="RowFull"/>: the last
+/// row seen held every slot the game shows, so a bomb missing from it is behind "+N" (counts on, drawn as seen).</summary>
 public sealed record AmsuState(ImmutableDictionary<Bomb, BombTimer> Up, long? BossMaxHp, ImmutableDictionary<Bomb, EndedBomb>? Ended = null,
-    long? OtherBoss = null)
+    long? OtherBoss = null, bool RowFull = false)
 {
     public static readonly AmsuState None = new(ImmutableDictionary<Bomb, BombTimer>.Empty, null);
 }
@@ -52,7 +53,7 @@ public static class Amsu
 
     public static double Duration(Bomb b) => b == Bomb.빛암 ? 25 : 20;
 
-    /// <summary>Whether the bombs' "N초" is read at this 보스 디버프 크기 (<see cref="AmsuReader.ReadableFrom"/>); under it the 암수 창 shows
+    /// <summary>Whether the bombs' "N초" is read at this 타겟 UI 버프 크기 (<see cref="AmsuReader.ReadableFrom"/>); under it the 암수 창 shows
     /// only that a bomb is up, while its icon is seen.</summary>
     public static bool Timed(int bossSize) => bossSize >= AmsuReader.ReadableFrom;
 
@@ -64,8 +65,9 @@ public static class Amsu
     /// <summary>Icon side in screen px: 80% at 1080p HUD 110 is 20 px (fails), 90% 23 px (reads).</summary>
     public const double MinIconPx = 21.5;
 
-    /// <summary>The same on screen (user, 2026-11-01): the "N초" as large as 100% at 1080 high, so a game area shorter than 1080
-    /// (forced 21:9 at 1920×1080: 810) needs more, a taller one less. Replay 14 misread the digits at 1920×810 and 100%.</summary>
+    /// <summary>The same on screen (user, 2026-11-01): the "N초" as large as <see cref="AmsuReader.ReadableFrom"/> at 1080 high, so a
+    /// game area shorter than 1080 (forced 21:9 at 1920×1080: 810) needs more, a taller one less. Replay 14 misread the digits at
+    /// 1920×810 and 100% with the buff glyphs.</summary>
     public static bool Timed(Viewport vp, int bossSize) => Geometry.BuffScale(vp, bossSize) >= AmsuReader.ReadableFrom / 100.0 - 0.005;
 
     // Untimed (iconsOnly): a bomb lasts while its icon is seen, and this long after (a popup or a damage number hides it a moment).
@@ -116,7 +118,8 @@ public static class Amsu
         if (row is { Full: false, Seen: true } && !iconsOnly)
             foreach (var kind in up.Where(b => now - b.Value.LastSeen > IconGrace).Select(b => b.Key).ToList())
                 (up, ended) = (up.Remove(kind), ended.SetItem(kind, new EndedBomb(now, up[kind].Slot)));
-        return new(up, bossMaxHp ?? s.BossMaxHp, ended, other);
+        bool rowFull = iconsOnly ? false : row is null ? s.RowFull : row is { Full: true, Seen: true };   // no read keeps it; an unseen row clears it
+        return new(up, bossMaxHp ?? s.BossMaxHp, ended, other, rowFull);
     }
 
     /// <summary>A bomb first seen: thrown just now (a fresh read, or none read) at its read or full time; else at its full time,
@@ -187,6 +190,6 @@ public static class Amsu
         var live = s.Up.Where(b => b.Value.EndsAt > now).ToList();
         if (live.Count == 0) return (null, 0, false);
         var (kind, t) = live.MaxBy(b => b.Value.EndsAt);
-        return (kind, (t.EndsAt - now).TotalSeconds, (now - t.LastSeen).TotalSeconds <= SeenFor);
+        return (kind, (t.EndsAt - now).TotalSeconds, s.RowFull || (now - t.LastSeen).TotalSeconds <= SeenFor);
     }
 }

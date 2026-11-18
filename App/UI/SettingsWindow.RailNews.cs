@@ -35,13 +35,31 @@ public partial class SettingsWindow
     UIElement? _newsLines;
 
     /// <summary>A small dot with a glow in the kind's colour, hidden until its tab has that kind of news.</summary>
-    static Ellipse RailOrb(NewsKind kind) => new()
+    Ellipse RailOrb(NewsKind kind)
     {
-        Width = 8, Height = 8, Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-        Fill = new SolidColorBrush(ColorOf(kind)), Visibility = Visibility.Collapsed,
-        Effect = new DropShadowEffect { Color = ColorOf(kind), BlurRadius = 8, ShadowDepth = 0, Opacity = 0.9 },
-        ToolTip = kind == NewsKind.Patch ? "업데이트로 새로 생긴 것이 있습니다" : "앱이 새로 읽은 것이 있습니다",
-    };
+        var orb = new Ellipse
+        {
+            Width = 8, Height = 8, Margin = new(Tokens.Space.Gap, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+            ToolTip = kind == NewsKind.Patch ? "업데이트로 새로 생긴 것이 있습니다" : "앱이 새로 읽은 것이 있습니다",
+        };
+        PaintOrb(orb, kind);
+        return orb;
+    }
+
+    /// <summary>The dot in its kind's colour as far as the rail needs to see it (green and yellow were 1.4–1.6:1 on 밝게).</summary>
+    void PaintOrb(Ellipse orb, NewsKind kind)
+    {
+        var fill = LegibleBrush(ColorOf(kind), UiPalette.Nav);
+        orb.Fill = fill;
+        orb.Effect = new DropShadowEffect { Color = fill.Color, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.9 };
+    }
+
+    /// <summary>The theme changed: every rail dot again (<see cref="PaintRail"/>).</summary>
+    void PaintRailOrbs()
+    {
+        foreach (var ((_, kind), orb) in _railOrbs) PaintOrb(orb, kind);
+    }
 
     /// <summary>The tab's two dots (update, app), registered for <see cref="RefreshRailOrbs"/>.</summary>
     UIElement[] RailOrbsFor(string tab) =>
@@ -114,19 +132,19 @@ public partial class SettingsWindow
             foreach (var row in _registry.ElementsOf(_newsKeys))
                 if (AdornerLayer.GetAdornerLayer(row) is { } layer)
                 {
-                    var mark = new NewsDot(row, PatchColor);
+                    var mark = new NewsDot(row, LegibleBrush(PatchColor, UiPalette.Background).Color);
                     layer.Add(mark);
                     _newsMarks.Add((layer, mark));
                 }
         }, System.Windows.Threading.DispatcherPriority.Loaded);
         var lines = RailNews.Describe(_newsKeys);
         if (lines.Count == 0 || SectionPage.Visibility != Visibility.Visible) return;
-        var panel = new StackPanel { Margin = new(0, 6, 0, 0) };
+        var panel = new StackPanel { Margin = new(0, Tokens.Space.Gap, 0, 0) };
         foreach (var (kind, line) in lines)
             panel.Children.Add(new StackPanel
             {
-                Orientation = Orientation.Horizontal, Margin = new(0, 2, 0, 0),
-                Children = { new Ellipse { Width = 8, Height = 8, Margin = new(0, 0, 8, 0), Fill = new SolidColorBrush(ColorOf(kind)), VerticalAlignment = VerticalAlignment.Center }, Note(line) },
+                Orientation = Orientation.Horizontal, Margin = new(0, Tokens.Space.Hair, 0, 0),
+                Children = { new Ellipse { Width = 8, Height = 8, Margin = new(0, 0, Tokens.Space.Gap, 0), Fill = LegibleBrush(ColorOf(kind), UiPalette.Background), VerticalAlignment = VerticalAlignment.Center }, Note(line) },
             });
         Header.Children.Add(_newsLines = panel);
     }

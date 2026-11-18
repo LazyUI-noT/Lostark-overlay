@@ -66,7 +66,7 @@ internal static class UiBuild
     /// Shows friendly names ("1", "`") but stores the <see cref="KeyNames"/> format.</summary>
     internal static Button KeyField(Func<string> get, Action<string> set)
     {
-        var f = new Button { MinWidth = 140 };
+        var f = new Button { MinWidth = Tokens.Row.Short };
         bool capturing = false, modifierDown = false;
         void Show() { capturing = modifierDown = false; f.Tag = null; f.Content = get() == "" ? "(없음)" : KeyNames.Display(get()); }
         void Assign(string key) { set(key); Show(); }
@@ -103,7 +103,7 @@ internal static class UiBuild
     }
 
     internal static TextBlock Heading(string text, bool first = false, string? help = null) =>
-        Break(Helped(new() { FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new(0, first ? 0 : 20, 0, 8) }, text, help));
+        Break(Helped(new() { FontSize = Tokens.Font.Section, FontWeight = FontWeights.SemiBold, Margin = new(0, first ? 0 : Tokens.Space.Section, 0, Tokens.Space.Gap) }, text, help));
 
     /// <summary>A heading stands between setting cards, not in one.</summary>
     internal static TextBlock Break(TextBlock t)
@@ -114,17 +114,17 @@ internal static class UiBuild
 
     /// <summary>A heading inside a part of a section (a buff, 칸 크기), a step under <see cref="Heading"/>.</summary>
     internal static TextBlock SubHeading(string text, string? help = null) =>
-        Break(Helped(new() { FontWeight = FontWeights.SemiBold, Opacity = 0.85, Margin = new(0, 12, 0, 6) }, text, help));
+        Break(Helped(new() { FontWeight = FontWeights.SemiBold, Margin = new(0, Tokens.Space.Block, 0, Tokens.Space.Gap) }, text, help));
 
     // ── 도움말 (?): the form shows the names; what each does is in the ? beside it ──────────────────
 
     /// <summary>A small ? whose tooltip explains the setting beside it, on hover or keyboard focus (Tab reaches it).</summary>
     internal static FrameworkElement HelpMark(string help)
     {
-        var glyph = new TextBlock { Text = "?", FontSize = 11, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var glyph = Muted(new TextBlock { Text = "?", FontSize = Tokens.Font.Hint, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         var mark = new Border
         {
-            Width = 16, Height = 16, CornerRadius = new(8), BorderThickness = new(1), Margin = new(5, 0, 0, 0), Opacity = 0.75,
+            Width = 16, Height = 16, CornerRadius = new(8), BorderThickness = new(1), Margin = new(Tokens.Space.Tight, 0, 0, 0),
             Background = Brushes.Transparent, Child = glyph, Focusable = true, Cursor = Cursors.Help, VerticalAlignment = VerticalAlignment.Center,
             ToolTip = new TextBlock { Text = help, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
         };
@@ -158,7 +158,7 @@ internal static class UiBuild
 
     internal static TextBlock Note(string text)
     {
-        var note = Muted(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 10) });
+        var note = Muted(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, Tokens.Space.Block) });
         CardStack.SetBreak(note, true);   // a status line, not a setting: it stands between the cards
         return note;
     }
@@ -167,8 +167,39 @@ internal static class UiBuild
     /// doesn't depend on the background (impeccable audit, 2026-11-12). Themes.cs sets the palette's Muted on that key.</summary>
     internal static TextBlock Muted(TextBlock t)
     {
-        t.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorSecondaryBrush");
+        t.SetResourceReference(TextBlock.ForegroundProperty, MutedKey);
         return t;
+    }
+
+    internal static System.Windows.Documents.Run MutedRun(System.Windows.Documents.Run r)
+    {
+        r.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, MutedKey);
+        return r;
+    }
+
+    internal const string MutedKey = "TextFillColorSecondaryBrush";
+
+    /// <summary>Text of something that can't be used now, in the theme's Disabled colour (Themes.DisabledBrushKey), not faded.</summary>
+    internal static TextBlock Disabled(TextBlock t)
+    {
+        t.SetResourceReference(TextBlock.ForegroundProperty, Themes.DisabledBrushKey);
+        return t;
+    }
+
+    /// <summary>A destructive button (system.md "States"): Danger text and border on the normal fill. Still asks before acting
+    /// where its page did.</summary>
+    internal static T Danger<T>(T b) where T : Control
+    {
+        // Local values beat Fluent's disabled trigger, so a disabled one swaps to Disabled itself.
+        void Paint()
+        {
+            var key = b.IsEnabled ? Themes.DangerBrushKey : Themes.DisabledBrushKey;
+            b.SetResourceReference(Control.ForegroundProperty, key);
+            b.SetResourceReference(Control.BorderBrushProperty, key);
+        }
+        Paint();
+        b.IsEnabledChanged += (_, _) => Paint();
+        return b;
     }
 
     /// <summary>A row label; an <paramref name="opacity"/> below 1 means secondary text (<see cref="Muted"/>).</summary>
@@ -178,10 +209,33 @@ internal static class UiBuild
         return opacity < 1 ? Muted(label) : label;
     }
 
+    /// <summary>Why a control is off (system.md "States"): a Hint-tier line under it, shown only while <paramref name="off"/>; the
+    /// caller updates <see cref="Visibility"/> when the control's state changes.</summary>
+    internal static TextBlock Why(string reason, bool off) => Muted(new TextBlock
+    {
+        Text = reason, FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap,
+        Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Tight), Visibility = off ? Visibility.Visible : Visibility.Collapsed,
+    });
+
+    /// <summary>A reason on hover while the control is off (it shows on a disabled control too); gone once it is enabled.</summary>
+    internal static T WhyTip<T>(T c, string reason) where T : FrameworkElement
+    {
+        void Follow() => c.ToolTip = c.IsEnabled ? null : reason;
+        ToolTipService.SetShowOnDisabled(c, true);
+        Follow();
+        c.IsEnabledChanged += (_, _) => Follow();
+        return c;
+    }
+
+    /// <summary>What a row reports (system.md "Type", Value tier): SemiBold in the Text colour, so a state is told from a name and
+    /// stays dark in 밝게 where Muted is pale.</summary>
+    internal static TextBlock Value(string text) =>
+        new() { Text = text, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+
     /// <summary>A row label with its ? saying what the row does.</summary>
     internal static TextBlock Described(string label, string description) => HelpLabel(label, description);
 
-    internal static ComboBox Combo() => new() { MinWidth = 200 };
+    internal static ComboBox Combo() => new() { MinWidth = Tokens.Row.Medium };
 
     /// <summary>The accent when the window has no theme (위치 조정's layer, which doesn't set ThemeMode).</summary>
     static readonly Color FallbackAccent = Color.FromRgb(0x00, 0x67, 0xC0);
@@ -249,7 +303,7 @@ internal static class UiBuild
         var w = new WrapPanel();
         foreach (var c in controls)
         {
-            if (c is FrameworkElement f && f.Margin == default) f.Margin = new(0, 2, 8, 2);
+            if (c is FrameworkElement f && f.Margin == default) f.Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair);
             w.Children.Add(c);
         }
         return w;
@@ -275,20 +329,23 @@ internal static class UiBuild
     internal static CheckBox Check(string text, bool value, Action<bool> set, Action changed, string? help = null)
     {
         // A TextBlock, not the string: a long label wraps under itself instead of running off the card.
-        var c = new CheckBox { Content = Helped(new() { TextWrapping = TextWrapping.Wrap }, text, help), IsChecked = value, Margin = new(0, 2, 16, 2) };
+        var c = new CheckBox { Content = Helped(new() { TextWrapping = TextWrapping.Wrap }, text, help), IsChecked = value, Margin = new(0, Tokens.Space.Hair, Tokens.Space.Card, Tokens.Space.Hair) };
         if (help is not null) System.Windows.Automation.AutomationProperties.SetName(c, text);
         c.Click += (_, _) => { set(c.IsChecked == true); changed(); };
         Report?.Invoke(text.Trim(), help, c, () => Check(text, value, set, changed, help));
         return c;
     }
 
+    const double SliderValueWidth = 44;
+
+    /// <summary>A slider and its value, together <see cref="Tokens.Row.Medium"/> wide.</summary>
     internal static UIElement SliderRow(string label, double min, double max, double value, double step,
         Func<double, string> format, Action<double> set, Action changed, string? help = null)
     {
-        var text = new TextBlock { Text = format(value), Width = 44, VerticalAlignment = VerticalAlignment.Center };
+        var text = new TextBlock { Text = format(value), Width = SliderValueWidth, VerticalAlignment = VerticalAlignment.Center };
         var slider = new Slider
         {
-            Minimum = min, Maximum = max, Value = value, Width = 180, MinWidth = 120, TickFrequency = step,
+            Minimum = min, Maximum = max, Value = value, Width = Tokens.Row.Medium - Tokens.Space.Gap - SliderValueWidth, MinWidth = 120, TickFrequency = step,
             IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center,
         };
         slider.ValueChanged += (_, e) => { set(e.NewValue); text.Text = format(e.NewValue); changed(); };

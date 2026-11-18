@@ -32,6 +32,7 @@ public partial class SettingsWindow
         var choice = _s.CoreOf(key);
         var effects = _chars.CoreEffectsOf(c.Class, c.Subclass);
         var gated = new List<UIElement>();
+        var levelsWhy = UiBuild.Why("코어 빌드 적용을 켜면 고를 수 있습니다.", !choice.Apply);
         void Edit(Func<CoreChoice, CoreChoice> change) { _s.SetCore(key, change(_s.CoreOf(key))); Changed(); }
         T Gate<T>(T row) where T : UIElement { row.IsEnabled = choice.Apply; gated.Add(row); return row; }
 
@@ -42,6 +43,7 @@ public partial class SettingsWindow
         {
             Edit(x => x with { Apply = v });
             foreach (var row in gated) row.IsEnabled = v;
+            levelsWhy.Visibility = v ? Visibility.Collapsed : Visibility.Visible;
         }, () => { }, "끄면 아래 선택은 그대로 두고 아무것도 적용하지 않습니다."));
 
         // The skills' slots are asked only for the effects the picked levels switch on (user, 2026-10-13): refilled on a level change.
@@ -62,10 +64,13 @@ public partial class SettingsWindow
             levels.Add(LevelCombo($"{core} 레벨", choice.Of(core), n => { Edit(x => x.With(core, n)); FillSlots(); }));
         }
         p.Children.Add(Gate(HelpRow("코어 레벨", "딜러는 해와 달, 서포터는 별을 고릅니다.", [.. levels])));
+        p.Children.Add(levelsWhy);
         FillSlots();
         p.Children.Add(Gate(slots));
 
-        p.Children.Add(Note(effects.Count == 0 ? NoCoreEffects : "효과: " + CoreEffects.Describe(effects, SlotKeyName)));
+        // One sentence per effect under its own label: "효과: 해 3: …" read as two colons and no full stop (ui-audit P3).
+        p.Children.Add(effects.Count == 0 ? Note(NoCoreEffects)
+            : Row("효과", Note(string.Join("\n", effects.Select(e => CoreEffects.Describe([e], SlotKeyName).TrimEnd('.') + ".")))));
     }
 
     static ComboBox LevelCombo(string name, int level, Action<int> set)

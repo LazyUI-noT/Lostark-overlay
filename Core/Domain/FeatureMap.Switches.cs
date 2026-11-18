@@ -72,9 +72,9 @@ public static partial class FeatureMap
         "boss" or "count" or "debuff" or "shadow" => "레이드",
         "amsu" => "암수",
         "party" or "peers" => "파티 공유",
-        "hw" or "char" => "레이드 숙제",
+        "hw" or "char" => "원정대",
         "rec" or "icons" or "amsuline" or "zone" or "dungeon" => "타임라인",
-        _ => "화면·인식",
+        _ => "인게임 설정",
     };
 
     static int Bit(bool on) => on ? 1 : 0;

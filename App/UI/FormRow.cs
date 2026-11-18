@@ -6,15 +6,16 @@ namespace GaugeOverlay.App.UI;
 
 /// <summary>A settings row: the label in a fixed column beside the controls, or above them when the form is narrower
 /// than <see cref="SideBySide"/> (520 px window, larger text).</summary>
-public sealed class FormRow : Panel
+internal sealed class FormRow : Panel
 {
-    public const double LabelWidth = 140, SideBySide = 380;
+    public const double LabelWidth = Tokens.Row.LabelColumn, SideBySide = 380;
 
     bool _side = true;
+    double _labelWidth = LabelWidth;   // LabelColumn, or what the controls leave free so a long label keeps one line
 
     public FormRow(UIElement label, UIElement controls)
     {
-        Margin = new(0, 4, 0, 4);
+        Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Tight);
         Children.Add(label);
         Children.Add(controls);
         // Screen readers name the row's first control by its label ("각성기", not just "V").
@@ -71,17 +72,20 @@ public sealed class FormRow : Panel
         if (NoLabel)
         {
             Controls.Measure(new(Math.Max(0, width - rw), available.Height));
-            return new(width, Math.Max(Controls.DesiredSize.Height, rh));
+            return new(width, Math.Max(Tokens.Row.Height, Math.Max(Controls.DesiredSize.Height, rh)));
         }
         if (_side)
         {
-            LabelPart.Measure(new(LabelWidth - 8, available.Height));
             Controls.Measure(new(Math.Max(0, width - LabelWidth - rw), available.Height));
-            return new(width, Math.Max(Math.Max(LabelPart.DesiredSize.Height, Controls.DesiredSize.Height), rh));
+            // The controls sit at the right edge, so their column is whatever they need: the label may have the rest.
+            // Check boxes line up at the label column (below), so their label keeps it.
+            _labelWidth = OnlyChecks ? LabelWidth : Math.Max(LabelWidth, width - rw - Controls.DesiredSize.Width);
+            LabelPart.Measure(new(_labelWidth - Tokens.Space.Gap, available.Height));
+            return new(width, Math.Max(Tokens.Row.Height, Math.Max(Math.Max(LabelPart.DesiredSize.Height, Controls.DesiredSize.Height), rh)));
         }
         LabelPart.Measure(new(width, available.Height));
         Controls.Measure(new(Math.Max(0, width - rw), available.Height));
-        return new(width, LabelPart.DesiredSize.Height + 2 + Math.Max(Controls.DesiredSize.Height, rh));
+        return new(width, LabelPart.DesiredSize.Height + Tokens.Space.Hair + Math.Max(Controls.DesiredSize.Height, rh));
     }
 
     protected override Size ArrangeOverride(Size final)
@@ -95,16 +99,20 @@ public sealed class FormRow : Panel
         else if (_side)
         {
             double h = final.Height;
-            LabelPart.Arrange(new(0, (h - LabelPart.DesiredSize.Height) / 2, LabelWidth - 8, LabelPart.DesiredSize.Height));
             // The controls at the right edge (before the ↺), as Windows 11's setting cards; a row wider than the space keeps it all.
             double w = Math.Max(0, final.Width - LabelWidth - rw), cw = Math.Min(w, Controls.DesiredSize.Width);
             // Check boxes differ in width, so at the right edge their boxes wander: they line up beside the label instead.
-            Controls.Arrange(new(OnlyChecks ? LabelWidth : final.Width - rw - cw, 0, cw, h));
+            // Centred like the label: a value's text shorter than the row's least height would sit at its top.
+            double ch = Math.Min(h, Controls.DesiredSize.Height);
+            Controls.Arrange(new(OnlyChecks ? LabelWidth : final.Width - rw - cw, (h - ch) / 2, cw, ch));
+            // Measure's width can differ from this one: the label gets what the controls, as placed, leave.
+            double lw = OnlyChecks ? LabelWidth : Math.Max(LabelWidth, final.Width - rw - cw);
+            LabelPart.Arrange(new(0, (h - LabelPart.DesiredSize.Height) / 2, lw - Tokens.Space.Gap, LabelPart.DesiredSize.Height));
             PlaceReset(final.Width, 0, h);
         }
         else
         {
-            double top = LabelPart.DesiredSize.Height + 2, h = Math.Max(Controls.DesiredSize.Height, Reset?.DesiredSize.Height ?? 0);
+            double top = LabelPart.DesiredSize.Height + Tokens.Space.Hair, h = Math.Max(Controls.DesiredSize.Height, Reset?.DesiredSize.Height ?? 0);
             LabelPart.Arrange(new(0, 0, final.Width, LabelPart.DesiredSize.Height));
             Controls.Arrange(new(0, top, Math.Max(0, final.Width - rw), Controls.DesiredSize.Height));
             PlaceReset(final.Width, top, h);

@@ -72,6 +72,39 @@ public class UiThemeTests
         Assert.Empty(UiPalette.Of(theme).Colors);
     }
 
+    /// <summary>Disabled text stays legible (3:1 on Card, system.md "Colour roles") and below Text; Danger is text on a
+    /// destructive button (4.5:1). The Fluent themes have no Card in the palette: Fluent's own card colour stands in.</summary>
+    [Theory]
+    [InlineData(UiTheme.DeepTeal, false)]
+    [InlineData(UiTheme.LostArk, false)]
+    [InlineData(UiTheme.Graphite, false)]
+    [InlineData(UiTheme.ArkesiaNight, false)]
+    [InlineData(UiTheme.Light, false)]
+    [InlineData(UiTheme.Dark, false)]
+    [InlineData(UiTheme.System, false)]
+    [InlineData(UiTheme.System, true)]
+    public void Every_theme_has_legible_disabled_and_danger_colours(UiTheme theme, bool systemDark)
+    {
+        var p = UiPalette.Of(theme);
+        bool dark = theme == UiTheme.System ? systemDark : p.Dark;
+        string cardHex = p.Colors.GetValueOrDefault(UiPalette.Card) ?? (dark ? "#2B2B2B" : "#FFFFFF");
+        var (disabled, danger) = UiPalette.States(theme, systemDark);
+        Rgb At(string hex) => HexColor.TryParse(hex, out var v) ? v : throw new InvalidOperationException(hex);
+        var card = At(cardHex);
+
+        Assert.InRange(HexColor.Contrast(At(disabled), card), 3, 4.5);   // legible, yet clearly not live text
+        Assert.True(HexColor.Contrast(At(danger), card) >= 4.5, $"{theme} danger {HexColor.Contrast(At(danger), card):0.00}");
+    }
+
+    [Fact]
+    public void The_light_and_deep_teal_state_colours_are_the_approved_ones()
+    {
+        Assert.Equal(("#7C8894", "#FF99A4"), UiPalette.States(UiTheme.DeepTeal, systemDark: false));
+        Assert.Equal(("#8A8A8A", "#C42B1C"), UiPalette.States(UiTheme.Light, systemDark: true));   // systemDark only for System
+        Assert.Equal(UiPalette.States(UiTheme.Light, false), UiPalette.States(UiTheme.System, systemDark: false));
+        Assert.Equal(UiPalette.States(UiTheme.Dark, false), UiPalette.States(UiTheme.System, systemDark: true));
+    }
+
     [Fact]
     public void The_theme_is_saved()
     {

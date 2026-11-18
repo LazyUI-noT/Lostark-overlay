@@ -123,7 +123,7 @@ public sealed class ReinforcedSweep
                 });
             default:   // the 전분 panel where the 세르카 replay found it
                 var soft = new JeonbunSoftReader();
-                return (new PixelRect(1448, 847, 470, 114), (img, r, now) => (r ? soft.Read(img, now) : JeonbunReader.Read(img)) is { } j ? $"{j.Timer} {j.Damage} {j.Dps}" : null);
+                return (new PixelRect(1448, 847, 470, 114), (img, r, now) => (r ? soft.Read(img, 1.0, now) : JeonbunReader.Read(img, 1.0)) is { } j ? $"{j.Timer} {j.Damage} {j.Dps}" : null);
         }
     }
 }

@@ -40,7 +40,7 @@ public sealed partial class AdjustLayer : Window
     public AdjustLayer()
     {
         (WindowStyle, AllowsTransparency, Background, Topmost, ShowInTaskbar, ResizeMode, Title) =
-            (WindowStyle.None, true, Brushes.Transparent, true, false, ResizeMode.NoResize, "GaugeOverlay 위치 조정");
+            (WindowStyle.None, true, Brushes.Transparent, true, false, ResizeMode.NoResize, "GaugeOverlay 수동 위치 조정");
         var root = new Grid();
         root.Children.Add(_boxes);
         root.Children.Add(BuildToolbar());
@@ -57,10 +57,11 @@ public sealed partial class AdjustLayer : Window
 
     /// <summary>A preview session began (opened, or the game area or fit changed): the layer goes over <paramref name="vp"/> and its
     /// boxes start on <paramref name="fit"/>.</summary>
-    public void Open(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize, PixelRect? panel)
+    public void Open(int gen, Viewport vp, Fit fit, int buffSize, bool test, int buffCount, int bossSize, PixelRect? panel,
+        IReadOnlyDictionary<SlotId, PixelRect>? aden = null)
     {
         (_gen, _test, _drag, _reads, _toolbarDrag) = (gen, test, null, null, null);
-        _adj = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize, panel);
+        _adj = FitAdjust.Begin(vp, buffSize, fit, buffCount, bossSize, panel) with { AdenRects = aden };
         if (!IsVisible)
         {
             _result.Text = "";   // a re-open after 적용 keeps its result

@@ -47,16 +47,16 @@ public partial class SettingsWindow
         _contextNotes.Children.Clear();
         var pick = _pickCombo = PickCombo(ClassPicker.FavoritesFirst(PickerEntries, _s.FavoriteClasses), cls, PickEntry, _s.FavoriteClasses);
         pick.MinWidth = 220;
-        AutomationProperties.SetName(pick, "편집 중");
-        _context.Children.Add(Muted(new TextBlock { Text = "편집 중", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) }));
+        AutomationProperties.SetName(pick, "편집할 직업각인");
+        _context.Children.Add(Muted(new TextBlock { Text = "편집할 직업각인", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Gap, 0) }));
         _context.Children.Add(pick);
-        _context.Children.Add(PickSearch(pick, "편집 중"));
+        _context.Children.Add(PickSearch(pick, "편집할 직업각인"));
         if (cls == ActiveOrTemplate && cls != ClassProfiles.Template)
-            _context.Children.Add(Muted(new TextBlock { Text = "· 지금 캐릭터", VerticalAlignment = VerticalAlignment.Center, Margin = new(8, 0, 0, 0) }));
+            _context.Children.Add(Muted(new TextBlock { Text = "지금 캐릭터", VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Gap, 0, 0, 0) }));
         if (cls != ClassProfiles.Template)
         {
             bool starred = _s.FavoriteClasses.Contains(cls);
-            var star = new Button { Content = starred ? "★" : "☆", MinWidth = 0, Padding = new(8, 2, 8, 2), Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            var star = new Button { Content = starred ? "★" : "☆", MinWidth = 0, Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair), Margin = new(Tokens.Space.Gap, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = starred ? "즐겨찾기에서 빼기" : "즐겨찾는 직업각인: 목록과 트레이 메뉴의 맨 위에 둡니다" };
             star.Click += (_, _) => { if (!_s.FavoriteClasses.Remove(cls)) _s.FavoriteClasses.Add(cls); Changed(); FillContext(); FillCharacter(); };   // 직업 인식's ★ too
             _context.Children.Add(star);
@@ -173,9 +173,11 @@ public partial class SettingsWindow
 
     void PlacementRow(Panel p, ClassProfile read, Func<ClassProfile> edit, string hint)
     {
-        var reset = new Button { Content = "칸 배치 되돌리기", IsEnabled = read.Layout is not null, ToolTip = "처음의 고정된 배치로 되돌립니다." };
+        bool moved = read.Layout is not null;   // the page refills on a change, so the state is fixed for this button's life
+        var reset = new Button { Content = "칸 배치 기본값으로", IsEnabled = moved, ToolTip = moved ? "처음의 고정된 배치로 되돌립니다." : "이미 기본 배치입니다. 칸을 옮기면 켜집니다." };
+        ToolTipService.SetShowOnDisabled(reset, true);   // the reason shows while it is off (system.md "States")
         reset.Click += (_, _) => { edit().Layout = null; Changed(); Dispatcher.BeginInvoke(FillClassSections); };
-        p.Children.Add(Row(Described("칸 배치", hint), Label(read.Layout is null ? "기본 (고정된 배치)" : "사용자 (옮긴 배치)", 0.7), reset));
+        p.Children.Add(Row(Described("칸 배치", hint), Value(read.Layout is null ? "기본 (고정된 배치)" : "사용자 (옮긴 배치)"), reset));
     }
 
     /// <summary>A colour row per group: the profile's own colour, else <paramref name="fallback"/> (shown while it isn't
@@ -260,8 +262,8 @@ public partial class SettingsWindow
             shown => { box.Clear(); pick.SelectedItem = items.First(i => (string)i.Content == shown); },
             enterTakesTop: true);
         // The hint while empty: the box says what it is without a label.
-        var hint = Muted(new TextBlock { Text = "직업 검색", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new(10, 0, 0, 0) });
+        var hint = Muted(new TextBlock { Text = "직업 검색", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Gap, 0, 0, 0) });
         box.TextChanged += (_, _) => hint.Visibility = Shown(box.Text.Length == 0);
-        return new Grid { Margin = new(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { box, hint } };
+        return new Grid { Margin = new(Tokens.Space.Gap, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { box, hint } };
     }
 }

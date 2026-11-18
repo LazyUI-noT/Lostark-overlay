@@ -71,7 +71,7 @@ public partial class App : Application
         }
         if (_errorShown) return;
         _errorShown = true;
-        _tray.Notify("오류가 발생했습니다. 자세한 내용은 로그 파일(%APPDATA%\\GaugeOverlay\\logs)에 있습니다.", kind: NoticeKind.Problem);
+        _tray.Notify("오류가 생겼지만 GaugeOverlay는 계속 실행됩니다. 자세한 내용은 로그 파일(%APPDATA%\\GaugeOverlay\\logs)에 있습니다.", kind: NoticeKind.Problem);
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -115,12 +115,18 @@ public partial class App : Application
     Hotkeys _hotkeys = null!;
     Action _changed = null!;
     bool _inDungeon;   // 오버레이 표시's 던전 안에서
+    // The tray's 자동 → 항상 test (user, 2026-11-18, for 수련장): every 자동 (the overlay's 던전 안에서, the parts' 레이드 안에서만)
+    // shows and reads as 항상. Memory only: off at every start, never in settings.json.
+    bool _autoAsAlways;
     bool _gameBehind;   // 창 밖에서도 읽기: another app in front, the game seen
     bool _gameForeground = true, _hudVisible = true, _ownForeground;   // own: one of the app's windows (설정) is in front
     // The DPS 미터기 and the 줄 수 창 show only while a boss is read, and 10 s after (WindowLinger); they read all the time.
     TimeSpan? _meterReadAt, _countReadAt;
     RaidPresence _presence = RaidPresence.None;
     bool _meterInUse, _countInUse;
+    // A read starting them fades them in, a linger ending fades them out (overlay-motion.plan.md); the last inputs decide which.
+    WindowFade _meterFade = null!, _raidFade = null!;
+    ReadShown _meterWas, _raidWas;
 
     /// <summary>Re-shows or hides the 미터기 and 줄 수 창 when their last read comes into or goes out of <see cref="WindowLinger.For"/>.</summary>
     void CheckInUse()
@@ -147,9 +153,11 @@ public partial class App : Application
         _raid = new OverlayWindow(settings, raid: true);
         _meter = new OverlayWindow(settings, meter: true);
         _ring = new OverlayWindow(settings, ring: true);
-        _shadow = OverlayTextWindow.InBar();
-        _shadowDealt = OverlayTextWindow.Label(textShare: 0.6);   // about the size of the gimmick's number
-        _bossHp = OverlayTextWindow.Label(textShare: 0.5);   // about the size of the boss's name
+        _shadow = OverlayTextWindow.InBar(settings);
+        _shadowDealt = OverlayTextWindow.Label(settings, textShare: 0.6, OverlayTextWindow.ShadowPart);   // about the size of the gimmick's number
+        _bossHp = OverlayTextWindow.Label(settings, textShare: 0.5, OverlayTextWindow.BossHpPart);   // about the size of the boss's name
+        _meterFade = new WindowFade(_meter, _meter.Renderer, settings, () => _meter.Visibility = Visibility.Visible, () => _meter.Visibility = Visibility.Hidden);
+        _raidFade = new WindowFade(_raid, _raid.Renderer, settings, () => _raid.Visibility = Visibility.Visible, () => _raid.Visibility = Visibility.Hidden);
         _homeworkTags = new HomeworkWindow();
         _settingsWindow = new SettingsWindow(settings, characters);
         _layer = new AdjustLayer();
@@ -162,6 +170,7 @@ public partial class App : Application
         _settingsWindow.IsVisibleChanged += (_, _) => UpdateVisibility();   // 설정 acts as in front or closed, no 미리보기
         _settingsWindow.CanvasShownChanged += UpdateVisibility;             // the canvas draws the windows: the real ones hide
         foreach (var w in Others.Prepend(_overlay)) w.Closed += (_, _) => _quitting = true;   // they close only when the app quits
+        SessionEnding += (_, _) => _quitting = true;   // logoff closes 시작하기 too, maybe before the overlays
         _hotkeys.Pressed += action => Dispatcher.BeginInvoke(() =>
         {
             if (action == nameof(HotkeySettings.EditMode)) SetEditMode(!_overlay.EditMode);
@@ -199,7 +208,24 @@ public partial class App : Application
             _settingsWindow.Reload();
             changed();
         };
+        _tray.CaptureHiddenToggled += on =>
+        {
+            _settings.Overlay.ExcludeFromCapture = on;
+            _settingsWindow.ShowCaptureHidden();   // not Reload: that closes the zoom window mid-placement
+            changed();
+        };
+        _tray.AutoAsAlwaysToggled += SetAutoAsAlways;
+        _settingsWindow.AutoAsAlwaysOff += () => SetAutoAsAlways(false);
         _tray.Exit += Quit;
+    }
+
+    void SetAutoAsAlways(bool on)
+    {
+        _autoAsAlways = on;
+        _tray.SetAutoAsAlways(on);
+        _settingsWindow.SetAutoAsAlways(on);
+        UpdateVisibility();
+        _changed();   // the engine reads and publishes with it (Configure)
     }
 
     /// <summary>Applies the settings to the UI side: overlay, hotkeys, tray.</summary>
@@ -213,13 +239,14 @@ public partial class App : Application
         if (failed != _failedHotkeys && failed != "")
         {
             Trace.WriteLine($"[app] hotkey not registered: {failed}");
-            _tray.Notify($"단축키를 쓸 수 없습니다: 다른 키와 겹치거나, 다른 프로그램이 쓰거나, 지원하지 않는 조합입니다. 마우스 옆 버튼은 쓸 수 없습니다. ({failed})", kind: NoticeKind.Problem);
+            _tray.Notify($"단축키를 쓸 수 없음({failed}): 다른 단축키나 다른 프로그램이 이미 쓰거나 지원하지 않는 조합입니다. 마우스 옆 버튼도 쓸 수 없습니다.", kind: NoticeKind.Problem);
         }
         _failedHotkeys = failed;
         _tray.SetHotkeys(_settings.Hotkeys);
         _tray.SetTheme(_settings.Theme);
         _tray.SetProfile(_settings.ActiveProfile);
         _tray.SetRaid(_settings.Raids, _raidGates, _raidSeen);
+        _tray.SetCaptureHidden(_settings.Overlay.ExcludeFromCapture);
         _tray.SetCharacters(_characters.ClassTree, _settings.ActiveCharacter, _settings.FavoriteClasses);
         _tray.SetParts(part => TrayToggles.IsShown(_settings, part));
         UpdateVisibility();   // 오버레이 표시
@@ -228,12 +255,12 @@ public partial class App : Application
     /// <summary>오버레이 프로필 (hotkey, tray): the windows go to that profile's spots and sizes, and it is saved.</summary>
     void SwitchProfile(int profile)
     {
-        if (GameWindow.TestMode) { _tray.Notify("테스트 모드는 테스트 프로필을 씁니다. 끄면 전에 쓰던 프로필로 돌아갑니다."); return; }
+        if (GameWindow.TestMode) { _tray.Notify("테스트 모드: 테스트 프로필을 쓰는 동안 프로필을 바꿀 수 없습니다. 테스트 모드를 끄면 전에 쓰던 프로필로 돌아갑니다."); return; }
         // mid-drag, the drop would land in the other profile's spots
         if (profile == _settings.ActiveProfile || AnyDragging) return;
         _settings.SwitchProfile(profile);
         ApplyProfile();
-        _tray.Notify($"프로필 {profile + 1}");
+        _tray.Notify($"{Josa.By($"프로필 {profile + 1}")} 바꿨습니다.");
     }
 
     /// <summary>The windows go to the active profile's spots and sizes (after a switch, or a copy into it from 설정 → 복사).</summary>
@@ -252,7 +279,7 @@ public partial class App : Application
     static readonly TimeSpan ShotSettle = TimeSpan.FromMilliseconds(150), ShotTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>종료 and an update's restart.</summary>
-    void Quit() => Shutdown();
+    void Quit() { _quitting = true; Shutdown(); }   // set first: 시작하기 may close before the overlay windows do
 
     void SetEditMode(bool on)
     {
@@ -336,7 +363,7 @@ public partial class App : Application
         var o = _settings.Overlay;
         bool canvas = _settingsWindow.CanvasShown && _ownForeground;   // 설정's 내 오버레이 page draws the windows itself, while it is in front (minimized or behind the game it stays IsVisible)
         bool show = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
-            gameForeground: _gameForeground || _gameBehind, hudVisible: _hudVisible, auto: o.Auto(), inDungeon: _inDungeon || !_settings.Meter.On, firstRunDone: _settings.FirstRunDone,
+            gameForeground: _gameForeground || _gameBehind, hudVisible: _hudVisible, auto: o.Auto(), inDungeon: _inDungeon || !_settings.Meter.On || _autoAsAlways, firstRunDone: _settings.FirstRunDone,
             canvasShown: canvas);
         _overlay.Visibility = show ? Visibility.Visible : Visibility.Hidden;
         foreach (var w in _peers) w.Visibility = _settings.Party.ShowMembers || _overlay.EditMode ? _overlay.Visibility : Visibility.Hidden;   // edit mode places them
@@ -345,12 +372,16 @@ public partial class App : Application
         _gauge.PlaceAtHome(_overlay);
         _debuffs.Visibility = _settings.Raids.DebuffShown(_settings.Debuffs) ? _overlay.Visibility : Visibility.Hidden;
         bool placing = _overlay.EditMode;   // 편집 모드: shown to be placed, read or not (설정 places on its canvas)
-        _raid.Visibility = _settings.Raids.CountShown() && (_countInUse || placing) ? _overlay.Visibility : Visibility.Hidden;
+        var raid = new ReadShown(_settings.Raids.CountShown() && show, _countInUse, placing);
+        _raidFade.Apply(raid.Shown, OverlayMotion.Change(_raidWas, raid, lingerEnded: _countReadAt is not null));
+        _raidWas = raid;
         // The meter reads the 전분 panel, not the skill bar: a flash that hides the bar (HUD unseen) mustn't blink it out.
         bool meter = OverlayVisibility.Show(editMode: _overlay.EditMode, mode: o.Mode(), ownForeground: _ownForeground,
             gameForeground: _gameForeground || _gameBehind, hudVisible: true, auto: OverlayAuto.게임앞, inDungeon: true, firstRunDone: _settings.FirstRunDone,
             canvasShown: canvas);
-        _meter.Visibility = ClassProfiles.MeterShown(_settings) && meter && (_meterInUse || placing) ? Visibility.Visible : Visibility.Hidden;
+        var shownMeter = new ReadShown(ClassProfiles.MeterShown(_settings) && meter, _meterInUse, placing);
+        _meterFade.Apply(shownMeter.Shown, OverlayMotion.Change(_meterWas, shownMeter, WindowLinger.LingerEnded(_meterReadAt, _presence)));
+        _meterWas = shownMeter;
         _judgment.Visibility = _settings.Judgment.On(_settings.ActiveCharacter) ? _overlay.Visibility : Visibility.Hidden;
         _amsu.Visibility = _settings.Amsu.On ? _overlay.Visibility : Visibility.Hidden;
         _ring.Visibility = _settings.Ring.On && _characters.Ring is not null ? _overlay.Visibility : Visibility.Hidden;   // only a class with a ring
@@ -365,11 +396,19 @@ public partial class App : Application
         _tray.SetOverlayVisible(_settings.Overlay.Visible);
     }
 
-    FirstRunWindow ShowFirstRun(Action changed)
+    FirstRunWindow ShowFirstRun(Action changed, bool fitted)
     {
-        var first = new FirstRunWindow(_settings, _characters);
+        var first = new FirstRunWindow(_settings, _characters, fitted);
         first.SettingsChanged += changed;
-        first.Completed += () => { _settingsWindow.Reload(); UpdateVisibility(); };
+        first.Completed += () =>
+        {
+            if (_quitting) return;   // closed by the app quitting: not done, and the other windows are closing too
+            _settings.FirstRunDone = true;   // ✕ as well: never an overlay held back for the session with nothing said
+            changed();
+            _settingsWindow.Reload();
+            UpdateVisibility();
+            _tray.Notify(FirstRun.ClosingNotice(first.Fitted));
+        };
         first.Show();
         return first;
     }

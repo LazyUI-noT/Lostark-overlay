@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using GaugeOverlay.Core.Domain;
@@ -68,9 +69,23 @@ public static class BossDigits
     /// digit doesn't count.</summary>
     /// <param name="soft">테스트 모드 강화 읽기 (BossHpSoftReader): compressed video blurs the digits (each scores lower) and fades
     /// the commas, so a digit counts from <see cref="SoftGlyph"/> and the commas are put back where the game writes them.</param>
-    public static (long Current, long Max, long Shield)? ReadHpWithShield(Image area, double scale, bool soft = false)
+    /// <param name="knownMax">The max read earlier in this fight: when the strict read fails, the glyphs after the '/' are taken
+    /// as this max, digit by position, however each one scores (a fading last '1' at 구원의 종탑, a mouse cursor over the text).
+    /// The read is kept only if there are as many glyphs as this max has digits; the commas among them aren't needed (a cursor
+    /// can hide one), and the current HP is still read glyph by glyph.</param>
+    public static (long Current, long Max, long Shield)? ReadHpWithShield(Image area, double scale, bool soft = false, long? knownMax = null)
     {
         if (Glyphs(area, scale) is not { Count: >= 3 } g) return null;
+        if (ReadHpGlyphs(g, soft, knownMax: null) is { } strict) return strict;
+        if (knownMax is not > 0 || soft) return null;
+        return ReadHpGlyphs(g, soft, knownMax) is { } read && read.Max == knownMax ? read : null;
+    }
+
+    /// <summary>The HP text from its glyphs: exactly one '/', the rest digits grouped by commas.</summary>
+    /// <param name="knownMax">The glyphs after the '/', up to as many as its digits (commas skipped), are taken as it; null:
+    /// every glyph is read.</param>
+    static (long Current, long Max, long Shield)? ReadHpGlyphs(List<Glyph> g, bool soft, long? knownMax)
+    {
         double min = soft ? SoftGlyph : MinGlyph;
         var slash = Template('/');
         int at = -1;
@@ -79,18 +94,23 @@ public static class BossDigits
             if (g[i].Grid is { } grid && Ncc(grid, slash) is var s && s >= best) (at, best) = (i, s);
         if (at < 0) return null;
         var text = new StringBuilder();
+        int maxLeft = knownMax is { } k ? k.ToString(CultureInfo.InvariantCulture).Length : 0;
         for (int i = 0; i < g.Count; i++)
-            if (i == at) text.Append('/');
+            if (i == at) text.Append('/').Append(knownMax is { } known ? known.ToString("N0", CultureInfo.InvariantCulture) : "");
+            // A glyph of the known max, whatever it reads as; a '+' ends it (a glyph short: no read, not the shield as the max).
+            else if (i > at && maxLeft > 0 && !g[i].Mark) { if (!g[i].Comma) maxLeft--; }
             else if (g[i].Comma) { if (!soft) text.Append(','); }
             else if (g[i].Mark) text.Append('+');
             else if (Best(g[i].Grid!, char.IsAsciiDigit) is (var d, var score) && score >= min) text.Append(d);
             else text.Append('?');   // a bracket, or a misread: only allowed after the max
+        if (maxLeft > 0) return null;   // fewer glyphs than the known max has digits
         if (HpText.Match(soft ? Regrouped(text.ToString()) : text.ToString()) is not { Success: true } m) return null;
         long current = long.Parse(m.Groups[1].Value.Replace(",", "")), max = long.Parse(m.Groups[2].Value.Replace(",", ""));
         long shield = 0;
         if (m.Groups[3].Value is { Length: > 0 } rest)
         {
-            if (ShieldText.Match(rest) is not { Success: true } sm) return null;
+            // More than the ')' after the last full group: the shield was cut off (a cursor over its digits), not read.
+            if (ShieldText.Match(rest) is not { Success: true } sm || rest.Length - sm.Length > 1) return null;
             shield = long.Parse(sm.Groups[1].Value.Replace(",", ""));
         }
         return current <= max ? (current, max, shield) : null;
@@ -100,7 +120,7 @@ public static class BossDigits
 
     /// <summary>"16897047862607/17126566042900(+1234" with the commas as the game puts them; what isn't digits is kept.</summary>
     static string Regrouped(string text) =>
-        Regex.Replace(text, @"\d+", m => long.TryParse(m.Value, out long n) ? n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) : m.Value);
+        Regex.Replace(text, @"\d+", m => long.TryParse(m.Value, out long n) ? n.ToString("N0", CultureInfo.InvariantCulture) : m.Value);
 
     // Between words ("Lv.60", the HP, "X n"): wider than the space in "X 494" and any gap inside the HP text, at HUD 110 1080p.
     const double WordGap = 11;
@@ -109,7 +129,8 @@ public static class BossDigits
     /// so neither depends on where the bar starts or ends (21:9, the HUD).</summary>
     /// <param name="hp">false: the count alone (read every poll for the 줄 수 창): the HP words aren't read, and the right-most
     /// words are tried first, where "X n" is.</param>
-    public static (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) ReadBar(Image row, double scale, bool hp = true, bool soft = false)
+    /// <param name="knownMax">See <see cref="ReadHpWithShield"/>.</param>
+    public static (int? Count, (long Current, long Max, long Shield)? Hp, PixelRect? CountArea) ReadBar(Image row, double scale, bool hp = true, bool soft = false, long? knownMax = null)
     {
         int? count = null;
         (long, long, long)? read = null;
@@ -121,7 +142,7 @@ public static class BossDigits
             // Cut out only when read: once the count and the HP are found, the other words are never copied.
             Image? word = null;
             if (count is null && at.Width <= MaxCountWidth * scale && ReadCount(word = row.Crop(at), scale) is { } c) (count, countArea) = (c, at);
-            if (hp) read ??= ReadHpWithShield(word ?? row.Crop(at), scale, soft);
+            if (hp) read ??= ReadHpWithShield(word ?? row.Crop(at), scale, soft, knownMax);
             else if (count is not null) break;
         }
         return (count, read, countArea);

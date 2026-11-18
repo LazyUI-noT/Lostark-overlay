@@ -30,9 +30,9 @@ public partial class SettingsWindow
             _secShow.IsVisibleChanged += (_, _) => CheckRun();   // 리소스 검사 measures only while this page shows
         }
         var o = _s.Overlay;
-        var p = Refill(_secShow, AreaShow, "오버레이 창을 켜고 끕니다 (트레이 메뉴의 기능 맵과 같은 스위치). 상자에 마우스를 올리면 그 창의 표시 방식을 " +
+        var p = Refill(_secShow, AreaShow, "오버레이 창을 켜고 끕니다 (트레이 메뉴의 오버레이 표시와 같은 스위치). 상자에 마우스를 올리면 그 창의 표시 방식을 " +
             "나란히 움직여 보여 줍니다.");
-        p.Children.Add(HelpRow("오버레이 표시", "끄기: 내 오버레이와 파티원 창을 모두 숨깁니다. 자동: 게임이나 설정 창이 앞에 있을 때 아래 조건에 맞으면 보여 줍니다. 항상 표시: 어떤 창이 앞에 있어도 보여 줍니다. 트레이 메뉴와 '오버레이 켜기/끄기' 단축키는 끄기와 마지막으로 켠 방식을 오갑니다.",
+        p.Children.Add(HelpRow("오버레이 표시", "끄기: 내 오버레이와 파티원 창을 모두 숨깁니다. 자동: 게임이나 설정 창이 앞에 있을 때 아래 조건에 맞으면 보여 줍니다. 항상 표시: 어떤 창이 앞에 있어도 보여 줍니다. 트레이 메뉴와 '오버레이 표시 켜기/끄기' 단축키는 끄기와 마지막으로 켠 방식을 오갑니다.",
             EnumCombo([(OverlayShow.끄기, "끄기"), (OverlayShow.자동, "자동"), (OverlayShow.항상, "항상 표시")], o.Mode(), v => { o.SetMode(v); Dispatcher.BeginInvoke(BuildAll); })));
         if (o.Mode() == OverlayShow.자동)
         {
@@ -54,13 +54,13 @@ public partial class SettingsWindow
     public void SetDetect(Snapshot mine)
     {
         (_detect, _detectAt) = (mine.Detect, mine.At);
-        if (_secShow.IsVisible) _map?.SetDetect(mine.Detect, mine.At);
+        if (_secShow.IsVisible) { _map?.SetDetect(mine.Detect, mine.At); _readChips?.Set(mine.Detect); }
         DetectAreasChanged(mine);
     }
 
     /// <summary>--demo --map-open=all|id,id --map-pin=id --map-fail=id,id --map-seen=id,id --map-preview=id --map-scroll=px --map-line=id --map-cut=id: the map with those boxes
     /// open, one box's lines held, those readers failing or ✓ and one box's hover card under it (a popup PrintWindow can't see), scrolled, one box's line to 파티 hovered and one cut, for screenshots.</summary>
-    internal void DemoMap(string? open, string? pin, string? fail = null, string? seen = null, string? preview = null, string? scroll = null, string? line = null, string? cut = null)
+    internal void DemoMap(string? open, string? pin, string? fail = null, string? seen = null, string? preview = null, string? scroll = null, string? line = null, string? cut = null, string? hover = null)
     {
         var marks = new Dictionary<string, Detection>();
         foreach (var id in fail?.Split(',') ?? []) marks[id] = new Detection(DetectMark.Failed, TimeSpan.Zero, Why: "데모: 읽어야 하는데 못 읽었습니다.");
@@ -77,23 +77,34 @@ public partial class SettingsWindow
         else if (open is not null) _mapOpen.UnionWith(open.Split(','));
         _mapPin = pin;
         if (cut is not null) FeatureMap.SetCut(_s, FeatureMap.Edges.First(e => e.From == cut && FeatureMap.Cuttable(e)), true);
+        (_mapDemoHover, _mapDemoScroll) = (hover, scroll);   // the map is rebuilt as the page fills: every new one gets them
         FillShow();
-        if (scroll is null && line is null) return;
+        if (line is null) return;
         _ = Dispatcher.InvokeAsync(async () =>   // once the page is up: --tab goes there after this
         {
             await Task.Delay(TimeSpan.FromSeconds(2));
-            Body.ScrollToVerticalOffset(double.Parse(scroll ?? "0"));
-            if (line is not null) _map?.DemoLine(line);
+            _map?.DemoLine(line);
         });
     }
 
-    string? _mapDemoCard;
+    string? _mapDemoCard, _mapDemoHover, _mapDemoScroll;
+
+    /// <summary>--map-scroll: the whole viewer on the page, then the map scrolled inside it by that many px.</summary>
+    void DemoScrollMap(ScrollViewer host)
+    {
+        if (_mapDemoScroll is not { } px) return;
+        host.Loaded += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            host.BringIntoView();
+            host.ScrollToVerticalOffset(double.Parse(px));
+        }, DispatcherPriority.ContextIdle);
+    }
 
     /// <summary>A map box's hover card: its window's GIF (보스 체력 · 대난투 체력, drawn over the game's own bar: theirs recorded
     /// over footage, user 2026-11-10), its reader's capture from the moment its mark turned.</summary>
     UIElement? MapCard(string id) => MapPreview.Card(FeatureMap.Boxes.First(b => b.Id == id).Title,
         id switch { "boss" => "Boss", "shadow" => "Shadow", _ => FeatureMap.WindowOf(id)?.ToString() }, _detect.GetValueOrDefault(id),
-        _detectPictures.TryGetValue(id, out var picture) ? BitmapOf(picture) : null, _detectAt);
+        _detectPictures.TryGetValue(id, out var picture) ? BitmapOf(picture) : null, _detectAt, MapPreview.Needs(_s, id, CredentialVault.Saved));
 
     /// <summary>The 감지 중 chip's card: the stored moment until Live's first frame, then each Live frame (DetectAreasChanged).</summary>
     System.Windows.Controls.Image? _mapLivePicture;
@@ -111,29 +122,50 @@ public partial class SettingsWindow
     }
 
     /// <summary>The 표시 map (FeatureMapView): 모두 접기 / 모두 펼치기 above it, a note line under it for what a switch also did.</summary>
+    ReadChipRow? _readChips;
+
+    /// <summary>The map's viewer stays at least this tall in a small window.</summary>
+    const double MapLeastHeight = 320;
+
     void AddMap(Panel p)
     {
-        var note = Muted(new TextBlock { Margin = new(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap });
+        var note = Muted(new TextBlock { Margin = new(0, Tokens.Space.Tight, 0, 0), TextWrapping = TextWrapping.Wrap });
         var map = _map = new FeatureMapView(_s, _mapOpen, _mapPin, () => { Changed(); Dispatcher.BeginInvoke(FillShow); }, area => Go(area),
-            text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, Preview = MapCard, DetectPreview = MapLiveCard, DetectHover = MapLive, ShowResources = _checkOn, ShowDetect = id => { _detectPicked = id; Go(AreaFit, SecDetect); DrawDetect(); } };
+            text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, Preview = MapCard, DetectPreview = MapLiveCard, DetectHover = MapLive, ShowResources = _checkOn, HasKey = () => CredentialVault.Saved, DemoHover = _mapDemoHover };
         map.SetDetect(_detect, _detectAt);
+        var chips = _readChips = new ReadChipRow(id => { _detectPicked = id; Go(AreaDetect); DrawDetect(); });
+        chips.Set(_detect);
         note.Text = _mapNote ?? "";
         _mapNote = null;
-        var fold = new Button { Content = "모두 접기", Padding = new(10, 3, 10, 3), Margin = new(0, 0, 6, 0) };
-        var open = new Button { Content = "모두 펼치기", Padding = new(10, 3, 10, 3) };
+        var fold = new Button { Content = "모두 접기", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(0, 0, Tokens.Space.Gap, 0) };
+        var open = new Button { Content = "모두 펼치기", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight) };
         fold.Click += (_, _) => map.SetAll(false);
         open.Click += (_, _) => map.SetAll(true);
-        p.Children.Add(HelpRow("기능 맵", "왼쪽 게임 설정에서 오른쪽 기능으로, 무엇이 무엇을 쓰는지 보여 줍니다. 칸을 누르면 펼쳐지거나 접히고, 펼친 칸에서 켜고 끕니다. "
-            + "⚙는 그 설정 화면으로 갑니다. 점: 초록 켜짐, 파랑 표시 안 함(읽기는 함), 회색 꺼짐. 금색 테: 캐릭터마다 따로 정함. 분홍 점선은 파티와 주고받는 것, 회색 점선은 끊긴 것이고, 파티 옆 선을 누르면 끊거나 잇습니다. 칸이나 선에 마우스를 올리면 이어진 곳과 창의 모습이 보입니다. 주황 빛이 게임 설정 쪽으로 흐르면 그 기능이 못 읽는 중이니 게임 설정을 확인하세요.",
+        p.Children.Add(HelpRow("기능 맵", "왼쪽 게임 설정에서 오른쪽 기능으로, 무엇이 무엇을 쓰는지 보여 줍니다. 칸을 누르면 펼쳐지거나 접히고, 펼친 칸에서 켜고 끕니다. ⚙는 그 설정 화면으로 갑니다.\n\n"
+            + "칩: 읽는 것마다 상태입니다(초록 ✓ 읽는 중, 노랑 ? 찾는 중, 빨강 ! 못 읽음, 회색 꺼짐). 누르면 화면 인식 설정에서 엽니다.\n"
+            + "점: 초록 켜짐, 파랑 표시 안 함(읽기는 함), 회색 꺼짐.\n"
+            + "금색 테: 캐릭터마다 따로 정함.\n"
+            + "분홍 P: 파티와 주고받는 칸입니다. 파티 옆 표(스킬쿨 → 등)를 누르면 끊거나 다시 잇습니다. 끊긴 표는 회색 취소선입니다.\n"
+            + "주황 빛: 게임 설정 쪽으로 흐르면 그 기능이 못 읽는 중입니다. 게임 설정을 확인하세요.\n\n"
+            + "칸이나 선에 마우스를 올리면 이어진 곳과 창의 모습이 보입니다. 꺼진 칸에 올리면 그 기능에 필요한 칸에 테가 생깁니다. 빈 곳을 끌면 맵이 움직입니다.",
             new StackPanel { Orientation = Orientation.Horizontal, Children = { fold, open, CheckButton() } }));
-        var host = new ScrollViewer { Content = map, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Margin = new(0, 8, 0, 0) };
-        host.PreviewMouseWheel += (_, e) =>   // the page scrolls, not this sideways-only viewer, which would swallow the wheel
+        p.Children.Add(chips);
+        // Scrolls both ways, no taller than the page shows (metro-map.plan.md 5): the map pans inside it (FeatureMapView.StartPan).
+        var host = new ScrollViewer { Content = map, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new(0, Tokens.Space.Gap, 0, 0) };
+        void Fit(object? _ = null, SizeChangedEventArgs? __ = null) => host.MaxHeight = Math.Max(MapLeastHeight, Body.ActualHeight - PageSpare);
+        Fit();
+        // Only while on the page: each refill builds a new viewer, and a handler left on Body would keep the old map alive.
+        host.Loaded += (_, _) => { Body.SizeChanged -= Fit; Body.SizeChanged += Fit; Fit(); };
+        host.Unloaded += (_, _) => Body.SizeChanged -= Fit;
+        host.PreviewMouseWheel += (_, e) =>   // the map scrolls while it can, then the page
         {
-            if (host.Parent is not UIElement parent) return;
+            bool can = e.Delta > 0 ? host.VerticalOffset > 0 : host.VerticalOffset < host.ScrollableHeight;
+            if (can || host.Parent is not UIElement parent) return;
             e.Handled = true;
             parent.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta) { RoutedEvent = MouseWheelEvent, Source = host });
         };
         CardStack.SetBreak(host, true);
+        DemoScrollMap(host);
         p.Children.Add(host);
         p.Children.Add(note);
         if (_mapDemoCard is { } demo && MapCard(demo) is { } card) p.Children.Add(card);
@@ -146,7 +178,7 @@ public partial class SettingsWindow
     /// <summary>표시 화면 changed: the windows move.</summary>
     public event Action? DisplayChosen;
 
-    readonly TextBlock _behindLine = new() { Margin = new(0, 2, 0, 6) };
+    readonly TextBlock _behindLine = new() { Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Gap) };
 
     BehindStatus? _behindStatus;
 
@@ -164,11 +196,10 @@ public partial class SettingsWindow
         _behindLine.Visibility = _behindLine.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    readonly CardStack _secScreens = new();
-
-    void FillScreens()
+    /// <summary>인게임 설정's 표시할 화면 rows (was its own rail tab, reading-place.plan.md A): the monitor and Alt+Tab.</summary>
+    void ScreenDisplayRows(StackPanel p)
     {
-        var p = Refill(_secScreens, AreaScreens, "게임과 디스코드 같은 다른 앱을 서로 다른 모니터에 두고 쓸 때의 설정입니다.");
+        p.Children.Add(SubHeading("표시할 화면", "게임과 디스코드 같은 다른 앱을 서로 다른 모니터에 두고 쓸 때의 설정입니다."));
         p.Children.Add(HelpRow("표시 화면", "오버레이를 띄울 모니터입니다. 바꾸면 오버레이 창들이 그 모니터의 같은 자리쯤으로 옮겨 갑니다. 그 모니터를 빼면 게임이 있는 모니터로 돌아옵니다.", DisplayCombo()));
         p.Children.Add(Check("Alt+Tab 중에도 항상 표시", _s.Screens.ReadBehind, v => { _s.Screens.ReadBehind = v; ShowBehindLine(); }, Changed,
             "켜면 디스코드나 브라우저를 쓰는 동안에도 게임을 읽고 오버레이를 보여 줍니다. 끄면 게임을 다시 누를 때까지 멈춥니다. 켜 두어도 게임이 최소화되거나 다른 창에 가려지면 멈춥니다. 전체 화면 모드에서는 다른 앱을 누르면 게임이 내려가니 전체 창 모드로 쓰세요."));
@@ -219,9 +250,9 @@ public partial class SettingsWindow
         // Named after the window, so search and ★ tell the eight switches apart.
         var check = Check($"{name} 표시", TrayToggles.IsShown(_s, part), v => TrayToggles.Show(_s, part, v), () => { Changed(); Dispatcher.BeginInvoke(BuildAll); }, ShowHelp(part));
         if (part == OverlayPart.Judgment && _s.ActiveCharacter is null) check.IsEnabled = false;
-        var cell = new StackPanel { Margin = new(0, 0, 0, 6) };
+        var cell = new StackPanel { Margin = new(0, 0, 0, Tokens.Space.Gap) };
         cell.Children.Add(check);
-        if (ShowNote(part) is { } note) cell.Children.Add(Muted(new TextBlock { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new(24, 0, 0, 0) }));
+        if (ShowNote(part) is { } note) cell.Children.Add(Muted(new TextBlock { Text = note, FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap, Margin = new(Tokens.Space.Section, 0, 0, 0) }));
         return cell;
     }
 

@@ -28,7 +28,7 @@ public partial class SettingsWindow
         "\n\n전분이 새로 시작되면 앞 전투를 저장합니다. 새 보스가 같으면(재도전) 실패, 다르면(다음 관문) 클리어입니다." +
         "\n\n다음 기록이 없으면, 보스의 마지막 HP가 500억(작은 보스는 최대 HP의 5%) 아래이거나 보스 체력바가 3초 넘게 사라졌을 때 클리어입니다.";
     readonly CardStack _secRecords = new();
-    readonly TimelineView _timeline = new() { Margin = new(0, 8, 0, 4) };
+    readonly TimelineView _timeline = new() { Margin = new(0, Tokens.Space.Gap, 0, Tokens.Space.Tight) };
     readonly List<string> _compare = [];
     string? _opened, _timelineShows, _recordChar, _registerNote;
     int _comparePhase;
@@ -213,12 +213,12 @@ public partial class SettingsWindow
     /// (user, 2026-11-11). Null raid: the fights of no known raid, last, not movable.</summary>
     UIElement RaidHeader(HomeworkRaid? raid, IReadOnlyList<HomeworkRaid> raids)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 12, 0, 2) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, Tokens.Space.Block, 0, Tokens.Space.Hair) };
         row.Children.Add(new TextBlock { Text = raid?.Name ?? "그 밖의 콘텐츠", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         if (raid is null) return row;
         foreach (var (glyph, step, tip) in new[] { ("▲", -1, "이 레이드를 위로"), ("▼", 1, "이 레이드를 아래로") })
         {
-            var move = new Button { Content = glyph, Margin = new(8, 0, 0, 0), Padding = new(6, 0, 6, 0), ToolTip = tip, VerticalAlignment = VerticalAlignment.Center };
+            var move = new Button { Content = glyph, Margin = new(Tokens.Space.Gap, 0, 0, 0), Padding = new(Tokens.Space.Gap, 0, Tokens.Space.Gap, 0), ToolTip = tip, VerticalAlignment = VerticalAlignment.Center };
             System.Windows.Automation.AutomationProperties.SetName(move, $"{raid.Name} {tip}");
             move.Click += (_, _) => { _s.RecordRaidOrder = [.. RaidOrder.Move(raids, _s.RecordRaidOrder, raid.Id, step)]; Changed(); FillRecords(); };
             row.Children.Add(move);
@@ -243,7 +243,7 @@ public partial class SettingsWindow
 
     UIElement ChipRow(IReadOnlyList<RecordChip> chips, string picked, int binCount)
     {
-        var row = new WrapPanel { Margin = new(0, 4, 0, 6) };
+        var row = new WrapPanel { Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Gap) };
         void Add(string key, string text)
         {
             var chip = Toggle(text, "recordChip", key == picked);
@@ -254,7 +254,7 @@ public partial class SettingsWindow
         if (binCount > 0)
         {
             Add(BinChip, $"휴지통 {binCount}");
-            ((FrameworkElement)row.Children[^1]).Margin = new(12, 0, 6, 6);   // set apart: not a character
+            ((FrameworkElement)row.Children[^1]).Margin = new(Tokens.Space.Block, 0, Tokens.Space.Gap, Tokens.Space.Gap);   // set apart: not a character
         }
         return row;
     }
@@ -274,7 +274,7 @@ public partial class SettingsWindow
             if (now > before) { Apply(now); return; }   // raised: nothing moves
             var stores = new[] { Records, TestRecords }.OfType<RecordStore>().ToList();
             int moving = stores.Sum(s => s.OverflowCount(now));
-            if (moving > 0 && !Warn(WarningKind.PushToBin, $"최근 기록을 {now}개로 줄이면 보관하지 않은 기록 {moving}개가 휴지통으로 갑니다. 휴지통에서 되돌리기를 누르면 돌아옵니다."))
+            if (moving > 0 && !Warn(WarningKind.PushToBin, $"최근 기록을 {now}개로 줄이면 보관하지 않은 기록 {moving}개가 휴지통으로 갑니다. 휴지통에서 복원을 누르면 돌아옵니다."))
             {
                 FillRecords();   // rebuilds the slider at the kept number
                 return;
@@ -291,14 +291,14 @@ public partial class SettingsWindow
     {
         int recent = RecentOf(fights).Count(x => !Held(x));   // the held fight is not one of the N
         int kept = KeptTabOf(fights).Count;
-        var row = new WrapPanel { Margin = new(0, 0, 0, 8) };
+        var row = new WrapPanel { Margin = new(0, 0, 0, Tokens.Space.Gap) };
         var autoTab = Toggle($"최근 ({recent}/{Math.Clamp(_s.RecordKeep, RecordStore.MinKeep, RecordStore.MaxKeep)})", "recordTab", !_keptTab);
         autoTab.Checked += (_, _) => SetKeptTab(false);
         var keptTab = Toggle($"보관 ({kept})", "recordTab", _keptTab);
         keptTab.Checked += (_, _) => SetKeptTab(true);
         row.Children.Add(autoTab);
         row.Children.Add(keptTab);
-        row.Children.Add(Muted(new TextBlock { Text = "정렬", Margin = new(18, 0, 6, 6), VerticalAlignment = VerticalAlignment.Center }));
+        row.Children.Add(Muted(new TextBlock { Text = "정렬", Margin = new(Tokens.Space.Card, 0, Tokens.Space.Gap, Tokens.Space.Gap), VerticalAlignment = VerticalAlignment.Center }));
         foreach (var (byRaid, text) in new[] { (false, "날짜순"), (true, "레이드순") })
         {
             var sort = Toggle(text, "recordSort", _s.RecordSortByRaid == byRaid);
@@ -323,7 +323,8 @@ public partial class SettingsWindow
     HashSet<string> _goesNext = [];
 
     static readonly SolidColorBrush DeleteRed = new(Color.FromRgb(0xC4, 0x2B, 0x1C));
-    static readonly SolidColorBrush GoesNextOrange = new(Color.FromRgb(0xD9, 0x6A, 0x00));
+    /// <summary>The ! in dark orange (<see cref="GoesNextBrushKey"/>, set by <see cref="PaintRail"/>).</summary>
+    internal static readonly Color GoesNextColor = Color.FromRgb(0xD9, 0x6A, 0x00);
 
     void SetKeptTab(bool kept)
     {
@@ -358,9 +359,9 @@ public partial class SettingsWindow
         };
         var edit = new Button { Content = "편집", Margin = gap, VerticalAlignment = VerticalAlignment.Center };
         edit.Click += (_, _) => { _editing = file; FillRecords(); };   // another row's open editor closes unapplied: 취소
-        var delete = DeleteButton(gap, "휴지통으로 옮깁니다. 휴지통에서 되돌리기를 누르면 돌아옵니다.");
+        var delete = DeleteButton(gap, "휴지통으로 옮깁니다. 휴지통에서 복원을 누르면 돌아옵니다.");
         delete.Click += (_, _) => RecordAction(() => store?.Delete(name));   // to the 휴지통: no question (user, 2026-11-10)
-        var row = new WrapPanel { Margin = new(0, 4, 0, 4) };
+        var row = new WrapPanel { Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Tight) };
         // An imported fight is kept until deleted and isn't mine to edit: 비교 and 삭제 only.
         UIElement[] editButtons = editing ?? [edit];
         foreach (var c in imported ? new UIElement[] { text, compare, delete } : [text, keep, compare, .. editButtons, delete]) row.Children.Add(c);
@@ -401,9 +402,9 @@ public partial class SettingsWindow
             + (RecordStore.IsHeld(name) ? "[저장 안 됨]   " : "") + (r.Cleared switch { true => "클리어   ", false => "실패   ", _ => "" });
         // [logo] raid [difficulty] (user, 2026-11-10)
         var logo = RaidBadgeView.Of(r.Gate, null);
-        logo.Margin = new(8, 0, 0, 0);
+        logo.Margin = new(Tokens.Space.Gap, 0, 0, 0);
         var difficulty = RaidBadgeView.Of(null, r.Difficulty);
-        difficulty.Margin = new(6, 0, 8, 0);
+        difficulty.Margin = new(Tokens.Space.Gap, 0, Tokens.Space.Gap, 0);
         var top = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -417,21 +418,25 @@ public partial class SettingsWindow
             },
         };
         if (!inBin && _goesNext.Contains(file))   // warn before the next save deletes it, so none goes by accident
-            top.Children.Insert(0, new TextBlock
+        {
+            var mark = new TextBlock
             {
-                Text = "!", FontWeight = FontWeights.Bold, Foreground = GoesNextOrange, Margin = new(0, 0, 6, 0),
+                Text = "!", FontWeight = FontWeights.Bold, Margin = new(0, 0, Tokens.Space.Gap, 0),
                 VerticalAlignment = VerticalAlignment.Center, ToolTip = "다음 전투가 저장되면 휴지통으로 갑니다. 남기려면 보관을 누르세요.",
-            });
+            };
+            mark.SetResourceReference(TextBlock.ForegroundProperty, GoesNextBrushKey);
+            top.Children.Insert(0, mark);
+        }
         text.Children.Add(top);
         // second line: my class emblem and character, then my numbers (user, 2026-11-10: not the party's names)
-        var who = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 2, 0, 0) };
+        var who = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, Tokens.Space.Hair, 0, 0) };
         if (Emblems.For(r.MyClassName) is { } emblem)
-            who.Children.Add(new System.Windows.Controls.Image { Source = emblem, Width = 16, Height = 16, Margin = new(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = RecordCharacter.ClassOf(r) });
-        who.Children.Add(new TextBlock
+            who.Children.Add(new System.Windows.Controls.Image { Source = emblem, Width = 16, Height = 16, Margin = new(0, 0, Tokens.Space.Tight, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = RecordCharacter.ClassOf(r) });
+        who.Children.Add(UiBuild.Muted(new TextBlock
         {
-            Text = $"{RecordCharacter.Of(r)}   내 몫 {share}", FontSize = 11, Opacity = 0.75,
+            Text = $"{RecordCharacter.Of(r)}   내 몫 {share}", FontSize = Tokens.Font.Hint,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-        });
+        }));
         text.Children.Add(who);
         return text;
     }

@@ -58,9 +58,9 @@ public sealed partial class LostArkApi(HttpMessageHandler handler)
     {
         ApiStatus.정상 => "연결되었습니다.",
         ApiStatus.키오류 => "API 키가 맞지 않거나 만료되었습니다.",
-        ApiStatus.한도 => "요청 한도(분당 100회)를 넘었습니다. 잠시 뒤 다시 해 주세요.",
+        ApiStatus.한도 => "요청 한도(분당 100회)를 넘었습니다. 잠시 뒤 다시 하세요.",
         ApiStatus.점검 => "로스트아크 API가 점검 중입니다.",
-        _ => "서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.",
+        _ => "서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.",
     };
 
     /// <summary>연결 확인: one small call that needs a valid key and no character name (the game's notices).</summary>

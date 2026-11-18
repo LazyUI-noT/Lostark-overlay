@@ -10,7 +10,7 @@ namespace GaugeOverlay.Core.Vision;
 public sealed class BossHpSoftReader
 {
     const double MaxDropShare = 0.05;   // of the max, a second: far over a party's damage, under any high digit misread
-    const double Agree = 0.001;         // of the max: two reads this near are the same HP
+    internal const double Agree = 0.001;   // of the max: two reads this near are the same HP
 
     (long Current, long Max, TimeSpan At)? _last;
     (long Current, long Max)? _odd;     // the last read that broke the fight: a second like it starts a new one
@@ -65,7 +65,7 @@ public sealed class BossHpSoftReader
         return (current, max, shield);
     }
 
-    static bool Fits((long Current, long Max, TimeSpan At) last, long current, long max, TimeSpan now) =>
+    internal static bool Fits((long Current, long Max, TimeSpan At) last, long current, long max, TimeSpan now) =>
         max == last.Max && current <= last.Current
         && last.Current - current <= MaxDropShare * max * Math.Max(0.5, (now - last.At).TotalSeconds);
 }

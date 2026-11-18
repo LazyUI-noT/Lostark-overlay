@@ -92,8 +92,8 @@ sealed class TimelineView : FrameworkElement
     /// <summary>The buffs' lines, and the 암수 line when a fight shown had 암수 on (every record the same, so 비교 lines up).</summary>
     int Lanes => BuffRows.Length + (_shown.Any(s => s.Record.AmsuOn) ? 1 : 0);
 
-    /// <summary>The buff lanes drawn: all three, or under the buff lock no 초각스 피증 (BuffLock.TimelineKinds).</summary>
-    (BuffKind Kind, string Name, Color Color)[] BuffRows => [.. Buffs.Where(b => BuffLock.TimelineKinds(BuffLocked).Contains(b.Kind)).Select(b => _lightBg && b.Kind == BuffKind.아덴피증 ? b with { Color = AdenLight } : b)];
+    /// <summary>The buff lanes drawn: all four, or under the buff lock no 초각스 피증 (BuffLock.TimelineKinds).</summary>
+    (BuffKind Kind, string Name, Color Color)[] BuffRows => [.. Buffs.Where(b => BuffLock.TimelineKinds(BuffLocked).Contains(b.Kind)).Select(b => !_lightBg ? b : b.Kind == BuffKind.아덴피증 ? b with { Color = AdenLight } : b.Kind == BuffKind.낙인 ? b with { Color = NakinLight } : b)];
     static readonly Color AmsuColour = Color.FromRgb(0x9B, 0x6B, 0xFF), BitamColour = Color.FromRgb(0xD8, 0xA8, 0xFF);
     static readonly (Bomb Kind, Pen Glow, Pen Lit)[] Bombs = [BombPens(Bomb.암수, AmsuColour), BombPens(Bomb.빛암, BitamColour)];
     static readonly (Bomb Kind, Pen Glow, Pen Lit)[] BombsLight = [BombPens(Bomb.암수, OnLight(AmsuColour)), BombPens(Bomb.빛암, OnLight(BitamColour))];
@@ -119,8 +119,9 @@ sealed class TimelineView : FrameworkElement
         (BuffKind.공증, "공증", Color.FromRgb(0xE0, 0x52, 0x52)),
         (BuffKind.아덴피증, "아덴 피증", Color.FromRgb(0xF5, 0xC5, 0x42)),
         (BuffKind.초각스피증, "초각스 피증", Color.FromRgb(0x4A, 0x90, 0xE2)),
+        (BuffKind.낙인, "낙인", Color.FromRgb(0xE6, 0xE6, 0xE6)),
     ];
-    static readonly Color MineDark = Color.FromRgb(0xFF, 0xC8, 0x3C), MineLight = Color.FromRgb(0x9A, 0x6B, 0x00), AdenLight = Color.FromRgb(0x9A, 0x73, 0x00);
+    static readonly Color MineDark = Color.FromRgb(0xFF, 0xC8, 0x3C), MineLight = Color.FromRgb(0x9A, 0x6B, 0x00), AdenLight = Color.FromRgb(0x9A, 0x73, 0x00), NakinLight = Color.FromRgb(0x80, 0x80, 0x80);
     Color Mine => _lightBg ? MineLight : MineDark;
     static readonly Color[] Others =
     [

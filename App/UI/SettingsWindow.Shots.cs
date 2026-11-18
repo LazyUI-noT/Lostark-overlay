@@ -20,14 +20,14 @@ public partial class SettingsWindow
     public Func<Task<(Core.Domain.Image? Picture, PixelRect Area)>>? TakeShot { get; set; }
 
     readonly StackPanel _confirm = new() { Orientation = Orientation.Horizontal, Visibility = Visibility.Collapsed };
-    readonly Button _again = new() { Content = "다시 찍기", Margin = new(0, 2, 6, 2) };
+    readonly Button _again = new() { Content = "다시 찍기", Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
     (BitmapSource Picture, PixelRect? Area)? _pending;
     bool _taking;   // a countdown or capture is under way
 
     /// <summary>The canvas tools' screenshot buttons: 불러오기, 게임 화면 찍기, 지우기, and 덮어쓰기 / 다시찍기 / 취소 for a new picture.</summary>
     UIElement ShotButtons()
     {
-        Button Tool(string text, string? tip) => new() { Content = text, Margin = new(0, 2, 6, 2), ToolTip = tip };
+        Button Tool(string text, string? tip) => new() { Content = text, Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair), ToolTip = tip };
         var load = Tool("불러오기", "png, jpg, bmp 그림을 이 프로필의 화면으로 씁니다.");
         var take = Tool("게임 화면 찍기", "3초 뒤 게임 화면을 찍습니다.");
         var clear = Tool("지우기", "이 프로필의 화면을 지우고 예시 화면으로 돌아갑니다.");
@@ -43,7 +43,7 @@ public partial class SettingsWindow
         _confirm.Children.Add(keep);
         _confirm.Children.Add(_again);
         _confirm.Children.Add(cancel);
-        return new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 16, 0), Children = { load, take, clear, _confirm } };
+        return new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, Tokens.Space.Card, 0), Children = { load, take, clear, _confirm } };
     }
 
     /// <summary>The picture waiting for 덮어쓰기, else the profile's screenshot, else the sample screen.</summary>
@@ -98,21 +98,35 @@ public partial class SettingsWindow
         return new(b.X, b.Y, b.Width, b.Height);
     }
 
-    /// <summary>게임 화면 찍기: 설정 steps aside, the game comes to the front, 3, 2, 1, and the picture comes back here.</summary>
+    /// <summary>게임 화면 찍기: the picture comes back here, for the profile it was taken for.</summary>
     async Task Take()
     {
-        if (_taking) return;   // a second click while the countdown runs
+        int profile = _s.ActiveProfile;
+        if (await CountdownShot(text => _canvasNote.Text = text) is not var (img, area)) return;
+        if (profile != _s.ActiveProfile) return;   // switched meanwhile: the picture was for the other profile
+        var bitmap = BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgra32, null, img.Bgra, img.Stride);
+        bitmap.Freeze();
+        _pending = (bitmap, area);
+        _again.Visibility = Visibility.Visible;
+        ShowCanvasShot();
+    }
+
+    /// <summary>설정 steps aside, the game comes to the front, 3, 2, 1, and the game's picture comes back with where it lies on
+    /// screen. Null: none (a second click while the countdown runs, no game, a failed capture), with why told through <paramref name="say"/>.</summary>
+    async Task<(Core.Domain.Image Picture, PixelRect Area)?> CountdownShot(Action<string> say)
+    {
+        if (_taking) return null;   // a second click while the countdown runs
         var game = GameWindow.Find();
         if (TakeShot is null || game == 0)
         {
-            _canvasNote.Text = "로스트아크 실행 중에만 찍을 수 있습니다.";
-            return;
+            say("로스트아크 실행 중에만 찍을 수 있습니다.");
+            return null;
         }
         var dpi = VisualTreeHelper.GetDpi(this);
         var m = GameWindow.MonitorBounds(GameWindow.MonitorOf(game));
         // ponytail: the countdown uses this window's DPI; on a mixed-DPI setup it may sit off centre on the game's monitor
         var monitor = new Rect(m.X / dpi.DpiScaleX, m.Y / dpi.DpiScaleY, m.Width / dpi.DpiScaleX, m.Height / dpi.DpiScaleY);
-        var (state, profile) = (WindowState, _s.ActiveProfile);
+        var state = WindowState;
         _taking = true;
         WindowState = WindowState.Minimized;
         GameWindow.Activate();
@@ -128,17 +142,12 @@ public partial class SettingsWindow
             WindowState = state;
             Activate();
         }
-        if (profile != _s.ActiveProfile) return;   // switched meanwhile: the picture was for the other profile
-        if (shot.Picture is not { } img)
+        if (shot.Picture is not { } picture)
         {
-            _canvasNote.Text = "화면을 찍지 못했습니다. 게임 창이 보이는 상태에서 다시 해 주세요.";
-            return;
+            say("화면을 찍지 못했습니다. 게임 창이 보이는 상태에서 다시 찍으세요.");
+            return null;
         }
-        var bitmap = BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgra32, null, img.Bgra, img.Stride);
-        bitmap.Freeze();
-        _pending = (bitmap, shot.Area);
-        _again.Visibility = Visibility.Visible;
-        ShowCanvasShot();
+        return (picture, shot.Area);
     }
 
     /// <summary>덮어쓰기: the picture becomes this profile's (file first, through a temp file; then where it lies).</summary>

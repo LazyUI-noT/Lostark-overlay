@@ -42,11 +42,11 @@ public partial class SettingsWindow
         CanvasTools.Children.Add(apartCheck);
         CanvasTools.Children.Add(ToolCheck("자석", canvas.Snap, v => canvas.Snap = v, "끌 때 다른 칸에 맞춰 붙습니다. Shift를 누르고 끌면 붙지 않습니다."));
         CanvasTools.Children.Add(ToolCheck("크기 연동", canvas.LinkSizes, v => canvas.LinkSizes = v, "모서리로 크기를 바꿀 때 같은 줄의 칸도 같이 바뀝니다."));
-        CanvasTools.Children.Add(ToolCheck("나", canvas.ShowMine, v => canvas.ShowMine = v, null));
-        CanvasTools.Children.Add(ToolCheck("파티원", canvas.ShowParty, v => canvas.ShowParty = v, null));
+        CanvasTools.Children.Add(ToolCheck("나", canvas.ShowMine, v => canvas.ShowMine = v, "내 창을 미리보기에 표시합니다."));
+        CanvasTools.Children.Add(ToolCheck("파티원", canvas.ShowParty, v => canvas.ShowParty = v, "파티원 창을 미리보기에 표시합니다."));
         var offCheck = _offCheck = ToolCheck("꺼진 창", canvas.ShowOff, v => canvas.ShowOff = v, "설정에서 꺼 둔 창도 흐리게 보여 줍니다. 끄면 켜 둔 창만 보여서 자리를 잡기 쉽습니다.");
         CanvasTools.Children.Add(offCheck);
-        var actual = new Button { Content = "1:1 크기", Margin = new(0, 2, 8, 2), ToolTip = "게임 화면과 같은 크기(100%)로 봅니다." };
+        var actual = new Button { Content = "1:1 크기", Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair), ToolTip = "게임 화면과 같은 크기(100%)로 봅니다." };
         actual.Click += (_, _) => canvas.ActualSize();
         CanvasTools.Children.Add(actual);
         CanvasTools.Children.Add(_canvasNote);
@@ -72,15 +72,16 @@ public partial class SettingsWindow
     /// <summary>--hide-off: 꺼진 창 off, for screenshots.</summary>
     internal void DemoHideOff() { if (_offCheck is not null && _canvas is not null) _offCheck.IsChecked = _canvas.ShowOff = false; }
 
-    readonly TextBlock _canvasNote = new() { Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(8, 0, 0, 0) };
+    readonly TextBlock _canvasNote = UiBuild.Muted(new() { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(Tokens.Space.Gap, 0, 0, 0) });
 
     void ShowCanvasNote() => _canvasNote.Text = _canvas?.BoxesApart == true
-        ? "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대"
-        : "칸을 눌러 설정 · 끌어서 이동 (내 스킬창은 칸 하나씩을 켜야 칸마다) · 모서리로 크기 · 막대 끝으로 길이 · 화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기 · 휠로 확대";
+        ? "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기"
+        : "칸을 눌러 설정 · 끌어서 이동 (내 스킬창은 칸 하나씩을 켜야 칸마다) · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기";
 
     static CheckBox ToolCheck(string text, bool value, Action<bool> set, string? help)
     {
-        var c = new CheckBox { Content = text, IsChecked = value, MinWidth = 0, Margin = new(0, 2, 14, 2), ToolTip = help, VerticalAlignment = VerticalAlignment.Center };
+        // A TextBlock, not the string, as Check does: the string content was clipped at its last letter ("나", "자석").
+        var c = new CheckBox { Content = new TextBlock { Text = text }, IsChecked = value, MinWidth = 0, Margin = new(0, Tokens.Space.Hair, Tokens.Space.Block, Tokens.Space.Hair), ToolTip = help, VerticalAlignment = VerticalAlignment.Center };
         c.Click += (_, _) => set(c.IsChecked == true);
         return c;
     }
@@ -96,8 +97,8 @@ public partial class SettingsWindow
 
     static StackPanel RunButtons(OverlayCanvas canvas, out ToggleButton toggle)
     {
-        var run = toggle = new ToggleButton { Content = "▶ 시뮬레이션", Padding = new(10, 3, 10, 3), Margin = new(0, 2, 6, 2) };
-        var reset = new Button { Content = "초기화", Padding = new(10, 3, 10, 3), Margin = new(0, 2, 16, 2), IsEnabled = false };
+        var run = toggle = new ToggleButton { Content = "▶ 시뮬레이션", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(0, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
+        var reset = new Button { Content = "초기화", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(0, Tokens.Space.Hair, Tokens.Space.Card, Tokens.Space.Hair), IsEnabled = false };
         run.Checked += (_, _) => { canvas.Play.Start(); reset.IsEnabled = true; run.Content = "■ 멈추기"; };
         run.Unchecked += (_, _) => { canvas.Play.Stop(); reset.IsEnabled = false; run.Content = "▶ 시뮬레이션"; };
         reset.Click += (_, _) => canvas.Play.Reset();
@@ -118,13 +119,13 @@ public partial class SettingsWindow
         var (title, about, panels) = InspectorFor(box);
         InspectorHead.Children.Clear();
         InspectorHead.Children.Add(InspectorChips(box, title));
-        InspectorHead.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        InspectorHead.Children.Add(Muted(new TextBlock { Text = about, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) }));
+        InspectorHead.Children.Add(new TextBlock { Text = title, FontSize = Tokens.Font.Section, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        InspectorHead.Children.Add(Muted(new TextBlock { Text = about, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Hair, 0, 0) }));
         if (SizeHint(box) is { } hint)
-            InspectorHead.Children.Add(new TextBlock { Text = hint, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) });
+            InspectorHead.Children.Add(UiBuild.Muted(new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Hair, 0, 0) }));
         if (PageOf(box) is { } page)
         {
-            var go = new Button { Content = $"{page} 설정 열기 →", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 8, 0, 0) };
+            var go = new Button { Content = $"{page} 설정 열기 →", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, Tokens.Space.Gap, 0, 0) };
             go.Click += (_, _) => Go(page);
             InspectorHead.Children.Add(go);
         }
@@ -134,7 +135,7 @@ public partial class SettingsWindow
         if (ClassScoped(box)) Inspector.Children.Add(_contextNotes);
         foreach (var p in panels) { Inspector.Children.Add(p); ShowCardBadges(p, false); }
         InspectorBody.ScrollToTop();
-        var scope = new TextBlock
+        var scope = UiBuild.Muted(new TextBlock
         {
             Text = box?.Kind switch
             {
@@ -148,13 +149,13 @@ public partial class SettingsWindow
                 "Debuff" => $"자리와 칸 크기: {BadgeText()} · 없을 때 숨김: {ProfileBadge.ProfileText(_s.ActiveProfile)}",
                 _ => $"{BadgeText()}에 적용",
             },
-            Opacity = 0.75, TextWrapping = TextWrapping.Wrap,
+            TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        });
         var foot = new DockPanel();
         if (FooterReset(box) is { } reset)
         {
-            reset.Margin = new(12, 0, 0, 0);
+            reset.Margin = new(Tokens.Space.Block, 0, 0, 0);
             DockPanel.SetDock(reset, Dock.Right);
             foot.Children.Add(reset);
         }
@@ -175,10 +176,10 @@ public partial class SettingsWindow
         };
         if (_s.Party.ShowOthersBySlot.Count > 0) chips.Add(("파티원", new("Party", null, null)));
         chips.AddRange([("단심", new("Judgment", null, null)), ("암수", new("Amsu", null, null)), ("줄 수", new("Raid", null, null)), ("복사", new("Copy", null, null))]);
-        var row = new WrapPanel { Margin = new(0, 0, 0, 10) };
+        var row = new WrapPanel { Margin = new(0, 0, 0, Tokens.Space.Block) };
         foreach (var (text, target) in chips)
         {
-            var chip = new ToggleButton { Content = text, IsChecked = target?.Kind == box?.Kind, Padding = new(8, 1, 8, 2), Margin = new(0, 0, 4, 4), FontSize = 12 };
+            var chip = new ToggleButton { Content = text, IsChecked = target?.Kind == box?.Kind, Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair), Margin = new(0, 0, Tokens.Space.Tight, Tokens.Space.Tight), FontSize = Tokens.Font.Hint };
             if (target?.Kind == "Copy") chip.Click += (_, _) => { _canvas?.Select(null); ShowCopy(); };
             else chip.Click += (_, _) => { _canvas?.Select(target); ShowInspector(target); };   // ShowInspector also for a box the canvas can't pick (no party)
             row.Children.Add(chip);
@@ -190,8 +191,8 @@ public partial class SettingsWindow
     /// every row has its own ↺ (버프 막대, 디버프, 단심: decisions.md, "Row rule").</summary>
     Button? FooterReset(CanvasBox? box) => box?.Kind switch
     {
-        null or "Plate" or "Skills" => ResetButton("기본값", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 배경판 색은 남습니다.", () => SettingsResets.Display(Target)),   // 편집 중's look
-        "Gauge" => ResetButton("기본값", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(Target)),
+        null or "Plate" or "Skills" => ResetButton("기본값으로", "전체와 칸 모양(불투명도, 남은 쿨, 쿨 진행, 초각스, 금테)을 되돌립니다. 위치, 크기, 배경판 색은 남습니다.", () => SettingsResets.Display(Target)),   // 편집 중's look
+        "Gauge" => ResetButton("기본값으로", "게이지의 색·두께·읽기 방식과 모든 클래스·직업각인의 막대 모양(구분선, 색, 빛)을 되돌립니다. 클래스의 게이지 규칙과 배운 게이지 값은 남습니다.", () => SettingsResets.Gauge(Target)),
         _ => null,
     };
 
@@ -226,7 +227,7 @@ public partial class SettingsWindow
                 ScrollToDebuff(d);
                 return ("디버프", "디버프 칸입니다. MP 바 위의 내 디버프와 보스 체력바 아래 빨강·파랑 숫자를 보여 줍니다.", [_secBuffs]);
             case { Kind: "Ring" }:
-                return ("기력·충격 창", "브레이커의 기력(왼쪽)과 충격(오른쪽)입니다.", [GaugeBox]);
+                return ("전투자원 창", "브레이커의 기력(왼쪽)과 충격(오른쪽)입니다.", [GaugeBox]);
             case { Kind: "Raid" }:
                 return ("레이드 줄 수 창", "보스 체력바의 줄 수를 보여 주고, 정한 줄 수에서 빛납니다. 관문과 빛날 줄 수는 레이드에서 정합니다.", [_secRaidCount]);
             case { Kind: "Judgment" }:

@@ -236,10 +236,11 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         return list;
     }
 
-    /// <summary>The active class has an icon for every 직업각인 (Profiles/subclass) or a centre piece (Profiles/aden), so <see cref="ClassMismatch"/> can be told.</summary>
+    /// <summary>The active class has an icon for every 직업각인 (Profiles/subclass) or a centre piece (Profiles/aden) or a 초각스 pool, so <see cref="ClassMismatch"/> can be told.</summary>
     public bool ClassCheckable => ActiveClass is { } cls
         && (cls.Subclasses.Keys.All(s => File.Exists(Path.Combine(profilesDir, "subclass", cls.Name, s + ".png")))
-            || (_classEmblems ??= LoadClassEmblems()).Any(e => e.Class == cls.Name));
+            || (_classEmblems ??= LoadClassEmblems()).Any(e => e.Class == cls.Name)
+            || SkillLibrary.Shipped.Pool(cls.Name, SlotGroup.초각스).Any());   // SkillClassFinder tells the class from a 초각스
 
     /// <summary>Handles a ready 초각스 slot crop (스킬창 다시 맞추기): sets the 직업각인 its icon shows when that differs from
     /// the active character's; an icon unlike every 직업각인 of a class the centre piece didn't confirm is another class, so
@@ -278,9 +279,9 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         if (sub is null)
         {
             if (!asked || quiet) return null;
-            string kept = _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. {Josa.By(c.Subclass)} 둡니다."
-                : $"직업각인을 인식하지 못해 {Josa.By(c.Subclass)} 둡니다.";
-            return OrbAsked ? $"{kept} 아덴 게이지가 {OrbHue.MinFill * 100:0}% 넘게 차면 그 색으로 정합니다." : kept;
+            string kept = _icons is null && !greyed ? $"{cls.Name}의 초각스 아이콘이 없어 직업각인을 읽을 수 없습니다. 직업각인은 {Josa.Object(c.Subclass)} 그대로 씁니다."
+                : $"직업각인을 알아보지 못해 {Josa.Object(c.Subclass)} 그대로 씁니다.";
+            return OrbAsked ? $"{kept} 아덴 게이지가 {OrbHue.MinFill * 100:0}% 넘게 차면 게이지 색으로 직업각인을 정합니다." : kept;
         }
         if (sub != c.Subclass) return Detected(sub);
         settings.SubclassHistory[cls.Name] = sub;
@@ -364,7 +365,7 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     string Register(Image slot, bool greyed, ClassInfo cls, string sub)
     {
         _register = false;
-        if (greyed) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
+        if (greyed) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 누르세요.";
         try { _subclassIcons.Save(cls.Name, sub, SubclassMatcher.Art(slot)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -412,20 +413,27 @@ public sealed class CharacterService(Settings settings, string profilesDir)
     readonly SkillPoolStore _skills = new(SkillPoolStore.DefaultDir);
     const string NoSubclass = "캐릭터와 직업각인을 먼저 고르세요 (트레이나 설정 → 직업 인식).";
 
-    /// <summary>Why 스킬 등록 can't run now (no character or 직업각인 picked, or its 직업각인 have the same skills), or null.</summary>
-    public string? SkillsBlocked => Active is { Subclass.Length: > 0 } && ActiveClass is not null ? SameSkillsNote : NoSubclass;
+    /// <summary>The played character's 직업각인, for 스킬 등록 from the tray and a fight record; null when none is picked.</summary>
+    public (ClassInfo Class, string Sub)? ActiveSkillTarget => Active is { Subclass.Length: > 0 } c && ActiveClass is { } cls ? (cls, c.Subclass) : null;
 
-    /// <summary>스킬 등록: adds <paramref name="ready"/> (the 일반 slots ready in colour, null when the bar is greyed out) to the active
-    /// 직업각인's pool. Returns what happened, to tell the user.</summary>
-    public string SubmitSkills(IReadOnlyList<Image>? ready)
+    /// <summary>Why 스킬 등록 can't run for <paramref name="into"/> (none picked, or its 직업각인 have the same skills), or null.</summary>
+    public static string? SkillsBlockedFor((ClassInfo Class, string Sub)? into) =>
+        into is not { } t ? NoSubclass : t.Class.SameSkills ? SameSkills : null;
+
+    /// <summary>The skills saved by 스킬 등록 for each 직업각인 of <paramref name="cls"/> (empty when none).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<Image>> SavedSkills(ClassInfo cls) => _skills.Load(cls.Name, cls.Subclasses.Keys);
+
+    /// <summary>스킬 등록: adds <paramref name="ready"/> (the 일반 slots ready in colour, null when the bar is greyed out) to the pool
+    /// of <paramref name="into"/> (설정: 편집할 직업각인; tray: the played one). Returns what happened, to tell the user.</summary>
+    public string SubmitSkills(IReadOnlyList<Image>? ready, (ClassInfo Class, string Sub)? into)
     {
-        if (Active is not { Subclass.Length: > 0 } c || ActiveClass is not { } cls) return NoSubclass;
-        if (ready is null) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 눌러 주세요.";
-        if (ready.Count == 0) return "준비된 일반스킬이 없습니다. 스킬 쿨이 돌았을 때 다시 눌러 주세요.";
+        if (into is not { } t) return NoSubclass;
+        if (ready is null) return "스킬창이 회색입니다. 스킬을 쓸 수 있는 곳(마을 밖)에서 다시 누르세요.";
+        if (ready.Count == 0) return "준비된 일반스킬이 없습니다. 스킬이 준비되면 다시 누르세요.";
         try
         {
-            var (added, total) = _skills.Add(cls.Name, c.Subclass, ready);
-            return $"{cls.Name} · {c.Subclass}: 스킬 {added}개 추가 (총 {total}개)";
+            var (added, total) = _skills.Add(t.Class.Name, t.Sub, ready);
+            return $"{t.Class.Name} · {t.Sub}: 스킬 {added}개를 추가했습니다 (모두 {total}개).";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -434,11 +442,11 @@ public sealed class CharacterService(Settings settings, string profilesDir)
         }
     }
 
-    /// <summary>Empties the active 직업각인's pool of submitted skills. Returns what happened, to tell the user.</summary>
-    public string ClearSkills()
+    /// <summary>Empties the pool of <paramref name="into"/> (설정's 편집할 직업각인). Returns what happened, to tell the user.</summary>
+    public string ClearSkills((ClassInfo Class, string Sub)? into)
     {
-        if (Active is not { Subclass.Length: > 0 } c || ActiveClass is not { } cls) return NoSubclass;
-        try { _skills.Clear(cls.Name, c.Subclass); return $"{cls.Name} · {c.Subclass}의 등록된 스킬을 지웠습니다."; }
+        if (into is not { } t) return NoSubclass;
+        try { _skills.Clear(t.Class.Name, t.Sub); return $"{t.Class.Name} · {t.Sub}의 등록된 스킬을 지웠습니다."; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return "스킬을 지우지 못했습니다: " + ex.Message; }
     }
 

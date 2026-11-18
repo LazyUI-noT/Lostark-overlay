@@ -59,14 +59,14 @@ public partial class SettingsWindow
         TopBar.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
         var mark = new TextBlock
         {
-            Text = "GaugeOverlay", FontFamily = Themes.Cinzel, FontSize = 20, FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new(4, 0, 32, 0),
+            Text = "GaugeOverlay", FontFamily = Themes.Cinzel, FontSize = Tokens.Font.Title, FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Tight, 0, Tokens.Space.Page, 0),
         };
         mark.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
         TopBarContent.Children.Add(mark);
 
-        var profiles = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 32, 0) };
-        profiles.Children.Add(UiBuild.Muted(new TextBlock { Text = "프로필", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 10, 0) }));
+        var profiles = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Page, 0) };
+        profiles.Children.Add(UiBuild.Muted(new TextBlock { Text = "프로필", VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, Tokens.Space.Gap, 0) }));
         _profileButtons = new RadioButton[OverlayProfile.Count];
         for (int i = 0; i < OverlayProfile.Count; i++)
         {
@@ -84,9 +84,41 @@ public partial class SettingsWindow
         profiles.Children.Add(_testProfile);
         TopBarContent.Children.Add(profiles);
 
+        // Global, not 편집 중's look; the tray has the same switch (user, 2026-11-17, status/decisions.md). Not a page row, so
+        // not in 설정 검색.
+        _captureHidden.Content = "방송·캡처에서 숨김";
+        _captureHidden.ToolTip = "스크린샷, OBS 방송, 디스코드 화면 공유에 오버레이가 찍히지 않습니다. 내 화면에는 그대로 보입니다. "
+            + "끄면 화면 인식도 오버레이를 함께 찍습니다.";
+        (_captureHidden.VerticalAlignment, _captureHidden.Margin) = (VerticalAlignment.Center, new(0, 0, Tokens.Space.Page, 0));
+        _captureHidden.Click += (_, _) => { _s.Overlay.ExcludeFromCapture = _captureHidden.IsChecked == true; Changed(); };
+        ShowCaptureHidden();
+        TopBarContent.Children.Add(_captureHidden);
+
         _context.VerticalAlignment = VerticalAlignment.Center;
         TopBarContent.Children.Add(_context);
+        BuildAutoTestBanner();
     }
+
+    /// <summary>The tray's 자동 → 항상 test turned 설정's 자동 parts on outside a raid; 끄기 asks the app to turn it off.</summary>
+    public event Action? AutoAsAlwaysOff;
+
+    void BuildAutoTestBanner()
+    {
+        AutoTestBanner.SetResourceReference(Border.BackgroundProperty, "SystemFillColorCautionBackgroundBrush");
+        AutoTestBanner.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        var off = new Button { Content = "끄기", VerticalAlignment = VerticalAlignment.Center, Margin = new(Tokens.Space.Gap, 0, 0, 0) };
+        off.Click += (_, _) => AutoAsAlwaysOff?.Invoke();
+        DockPanel.SetDock(off, Dock.Right);
+        AutoTestBannerContent.Children.Add(off);
+        AutoTestBannerContent.Children.Add(new TextBlock
+        {
+            Text = "수련장 테스트 중: 자동도 항상처럼 표시합니다.",
+            VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
+        });
+    }
+
+    /// <summary>Shows or hides the 수련장 테스트 banner (the app holds the state; the tray has the same switch).</summary>
+    public void SetAutoAsAlways(bool on) => AutoTestBanner.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The profile buttons as the settings say (switched from the tray or a hotkey, or refused mid-drag).</summary>
     void ShowProfileButtons()
@@ -102,7 +134,13 @@ public partial class SettingsWindow
         _testProfile.IsChecked = _inTestProfile;
     }
 
-    readonly RadioButton _testProfile = new() { Content = "Test" };
+    readonly CheckBox _captureHidden = new();
+
+    /// <summary>The top bar's 방송·캡처에서 숨김 as the settings say. The tray calls only this, not <see cref="Reload"/>: a
+    /// reload would close the zoom window and drop its placement.</summary>
+    public void ShowCaptureHidden() => _captureHidden.IsChecked = _s.Overlay.ExcludeFromCapture;
+
+    readonly RadioButton _testProfile = new() { Content = "테스트" };
     bool _inTestProfile;
 
     /// <summary>The live settings are now [Test]'s or the ones before it: everything is shown afresh, and undo can't reach across.</summary>

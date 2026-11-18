@@ -91,11 +91,11 @@ public static class BuffKey
     {
         BuffKeyResult.열림 => "버프 잠금이 풀려 있습니다. 모든 버프 적용률이 보입니다.",
         BuffKeyResult.없음 => "버프 잠금 중입니다. 키를 넣으면 모든 버프 적용률이 보입니다.",
-        BuffKeyResult.형식 => "키 형식이 아닙니다. 받은 키 한 줄을 그대로 붙여 넣어 주세요.",
-        BuffKeyResult.다른PC => "이 PC의 키가 아닙니다. 위의 PC 코드로 받은 키인지 확인해 주세요.",
-        BuffKeyResult.초기화됨 => "업데이트로 초기화된 키입니다. 새 키를 받아 주세요.",
-        BuffKeyResult.시간지남 => "만든 지 10시간이 지난 키입니다. 새 키를 받아 주세요.",
-        BuffKeyResult.미래 => "PC 시계가 맞지 않습니다. Windows 시간을 맞춘 뒤 다시 넣어 주세요.",
+        BuffKeyResult.형식 => "키 형식이 아닙니다. 받은 키 한 줄을 그대로 붙여 넣으세요.",
+        BuffKeyResult.다른PC => "이 PC의 키가 아닙니다. 위의 PC 코드로 받은 키인지 확인하세요.",
+        BuffKeyResult.초기화됨 => "업데이트로 초기화된 키입니다. 새 키를 받으세요.",
+        BuffKeyResult.시간지남 => "만든 지 10시간이 지난 키입니다. 새 키를 받으세요.",
+        BuffKeyResult.미래 => "PC 시계가 맞지 않습니다. Windows 시간을 맞춘 뒤 다시 넣으세요.",
         _ => r.ToString(),
     };
 

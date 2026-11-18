@@ -1,0 +1,9 @@
+{
+  "source": "video-test/clips/boss-raid/serka-shadow-0850-0940.mp4 at 17, 20 and 35 s (세르카 그림자, 대난투 from 13 s): 1920x1080, HUD 110, 보스 디버프 크기 120; the boss debuff row under the gimmick's fill bar, centred, 26 px frames 36 px apart, frames' top at 208 (the placed line 207, a px above, as the usual row's 170 against 169). 17 s: 7 debuffs, 암수 the 6th (8초); 20 s: 8, 암수 the 5th (5초, the gimmick's orange text over the timers), the 6th framed pale, not red; 35 s: 7 debuffs, no bomb. Crop of the frame at x 640, y 180",
+  "slot": "bossrow",
+  "hud": 110.05,
+  "rect": [640, 180, 640, 90],
+  "width": 640,
+  "height": 90,
+  "pts": [17, 20, 35]
+}

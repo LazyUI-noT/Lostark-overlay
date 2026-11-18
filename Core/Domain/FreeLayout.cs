@@ -1,7 +1,7 @@
 namespace GaugeOverlay.Core.Domain;
 
 /// <summary>What the overlay places: the twelve slots (same numbers as <see cref="SlotId"/>), the 초각기 표시 box, the
-/// 아덴 게이지 and the four buff bars (<see cref="BuffKind"/> order; yours only).</summary>
+/// 아덴 게이지 and the five buff bars (<see cref="BuffKind"/> order; yours only).</summary>
 public enum Part
 {
     각성기, 초각스,
@@ -9,7 +9,7 @@ public enum Part
     일반5, 일반6, 일반7, 일반8,
     아덴1, 아덴2,
     변화, 게이지,
-    버프공증, 버프아덴, 버프초각, 버프뎀증,
+    버프공증, 버프아덴, 버프초각, 버프뎀증, 버프낙인,
 }
 
 /// <summary>Where a part sits, in DIP at box size 1.0 (the window's width and height settings scale X/W and Y/H).</summary>
@@ -34,8 +34,8 @@ public static class FreeLayout
     public const Part FirstBuff = Part.버프공증;
 
     /// <summary>The fixed grid: gauge on top, then the 각성기 column (변화 above 각성기), 초각스, the eight keys in
-    /// 4 × 2 and the 아덴 column; under it the buff bars in two rows, 공증 | 아덴피증 and 초각스피증 | 뎀증, each half
-    /// the grid wide.</summary>
+    /// 4 × 2 and the 아덴 column; under it the buff bars two to a row in <see cref="BuffOrder.Shown"/>: 공증 | 낙인, 아덴피증 | 초각스피증, 뎀증,
+    /// each half the grid wide.</summary>
     public static Dictionary<Part, Cell> Default(double gaugeThickness)
     {
         double top = gaugeThickness + Gap, colH = 2 * Box + Gap, changedH = Math.Round(Box * ChangedShare);
@@ -52,9 +52,20 @@ public static class FreeLayout
         for (int i = 0; i < 8; i++)
             d[Part.일반1 + i] = new(x8 + i % 4 * (Box + Gap), top + i / 4 * (Box + Gap), Box, Box);
         double half = (aden + Box - Gap) / 2;
-        for (int k = 0; k < 4; k++)
-            d[FirstBuff + k] = new(k % 2 * (half + Gap), top + colH + Gap + k / 2 * (BuffHeight + Gap), half, BuffHeight);
+        for (int i = 0; i < BuffOrder.Shown.Count; i++)
+            d[FirstBuff + (int)BuffOrder.Shown[i]] = new(i % 2 * (half + Gap), top + colH + Gap + i / 2 * (BuffHeight + Gap), half, BuffHeight);
         return d;
+    }
+
+    /// <summary><paramref name="part"/>'s cell in a saved layout, else its <paramref name="fallback"/> one; a buff bar the layout
+    /// predates (낙인 in a layout from before it) goes under its lowest bar instead, at 공증's left and width, so it covers none.</summary>
+    public static Cell CellOf(IReadOnlyDictionary<Part, Cell> cells, Part part, IReadOnlyDictionary<Part, Cell> fallback)
+    {
+        if (cells.TryGetValue(part, out var own)) return own;
+        var bars = cells.Where(c => c.Key >= FirstBuff).Select(c => c.Value).ToList();
+        if (part < FirstBuff || bars.Count == 0) return fallback[part];
+        var first = cells.GetValueOrDefault(FirstBuff, bars[0]);
+        return first with { Y = bars.Max(b => b.Bottom) + Gap };
     }
 
     /// <summary>The parts whose width (and, for the eight keys, height) follows <paramref name="part"/>'s when sizes are

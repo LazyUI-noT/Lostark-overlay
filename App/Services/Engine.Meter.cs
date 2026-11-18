@@ -21,6 +21,8 @@ public sealed partial class Engine
     bool _meterOn, _meterFull, _meterChanged;   // _meterFull: this step reads the 전분 panel too, not the boss HP alone
     TimeSpan _lastMeter = TimeSpan.MinValue, _lastBossHp = TimeSpan.MinValue, _lastSearch = TimeSpan.MinValue;
     int _panelMisses;
+    bool _panelSeen;   // the last full read saw the panel without reading it (감지 중's covered-panel why)
+    bool _panelNoColumn;   // ...and the panel has none of the columns the meter reads (감지 중's pick-a-column why)
     (string Key, PixelRect Rect)? _foundPanel;   // found here, until the settings carry it
     const int AnySizeEvery = 4;   // 테스트 모드: the measuring search on every 4th search that misses (12 s)
     int _searches;
@@ -35,7 +37,7 @@ public sealed partial class Engine
     {
         if (config.MeterOn != _meterOn)
         {
-            (_meterOn, _meter, _panelMisses) = (config.MeterOn, MeterStatus.None, 0);
+            (_meterOn, _meter, _panelMisses, _panelSeen, _panelNoColumn) = (config.MeterOn, MeterStatus.None, 0, false, false);
             Publish(now);
         }
         // The dungeon panel: for the meter's records, and for 자동 인식 (the boss name is read as text only in a raid it names).
@@ -77,11 +79,12 @@ public sealed partial class Engine
             found = JeonbunFinder.FindAnySize(img);
         if (found is { } r)
         {
-            if (_testMode) _measuredScale = r.Width / JeonbunReader.RefW;
             var spot = new PixelRect(area.X + r.X, area.Y + r.Y, r.Width, r.Height);
+            double scale = Geometry.PanelScale(spot, _vp);
+            if (_testMode) _measuredScale = scale;
             string key = Geometry.ViewportKey(_vp);
             (_foundPanel, _panelMisses) = ((key, spot), 0);
-            Trace.WriteLine($"[meter] 전분 found at {spot} ({key}, scale {r.Width / JeonbunReader.RefW:0.##})");
+            Trace.WriteLine($"[meter] 전분 found at {spot} ({key}, scale {scale:0.##})");
             MeterPanelFound?.Invoke(key, spot);
             return;
         }
@@ -91,7 +94,7 @@ public sealed partial class Engine
     readonly JeonbunSoftReader _jeonbunSoft = new();   // 테스트 모드 강화 읽기: the panel checked against the fight's clock
 
     /// <summary>Reads the captured HP text and panel (null: no spot) and steps the meter. True: publish.</summary>
-    bool ReadMeter(Image hp, Image? panel, Image? shadow, TimeSpan t)
+    bool ReadMeter(Image hp, (Image Image, double Scale)? panel, Image? shadow, TimeSpan t)
     {
         _lastBossHp = t;
         bool present = false;
@@ -99,9 +102,11 @@ public sealed partial class Engine
         if (_meterFull)   // a half step reads the boss HP alone: no panel read, so no miss either
         {
             _lastMeter = t;
-            reading = panel is null ? null : GameWindow.ReadsReinforced ? _jeonbunSoft.Read(panel, t) : JeonbunReader.Read(panel);
-            present = reading is not null || panel is not null && MeterPresent(panel);   // a meter that doesn't read yet is no miss
+            reading = panel is not var (img, scale) ? null : GameWindow.ReadsReinforced ? _jeonbunSoft.Read(img, scale, t) : JeonbunReader.Read(img, scale);
+            present = reading is not null || panel is var (seen, at) && MeterPresent(seen, at);   // a meter that doesn't read yet is no miss
             _panelMisses = present ? 0 : _panelMisses + 1;
+            _panelSeen = present && reading is null;
+            _panelNoColumn = _panelSeen && panel is var (shown, size) && JeonbunReader.Why(shown, size) == JeonbunMiss.NoColumn;
         }
         long hpFrom = Stopwatch.GetTimestamp();
         var bar = BossBar(hp);

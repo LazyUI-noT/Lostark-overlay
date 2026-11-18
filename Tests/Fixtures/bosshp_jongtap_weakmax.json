@@ -1,0 +1,9 @@
+{
+  "source": "Lost Ark 2026.11.10 - 21.31.19.01.mp4 at 328, 330, 345 s (구원의 종탑 2관문 3단계, 1920x1080 HUD 110, the whole text row): the max's last '1' scores 0.56, 0.55-, 0.46",
+  "slot": "bosshp",
+  "hud": 110,
+  "rect": [590, 60, 731, 36],
+  "width": 731,
+  "height": 36,
+  "pts": [328, 330, 345]
+}
