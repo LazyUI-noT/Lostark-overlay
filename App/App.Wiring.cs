@@ -196,6 +196,10 @@ public partial class App
         {
             if (readingShots.SaveRaid(vp, game, DateTime.Now) is { } failed) Trace.WriteLine($"[reading-place] raid picture not saved: {failed}");
         });
+        engine.BackdropTaken += (vp, game) => Task.Run(() =>
+        {
+            if (readingShots.SaveBackdrop(vp, game) is { } failed) Trace.WriteLine($"[reading-place] backdrop not saved: {failed}");
+        });
         _settingsWindow.ReadingStore = readingShots;
         _settingsWindow.Records = records;
         _settingsWindow.TestRecords = testRecords;

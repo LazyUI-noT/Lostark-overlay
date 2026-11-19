@@ -52,6 +52,14 @@ public static class ReadingShots
     static readonly HashSet<string> SelectBoxes = ["skill", "buff", DetectPlace.DebuffRow, "aden", "judg", "char"];
     static readonly HashSet<string> RaidBoxes = ["g-jeonbun", "boss", "amsu", "dungeon"];
 
+    /// <summary>The whole game area from the moment 스킬창 was first read, behind every 화면 인식 설정 chip's card on the 표시 page
+    /// (user, 2026-11-19): a box not read yet still shows the game around it. Not one of the picker's pictures.</summary>
+    public const string BackdropFile = "backdrop.png";
+
+    /// <summary>스킬창 reads ✓ and no backdrop was taken on this game area yet: asked each step until one is taken, so a
+    /// step whose game area was momentarily empty doesn't lose it for the run.</summary>
+    public static bool TakesBackdrop(bool takenHere, Detection? skill) => !takenHere && skill is { Mark: DetectMark.Concrete };
+
     /// <summary>The raid readers whose ! saves a raid picture by itself (전분, 암수): a box can then be fixed from a fail.</summary>
     public static bool ShootsOnFail(string id) => id is "g-jeonbun" or "amsu";
 

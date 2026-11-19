@@ -689,8 +689,6 @@ public partial class SettingsWindow : Window
         return b;
     }
 
-    const string Default = "기본 (클래스 없음)";
-
     /// <summary>A colour field with preview. <paramref name="swatch"/> shows a ready and a cooldown box; those rows
     /// (and <paramref name="warnDark"/> ones) warn when the colour is too dark to show the ready/cooldown step, and
     /// <paramref name="warnGold"/> rows when it is hard to tell from the gold frame (금색 테두리).</summary>
@@ -769,88 +767,24 @@ public partial class SettingsWindow : Window
         return p;
     }
 
-    /// <summary>캐릭터 (user, 2026-10-13: fewer picks): one 클래스 list, <see cref="Default"/> (기본, no class) then every class under
-    /// its 직업군 heading as in the tray, then 직업각인. Picking a class picks the 직업각인 last used for it
-    /// (<see cref="Settings.SubclassHistory"/>), or opens the 직업각인 list when there is none. Picking the 직업각인 makes that
-    /// "클래스 · 직업각인" character active, as the tray does.</summary>
+    /// <summary>캐릭터 (user, 2026-11-19): one "클래스 · 직업각인" list with 직업 검색, built like 편집할 직업각인's (★ first, 기본 (no
+    /// class) at the top) but in the tray's 직업군 order. Picking an entry makes that character active, as the tray does (<see cref="CharacterService.Pick"/>).</summary>
     internal static UIElement BuildCharacterPanel(Settings s, CharacterService chars, Action changed)
     {
-        var tree = chars.ClassTree.Select(f => (f.Family, Classes: f.Classes.ToList())).ToList();
-        var family = tree.SelectMany(f => f.Classes.Select(c => (c.Class, f.Family))).ToDictionary(x => x.Class, x => x.Family);
-        var subsOf = tree.SelectMany(f => f.Classes).ToDictionary(c => c.Class, c => c.Subclasses);
-        var cls = Combo();
-        var sub = Combo();
-        var p = new StackPanel();
-        var hint = Note("직업각인까지 골라야 이 캐릭터로 저장됩니다.");
-        p.Children.Add(hint);
-        p.Children.Add(Row("클래스", cls));
-        p.Children.Add(Row("직업각인", sub));
-
-        // The choice in progress; nothing is stored until a 직업각인 is picked, which goes through CharacterService.Pick as
-        // the tray does: that character becomes active (added the first time) and the others, with their emblems, stay.
-        var cur = s.ActiveCharacter is { } k && s.Characters.TryGetValue(k, out var found) ? found : null;
-        string? pickedClass = cur?.Class;
-        bool sync = false;
-        // ★ favourites (user, 2026-11-13): a class starred itself; a 직업각인 starred, or its class.
-        cls.ItemTemplate = StarTemplate(c => s.FavoriteClasses.Contains(c));
-        sub.ItemTemplate = StarTemplate(v => pickedClass is { } c && ClassPicker.Starred(Settings.CharacterKey(c, v), s.FavoriteClasses));
-
-        // 직업군 headings are items that can't be picked.
-        var items = new List<object> { Default };
-        foreach (var (fam, classes) in tree)
+        // key → (직업군, class, 직업각인), in the tray's 직업군 order
+        var whose = chars.ClassTree.SelectMany(f => f.Classes.SelectMany(c => c.Subclasses.Select(sub => (Key: Settings.CharacterKey(c.Class, sub), f.Family, c.Class, Sub: sub))))
+            .ToDictionary(x => x.Key);
+        string current = s.ActiveCharacter is { } k && whose.ContainsKey(k) ? k : ClassProfiles.Template;
+        var entries = ClassPicker.FavoritesFirst([ClassProfiles.Template, .. whose.Keys], s.FavoriteClasses);
+        var pick = PickCombo(entries, current, key =>
         {
-        {
-            var heading = new ComboBoxItem { Content = UiBuild.Disabled(new TextBlock { Text = $"── {fam} ──" }), IsEnabled = false };
-            TextSearch.SetText(heading, $"── {fam} ──");   // typing a letter doesn't land on it (TextBlock.ToString would)
-            System.Windows.Automation.AutomationProperties.SetName(heading, fam);
-            items.Add(heading);
-        }
-            items.AddRange(classes.Select(c => c.Class));
-        }
-
-        void Set(ComboBox cb, IEnumerable<object> list, Func<object, bool> selected)
-        {
-            sync = true;
-            cb.ItemsSource = list.ToList();
-            cb.SelectedItem = cb.Items.Cast<object>().FirstOrDefault(selected);
-            sync = false;
-        }
-        void FillSubs()
-        {
-            bool same = cur is not null && cur.Class == pickedClass;
-            Set(sub, pickedClass is { } c && subsOf.TryGetValue(c, out var subs) ? subs : [], o => same && (string)o == cur!.Subclass);
-            hint.Visibility = pickedClass is not null && sub.SelectedItem is null ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        cls.SelectionChanged += (_, _) =>
-        {
-            if (sync || cls.SelectedItem is not string v) return;
-            if (v == Default)
-            {
-                pickedClass = null;
-                FillSubs();
-                chars.PickDefault();   // no class: 기본 at once, nothing further to pick
-                cur = null;
-                changed();
-                return;
-            }
-            pickedClass = v;
-            FillSubs();
-            if (s.SubclassHistory.TryGetValue(v, out var last) && sub.Items.Contains(last)) sub.SelectedItem = last;   // picks it
-            else sub.Dispatcher.BeginInvoke(() => sub.IsDropDownOpen = true);
-        };
-        sub.SelectionChanged += (_, _) =>
-        {
-            if (sync || sub.SelectedItem is not string v || pickedClass is null) return;
-            chars.Pick(family[pickedClass], pickedClass, v);
-            cur = s.Characters[s.ActiveCharacter!];
-            hint.Visibility = Visibility.Collapsed;
+            if (whose.TryGetValue(key, out var w)) chars.Pick(w.Family, w.Class, w.Sub);
+            else chars.PickDefault();   // 기본: no class
             changed();
-        };
-
-        Set(cls, items, o => o is string c && c == (pickedClass ?? Default));
-        FillSubs();
-        return p;
+        }, s.FavoriteClasses);
+        pick.MinWidth = 220;
+        System.Windows.Automation.AutomationProperties.SetName(pick, "직업각인");
+        return Row("직업각인", pick, PickSearch(pick, "직업각인"));
     }
 
     // ── Small control helpers ────────────────────────────────────────────────────────

@@ -68,30 +68,21 @@ public sealed partial class SettingsWindow
         string Value(ResourceRow r) => !r.Ran ? NotRun : (r.Approx ? "≤ " : "") + ResourceCheck.Label(r.Percent, cores);
         _map?.SetResources(sample.Report.Rows.ToDictionary(r => r.Id, Value));
         // Boxes over their own active time (user, 2026-11-18), the shared rows and the total over the whole check.
-        _checkTable.Children.Add(note($"기능의 값은 그 기능이 일한 동안의 평균입니다. 마을처럼 일하지 않은 동안은 빼고 셉니다. 화면 캡처처럼 모든 기능이 같이 쓰는 줄과 앱 전체 CPU는 지난 {sample.Seconds:0}초 전체의 평균입니다. CPU 한 스레드를 100%로 본 값이고, 괄호는 전체 스레드({cores}개)로 나눈 값입니다. 이 PC에서만 재고, 어디에도 보내거나 기록하지 않습니다. ≤ 는 기다린 시간이 섞여 실제보다 크게 나올 수 있는 값입니다.", 0.8));
-        var grid = new Grid { Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Tight) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var rows = sample.Report.Rows.Select(r => (r.Title, Value(r)))
-            .Append(("앱 전체 CPU", ResourceCheck.Label(sample.Report.Total, cores)));
-        int at = 0;
-        foreach (var (title, value) in rows)
-        {
-            grid.RowDefinitions.Add(new RowDefinition());
-            var left = new TextBlock { Text = title, Margin = new(0, Tokens.Space.Hair, Tokens.Space.Card, Tokens.Space.Hair), FontWeight = at == sample.Report.Rows.Count ? FontWeights.SemiBold : FontWeights.Normal };
-            var right = new TextBlock { Text = value, Margin = new(0, Tokens.Space.Hair, 0, Tokens.Space.Hair), HorizontalAlignment = HorizontalAlignment.Right, FontWeight = left.FontWeight };
-            Grid.SetRow(left, at); Grid.SetRow(right, at); Grid.SetColumn(right, 1);
-            grid.Children.Add(left); grid.Children.Add(right);
-            at++;
-        }
-        _checkTable.Children.Add(grid);
-        _checkTable.Children.Add(note(sample.Gpu is { } gpu ? $"GPU (앱 전체): {gpu:0.0}%. 기능마다 나눠서는 잴 수 없습니다. 기능을 끄고 앱 전체 값을 견주세요."
-            : "GPU: 측정할 수 없음 (Windows의 GPU 엔진 카운터를 읽지 못했습니다).", 1));
+        _checkTable.Children.Add(note($"CPU 값은 기능 박스마다 표시합니다. 앱 전체 CPU {ResourceCheck.Label(sample.Report.Total, cores)}" + (sample.Gpu is { } gpu ? $", GPU {gpu:0.0}%." : ", GPU 측정할 수 없음."), 1));
         var gaps = sample.Gaps;
-        string worst = gaps.Count == 0 ? "" : $" 가장 긴 간격 {gaps.Worst.TotalMilliseconds:0} ms" + (gaps.WorstParts.Count > 0
-            ? ", 그 사이에 끝난 앱 일: " + string.Join(", ", gaps.WorstParts.Select(p => $"{p.Part} {p.Ms:0} ms")) + "." : ", 그 사이에 끝난 앱 일은 없습니다.");
-        _checkTable.Children.Add(note($"프레임 간격: 받은 화면 {gaps.Frames}장 중 {Core.Domain.FrameGaps.Hitch.TotalMilliseconds:0} ms 이상 벌어진 것 {gaps.Count}번.{worst}", 1));
-        _checkTable.Children.Add(note("이 값만으로는 게임이 느려진 것인지 캡처가 화면을 건너뛴 것인지 알 수 없습니다. 읽을 것이 없거나 2초 넘게 화면을 받지 못하면 세지 않습니다.", 0.7));
+        if (gaps.Top.Count == 0)
+        {
+            _checkTable.Children.Add(note("프레임 지연 현상 관찰 결과: 없음.", 1));
+            return;
+        }
+        _checkTable.Children.Add(new TextBlock { Text = $"프레임 지연 현상 관찰 결과 (상위 {gaps.Top.Count}건, 앱 처리 평균 {gaps.AverageAppMs:0} ms)", FontWeight = FontWeights.SemiBold, Margin = new(0, Tokens.Space.Tight, 0, Tokens.Space.Hair) });
+        for (int i = 0; i < gaps.Top.Count; i++)
+        {
+            var g = gaps.Top[i];
+            string did = g.Parts.Count == 0 ? "없음" : string.Join(", ", g.Parts.Select(p => $"{p.Part} {p.Ms:0} ms"));
+            _checkTable.Children.Add(note($"{i + 1}: {g.Gap.TotalMilliseconds:0} ms, 앱이 처리한 것: {did}", 1));
+        }
+        _checkTable.Children.Add(note("프레임 드랍 중 앱이 실제 한 결과값을 표시합니다.", 0.7));
     }
 
     const string NotRun = "실행 안 됨";   // a box that never ran while the check was on, not 0%
@@ -112,6 +103,7 @@ public sealed partial class SettingsWindow
         var gaps = new Core.Domain.FrameGaps();
         gaps.Add(TimeSpan.FromSeconds(1), new Dictionary<string, double>());
         gaps.Add(TimeSpan.FromSeconds(1.31), new Dictionary<string, double> { ["스킬 쿨다운"] = 22, ["암수"] = 31, ["화면 캡처 (새 프레임 대기 포함)"] = 250 });
+        gaps.Add(TimeSpan.FromSeconds(1.45), new Dictionary<string, double> { ["버프"] = 4 });
         var active = new Dictionary<string, double> { ["skill"] = 100, ["buff"] = 100, ["amsu"] = 35, ["meter"] = 40, ["skillview"] = 100, ["dungeon"] = 12, ["live"] = 100, ["map"] = 100 };
         _checkSample = new ResourceSample(ResourceCheck.Build(parts, 100, 100, 12, active), 6.4, gaps.Summary(), 100);
         FillShow();

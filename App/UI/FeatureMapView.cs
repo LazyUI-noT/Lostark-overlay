@@ -243,6 +243,13 @@ internal sealed partial class FeatureMapView : Canvas
             DockPanel.SetDock(chip, Dock.Right);
             head.Children.Add(chip);
         }
+        // Every box says its state (user, 2026-11-19): a reader by its 읽는 중 chip, the rest 켜짐 / 꺼짐 / 표시 안 함, the key 있음 / 없음.
+        if (chip is null && impact is null && StateChip(box, state) is { } stateChip)
+        {
+            chip = stateChip;
+            DockPanel.SetDock(chip, Dock.Right);
+            head.Children.Add(chip);
+        }
         // A hit chip names a whole reader: too long beside the title in a narrow box (it cut the title to one letter), so it gets its own line.
         UIElement? hitLine = impact is { } hit && chip is null ? HitChip(hit) : null;
         chip ??= hitLine;
@@ -414,6 +421,22 @@ internal sealed partial class FeatureMapView : Canvas
         var (mark, colour, _) = Look(d);
         return Badge($"읽는 중 {mark}", colour);
     }
+
+    /// <summary>The state chip of a box with no read mark: the API key's 있음 / 없음, else 켜짐 / 표시 안 함 / 꺼짐 (null: no state).</summary>
+    UIElement? StateChip(MapBox box, BoxState? state)
+    {
+        if (box.Id == "api") return HasKey() ? Badge("키 있음", Green) : Badge("키 없음", Grey);
+        if (box.Id == "shadow")   // set per raid in ⚙: all, none, or some
+            return _s.Raids.ShadowHp switch { true => Badge("켜짐", Green), false => Badge("꺼짐", Grey), _ => _s.Raids.ShadowHpOff.Count == 0 ? Badge("켜짐", Green) : Badge("레이드별", Waiting) };
+        if (state is null && box.Choices.Length > 0 && FeatureMap.Selected(_s, box.Id, 0) is { } i)   // a switch with no box state (콘텐츠 인식, 대난투 체력)
+            state = box.Choices[0][i] switch { "끄기" => BoxState.Off, "표시 안 함" => BoxState.Hidden, _ => BoxState.On };
+        return state switch
+        {
+            BoxState.On => Badge("켜짐", Green), BoxState.Hidden => Badge("표시 안 함", Blue), BoxState.Off => Badge("꺼짐", Grey), _ => null,
+        };
+    }
+
+    internal static Color GoldColour => Gold;
 
     static readonly Color Waiting = Color.FromRgb(0xE0, 0xA8, 0x00);
 

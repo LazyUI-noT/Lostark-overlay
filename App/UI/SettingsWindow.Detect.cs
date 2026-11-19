@@ -78,7 +78,7 @@ public partial class SettingsWindow
         foreach (var gone in _detectBitmaps.Keys.Where(k => k != _detectLive?.Picture && !_detectPictures.Values.Any(p => p.Picture == k)).ToList()) _detectBitmaps.Remove(gone);
         if (_secDetect.IsVisible) ReadingViewChanged();   // another game-area size: its own saved pictures
         if (_secDetect.IsVisible && DetectSignature() != _detectDrawn) { RefreshGreen(); DrawDetect(); }
-        if (_mapLivePicture is { } shown && _detectLive is { } live) shown.Source = BitmapOf(live);   // 표시 map: the chip's card follows Live
+        if (_mapLivePicture is { } shown && _detectLive is { } live) PutCardPicture(shown, live);   // 표시 map: the chip's card follows Live
     }
 
     string DetectSignature() => string.Join(";", _detectAreas.Select(a => $"{a.Key}{a.Value}{_detect.GetValueOrDefault(a.Key)?.Mark}{_detectPictures.GetValueOrDefault(a.Key)?.At}"))
@@ -221,7 +221,7 @@ public partial class SettingsWindow
 
     /// <summary>The box's grid lines (reading-place.plan.md C), from the engine's box onto the shown one: a box being placed
     /// carries its lines along, moved and sized with it.</summary>
-    void AddGrid(string id, PixelRect shown, Color colour, double thickness, PixelRect screen, double opacity)
+    void AddGrid(string id, PixelRect shown, Color colour, double thickness, PixelRect screen, double opacity, Panel? into = null)
     {
         if (!_detectGrid.TryGetValue(id, out var lines) || !_detectAreas.TryGetValue(id, out var read) || read.Width <= 0 || read.Height <= 0) return;
         double sx = shown.Width / (double)read.Width, sy = shown.Height / (double)read.Height;
@@ -230,7 +230,7 @@ public partial class SettingsWindow
         var brush = new SolidColorBrush(colour) { Opacity = opacity };
         brush.Freeze();
         foreach (var l in lines)
-            _detectScreen.Children.Add(new Line { X1 = X(l.X1), Y1 = Y(l.Y1), X2 = X(l.X2), Y2 = Y(l.Y2), Stroke = brush, StrokeThickness = thickness, IsHitTestVisible = false });
+            (into ?? _detectScreen).Children.Add(new Line { X1 = X(l.X1), Y1 = Y(l.Y1), X2 = X(l.X2), Y2 = Y(l.Y2), Stroke = brush, StrokeThickness = thickness, IsHitTestVisible = false });
     }
 
     const double GridOpacity = 0.7;   // under the box's own edge: the lines read as inside it

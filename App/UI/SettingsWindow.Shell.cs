@@ -398,6 +398,7 @@ public partial class SettingsWindow
             }
             Header.Children.Add(sections);
         }
+        if (_area.Name == AreaShow) Header.Children.Add(ReadChips);   // pinned above the scrolling map
         Header.Children.Add(Divider(4, 0));
     }
 

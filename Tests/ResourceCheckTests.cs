@@ -97,7 +97,7 @@ public class ResourceCheckTests
         Assert.Equal(3, sum.Frames);
         Assert.Equal(1, sum.Count);
         Assert.Equal(S(0.234), sum.Worst);
-        Assert.Equal(["암수", "버프"], sum.WorstParts.Select(p => p.Part).ToArray());   // the frame wait is not a part that ran
+        Assert.Equal(["암수", "버프"], sum.Top[0].Parts.Select(p => p.Part).ToArray());   // the frame wait is not a part that ran
     }
 
     [Fact]
@@ -119,7 +119,21 @@ public class ResourceCheckTests
         gaps.Add(S(1.7), new Dictionary<string, double> { ["버프"] = 10 });
         var sum = gaps.Summary();
         Assert.Equal(2, sum.Count);
-        Assert.Equal("스킬 쿨다운", sum.WorstParts[0].Part);
+        Assert.Equal("스킬 쿨다운", sum.Top[0].Parts[0].Part);
+    }
+
+    [Fact]
+    public void Only_the_five_longest_gaps_are_kept_longest_first_with_the_app_average()
+    {
+        var gaps = new FrameGaps();
+        double t = 1;
+        gaps.Add(S(t), new Dictionary<string, double>());
+        foreach (var ms in new[] { 150, 400, 120, 300, 200, 250, 110 })
+            gaps.Add(S(t += ms / 1000.0), new Dictionary<string, double> { ["암수"] = ms / 10.0 });
+        var sum = gaps.Summary();
+        Assert.Equal(7, sum.Count);
+        Assert.Equal([400, 300, 250, 200, 150], sum.Top.Select(g => (int)Math.Round(g.Gap.TotalMilliseconds)).ToArray());
+        Assert.Equal(26, sum.AverageAppMs, 6);
     }
 
     [Fact]

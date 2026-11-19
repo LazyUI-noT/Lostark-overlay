@@ -115,4 +115,25 @@ public class DetectPlaceTests
         Assert.Equal(page, DetectPlace.Chips.Select(c => c.Id).ToHashSet());
         Assert.Equal(DetectPlace.Chips.Length, DetectPlace.Chips.Select(c => c.Id).Distinct().Count());
     }
+
+    [Theory]
+    [InlineData("boss", "boss")]                    // a reader lights its own chip
+    [InlineData("shadow", "boss")]                  // 대난투 체력 reads the boss bar
+    [InlineData("hw", "boss,char,dungeon,g-jeonbun,skill")]   // 숙제 through 타임라인 and 대난투 체력 too; the API key has no chip
+    [InlineData("party", "")]                       // party lines are not reads
+    [InlineData("g-hud", "")]                       // a game setting is not a reader
+    public void The_chips_behind_a_box_are_the_readers_upstream_of_it(string box, string chips)
+    {
+        var expected = chips.Length == 0 ? [] : chips.Split(',');
+        Assert.Equal(expected.Order(), DetectPlace.ChipsBehind(box).Order());
+    }
+
+    [Fact]
+    public void A_chip_card_shows_its_box_with_a_margin_kept_on_the_game_screen()
+    {
+        var view = new Viewport(0, 0, 1920, 1080);
+        Assert.Equal(new PixelRect(50, 30, 300, 140), DetectPlace.CardView(new PixelRect(100, 80, 200, 40), view));   // a quarter of the long side, at least 8
+        Assert.Equal(new PixelRect(0, 0, 30, 20), DetectPlace.CardView(new PixelRect(2, 2, 20, 10), view));   // cut at the screen's edge
+        Assert.Equal(new PixelRect(-6, -6, 36, 26), DetectPlace.CardView(new PixelRect(2, 2, 20, 10), default));   // no screen known: not cut
+    }
 }

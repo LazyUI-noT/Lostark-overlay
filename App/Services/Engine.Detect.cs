@@ -31,8 +31,13 @@ public sealed partial class Engine
     /// raid pictures. On the engine thread; the image is the handler's to keep.</summary>
     public event Action<Viewport, Image>? RaidShotTaken;
 
-    /// <summary>The wanted-picture id of the whole game area (no reader's box has it).</summary>
-    const string RaidShotId = "reading-place:raid";
+    /// <summary>스킬창 first read on this game area this run (<see cref="ReadingShots.TakesBackdrop"/>): the whole game area, for the 표시
+    /// page's chip cards. On the engine thread; the image is the handler's to keep.</summary>
+    public event Action<Viewport, Image>? BackdropTaken;
+
+    /// <summary>The wanted-picture ids of the whole game area (no reader's box has them).</summary>
+    const string RaidShotId = "reading-place:raid", BackdropId = "reading-place:backdrop";
+    Viewport? _backdropFor;   // the game area this run's backdrop was taken on
     /// <summary>At most one raid picture this often: a reader flapping ✓ ! would otherwise push the kept three out in seconds.</summary>
     static readonly TimeSpan RaidShotEvery = TimeSpan.FromSeconds(30);
     TimeSpan _lastRaidShot = TimeSpan.MinValue;
@@ -42,7 +47,7 @@ public sealed partial class Engine
     List<(string Id, PixelRect Area, bool Live)> PictureRects()
     {
         var game = new PixelRect(_vp.X, _vp.Y, _vp.Width, _vp.Height);
-        var rects = _pictureWanted.Select(w => (w.Id, Area: w.Id == RaidShotId ? (game.Width > 0 && game.Height > 0 ? game : null)
+        var rects = _pictureWanted.Select(w => (w.Id, Area: w.Id is RaidShotId or BackdropId ? (game.Width > 0 && game.Height > 0 ? game : null)
                 : _detectAreas.TryGetValue(w.Id, out var a) ? DetectBoard.Around(a, _vp) : null, w.Live))
             .Where(w => w.Area is not null).Select(w => (w.Id, w.Area!.Value, w.Live)).ToList();
         _pictureWanted.Clear();
@@ -71,6 +76,13 @@ public sealed partial class Engine
             {
                 System.Diagnostics.Trace.WriteLine($"[detect] raid picture {img.Width}x{img.Height}");   // no path or content (plan B)
                 RaidShotTaken?.Invoke(_vp, img);
+                return;
+            }
+            if (wanted[i].Id == BackdropId)
+            {
+                _backdropFor = _vp;
+                System.Diagnostics.Trace.WriteLine($"[detect] backdrop {img.Width}x{img.Height}");
+                BackdropTaken?.Invoke(_vp, img);
                 return;
             }
             var p = new DetectPicture(img, wanted[i].Area, t, wanted[i].Id);
@@ -145,6 +157,8 @@ public sealed partial class Engine
             _lastRaidShot = t;
             _pictureWanted.Add((RaidShotId, false));
         }   // 전분 or 암수 turned !: the whole game area too (reading-place.plan.md B)
+        if (ReadingShots.TakesBackdrop(_backdropFor == _vp, next.GetValueOrDefault("skill")) && !_pictureWanted.Any(w => w.Id == BackdropId))
+            _pictureWanted.Add((BackdropId, false));   // 스킬창 first read: the chip cards' backdrop (user, 2026-11-19)
         _detectPictures = _detectPictures.RemoveRange(_detectPictures.Keys.Where(id => !next.ContainsKey(id)).ToList());   // switched off
         if (_detectLiveId is not { } live) { changed |= _detectLivePicture is not null; _detectLivePicture = null; }
         else if (Seen && Elapsed(t, _lastLive, LiveEvery)) { _lastLive = t; _pictureWanted.Add((live, true)); }

@@ -13,7 +13,7 @@ namespace GaugeOverlay.App.UI;
 internal static class MapPreview
 {
     /// <summary>A row wider than this wraps (four 막대-sized tiles fit; the meter's four go two by two).</summary>
-    const double RowWidth = 880, CaptureHeight = 130, TileGap = 10;
+    internal const double RowWidth = 880, CaptureHeight = 130, TileGap = 10;
     /// <summary>tools/make-map-gifs.ps1 records 10 frames a second.</summary>
     static readonly TimeSpan FrameTime = TimeSpan.FromMilliseconds(100);
     /// <summary>The last window's tiles decoded (each keeps its frames' changes, about 1–4 MB), so a second hover is instant.</summary>
@@ -42,15 +42,16 @@ internal static class MapPreview
 
     /// <summary>The 감지 중 chip's card (user, 2026-11-10): no GIF, only the reader's area as the screen shows it now.
     /// <paramref name="picture"/> starts on the stored moment (if any) and the caller swaps in each Live frame.</summary>
-    public static UIElement LiveCard(string title, Detection? mark, Picture picture, TimeSpan now)
+    public static UIElement LiveCard(string title, Detection? mark, FrameworkElement place, TimeSpan now, bool backdrop = false)
     {
         var body = new StackPanel { MaxWidth = RowWidth };
         body.Children.Add(new TextBlock { Text = $"{title} · 읽는 자리", FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, Tokens.Space.Gap) });
-        (picture.MaxHeight, picture.HorizontalAlignment, picture.Stretch) = (CaptureHeight, HorizontalAlignment.Left, Stretch.Uniform);
-        body.Children.Add(picture);
-        string state = mark is { Mark: DetectMark.Waiting } ? "아직 찾는 중" : mark is { } d ? Caption(d, true, now) : "";
+        place.HorizontalAlignment = HorizontalAlignment.Left;
+        body.Children.Add(place);
+        string state = mark is { Mark: DetectMark.Waiting } ? "아직 찾는 중: 점선 칸은 게임 설정 크기로 잡은 읽을 자리입니다." : mark is { } d ? Caption(d, true, now) : "";
+        if (backdrop) state += (state.Length > 0 ? "\n" : "") + "뒤 화면: 스킬창을 처음 읽은 순간입니다.";
         body.Children.Add(UiBuild.Muted(new TextBlock { Text = "Live: 지금 화면 (1초에 2번)" + (state.Length > 0 ? $"\n{state}" : "")
-            + "\n맵 위 칩을 누르면 화면 인식 설정에서 읽는 자리를 봅니다.", FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Tight, 0, 0) }));
+            + "\n누르면 화면 인식 설정으로 이동.", FontSize = Tokens.Font.Hint, TextWrapping = TextWrapping.Wrap, Margin = new(0, Tokens.Space.Tight, 0, 0) }));
         return Frame(body);
     }
 

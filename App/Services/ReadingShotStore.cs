@@ -45,6 +45,11 @@ public sealed class ReadingShotStore(string dir)
         return failed;
     }
 
+    /// <summary>The chip cards' backdrop (<see cref="ReadingShots.BackdropFile"/>, replaces the last). Null: saved; else why not.</summary>
+    public string? SaveBackdrop(Viewport vp, Image game) => Save(vp, ReadingShots.BackdropFile, game);
+
+    public string BackdropPath(Viewport vp) => Path.Combine(ReadingShots.FolderOf(dir, vp), ReadingShots.BackdropFile);
+
     public string? Delete(Viewport vp, ReadingShot shot)
     {
         try { File.Delete(PathOf(vp, shot)); }

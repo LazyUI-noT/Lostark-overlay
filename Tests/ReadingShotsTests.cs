@@ -58,6 +58,20 @@ public class ReadingShotsTests
     }
 
     [Fact]
+    public void The_backdrop_is_taken_when_the_skill_window_is_first_read()
+    {
+        var read = new Detection(DetectMark.Concrete, TimeSpan.Zero);
+        Assert.True(ReadingShots.TakesBackdrop(takenHere: false, read));   // also a later step, if the first one was dropped
+        Assert.False(ReadingShots.TakesBackdrop(takenHere: true, read));   // taken on this game area: no new picture each step
+        Assert.False(ReadingShots.TakesBackdrop(takenHere: false, new Detection(DetectMark.Failed, TimeSpan.Zero)));
+        Assert.False(ReadingShots.TakesBackdrop(takenHere: false, null));
+    }
+
+    [Fact]
+    public void The_backdrop_is_not_a_picture_the_picker_lists() =>
+        Assert.Empty(ReadingShots.List([ReadingShots.BackdropFile]));
+
+    [Fact]
     public void A_shot_is_cut_to_the_game_area()
     {
         var shot = new Image(10, 8);

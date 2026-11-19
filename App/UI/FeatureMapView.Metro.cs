@@ -43,6 +43,9 @@ internal sealed partial class FeatureMapView
 
     /// <summary>Whether a key is saved (설정 → 로아 API), for what a box needs; off without one.</summary>
     public Func<bool> HasKey { get; init; } = () => false;
+    /// <summary>The hovered box changed (null: none), for the read chips above the map.</summary>
+    public Action<string?>? HoverChanged { get; set; }
+    string? _hoverSaid;
 
     /// <summary>Moves each face to its place (a street above the first box can sit above 0: the map shifts down for it), then draws.</summary>
     void Arrange(MetroLayout layout, IReadOnlyList<(MetroLink Link, IReadOnlyList<MapEdge> Edges)> links)
@@ -220,7 +223,7 @@ internal sealed partial class FeatureMapView
     /// (공통 &gt; 기본 &gt; 대체 &gt; 선택), whether one of them there is off and whether its row is optional (대체's 대난투 체력). Null otherwise.</summary>
     (IReadOnlyList<MapNeedSection> Sections, Dictionary<string, (MapNeedRole Role, bool Off, bool Optional)> Boxes)? NeedFocus()
     {
-        if (_hover is not { } id || _byId[id].Column == 0 || FeatureMap.Satisfied(_s, id, HasKey())) return null;
+        if (_hover is not { } id || _byId[id].Column == 0) return null;   // on or off: what it needs is ringed (user, 2026-11-19)
         var sections = FeatureMap.Needs(_s, id, HasKey());
         var boxes = new Dictionary<string, (MapNeedRole Role, bool Off, bool Optional)>();
         foreach (var section in sections)
@@ -235,14 +238,15 @@ internal sealed partial class FeatureMapView
         return sections.Count == 0 ? null : (sections, boxes);
     }
 
-    /// <summary>The hovered or pinned box's own lines thick with their words, the rest faded; over a switched-off box, what it
-    /// needs ringed (✓ on, · 꺼짐 off) and the rest faded.</summary>
+    /// <summary>The hovered or pinned box's own lines thick with their words, the rest faded; over a box, what it
+    /// needs ringed (✓ on, · 꺼짐 off) and the rest faded, whether the box is on or off.</summary>
     void Highlight()
     {
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         var focus = _hover ?? _pinned;
         bool anyFocus = focus is not null || _hoverLine is not null;
         var need = NeedFocus();
+        if (_hover != _hoverSaid) { _hoverSaid = _hover; HoverChanged?.Invoke(_hover); }
         foreach (var d in _lines)
         {
             bool mine = need is { } n ? n.Boxes.ContainsKey(d.Link.From) && (d.Link.To == _hover || n.Boxes.ContainsKey(d.Link.To))
@@ -280,7 +284,7 @@ internal sealed partial class FeatureMapView
         }
         if (need is { } needs && _rings.Count == 0)
         {
-            Ring(_hover!, HoverRing, false, "꺼짐");
+            Ring(_hover!, HoverRing, false, FeatureMap.Satisfied(_s, _hover!, HasKey()) ? "켜짐" : "꺼짐");
             bool oneWay = !needs.Sections.Any(s => s.Role == MapNeedRole.Main);
             foreach (var (id, (role, off, optional)) in needs.Boxes)
                 Ring(id, RoleColour[role], optional, $"{(role == MapNeedRole.Common && oneWay ? "필수" : RoleName(role))} {(off ? "· 꺼짐" : "✓")}");

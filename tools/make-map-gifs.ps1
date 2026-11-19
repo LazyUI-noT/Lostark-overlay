@@ -7,11 +7,12 @@
 # font (OutlinedText: Malgun Gothic Bold, black outline), so the card shows the numbers changing (user, 2026-11-10).
 #   tools/make-map-gifs.ps1 -Exe App\bin\Debug\net10.0-windows10.0.22621.0\GaugeOverlay.exe [-Only Meter,Amsu]
 param([Parameter(Mandatory)][string]$Exe, [string[]]$Only = @(), [int]$MaxWidth = 400, [int]$Pad = 16,
-      [string]$Video = (Join-Path (Split-Path $PSScriptRoot -Parent) 'reference\video-test\clips\boss-raid\serka-shadow-0850-0940.mp4'))
+      [string]$Video = (Join-Path (Split-Path $PSScriptRoot -Parent) 'reference\video-test\clips\boss-raid\serka-shadow-0850-0940.mp4'),
+      [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) 'App\Assets\map'))   # -Out elsewhere (e.g. -MaxWidth 800 for a post)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent
-$out = Join-Path $root 'App\Assets\map'
+$out = $Out
 $backdrop = Join-Path $root 'App\Assets\sample-screen.jpg'
 $work = Join-Path $env:TEMP 'GaugeOverlay-map-gifs'
 $manifestFile = Join-Path $out 'map.json'
@@ -27,7 +28,7 @@ $parts = [ordered]@{
     Gauge    = @{ Loop = 4; Sim = $true; Styles = @(
                   @('워로드 · 전투태세', @('--as=워로드:전투태세:워리어', '--gauge-loop=on')), @('발키리 · 해방자', @('--as=발키리:해방자:워리어', '--gauge-loop=on')),
                   @('바드 · 절실한구원', @('--as=바드:절실한구원:마법사', '--gauge-loop=on'))) }
-    Buffs    = @{ Loop = 15.2; Sim = $true; Styles = @(@('가로', @()), @('세로', @('--side-buffs'))) }
+    Buffs    = @{ Loop = 15.2; Sim = $true; Styles = @(@('가로', @()), @('세로', @('--side-buffs', '--apart'))) }   # 세로 stands only under 따로 (BuffSettings.Upright)
     Debuffs  = @{ Loop = 30; Sim = $true; Styles = @(, @('', @('--debuffs'))) }
     Judgment = @{ Loop = 36; Sim = $true; Styles = @(@('막대', @('--judgment')), @('아이콘', @('--judgment', '--judgment-icon'))) }
     Amsu     = @{ Loop = 24; Sim = $true; Styles = @(

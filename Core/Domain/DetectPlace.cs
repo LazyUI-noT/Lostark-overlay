@@ -20,6 +20,29 @@ public static class DetectPlace
         ("g-jeonbun", "전분"), ("boss", "보스 HP"), ("amsu", "암수"), ("dungeon", "콘텐츠"),
     ];
 
+    /// <summary>What a 화면 인식 설정 chip's card shows around box <paramref name="area"/>: a quarter of its long side (8 px or more) on
+    /// each side, cut to the game screen when one is known (user, 2026-11-19: a box not read yet still shows where it reads).</summary>
+    public static PixelRect CardView(PixelRect area, Viewport view)
+    {
+        int pad = Math.Max(8, Math.Max(area.Width, area.Height) / 4);
+        var around = new PixelRect(area.X - pad, area.Y - pad, area.Width + 2 * pad, area.Height + 2 * pad);
+        return view.Width > 0 && view.Height > 0 && around.Intersect(new PixelRect(view.X, view.Y, view.Width, view.Height)) is { } cut ? cut : around;
+    }
+
+    /// <summary>The <see cref="Chips"/> a 기능 맵 box reads through: itself and every box upstream of it along the map's
+    /// non-party edges (user, 2026-11-19: hovering a box lights its chips).</summary>
+    public static IReadOnlySet<string> ChipsBehind(string id)
+    {
+        var seen = new HashSet<string>();
+        var todo = new Stack<string>([id]);
+        while (todo.TryPop(out var at))
+        {
+            if (!seen.Add(at)) continue;
+            foreach (var e in FeatureMap.Edges.Where(e => e.To == at && !e.Party)) todo.Push(e.From);
+        }
+        return Chips.Select(c => c.Id).Where(seen.Contains).ToHashSet();
+    }
+
     /// <summary>The table's row groups.</summary>
     public const string Slots = "슬롯", Buffs = "버프", Debuffs = "디버프", Boss = "보스";
 

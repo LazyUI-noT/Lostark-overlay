@@ -209,8 +209,8 @@ public partial class App
         if (args.Contains("--no-key")) CredentialVault.PretendNoKey();   // the key gate as a new install without a key sees it
         if (args.Contains("--homework-demo")) DemoHomework(settings);
         if (args.Contains("--settings")) _settingsWindow.Show();
-        if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut", "map-hover" }.Any(f => Flag(f) is not null))
-            _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"), Flag("map-hover"));
+        if (new[] { "map-open", "map-pin", "map-fail", "map-seen", "map-preview", "map-scroll", "map-line", "map-cut", "map-hover", "map-chip" }.Any(f => Flag(f) is not null))
+            _settingsWindow.DemoMap(Flag("map-open"), Flag("map-pin"), Flag("map-fail"), Flag("map-seen"), Flag("map-preview"), Flag("map-scroll"), Flag("map-line"), Flag("map-cut"), Flag("map-hover"), Flag("map-chip"));
         if (Flag("hp-table") is { } hpScroll) _settingsWindow.DemoHpTable(hpScroll);
         if (Flag("raid-open") is { } raidOpen) _settingsWindow.DemoRaidOpen(raidOpen, Flag("raid-scroll"));
         if (Flag("scroll") is { } scroll) _settingsWindow.DemoScroll(scroll);

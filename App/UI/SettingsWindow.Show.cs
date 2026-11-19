@@ -58,9 +58,9 @@ public partial class SettingsWindow
         DetectAreasChanged(mine);
     }
 
-    /// <summary>--demo --map-open=all|id,id --map-pin=id --map-fail=id,id --map-seen=id,id --map-preview=id --map-scroll=px --map-line=id --map-cut=id: the map with those boxes
+    /// <summary>--demo --map-open=all|id,id --map-pin=id --map-fail=id,id --map-seen=id,id --map-preview=id --map-scroll=px --map-line=id --map-cut=id --map-chip=id: the map with those boxes
     /// open, one box's lines held, those readers failing or ✓ and one box's hover card under it (a popup PrintWindow can't see), scrolled, one box's line to 파티 hovered and one cut, for screenshots.</summary>
-    internal void DemoMap(string? open, string? pin, string? fail = null, string? seen = null, string? preview = null, string? scroll = null, string? line = null, string? cut = null, string? hover = null)
+    internal void DemoMap(string? open, string? pin, string? fail = null, string? seen = null, string? preview = null, string? scroll = null, string? line = null, string? cut = null, string? hover = null, string? chip = null)
     {
         var marks = new Dictionary<string, Detection>();
         foreach (var id in fail?.Split(',') ?? []) marks[id] = new Detection(DetectMark.Failed, TimeSpan.Zero, Why: "데모: 읽어야 하는데 못 읽었습니다.");
@@ -72,6 +72,17 @@ public partial class SettingsWindow
             for (int i = 0; i < bgra.Length; i += 4) (bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3]) = (0x60, (byte)(i / 4 % 320 * 255 / 320), 0x30, 255);
             _detectPictures = new Dictionary<string, DetectPicture> { [preview] = new DetectPicture(new Core.Domain.Image(320, 80, bgra), default, TimeSpan.Zero) };
             _mapDemoCard = preview;
+        }
+        if (chip is not null)   // a chip's card for a box not read yet: its place from sample areas, no picture
+        {
+            (_detectView, _mapDemoChip) = (new Viewport(0, 0, 1920, 1080), chip);
+            var at = new PixelRect(760, 90, 400, 40);
+            _detectAreas = new Dictionary<string, PixelRect> { [chip] = at };
+            _detectGrid = new Dictionary<string, IReadOnlyList<GridLine>> { [chip] = [.. Enumerable.Range(1, 9).Select(i => new GridLine(at.X + i * 40, at.Y, at.X + i * 40, at.Bottom))] };
+            _detect = new Dictionary<string, Detection> { [chip] = new Detection(DetectMark.Waiting, TimeSpan.Zero) };
+            var bgra = new byte[1920 * 1080 * 4];   // a stand-in backdrop: a dark gradient
+            for (int i = 0; i < bgra.Length; i += 4) (bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3]) = ((byte)(i / 4 % 1920 * 120 / 1920), 0x40, (byte)(i / 4 / 1920 * 120 / 1080), 255);
+            _backdropDemo = System.Windows.Media.Imaging.BitmapSource.Create(1920, 1080, 96, 96, PixelFormats.Bgra32, null, bgra, 1920 * 4);
         }
         if (open == "all") _mapOpen.UnionWith(FeatureMap.Boxes.Select(b => b.Id));
         else if (open is not null) _mapOpen.UnionWith(open.Split(','));
@@ -87,7 +98,7 @@ public partial class SettingsWindow
         });
     }
 
-    string? _mapDemoCard, _mapDemoHover, _mapDemoScroll;
+    string? _mapDemoCard, _mapDemoHover, _mapDemoScroll, _mapDemoChip;
 
     /// <summary>--map-scroll: the whole viewer on the page, then the map scrolled inside it by that many px.</summary>
     void DemoScrollMap(ScrollViewer host)
@@ -106,23 +117,10 @@ public partial class SettingsWindow
         id switch { "boss" => "Boss", "shadow" => "Shadow", _ => FeatureMap.WindowOf(id)?.ToString() }, _detect.GetValueOrDefault(id),
         _detectPictures.TryGetValue(id, out var picture) ? BitmapOf(picture) : null, _detectAt, MapPreview.Needs(_s, id, CredentialVault.Saved));
 
-    /// <summary>The 감지 중 chip's card: the stored moment until Live's first frame, then each Live frame (DetectAreasChanged).</summary>
-    System.Windows.Controls.Image? _mapLivePicture;
-
-    UIElement? MapLiveCard(string id)
-    {
-        _mapLivePicture = new System.Windows.Controls.Image { Source = _detectPictures.TryGetValue(id, out var kept) ? BitmapOf(kept) : null };
-        return MapPreview.LiveCard(FeatureMap.Boxes.First(b => b.Id == id).Title, _detect.GetValueOrDefault(id), _mapLivePicture, _detectAt);
-    }
-
-    void MapLive(string? id)
-    {
-        if (id is null) _mapLivePicture = null;
-        SetLive(id);
-    }
-
     /// <summary>The 표시 map (FeatureMapView): 모두 접기 / 모두 펼치기 above it, a note line under it for what a switch also did.</summary>
     ReadChipRow? _readChips;
+    /// <summary>One row for the window's life: it sits in the page header (ShowHeader), so it stays in view while the map scrolls (user, 2026-11-19).</summary>
+    ReadChipRow ReadChips => _readChips ??= new ReadChipRow(id => { _detectPicked = id; Go(AreaDetect); DrawDetect(); }) { Card = MapLiveCard, Live = MapLive };
 
     /// <summary>The map's viewer stays at least this tall in a small window.</summary>
     const double MapLeastHeight = 320;
@@ -133,8 +131,9 @@ public partial class SettingsWindow
         var map = _map = new FeatureMapView(_s, _mapOpen, _mapPin, () => { Changed(); Dispatcher.BeginInvoke(FillShow); }, area => Go(area),
             text => _mapNote = text, pin => _mapPin = pin) { Value = GameValue, Body = GameBody, Preview = MapCard, DetectPreview = MapLiveCard, DetectHover = MapLive, ShowResources = _checkOn, HasKey = () => CredentialVault.Saved, DemoHover = _mapDemoHover };
         map.SetDetect(_detect, _detectAt);
-        var chips = _readChips = new ReadChipRow(id => { _detectPicked = id; Go(AreaDetect); DrawDetect(); });
+        var chips = ReadChips;
         chips.Set(_detect);
+        map.HoverChanged = id => chips.Light(id is null ? null : DetectPlace.ChipsBehind(id));
         note.Text = _mapNote ?? "";
         _mapNote = null;
         var fold = new Button { Content = "모두 접기", Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight), Margin = new(0, 0, Tokens.Space.Gap, 0) };
@@ -142,14 +141,13 @@ public partial class SettingsWindow
         fold.Click += (_, _) => map.SetAll(false);
         open.Click += (_, _) => map.SetAll(true);
         p.Children.Add(HelpRow("기능 맵", "왼쪽 게임 설정에서 오른쪽 기능으로, 무엇이 무엇을 쓰는지 보여 줍니다. 칸을 누르면 펼쳐지거나 접히고, 펼친 칸에서 켜고 끕니다. ⚙는 그 설정 화면으로 갑니다.\n\n"
-            + "칩: 읽는 것마다 상태입니다(초록 ✓ 읽는 중, 노랑 ? 찾는 중, 빨강 ! 못 읽음, 회색 꺼짐). 누르면 화면 인식 설정에서 엽니다.\n"
+            + "칩: 읽는 것마다 상태입니다(초록 ✓ 읽는 중, 노랑 ? 찾는 중, 빨강 ! 못 읽음, 회색 꺼짐). 누르면 화면 인식 설정으로 이동.\n"
             + "점: 초록 켜짐, 파랑 표시 안 함(읽기는 함), 회색 꺼짐.\n"
             + "금색 테: 캐릭터마다 따로 정함.\n"
             + "분홍 P: 파티와 주고받는 칸입니다. 파티 옆 표(스킬쿨 → 등)를 누르면 끊거나 다시 잇습니다. 끊긴 표는 회색 취소선입니다.\n"
             + "주황 빛: 게임 설정 쪽으로 흐르면 그 기능이 못 읽는 중입니다. 게임 설정을 확인하세요.\n\n"
-            + "칸이나 선에 마우스를 올리면 이어진 곳과 창의 모습이 보입니다. 꺼진 칸에 올리면 그 기능에 필요한 칸에 테가 생깁니다. 빈 곳을 끌면 맵이 움직입니다.",
+            + "칸이나 선에 마우스를 올리면 이어진 곳과 창의 모습이 보입니다. 칸에 올리면 그 기능에 필요한 칸에 테가 생기고, 위 화면 인식 칩 중 그 칸이 쓰는 것이 금색 테로 빛납니다. 빈 곳을 끌면 맵이 움직입니다.",
             new StackPanel { Orientation = Orientation.Horizontal, Children = { fold, open, CheckButton() } }));
-        p.Children.Add(chips);
         // Scrolls both ways, no taller than the page shows (metro-map.plan.md 5): the map pans inside it (FeatureMapView.StartPan).
         var host = new ScrollViewer { Content = map, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new(0, Tokens.Space.Gap, 0, 0) };
         void Fit(object? _ = null, SizeChangedEventArgs? __ = null) => host.MaxHeight = Math.Max(MapLeastHeight, Body.ActualHeight - PageSpare);
@@ -169,6 +167,11 @@ public partial class SettingsWindow
         p.Children.Add(host);
         p.Children.Add(note);
         if (_mapDemoCard is { } demo && MapCard(demo) is { } card) p.Children.Add(card);
+        if (_mapDemoChip is { } chipDemo && MapLiveCard(chipDemo) is FrameworkElement chipCard)
+        {
+            p.Children.Add(chipCard);
+            Dispatcher.BeginInvoke(() => chipCard.BringIntoView(), DispatcherPriority.ApplicationIdle);   // under the map: scroll to it for a screenshot
+        }
         Detach(_checkTable);
         CardStack.SetBreak(_checkTable, true);
         p.Children.Add(_checkTable);
