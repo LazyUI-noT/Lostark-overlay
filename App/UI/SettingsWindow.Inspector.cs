@@ -17,6 +17,7 @@ public partial class SettingsWindow
 {
     OverlayCanvas? _canvas;
     CheckBox? _offCheck;   // 꺼진 창
+    CheckBox? _snapCheck, _linkCheck;   // 자석, 크기 연동: 자유 배치 only
     CanvasBox? _inspected;
     readonly StackPanel _contextNotes = new();   // what 편집 중's pick means: over the inspector's rows
 
@@ -38,10 +39,12 @@ public partial class SettingsWindow
         CanvasBadgeHost.Children.Add(ProfileBadgeChip());
         CanvasTools.Children.Add(ShotButtons());
         CanvasTools.Children.Add(RunButtons(canvas, out _run));
-        var apartCheck = ToolCheck("칸 하나씩", false, v => { canvas.BoxesApart = v; ShowCanvasShot(); }, "켜면 스킬 칸을 하나씩 옮기고 크기를 바꿉니다. 끄면 칸을 끌어도 내 스킬창 전체가 움직입니다.");
-        CanvasTools.Children.Add(apartCheck);
-        CanvasTools.Children.Add(ToolCheck("자석", canvas.Snap, v => canvas.Snap = v, "끌 때 다른 칸에 맞춰 붙습니다. Shift를 누르고 끌면 붙지 않습니다."));
-        CanvasTools.Children.Add(ToolCheck("크기 연동", canvas.LinkSizes, v => canvas.LinkSizes = v, "모서리로 크기를 바꿀 때 같은 줄의 칸도 같이 바뀝니다."));
+        CanvasTools.Children.Add(ToolCheck("키 표시", canvas.ShowKeys, v => canvas.ShowKeys = v, "칸 위에 마우스를 올리면 그 칸의 키(키 설정)를, 막대는 이름을 보여 줍니다. 미리보기에서만 보입니다."));
+        // 자유 배치 only (slot-layout.plan.md §5): greyed under 칸 맞춤, whose blocks fit on their own (ShowCanvasNote).
+        CanvasTools.Children.Add(_snapCheck = ToolCheck("자석", canvas.Snap, v => canvas.Snap = v, "끌 때 다른 칸에 맞춰 붙습니다. Shift를 누르고 끌면 붙지 않습니다. 배치가 자유 배치일 때만 씁니다."));
+        CanvasTools.Children.Add(_linkCheck = ToolCheck("크기 연동", canvas.LinkSizes, v => canvas.LinkSizes = v, "모서리로 크기를 바꾸면 같은 줄의 칸도 같이 바뀝니다. 배치가 자유 배치일 때만 씁니다."));
+        ToolTipService.SetShowOnDisabled(_snapCheck, true);
+        ToolTipService.SetShowOnDisabled(_linkCheck, true);
         CanvasTools.Children.Add(ToolCheck("나", canvas.ShowMine, v => canvas.ShowMine = v, "내 창을 미리보기에 표시합니다."));
         CanvasTools.Children.Add(ToolCheck("파티원", canvas.ShowParty, v => canvas.ShowParty = v, "파티원 창을 미리보기에 표시합니다."));
         var offCheck = _offCheck = ToolCheck("꺼진 창", canvas.ShowOff, v => canvas.ShowOff = v, "설정에서 꺼 둔 창도 흐리게 보여 줍니다. 끄면 켜 둔 창만 보여서 자리를 잡기 쉽습니다.");
@@ -54,7 +57,6 @@ public partial class SettingsWindow
         {
             if (!IsVisible) { StopPlay(); return; }
             offCheck.IsChecked = canvas.ShowOff = true;   // 꺼진 창 is on each time 설정 opens, never saved
-            apartCheck.IsChecked = canvas.BoxesApart = false;   // 칸 하나씩 is off each time (user, 2026-11-13: no accidental box moves)
             ShowCanvasShot();   // and the note says so
         };
         Loaded += (_, _) => { ShowCanvasShot(); canvas.Relayout(); };   // the picture at the window's real DPI
@@ -70,13 +72,32 @@ public partial class SettingsWindow
     };
 
     /// <summary>--hide-off: 꺼진 창 off, for screenshots.</summary>
+    internal void DemoArrange(string spec)   // --arrange=각성기,일반3,0.5,0.5[,drop]
+    {
+        var f = spec.Split(',');
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        _canvas?.DemoArrange(Enum.Parse<Part>(f[0]), Enum.Parse<Part>(f[1]), double.Parse(f[2], inv), double.Parse(f[3], inv), f.Length > 4 && f[4] == "drop");
+    }
+
     internal void DemoHideOff() { if (_offCheck is not null && _canvas is not null) _offCheck.IsChecked = _canvas.ShowOff = false; }
 
     readonly TextBlock _canvasNote = UiBuild.Muted(new() { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new(Tokens.Space.Gap, 0, 0, 0) });
 
-    void ShowCanvasNote() => _canvasNote.Text = _canvas?.BoxesApart == true
-        ? "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기"
-        : "칸을 눌러 설정 · 끌어서 이동 (내 스킬창은 칸 하나씩을 켜야 칸마다) · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기";
+    /// <summary>자석 and 크기 연동 work in 자유 배치 only. Called on every change: a reset, a 복사 or another class can flip the
+    /// 배치 while <see cref="OverlaySettings.FreePlacement"/> is unset.</summary>
+    void RefreshPlacement()
+    {
+        bool free = _canvas?.Free == true;
+        if (_snapCheck is not null) _snapCheck.IsEnabled = free;
+        if (_linkCheck is not null) _linkCheck.IsEnabled = free;
+    }
+
+    void ShowCanvasNote()
+    {
+        _canvasNote.Text = _canvas?.Free == true
+            ? "칸을 눌러 설정 · 끌어서 이동 · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기"
+            : "칸을 눌러 설정 · 칸을 끌어 자리 바꾸기·끼우기 (Esc로 취소) · 가장자리를 끌어 창 이동 · 모서리로 크기 · 막대 끝으로 길이 · 휠로 확대\n화살표 키로 1px (Shift 10px) · Ctrl+화살표로 크기";
+    }
 
     static CheckBox ToolCheck(string text, bool value, Action<bool> set, string? help)
     {

@@ -48,8 +48,13 @@ public sealed class OverlayProfile : ProfileEntry
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
     public List<WindowPlace> PartySlots { get; set; } = [];
 
-    /// <summary>The screen area (physical pixels) the profile's screenshot shows, so it maps onto window spots; null =
-    /// no screenshot, or one not of the game's screen (a backdrop only).</summary>
+    /// <summary>Which of the 5 shared image slots (0–4) this profile shows (<see cref="Settings.SlotAreas"/> holds each one's
+    /// area). Two profiles may show the same one. Nothing here travels to party members.</summary>
+    public int ShotSlot { get; set; }
+
+    /// <summary>Read only to upgrade a file from before the slots (<see cref="Data.SettingsStore"/> moves it to
+    /// <see cref="Settings.SlotAreas"/> and nulls it, so it is not written again).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PixelRect? Shot { get; set; }
 
     /// <summary>Each 클래스 · 직업각인's own places and looks in this profile (<see cref="Settings.CharacterKey"/>); a class not
@@ -193,12 +198,18 @@ public sealed class OverlayProfile : ProfileEntry
 
 /// <summary>The skill boxes' look kept per 배치: 칸 투명도, the gold edge, the 각성기 changed colour and the ready count's
 /// colour. The boxes' colours, glow and cooldown style are the class's.</summary>
-public sealed record BoxLooks(double BoxOpacity, string GoldColor, double GoldThickness, string AwakeningChangedColor, string ReadyCountColor)
+public sealed record BoxLooks(double BoxOpacity, string GoldColor, double GoldThickness, string AwakeningChangedColor, string ReadyCountColor,
+    bool CloseGaps = true, string? SlotOrder = null, string? BarOrder = null, string? DockOrder = null, bool? FreePlacement = null)
 {
-    public static BoxLooks Of(OverlaySettings o) => new(o.BoxOpacity, o.GoldColor, o.GoldThickness, o.AwakeningChangedColor, o.ReadyCountColor);
+    public static BoxLooks Of(OverlaySettings o) =>
+        new(o.BoxOpacity, o.GoldColor, o.GoldThickness, o.AwakeningChangedColor, o.ReadyCountColor, o.CloseGaps, o.SlotOrder, o.BarOrder, o.DockOrder,
+            o.FreePlacement);
 
-    public void To(OverlaySettings o) =>
-        (o.BoxOpacity, o.GoldColor, o.GoldThickness, o.AwakeningChangedColor, o.ReadyCountColor) = (BoxOpacity, GoldColor, GoldThickness, AwakeningChangedColor, ReadyCountColor);
+    public void To(OverlaySettings o)
+    {
+        (o.BoxOpacity, o.GoldColor, o.GoldThickness, o.AwakeningChangedColor, o.ReadyCountColor, o.CloseGaps) = (BoxOpacity, GoldColor, GoldThickness, AwakeningChangedColor, ReadyCountColor, CloseGaps);
+        (o.SlotOrder, o.BarOrder, o.DockOrder, o.FreePlacement) = (SlotOrder, BarOrder, DockOrder, FreePlacement);
+    }
 }
 
 /// <summary>The gauge's look kept per 배치: fill and empty colours, 투명도. Splits, section colours and glow are the

@@ -156,7 +156,7 @@ public class AmsuReaderTests
             Geometry.BuffScale(Hd, size));
     }
 
-    // The boss debuff row holds at most 14 icons at 보스 디버프 크기 100% and under, 12 at 110%, 10 at 120% (user, 2026-11-01); its
+    // The boss debuff row holds at most 14 icons at 100% at HUD 110 (the HUD × size table, Geometry.MaxIcons); its
     // first icon sits at x 927–929 at every size (1080p, HUD 100: reference/빛암).
     // 감지 개수 (타겟 UI 버프 크기 (보스)): caps the walk at most; unset it is today's size-fixed count.
     [Theory]
@@ -177,7 +177,7 @@ public class AmsuReaderTests
     {
         Assert.Equal(Geometry.BossSlotsIn(Hd, Hud110, size), Geometry.BossSlotsIn(Hd, Hud110, size, null, Geometry.MaxIconsAny));
         Assert.Equal(AmsuLayout.Of(Hd, Hud110, size), AmsuLayout.Of(Hd, Hud110, size, null, Geometry.MaxIconsAny));
-        Assert.Equal(Geometry.MaxIcons(size), AmsuLayout.Of(Hd, Hud110, size).Slots.Most);
+        Assert.Equal(Geometry.MaxIcons(size, Hud110.Hud), AmsuLayout.Of(Hd, Hud110, size).Slots.Most);
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class AmsuReaderTests
     [InlineData(120, 12)]
     public void The_strip_reaches_the_last_debuff_slot_at_every_size(int size, int slots)
     {
-        Assert.Equal(slots, Geometry.MaxIcons(size));
+        Assert.Equal(slots, Geometry.MaxIcons(size, 110.05));
         var s = Geometry.BossDebuffStrip(Hd, Hud110, size);
         Assert.True(s.Right >= 929 + slots * 34 * Geometry.BossScale(Hd, Hud110, size), $"strip ends at {s.Right}");
     }

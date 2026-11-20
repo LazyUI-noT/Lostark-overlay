@@ -13,6 +13,8 @@ public sealed class HotkeySettings
     public string DetectSubclass { get; set; } = "";
     /// <summary>아이콘 다시 읽기: copies every slot's icon again (아이콘으로 표시); unset ("") by default.</summary>
     public string RereadIcons { get; set; } = "";
+    /// <summary>즉시 화면 캡처: takes the game window at once into 새 캡처 (no countdown); unset ("") by default.</summary>
+    public string CaptureNow { get; set; } = "";
     /// <summary>오버레이 프로필 1–5; unset ("") by default.</summary>
     public string Profile1 { get; set; } = "";
     public string Profile2 { get; set; } = "";
@@ -26,7 +28,7 @@ public sealed class HotkeySettings
     public IReadOnlyList<(string Action, string Combo)> All() =>
     [
         (nameof(EditMode), EditMode), (nameof(ToggleOverlay), ToggleOverlay), (nameof(DetectCharacter), DetectCharacter),
-        (nameof(DetectSubclass), DetectSubclass), (nameof(RereadIcons), RereadIcons),
+        (nameof(DetectSubclass), DetectSubclass), (nameof(RereadIcons), RereadIcons), (nameof(CaptureNow), CaptureNow),
         (nameof(TestMode), TestMode), (nameof(Profile1), Profile1), (nameof(Profile2), Profile2), (nameof(Profile3), Profile3),
         (nameof(Profile4), Profile4), (nameof(Profile5), Profile5),
     ];

@@ -259,26 +259,48 @@ public static class Geometry
             (int)Math.Round(r.Width * s), (int)Math.Round(r.Height * s));
     }
 
-    /// <summary>The most icons a buff row shows before folding the rest into "+N", by the game's size (버프 크기, 타겟 UI 버프 크기):
-    /// 17 at 80%, 15 at 90%, 14 at 100%, 13 at 110%, 12 at 120% (user, 2026-11-18; the boss row was 14/12/10 before). A size between
-    /// presets takes the next one up (bigger icons fit fewer), under 80 the most, over 120 the least.</summary>
-    public static int MaxIcons(int size)
+    /// <summary>The buff sizes the grid's columns are for (버프 크기, 타겟 UI 버프 크기).</summary>
+    static readonly int[] IconSizes = [80, 90, 100, 110, 120];
+
+    /// <summary>The most icons a row shows before folding the rest into "+N", by the game's HUD 크기 (rows, smaller HUD first)
+    /// and buff size (<see cref="IconSizes"/> columns). User, 2026-11-19: the HUD 120 column is 12/12/14/15/17 at HUD 110/105/100/90/80,
+    /// and HUD 100's other sizes are the buff-only values as of 2026-11-19 (17/17/15/13). The 120 cell is above the 110 one on
+    /// purpose (user's table, 2026-11-19). HUD 110 is 17/15/14/13/12 (user, 2026-11-19).</summary>
+    static readonly (int Hud, int[] Most)[] IconGrid =
+    [
+        (80, [17, 17, 17, 17, 17]),
+        (90, [17, 17, 17, 16, 15]),
+        (100, [17, 17, 15, 13, 14]),
+        (105, [17, 16, 14, 13, 12]),
+        (110, [17, 15, 14, 13, 12]),
+    ];
+
+    /// <summary>How far a measured HUD may sit above a preset and still count as that preset.</summary>
+    const double HudTolerance = 0.5;
+
+    /// <summary>The most icons a row shows at buff size <paramref name="size"/> and HUD <paramref name="hud"/>. A size between presets
+    /// takes the next one up on each axis (bigger icons or a bigger HUD fit fewer); under 80 the most, over 120 the least.</summary>
+    public static int MaxIcons(int size, double hud)
     {
-        foreach (var (preset, most) in IconTable)
-            if (size <= preset) return most;
-        return IconTable[^1].Most;
+        // A HUD read off the bar is a little off the preset: within half a percent of one, it is that preset (not the next up).
+        var row = IconGrid.FirstOrDefault(r => hud <= r.Hud + HudTolerance, IconGrid[^1]);
+        for (int i = 0; i < IconSizes.Length; i++)
+            if (size <= IconSizes[i]) return row.Most[i];
+        return row.Most[^1];
     }
 
-    static readonly (int Size, int Most)[] IconTable = [(80, 17), (90, 15), (100, 14), (110, 13), (120, 12)];
-
-    /// <summary>The most icons at any size (80% and under): 감지 개수's top, which caps nothing.</summary>
+    /// <summary>The most icons at any size and HUD: 감지 개수's top, which caps nothing.</summary>
     public const int MaxIconsAny = 17;
 
     /// <summary>The game's fewest 버프 표시 / 타겟 UI 버프 표시.</summary>
     public const int MinShown = 10;
 
-    /// <summary>The icons a row holds: the game's 표시 count <paramref name="chosen"/> (null: the size's most), never over what the size fits.</summary>
-    public static int Shown(int size, int? chosen) => Math.Min(chosen ?? MaxIcons(size), MaxIcons(size));
+    /// <summary>The icons a row holds: the game's 표시 count <paramref name="chosen"/> (null: the size's most), never over what the size and HUD fit.</summary>
+    public static int Shown(int size, int? chosen, double hud)
+    {
+        int most = MaxIcons(size, hud);
+        return Math.Min(chosen ?? most, most);
+    }
 
     /// <summary>The boss debuff zone's first icon, reference px at HUD 110 from the left: it stays put at every 타겟 UI 버프 크기
     /// (x 927–929 at 1080p on the 빛암 clips, which are HUD 110; x 1250 on the 21:9 clip at HUD 100) while the boss's buffs grow
@@ -289,7 +311,7 @@ public static class Geometry
     /// size shows, or fewer with <paramref name="count"/> (감지 개수). The strip is cut the same either way.</summary>
     public static BossSlots BossSlotsIn(Viewport vp, Fit fit, int bossSize, int? shown = null, int count = MaxIconsAny)
     {
-        int most = Shown(bossSize, shown);
+        int most = Shown(bossSize, shown, fit.Hud);
         return new(FirstBossDebuffX(vp, fit) - BossDebuffStrip(vp, fit, bossSize).X, most, Identify: Math.Clamp(count, 1, most));
     }
 
@@ -307,7 +329,7 @@ public static class Geometry
         double s = BossScale(vp, fit, bossSize), pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
         double slash = BossSlashX(vp, fit);
         int left = (int)Math.Round(slash - BossAxis * s), rowRight = (int)Math.Round(slash + (RefBossRow.Width - BossAxis) * s);
-        int right = Math.Max(rowRight, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxIcons(bossSize) * pitch + SlotPad * s));
+        int right = Math.Max(rowRight, (int)Math.Ceiling(FirstBossDebuffX(vp, fit) + MaxIcons(bossSize, fit.Hud) * pitch + SlotPad * s));
         int top = BossIconTopY(vp, fit) - BossDebuffLine;
         double icon = DebuffReader.BossIconSize * s, text = BossTimerBelow * BuffScale(vp, bossSize);
         int bottom = (int)Math.Ceiling(BossIconTopY(vp, fit) + icon + text) + BossLineSnap + 1;
@@ -322,7 +344,7 @@ public static class Geometry
         double s = BossScale(vp, fit, bossSize), pitch = Math.Max(BossPitch(vp, fit, bossSize), DebuffReader.BossSlotPitch * s);
         int first = FirstBossDebuffX(vp, fit), top = BossIconTopY(vp, fit), side = (int)Math.Round(DebuffReader.BossIconSize * s);
         int text = (int)Math.Round(BossTimerBelow * BuffScale(vp, bossSize));
-        return [.. Enumerable.Range(0, MaxIcons(bossSize)).Select(i => (int)Math.Round(first + i * pitch))
+        return [.. Enumerable.Range(0, MaxIcons(bossSize, fit.Hud)).Select(i => (int)Math.Round(first + i * pitch))
             .Select(x => (new PixelRect(x, top, side, side), new PixelRect(x, top + side, side, text)))];
     }
 
@@ -360,6 +382,8 @@ public static class Geometry
 
     /// <summary>The boss debuff size 대난투's row shows at, whatever 타겟 UI 버프 크기 says (serka-shadow).</summary>
     public const int DaenantuBossSize = 100;
+    /// <summary>The 대난투 row's slots: fixed at 14, not the 버프 크기 table (which gives 100% 15).</summary>
+    const int DaenantuSlots = 14;
     const double RefDaenantuIconTop = 207, RefDaenantuCentreX = 958.5, RefDaenantuPitch = 36;
 
     static double DaenantuCentreX(Viewport vp, Fit fit) => vp.X + vp.Width / 2.0 + (RefDaenantuCentreX - RefCenterX) * Scale(vp, fit);
@@ -369,7 +393,7 @@ public static class Geometry
     public static PixelRect DaenantuDebuffStrip(Viewport vp, Fit fit)
     {
         double k = Scale(vp, fit), s = BossScale(vp, fit, DaenantuBossSize), cx = DaenantuCentreX(vp, fit);
-        double half = MaxIcons(DaenantuBossSize) / 2.0 * RefDaenantuPitch * k + SlotPad * s;
+        double half = DaenantuSlots / 2.0 * RefDaenantuPitch * k + SlotPad * s;
         int iconTop = (int)Math.Round(vp.Y + RefDaenantuIconTop * k) + fit.BossShift.Y;
         int top = iconTop - BossDebuffLine, left = (int)Math.Floor(cx - half) + fit.BossShift.X;
         double icon = DebuffReader.BossIconSize * s, text = BossTimerBelow * BuffScale(vp, DaenantuBossSize);
@@ -384,7 +408,7 @@ public static class Geometry
         double s = BossScale(vp, fit, DaenantuBossSize);
         int centre = (int)Math.Round(DaenantuCentreX(vp, fit)) + fit.BossShift.X - DaenantuDebuffStrip(vp, fit).X;
         int gap = (int)Math.Round(RefDaenantuPitch * Scale(vp, fit) / s) - DebuffReader.BossIconSize;
-        return new(centre, MaxIcons(DaenantuBossSize), gap, Centred: true);
+        return new(centre, DaenantuSlots, gap, Centred: true);
     }
 
     /// <summary>The row's line (the icons' top) in <see cref="BossDebuffStrip"/>, strip px: room for the walk's row above it

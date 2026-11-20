@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Input;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
@@ -7,16 +9,15 @@ using GaugeOverlay.Core.Domain;
 namespace GaugeOverlay.App.UI;
 
 /// <summary>Ctrl+Z / Ctrl+Y: whole-settings snapshots (<see cref="SettingsHistory"/>) with 편집 중's pick. Each change
-/// records the state before it; changes closer than <see cref="MergeSeconds"/> are one step (a slider's drag, typing a
+/// records the state before it; changes closer than <see cref="ChangeRecorder.MergeSeconds"/> are one step (a slider's drag, typing a
 /// colour), a canvas drag is one step, and a profile switch or a 편집 중 pick is a step of its own.</summary>
 public partial class SettingsWindow
 {
-    const double MergeSeconds = 0.6;
     const char Separator = '\u0001';   // between 편집 중's pick and the settings JSON in a snapshot
 
     readonly SettingsHistory _history = new();
-    string? _baseline;   // the state after the last change: what the next change records
-    DateTime _lastChange;
+    ChangeRecorder? _recorder;
+    ChangeRecorder Recorder => _recorder ??= new(_history, Snapshot);
 
     string Snapshot() => (_classShown ?? "") + Separator + JsonSerializer.Serialize(_s, SettingsStore.Json);
 
@@ -24,42 +25,44 @@ public partial class SettingsWindow
     {
         PreviewKeyDown += (_, e) =>
         {
-            if (Keyboard.Modifiers != ModifierKeys.Control || Keyboard.FocusedElement is TextBox || UiBuild.KeyFieldCapturing()) return;   // a text box keeps its own undo
-            if (e.Key == Key.Z)
+            if (Keyboard.FocusedElement is TextBox || UiBuild.KeyFieldCapturing()) return;   // a text box keeps its own undo
+            var mods = Keyboard.Modifiers;
+            bool redo = e.Key == Key.Y && mods == ModifierKeys.Control || e.Key == Key.Z && mods == (ModifierKeys.Control | ModifierKeys.Shift);
+            if (e.Key == Key.Z && mods == ModifierKeys.Control)
             {
                 if (!PlaceBack()) Step(undo: true);   // placing on the 감지 page: its own steps, not 설정's
                 e.Handled = true;
             }
-            else if (e.Key == Key.Y)
+            else if (redo)
             {
                 if (!_placeWanted) Step(undo: false);
                 e.Handled = true;
             }
         };
+        // A slider's press to release is one step, however long the hand rests (sliders are built in UiBuild and the game boxes).
+        AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
+        {
+            if (e.OriginalSource is DependencyObject d && InSlider(d)) Recorder.BeginGesture();
+        }), handledEventsToo: true);
+        AddHandler(UIElement.PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler((_, _) => Recorder.EndGesture()), handledEventsToo: true);
+        Deactivated += (_, _) => Recorder.EndGesture();
     }
 
-    /// <summary>After a change of a row: records the state before it, unless the last change was a moment ago.</summary>
-    void RecordChange()
+    static bool InSlider(DependencyObject d)
     {
-        var now = DateTime.UtcNow;
-        if (_baseline is not null && (now - _lastChange).TotalSeconds >= MergeSeconds) _history.Record(_baseline);
-        _lastChange = now;
-        _baseline = Snapshot();
+        for (; d is not null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is Slider) return true;
+        return false;
     }
+
+    /// <summary>After a change of a row: records the state before it, unless it belongs to the step in progress.</summary>
+    void RecordChange() { Recorder.Change(); RefreshUndoBars(); }
 
     /// <summary>Before a gesture (a canvas drag, a profile switch, a 편집 중 pick): the state now is a step.</summary>
-    void RecordStep()
-    {
-        var now = DateTime.UtcNow;
-        if ((now - _lastChange).TotalSeconds >= MergeSeconds) _history.Record(_baseline ?? Snapshot());   // a held arrow key: one step
-        _lastChange = now;
-    }
+    void RecordStep() { Recorder.Step(); RefreshUndoBars(); }
 
     /// <summary>The state now becomes what the next change records (after a rebuild, a gesture's moves, a pick).</summary>
-    void ResetBaseline()
-    {
-        _baseline = Snapshot();
-    }
+    void ResetBaseline() => Recorder.Reset();
 
     void Step(bool undo)
     {
@@ -68,11 +71,12 @@ public partial class SettingsWindow
         int cut = target.IndexOf(Separator);
         if (JsonSerializer.Deserialize<Settings>(target[(cut + 1)..], SettingsStore.Json) is not { } snapshot) return;
         _s.CopyFrom(snapshot);
-        _lastChange = default;   // the next edit is a step of its own
+        Recorder.Separate();   // the next edit is a step of its own
         _lastCopy = null;   // its snapshot no longer matches what the step put back
         string pick = target[..cut];
         (_classShown, _lastActive) = (pick == "" ? null : pick, ClassProfiles.ActiveKey(_s));   // BuildAll keeps the pick
         BuildAll();
+        RefreshUndoBars();
         SettingsChanged?.Invoke();
         LayoutChanged?.Invoke();   // the profile, spots and sizes as they were
     }

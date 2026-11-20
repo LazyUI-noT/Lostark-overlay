@@ -72,7 +72,7 @@ public class ReadingGridTests
     {
         var (vp, fit) = (new Viewport(0, 0, 1920, 1080), new Fit(110.05));
         var slots = Geometry.BossDebuffSlots(vp, fit, bossSize);
-        Assert.Equal(Geometry.MaxIcons(bossSize), slots.Count);
+        Assert.Equal(Geometry.MaxIcons(bossSize, 110.05), slots.Count);
         Assert.Equal(Geometry.FirstBossDebuffX(vp, fit), slots[0].Icon.X);
         int side = (int)Math.Round(DebuffReader.BossIconSize * Geometry.BossScale(vp, fit, bossSize));
         Assert.All(slots, s => Assert.Equal((side, side, s.Icon.Bottom), (s.Icon.Width, s.Icon.Height, s.Timer.Y)));

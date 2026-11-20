@@ -28,7 +28,11 @@ public sealed partial class OverlayRenderer
         public Point CellOrigin;            // where cell (0, 0) is drawn
         public (double X, double Y) Scale;  // DIP per cell unit
         public bool Free;                   // laid out from cells (FreeLayout), not the fixed grid
+        public Rect? Docked;                // the fixed grid: what the groups dock in (DockLayout), for group drags
+        public readonly Dictionary<DockGroup, Rect> Groups = [];
+        public bool GaugeUpright, BuffsUpright;   // 방향 as docked (DockLayout): standing, filled from the bottom
         public double BarFull;              // the fixed grid's buff bar at 길이 1, before the 2 px floor and rounding
+        public readonly Dictionary<BuffKind, double> BarFulls = [];   // per bar where rows differ (빈 칸 줄이기); else BarFull
         public bool Peer;
         public string? Name, Number;
         public Point NameAt, NumberAt;
@@ -54,8 +58,8 @@ public sealed partial class OverlayRenderer
         if (_player is not { } p) return null;
         if (Peer < 0 && BuffsOnly)
         {
-            // 버프 막대 따로 두기: the fixed grid with nothing but the bars, at this window's own size.
-            var bars = ClassProfiles.Mine(Settings) with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false), Gauge = false, Layout = null };
+            // 버프 막대 따로 두기: nothing but the bars, at this window's own size; its own cells under 자유 배치, else the stack.
+            var bars = ClassProfiles.Mine(Settings) with { Groups = Enum.GetValues<SlotGroup>().ToDictionary(g => g, _ => false), Gauge = false, Layout = ClassProfiles.BuffCells(Settings) };
             return LayoutPlayer(p, "buffs", BoxSize(Settings.Buffs.Width), BoxSize(Settings.Buffs.Height), 0, Bleed, bars, leadH: 0);
         }
         if (Peer < 0 && GaugeOnly) return LayoutGauge(p);
@@ -127,93 +131,106 @@ public sealed partial class OverlayRenderer
         var hidden = a.Hidden;
 
         var l = new PlayerLayout(p, key, bh);
-        // 버프 막대 위치 왼쪽 바깥: the bars take a strip left of the plate, which starts after it.
-        var buffs = ShownBuffs(s);
-        bool side = Settings.Buffs.Upright(Settings.Apart) && buffs.Count > 0;
+        var buffs = ShownBuffs(s, BarArrangement.Of(a.BarOrder));
         // Each bar's own 두께 and 길이 (BuffIndicator), clamped as the settings window offers them.
         double Thick(BuffKind k) => BarSizes.Thickness(Settings.Buffs.Of(k));
-        double Long(BuffKind k) => BarSizes.Length(Settings.Buffs.Of(k));
+        double shared = BarSizes.Shared(Settings.Buffs);   // 칸 맞춤: one 길이 for every bar
+        double Long(BuffKind k) => shared;
         double SideW(BuffKind k) => Math.Max(2, Math.Round(SideBuffWidth * bw / Box * Thick(k)));
-        double plateX = Bleed + (side ? buffs.Sum(k => SideW(k) + Gap) : 0);
-        double x0 = plateX + Pad + lead, x = x0;
-        double gridTop = top + Pad + (gaugeH > 0 ? gaugeH + Gap : 0);
-        l.GridTop = gridTop;
-        l.Anchor = new Point(x0, gridTop);
-        l.CellOrigin = new Point(x0, top + Pad);
+        double barH = FreeLayout.BuffHeight * bh / Box;
+        // The plate's content (groups docked around the grid, DockLayout) starts after the peer's lead.
+        double ox = Bleed + Pad + lead, oy = top + Pad;
+        l.CellOrigin = new Point(ox, oy);
         l.Scale = (bw / Box, bh / Box);
         double colH = 2 * bh + Gap;
-        void Add(SlotId id, Rect r, Color c) { if (!hidden.Contains(id)) l.Boxes.Add(((int)id, r, c)); }
 
-        if (Show(SlotGroup.각성기))
+        // 칸 맞춤 (SlotGrid): 각성 | 초각 | QWER / ASDF | 아덴, closing up what 표시 turned off with 빈 칸 줄이기.
+        bool Present(SlotId id) => id switch
         {
-            double ch = Math.Round(bh * ChangedShare);
-            l.Boxes.Add((ChangedKey, new Rect(x, gridTop, bw, ch), Parse(Settings.Overlay.AwakeningChangedColor)));
-            Add(SlotId.각성기, new Rect(x, gridTop + ch + Gap, bw, colH - ch - Gap), Col(SlotGroup.각성기));
-            x += bw + Gap;
-        }
-        if (Show(SlotGroup.초각스))
+            SlotId.각성기 => Show(SlotGroup.각성기),
+            SlotId.초각스 => Show(SlotGroup.초각스),
+            SlotId.아덴1 or SlotId.아덴2 => Show(SlotGroup.아덴스킬) && s.AdenSlots.Contains(id),
+            _ => Show(SlotGroup.일반스킬),
+        };
+        Color SlotColor(SlotId id) => id switch
         {
-            Add(SlotId.초각스, new Rect(x, gridTop, bw, colH), Col(SlotGroup.초각스));
-            x += bw + Gap;
-        }
-        if (Show(SlotGroup.일반스킬))
-        {
-            for (int i = 0; i < 8; i++)
-                Add(SlotId.일반1 + i, new Rect(x + i % 4 * (bw + Gap), gridTop + i / 4 * (bh + Gap), bw, bh), SkillCol(SlotId.일반1 + i));
-            x += 4 * (bw + Gap);
-        }
-        var aden = new[] { SlotId.아덴1, SlotId.아덴2 }.Where(p.Snapshot.AdenSlots.Contains).ToList();
-        if (Show(SlotGroup.아덴스킬) && aden.Count > 0)
-        {
-            double h = Math.Round((colH - (aden.Count - 1) * Gap) / aden.Count);
-            for (int i = 0; i < aden.Count; i++)
-                Add(aden[i], new Rect(x, gridTop + i * (h + Gap), bw, i == aden.Count - 1 ? colH - i * (h + Gap) : h), Col(SlotGroup.아덴스킬));
-            x += bw + Gap;
-        }
-
-        bool anyColumn = x > x0;
+            SlotId.각성기 => Col(SlotGroup.각성기),
+            SlotId.초각스 => Col(SlotGroup.초각스),
+            SlotId.아덴1 or SlotId.아덴2 => Col(SlotGroup.아덴스킬),
+            _ => SkillCol(id),
+        };
+        var placed = SlotGrid.Arrange(SlotArrangement.Of(a.SlotOrder), Present, hidden, a.CloseGaps, bw, bh, Gap);
+        bool anyColumn = placed.Width > 0;
         if (!anyColumn && gaugeH == 0 && buffs.Count == 0) return null;
-        // Upright bars alone (the buffs' own window, 세로) take no grid width; flat ones get a grid's width.
-        double right = anyColumn ? x - Gap : side && gaugeH == 0 ? plateX - Pad : x0 + 4 * bw;
-        if (gaugeH > 0) l.Gauge = new Rect(x0, top + Pad, right - x0, gaugeH);
-        double bottom = anyColumn ? gridTop + Math.Max(colH, leadH) : top + Pad + gaugeH;
-        Color BuffColor(BuffKind k) => Parse(Settings.Buffs.Of(k).Color);
-        if (side)
+
+        // 합쳐서: the dock order and 방향 (slot-layout.plan.md §3); the buffs' own window: its bars alone, 세로 or 가로.
+        IReadOnlyList<DockSpot> order = BuffsOnly ? [new DockSpot(DockGroup.Buffs, Settings.Buffs.Side ? DockSide.Left : DockSide.Bottom)] : DockOrder.Of(a.DockOrder);
+        bool Here(DockGroup g) => g == DockGroup.Gauge ? gaugeH > 0 : buffs.Count > 0;
+        double flatBuffsH = BuffsOnly
+            ? BuffStack.Arrange(buffs, false, 1, 1, Gap, k => barH * Thick(k)).Height
+            : BarRows.Arrange(BarArrangement.Of(a.BarOrder), buffs.Contains, a.CloseGaps, 100, Gap, k => barH * Thick(k), Long).Select(b => b.Cell.Bottom).DefaultIfEmpty(0).Max();
+        double Depth(DockGroup g, bool upright, double length) => g == DockGroup.Gauge ? gaugeH
+            : upright ? BuffStack.Arrange(buffs, true, length, shared, Gap, SideW).Width : flatBuffsH;
+        // Without boxes, flat groups still get a grid's width; upright ones alone take none.
+        double skillW = anyColumn ? placed.Width : order.Any(o => Here(o.Group) && !o.Upright) ? 4 * bw : 0;
+        var d = DockLayout.Arrange(order, skillW, anyColumn ? Math.Max(colH, leadH) : 0, Here, Depth, colH, Gap);
+        double x0 = ox + d.Skills.X, gridTop = oy + d.Skills.Y;
+        Rect At(Cell c) => new(ox + c.X, oy + c.Y, c.W, c.H);
+        l.GridTop = gridTop;
+        l.Anchor = new Point(x0, gridTop);
+
+        foreach (var (id, c, off) in placed.Boxes)
         {
-            // Upright, as tall as the gauge and grid (at least a grid's height, when nothing else is shown), 공증 nearest
-            // the plate (buff_example2: 뎀증 초각 아덴 공증).
-            double tall = Math.Max(bottom - top - Pad, colH);
-            bottom = top + Pad + tall;
-            l.BarFull = tall;
-            double bx = plateX;
-            foreach (var k in buffs)   // a shorter bar stands on the bottom edge
+            var r = new Rect(x0 + c.X, gridTop + c.Y, c.W, c.H);
+            if (id == SlotId.각성기)   // 변화 on top, drawn even while 각성기 keeps an empty spot
             {
-                double w = SideW(k), h = Math.Max(2, Math.Round(tall * Long(k)));
-                bx -= w + Gap;
-                l.Boxes.Add(((int)(FreeLayout.FirstBuff + (int)k), new Rect(bx, top + Pad + tall - h, w, h), BuffColor(k)));
+                double ch = Math.Round(bh * ChangedShare);
+                l.Boxes.Add((ChangedKey, new Rect(r.X, r.Y, r.Width, ch), Parse(Settings.Overlay.AwakeningChangedColor)));
+                r = new Rect(r.X, r.Y + ch + Gap, r.Width, Math.Max(0, r.Height - ch - Gap));
             }
+            if (!off) l.Boxes.Add(((int)id, r, SlotColor(id)));
         }
-        else
-        {
-            // The buff bars under the grid, two to a row, each at most half its width (from the left); in the buffs' own
-            // window (가로) one to a row, top to bottom. A row is as tall as its thicker bar. Closing up like the columns.
-            int perRow = BuffsOnly ? 1 : 2;
-            double full = (right - x0 - (perRow - 1) * Gap) / perRow, barH = FreeLayout.BuffHeight * bh / Box, y = bottom + Gap;
-            l.BarFull = full;
-            for (int i = 0; i < buffs.Count; i += perRow)
-            {
-                var row = buffs.Skip(i).Take(perRow).ToList();
-                double rowH = row.Max(k => Math.Max(2, Math.Round(barH * Thick(k))));
-                for (int j = 0; j < row.Count; j++)
-                    l.Boxes.Add(((int)(FreeLayout.FirstBuff + (int)row[j]), new Rect(x0 + j * (full + Gap), y,
-                        Math.Max(2, Math.Round(full * Long(row[j]))), Math.Max(2, Math.Round(barH * Thick(row[j])))), BuffColor(row[j])));
-                y += rowH + Gap;
-            }
-            bottom = y - Gap;
-        }
-        l.Plate = new Rect(plateX, top, right + Pad - plateX, bottom + Pad - top);
-        if (GaugeApart && homeH > 0) l.GaugeHome = new Rect(x0, top + Pad - homeH - Gap, right - x0, homeH);
+        if (d.Groups.TryGetValue(DockGroup.Gauge, out var gauge)) (l.Gauge, l.GaugeUpright) = (At(gauge.Cell), gauge.Upright);
+        if (d.Groups.TryGetValue(DockGroup.Buffs, out var bars)) LayoutBuffs(l, At(bars.Cell), bars.Upright, buffs, a, barH, shared, Thick, SideW);
+        l.Plate = new Rect(Bleed, top, lead + d.Width + 2 * Pad, d.Height + 2 * Pad);
+        l.Docked = new Rect(ox, oy, d.Width, d.Height);
+        if (anyColumn) l.Groups[DockGroup.Skills] = At(d.Skills);
+        foreach (var (g, c) in d.Groups) l.Groups[g] = At(c.Cell);
+        if (GaugeApart && homeH > 0) l.GaugeHome = new Rect(x0, gridTop - homeH - Gap, d.Skills.W, homeH);
         return l;
+    }
+
+    /// <summary>The buff bars in their docked cell <paramref name="r"/>. Upright: side by side, the first bar nearest the grid,
+    /// a shorter bar standing on the bottom edge (BuffStack). Flat: rows under one another (BarRows: 공증 낙인 / 아덴 초각 / 뎀증,
+    /// sharing a row's width with 빈 칸 줄이기, else two to a row, each half wide); in the buffs' own window one to a row.</summary>
+    void LayoutBuffs(PlayerLayout l, Rect r, bool upright, IReadOnlyList<BuffKind> buffs, Appearance a, double barH, double shared,
+        Func<BuffKind, double> thick, Func<BuffKind, double> sideW)
+    {
+        l.BuffsUpright = upright;
+        Color BuffColor(BuffKind k) => Parse(Settings.Buffs.Of(k).Color);
+        void Add(BuffKind k, Rect at) => l.Boxes.Add(((int)(FreeLayout.FirstBuff + (int)k), at, BuffColor(k)));
+        if (upright)
+        {
+            l.BarFull = r.Height;
+            // BuffStack puts the first bar rightmost: nearest the grid when docked left; mirrored on the right.
+            bool mirror = r.X > l.Anchor.X;
+            foreach (var (k, c) in BuffStack.Arrange(buffs, true, r.Height, shared, Gap, sideW).Bars)
+                Add(k, new Rect(mirror ? r.Right - c.X - c.W : r.X + c.X, r.Y + c.Y, c.W, c.H));
+            return;
+        }
+        if (BuffsOnly)
+        {
+            l.BarFull = r.Width;
+            foreach (var (k, c) in BuffStack.Arrange(buffs, false, r.Width, shared, Gap, k => barH * thick(k)).Bars)
+                Add(k, new Rect(r.X, r.Y + c.Y, c.W, c.H));
+            return;
+        }
+        l.BarFull = (r.Width - Gap) / 2;
+        foreach (var (k, c, spot) in BarRows.Arrange(BarArrangement.Of(a.BarOrder), buffs.Contains, a.CloseGaps, r.Width, Gap, k => barH * thick(k), _ => shared))
+        {
+            Add(k, new Rect(r.X + c.X, r.Y + c.Y, c.W, c.H));
+            l.BarFulls[k] = spot;
+        }
     }
 
     /// <summary>The part drawn at <paramref name="at"/> (this element's coordinates) and its rectangle, or null.</summary>
@@ -244,7 +261,7 @@ public sealed partial class OverlayRenderer
         Cell ToCell(Rect r) => new((r.X - l.CellOrigin.X) / sx, (r.Y - l.CellOrigin.Y) / sy, r.Width / sx, r.Height / sy);
         foreach (var (k, r, _) in l.Boxes)
             cells[(Part)k] = (Part)k >= FreeLayout.FirstBuff && Settings.Buffs.Of((BuffKind)(k - (int)FreeLayout.FirstBuff)) is var bar
-                ? BarSizes.Unsized(ToCell(r), BarSizes.Length(bar), BarSizes.Thickness(bar), Settings.Buffs.Upright(Settings.Apart))   // drawn at 길이 × 두께
+                ? BarSizes.Unsized(ToCell(r), BarSizes.Length(bar), BarSizes.Thickness(bar), l.BuffsUpright)   // drawn at 길이 × 두께
                 : ToCell(r);
         if (l.Gauge is { } g) cells[Part.게이지] = ToCell(g);
         return cells;

@@ -12,7 +12,11 @@ public sealed partial class OverlayRenderer
     public bool GaugeOnly { get; set; }
 
     /// <summary>The gauge bar stands upright and fills from the bottom: only in its own window, and only when set.</summary>
-    bool GaugeUpright => GaugeOnly && Settings.Gauge.Upright;
+    bool GaugeUpright => GaugeOnly ? Settings.Gauge.Upright : _layout?.GaugeUpright ?? false;
+    /// <summary>The buff bars stand (세로) as laid out: the 따로 window's 세로, or the plate's 방향 as docked.</summary>
+    public bool BuffsUpright => _layout?.BuffsUpright ?? false;
+    /// <summary>The fixed grid's docked area and each group's rectangle (DockLayout), for group drags; null otherwise.</summary>
+    public (Rect Area, IReadOnlyDictionary<DockGroup, Rect> Groups)? Docking => _layout is { Docked: { } a } l ? (a, l.Groups) : null;
 
     /// <summary>Your skill window with the gauge taken out of it (따로): <see cref="LayoutPlayer"/> leaves the strip out.</summary>
     bool GaugeApart => Peer < 0 && !BuffsOnly && !GaugeOnly && Settings.Apart;

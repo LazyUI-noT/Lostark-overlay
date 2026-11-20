@@ -25,8 +25,9 @@ public static class Protocol
     /// size and free layout (파티원 크기 받기, 파티원 배치 받기). 9: the Hello ends with the joiner's app version (major,
     /// minor, patch), and the host refuses another major.minor (<see cref="Membership.AppRefusal"/>). 10: the Hello adds the
     /// joiner's device key and its signature (<see cref="DeviceIdentity"/>), and Pending says the host is deciding. 11: a 공대
-    /// of 8 in two parties (the Roster adds each member's party) and Meter (the DPS 미터기's 1 Hz figures).</summary>
-    public const byte Version = 11;
+    /// of 8 in two parties (the Roster adds each member's party) and Meter (the DPS 미터기's 1 Hz figures). 12: the Look ends
+    /// with 빈 칸 줄이기 and the 칸 맞춤 arrangements (a version 11 Look still reads, as the default order).</summary>
+    public const byte Version = 12;
     const int Estimated = 0x80, Stacked = 0x40, Gold = 0x20, StackSkill = 0x10, PhaseBits = 0x0F;
     const int MaxName = 16;
 
@@ -252,6 +253,10 @@ public static class Protocol
             foreach (double v in new[] { c.X, c.Y }) w.Write(Quarter(v));
             foreach (double v in new[] { c.W, c.H }) w.Write(Math.Max((short)1, Quarter(v)));
         }
+        w.Write(look.CloseGaps);
+        w.Write(SlotArrangement.Parse(look.SlotOrder) is null ? "" : look.SlotOrder!);
+        w.Write(BarArrangement.Parse(look.BarOrder) is null ? "" : look.BarOrder!);
+        w.Write(DockOrder.Parse(look.DockOrder) is null ? "" : look.DockOrder!);
     });
 
     /// <summary>A received cell's farthest spot or largest size, DIP at size 1.0: well past any layout made by dragging,
@@ -279,7 +284,8 @@ public static class Protocol
             if (width is < ClassProfiles.MinScale or > ClassProfiles.MaxScale || height is < ClassProfiles.MinScale or > ClassProfiles.MaxScale)
                 throw new FormatException();
             int m = b.ReadByte();
-            if (body.Length != 10 + n * 4 + 5 + m * 9) throw new FormatException();
+            int fixedLength = 10 + n * 4 + 5 + m * 9;
+            if (body.Length < fixedLength) throw new FormatException();
             var cells = new Dictionary<Part, Cell>();
             for (int i = 0; i < m; i++)
             {
@@ -289,6 +295,20 @@ public static class Protocol
                     || Math.Abs(c.X) > MaxCell || Math.Abs(c.Y) > MaxCell || c.W > MaxCell || c.H > MaxCell) throw new FormatException();
             }
             read = new Look(colours, width, height, m == 0 ? null : cells);
+            if (body.Length == fixedLength) return;   // protocol 11: default order, gaps closed
+            byte closeGaps = b.ReadByte();
+            if (closeGaps > 1) throw new FormatException();
+            string slots = b.ReadString(), bars = b.ReadString();
+            // Before docking (early 0.26 builds) the look ended here: the default dock.
+            string dock = b.BaseStream.Position == body.Length ? "" : b.ReadString();
+            if (b.BaseStream.Position != body.Length) throw new FormatException();
+            read = read with
+            {
+                CloseGaps = closeGaps == 1,
+                SlotOrder = SlotArrangement.Parse(slots) is null ? null : slots,
+                BarOrder = BarArrangement.Parse(bars) is null ? null : bars,
+                DockOrder = DockOrder.Parse(dock) is null ? null : dock,
+            };
         });
         (origin, version, look) = ok ? (head.o, head.v, read!) : (0, (byte)0, new Look(new Dictionary<SlotGroup, string>()));
         return ok;

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GaugeOverlay.Core.Data;
 using GaugeOverlay.Core.Domain;
 
@@ -49,6 +50,68 @@ public class BuffPerProfileTests
 
         Assert.Equal((false, 70.0, true, "#654321", 0.5), Buffs(s));
         Assert.Equal(100, s.Overlay.Left);   // the skill window's spot is still the class's
+    }
+
+    [Fact]
+    public void The_buff_windows_free_cells_are_shared_by_every_class_in_a_profile_as_copies()
+    {
+        // slot-layout.plan.md §5: the 따로 window's 자유 배치 is part of 버프 막대, one per profile.
+        var s = Playing(Lone);
+        s.Overlay.Left = 100;
+        s.Buffs.Layout = new() { [FreeLayout.FirstBuff] = new Cell(0, 0, 40, 6) };
+        Go(s, Combat);
+        s.Overlay.Left = 500;
+
+        Assert.Equal(new Cell(0, 0, 40, 6), s.Buffs.Layout![FreeLayout.FirstBuff]);
+        s.Buffs.Layout[FreeLayout.FirstBuff] = new Cell(5, 5, 40, 6);
+        Go(s, Lone);
+
+        Assert.Equal(new Cell(5, 5, 40, 6), s.Buffs.Layout![FreeLayout.FirstBuff]);
+    }
+
+    [Fact]
+    public void The_buff_windows_free_cells_are_drawn_in_free_placement_only_and_kept_under_slot_fit()
+    {
+        var s = Playing(Lone);
+        s.Buffs.Layout = new() { [FreeLayout.FirstBuff] = new Cell(0, 0, 40, 6) };
+
+        s.Overlay.FreePlacement = true;
+        Assert.Same(s.Buffs.Layout, ClassProfiles.BuffCells(s));
+        s.Overlay.FreePlacement = false;
+        Assert.Null(ClassProfiles.BuffCells(s));
+        Assert.NotNull(s.Buffs.Layout);   // 칸 맞춤 keeps them for switching back
+    }
+
+    [Fact]
+    public void The_buff_windows_free_cells_survive_a_save_and_none_stay_none()
+    {
+        static Settings Reload(Settings s) => SettingsStore.Normalize(JsonSerializer.Deserialize<Settings>(JsonSerializer.SerializeToUtf8Bytes(s, SettingsStore.Json), SettingsStore.Json)!);
+        var s = Playing(Lone);
+        s.Overlay.Left = 100;   // Lone becomes its own entry, so the cells also travel through ProfileEntry
+        s.Buffs.Layout = new() { [FreeLayout.FirstBuff] = new Cell(5, 5, 40, 6) };
+        Go(s, Combat);
+
+        var back = Reload(s);
+        Go(back, Lone);
+        Assert.Equal(new Cell(5, 5, 40, 6), back.Buffs.Layout![FreeLayout.FirstBuff]);
+
+        back.Buffs.Layout = null;
+        Go(back, Combat);
+        var again = Reload(back);
+        Go(again, Lone);
+        Assert.Null(again.Buffs.Layout);
+    }
+
+    [Fact]
+    public void A_full_reset_clears_the_free_cells_and_keeps_the_window_spot()
+    {
+        var s = Playing(Lone);
+        (s.Buffs.Left, s.Buffs.Layout) = (40, new() { [FreeLayout.FirstBuff] = new Cell(0, 0, 40, 6) });
+
+        SettingsResets.All(s);
+
+        Assert.Null(s.Buffs.Layout);
+        Assert.Equal(40, s.Buffs.Left);
     }
 
     [Fact]

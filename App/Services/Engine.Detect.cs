@@ -104,7 +104,7 @@ public sealed partial class Engine
         var slots = SlotInfo.All.Select(s => Geometry.Slot(s, _vp, fit, config.AdenRects)).ToList();
         int left = slots.Min(r => r.X), top = slots.Min(r => r.Y);
         areas["skill"] = new PixelRect(left, top, slots.Max(r => r.X + r.Width) - left, slots.Max(r => r.Y + r.Height) - top);
-        areas["buff"] = Geometry.BuffArea(_vp, fit, config.DebuffSize, config.BuffCount);
+        areas["buff"] = Geometry.BuffArea(_vp, fit, config.DebuffSize, BuffRow(config, fit).Count);
         areas[DetectPlace.DebuffRow] = Geometry.DebuffArea(_vp, fit, config.DebuffSize);   // no map box: 위치 조정 moves it, the table reads it
         areas["boss"] = Geometry.BossTextRow(_vp, fit);
         areas["amsu"] = Geometry.BossDebuffStrip(_vp, fit, config.BossSize);
@@ -168,11 +168,11 @@ public sealed partial class Engine
             if (_detect.GetValueOrDefault(id)?.Mark != d.Mark && d.Mark != DetectMark.Waiting)
                 System.Diagnostics.Trace.WriteLine($"[detect] {id} {(d.Mark == DetectMark.Concrete ? "✓" : "!")} at {t.TotalSeconds:0.0}s{(d.Why is { } why ? $": {why}" : "")}");
         _detect = next;
-        var areasKey = (_vp, _fit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config), config.AdenRects);   // AdenRects: a class switch to 발키리 moves Z/C
+        var areasKey = (_vp, _fit, config.DebuffSize, BuffRow(config, _fit).Count, config.BossSize, ShownPanel(config), config.AdenRects);   // AdenRects: a class switch to 발키리 moves Z/C
         if (areasKey.Equals(_areasKey)) return changed;
         (_areasKey, _detectAreas) = (areasKey, Areas(config));   // only when the layout moves
         _detectGrid = _fit is not { } gridFit ? ImmutableDictionary<string, IReadOnlyList<GridLine>>.Empty
-            : _detectAreas.Keys.ToImmutableDictionary(id => id, id => ReadingGrid.Of(id, _vp, gridFit, config.DebuffSize, config.BuffCount, config.BossSize, ShownPanel(config), config.AdenRects));
+            : _detectAreas.Keys.ToImmutableDictionary(id => id, id => ReadingGrid.Of(id, _vp, gridFit, config.DebuffSize, BuffRow(config, gridFit).Count, config.BossSize, ShownPanel(config), config.AdenRects));
         return true;
     }
 }

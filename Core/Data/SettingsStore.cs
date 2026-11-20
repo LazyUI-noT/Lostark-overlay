@@ -147,7 +147,9 @@ public sealed class SettingsStore(string path)
         s.Raids.Normalize(s.Debuffs);
         s.Meter ??= new();
         s.Meter.Normalize();
-        foreach (var p in s.Profiles) p.Fill(s);   // after 암수, 단심 and the meter are repaired: an older file's profiles take them
+        foreach (var p in s.Profiles) p.Fill(s);
+        if (!s.DemColorMoved) s.Buffs.MoveDemColor(s.Profiles.SelectMany(p => p.Entries()).Select(e => e.BuffLook));   // after the fill: every entry has a look
+        s.DemColorMoved = true;   // after 암수, 단심 and the meter are repaired: an older file's profiles take them
         s.UnshareLooks();   // an older file's 모든 위치 프로필에 적용 marks: their value into every profile, none shared now
         s.MigrateClasses();   // a 0.22 file: its 직업각인 spots become class entries, its 게이지 bars every profile's (after the fill and marks: entries clone them)
         s.BossBook ??= [];
@@ -178,10 +180,34 @@ public sealed class SettingsStore(string path)
     static void FiveProfiles(Settings s)
     {
         if (s.Profiles.Count > OverlayProfile.Count) s.Profiles.RemoveRange(OverlayProfile.Count, s.Profiles.Count - OverlayProfile.Count);
-        while (s.Profiles.Count < OverlayProfile.Count) s.Profiles.Add(new());
+        while (s.Profiles.Count < OverlayProfile.Count) s.Profiles.Add(new() { ShotSlot = s.Profiles.Count });
         s.ActiveProfile = Math.Clamp(s.ActiveProfile, 0, OverlayProfile.Count - 1);
-        foreach (var p in s.Profiles)   // a hand-edited area would throw where the editor lays the picture out
-            if (p.Shot is { } a && !ScreenShots.SizeOk(a.Width, a.Height)) p.Shot = null;
+        ImageSlots(s);
+    }
+
+    /// <summary>Upgrades a file from before the image slots once (profile N's area → slot N, shown by profile N), then repairs:
+    /// an area a hand edit would make throw where the editor lays the picture out, a pick outside 1–5, a picture file as
+    /// 배경화면.</summary>
+    static void ImageSlots(Settings s)
+    {
+        var areas = new PixelRect?[OverlayProfile.Count];
+        Array.Copy(s.SlotAreas ?? [], areas, Math.Min(s.SlotAreas?.Length ?? 0, areas.Length));
+        for (int i = 0; i < areas.Length; i++)
+            if (areas[i] is { } a && !ScreenShots.SizeOk(a.Width, a.Height)) areas[i] = null;
+        if (!s.SlotsMigrated)
+            for (int i = 0; i < s.Profiles.Count; i++)
+            {
+                if (s.Profiles[i].Shot is { } a && ScreenShots.SizeOk(a.Width, a.Height)) areas[i] = a;
+                s.Profiles[i].ShotSlot = i;
+            }
+        foreach (var p in s.Profiles)
+        {
+            p.Shot = null;
+            p.ShotSlot = Math.Clamp(p.ShotSlot, 0, OverlayProfile.Count - 1);
+        }
+        s.SlotAreas = areas;
+        s.SlotsMigrated = true;
+        if (s.PreviewBack is { } back && !(back.StartsWith('#') && HexColor.TryParse(back, out _))) s.PreviewBack = null;
     }
 
     /// <summary>Writes the settings atomically. A crash at any point leaves settings.json or .bak loadable. A transient

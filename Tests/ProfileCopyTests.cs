@@ -99,11 +99,11 @@ public class ProfileCopyTests
         var s = Playing(Lone);
         s.Overlay.Opacity = 0.3;
         s.GaugeBars[LoneBar] = new() { Splits = [0.25] };
-        s.Profiles[1].Shot = new PixelRect(1, 2, 3, 4);
+        s.Profiles[1].ShotSlot = 3;
 
         Assert.NotNull(s.Copy(new(CopyMode.WholeProfile, 0, null, 1, null, new HashSet<LookGroup>(), false)));
 
-        Assert.Equal(new PixelRect(1, 2, 3, 4), s.Profiles[1].Shot);
+        Assert.Equal(0, s.Profiles[1].ShotSlot);   // the whole profile, picture pick included
         Assert.Equal(0.3, s.Profiles[1].Classes![Lone].Opacity);
         Assert.Equal([0.25], s.Profiles[1].GaugeBars![LoneBar].Splits);
     }

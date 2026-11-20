@@ -8,6 +8,7 @@ public static class BarSizes
     public const double MinDebuff = 0.5, MaxDebuff = 3;
 
     public static double Length(BuffIndicator bar) => Math.Clamp(bar.Length, MinLength, MaxLength);
+    public static double Shared(BuffSettings buffs) => double.IsNaN(buffs.SharedLength) ? MaxLength : Math.Clamp(buffs.SharedLength, MinLength, MaxLength);
     public static double Thickness(BuffIndicator bar) => Math.Clamp(bar.Thickness, MinThickness, MaxThickness);
 
     /// <summary>A free layout's bar: its cell with 길이 along the longer side and 두께 across it. A flat bar keeps its left

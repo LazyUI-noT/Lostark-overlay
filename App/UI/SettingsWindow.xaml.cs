@@ -164,6 +164,7 @@ public partial class SettingsWindow : Window
     {
         KeepCopy();
         _canvas?.Relayout();
+        RefreshPlacement();
         PreviewChanged();
         RefreshRowMarks();
         RecordChange();
@@ -566,8 +567,8 @@ public partial class SettingsWindow : Window
             "게임은 한 줄에 버프 표시만큼만 그리고 나머지는 '+숫자' 아이콘으로 접습니다 (버프 크기 120%에서 최대 12칸, 100%에서 14칸, 80%에서 17칸이며, 칸 수는 게임 설정의 버프 표시입니다). 그보다 많이 읽어도 더 찾지 못합니다."),
             s => s.Buffs.Count, (s, v) => s.Buffs.Count = v));
         p.Children.Add(ApartRow());
-        foreach (var e in ApartOnly(Defaulted(HelpRow("세로", "막대를 세워 옆으로 나란히 둡니다. 끄면 눕혀서 위아래로 쌓습니다.", Check("세로 (남은 초 없음)", b.Side, v => b.Side = v, Changed)),
-            s => s.Buffs.Side, (s, v) => s.Buffs.Side = v), "합쳐서에서는 눕혀서 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
+        p.Children.Add(DirectionRow(DockGroup.Buffs, "세로는 막대를 세워 옆으로 나란히 두고, 남은 초는 표시하지 않습니다. 가로는 눕혀서 위아래로 쌓습니다.",
+            s => s.Buffs.Side, (s, v) => s.Buffs.Side = v));
         p.Children.Add(Defaulted(Row("움직임", Check("유지시간 비례 감소", b.Drain, v => b.Drain = v, Changed, "끄면 버프가 있는 동안 막대가 가득 찬 채로 있습니다.")), s => s.Buffs.Drain, (s, v) => s.Buffs.Drain = v));
         p.Children.Add(Defaulted(Row("비었을 때", Check("끊긴 버프 막대 숨김", b.HideWhenEmpty, v => b.HideWhenEmpty = v, Changed,
             "버프가 없는 동안 그 막대를 숨깁니다. 다른 막대는 움직이지 않습니다. 편집 모드와 미리보기에서는 옮길 수 있게 흐리게 보입니다.")), s => s.Buffs.HideWhenEmpty, (s, v) => s.Buffs.HideWhenEmpty = v));
@@ -657,6 +658,7 @@ public partial class SettingsWindow : Window
         }
         p.Children.Add(Clearable("직업각인 다시 읽기", nameof(h.DetectSubclass), () => h.DetectSubclass, v => h.DetectSubclass = v));
         p.Children.Add(Clearable("아이콘 다시 읽기", nameof(h.RereadIcons), () => h.RereadIcons, v => h.RereadIcons = v));
+        p.Children.Add(Clearable("즉시 화면 캡처", nameof(h.CaptureNow), () => h.CaptureNow, v => h.CaptureNow = v));
         p.Children.Add(HelpRow("테스트 모드 (맨 앞 창)", "로스트아크 대신 맨 앞 창(게임 영상 등)을 읽어 오버레이를 테스트합니다. 다시 누르면 꺼집니다. 트레이 → 테스트 모드에서 창을 고를 수도 있습니다. 테스트 모드에서 맞춘 스킬창은 저장되지 않습니다.", Key(nameof(h.TestMode), () => h.TestMode, v => h.TestMode = v)));
         // 오버레이 프로필 1–5 (위치, 크기, 판 색; set up in the 레이아웃 편집기): unset by default, so each can be cleared again.
         (Func<string>, Action<string>)[] profiles = [(() => h.Profile1, v => h.Profile1 = v), (() => h.Profile2, v => h.Profile2 = v),

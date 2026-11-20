@@ -13,6 +13,8 @@ public sealed class SettingsHistory(int capacity = 100, long maxChars = Settings
 
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
+    public int UndoCount => _undo.Count;
+    public int RedoCount => _redo.Count;
 
     /// <summary>No steps either way: what they would restore has gone ([Test] on or off).</summary>
     public void Clear()

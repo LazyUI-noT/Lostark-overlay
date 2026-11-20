@@ -27,6 +27,11 @@ public sealed partial class Settings
         ManualHud = Fits.TryGetValue(Vision.Geometry.ViewportKey(area), out var fit) ? NearestHud(fit.Hud) : 100;
     }
 
+    /// <summary>The HUD the icon counts use: the fit the reads use now (<paramref name="readHud"/>), else the typed 직접 입력 HUD, else the
+    /// measured fit of the game area <paramref name="areaKey"/>, else 100.</summary>
+    public double HudFor(double? readHud, string? areaKey) =>
+        readHud ?? ManualHud ?? (areaKey is not null && Fits.TryGetValue(areaKey, out var fit) ? fit.Hud : 100);
+
     /// <summary>값 직접 조정 on or off; off snaps the sizes set by 1% to the nearest preset.</summary>
     public void SetFineSizes(bool on)
     {

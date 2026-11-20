@@ -11,39 +11,27 @@ namespace GaugeOverlay.App.UI;
 /// 맞추기 opens 화면·인식 so a refit isn't started by accident).</summary>
 public partial class SettingsWindow
 {
-    readonly Border _screenBox = new()
-    {
-        HorizontalAlignment = HorizontalAlignment.Left, Padding = new(Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap), CornerRadius = new(Tokens.Radius.Card), BorderThickness = new(1),
-    };
+    readonly WrapPanel _screenBox = new();   // 해상도 … 타겟 UI 버프 크기, filled by FillScreenBox
 
-    /// <summary>The canvas with the box over its top left corner. The Fluent themes leave the nav brush unset, so an
-    /// opaque Fluent base sits under it: the map art never shows through the box (user, 2026-11-10).</summary>
-    Grid WithScreenBox(UIElement canvas)
+    /// <summary>One thin row along the canvas top, outside its zoom (preview-images.plan.md 1): 인게임 설정's facts, then the
+    /// raid-only switches. It sits above the canvas, so presses and the wheel on it never reach the canvas; it wraps only when
+    /// 설정 is narrow. The pinned 되돌리기 / 다시 실행 sit at the canvas's bottom right.</summary>
+    DockPanel WithScreenBox(OverlayCanvas canvas)
     {
         FillScreenBox();
         FillAutoBox();
-        var boxes = new StackPanel
-        {
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new(Tokens.Space.Block),
-            Children = { Solid(_screenBox), Solid(_autoBox) },
-        };
-        return new Grid { Children = { canvas, boxes } };
-    }
-
-    /// <summary>A box over an opaque Fluent base, so the map art never shows through it.</summary>
-    static Border Solid(Border box)
-    {
-        box.Margin = default;
-        box.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
-        box.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
-        var solid = new Border { CornerRadius = box.CornerRadius, Child = box, Margin = new(0, 0, 0, Tokens.Space.Gap) };
-        solid.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
-        return solid;
+        var row = new Border { BorderThickness = new(0, 0, 0, 1), Padding = new(Tokens.Space.Block, Tokens.Space.Tight, Tokens.Space.Block, Tokens.Space.Tight), Child = new WrapPanel { Children = { _screenBox, _autoBox } } };
+        row.SetResourceReference(Border.BackgroundProperty, NavBrushKey);
+        row.SetResourceReference(Border.BorderBrushProperty, StrokeBrushKey);
+        DockPanel.SetDock(row, Dock.Top);
+        var bar = UndoBar(canvas);
+        (bar.HorizontalAlignment, bar.VerticalAlignment, bar.Margin) = (HorizontalAlignment.Right, VerticalAlignment.Bottom, new(Tokens.Space.Block));
+        return new DockPanel { Children = { row, new Grid { Children = { canvas, bar } } } };
     }
 
     /// <summary>The 자동 box under it (user, 2026-11-15): every raid-only switch in one place, the same values as the 버프,
     /// 게이지 and 스킬 panels.</summary>
-    readonly Border _autoBox = new() { HorizontalAlignment = HorizontalAlignment.Left, Padding = new(Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap, Tokens.Space.Gap), CornerRadius = new(Tokens.Radius.Card), BorderThickness = new(1) };
+    readonly Border _autoBox = new() { Margin = new(Tokens.Space.Block, 0, 0, 0) };
 
     // The 전투자원 창 only while 편집 중 is a class with one (user, 2026-11-18); refilled on a pick (RefreshPick).
     void FillAutoBox()
@@ -76,19 +64,13 @@ public partial class SettingsWindow
             ("HUD 크기", new StackPanel { Orientation = Orientation.Horizontal, Children = { Label(facts.Hud), refit } }),
             ("타겟 UI 버프 크기 (보스)", BossSizeCombo()),
         };
-        var grid = new Grid { ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = GridLength.Auto } } };
-        for (int i = 0; i < rows.Length; i++)
+        _screenBox.Children.Clear();
+        foreach (var (name, value) in rows)
         {
-            grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-            var name = Label(rows[i].Name, 0.7);
-            (name.Margin, name.VerticalAlignment, rows[i].Value.VerticalAlignment) = (new(0, 2, 12, 2), VerticalAlignment.Center, VerticalAlignment.Center);
-            Grid.SetRow(name, i);
-            Grid.SetRow(rows[i].Value, i);
-            Grid.SetColumn(rows[i].Value, 1);
-            grid.Children.Add(name);
-            grid.Children.Add(rows[i].Value);
+            var label = Label(name, 0.7);
+            (label.Margin, label.VerticalAlignment, value.VerticalAlignment) = (new(0, 0, Tokens.Space.Tight, 0), VerticalAlignment.Center, VerticalAlignment.Center);
+            _screenBox.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, Tokens.Space.Block, 0), Children = { label, value } });
         }
-        _screenBox.Child = grid;
     }
 
     static TextBlock AutoBoxLabel()

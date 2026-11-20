@@ -21,7 +21,7 @@ public class ProfileEntryTests
     {
         var names = typeof(ProfileEntry).GetProperties().Select(p => p.Name).ToList();
 
-        Assert.DoesNotContain(nameof(OverlayProfile.Shot), names);
+        Assert.DoesNotContain(nameof(OverlayProfile.ShotSlot), names);
         Assert.DoesNotContain(nameof(OverlayProfile.SubclassPlaces), names);
         Assert.DoesNotContain(nameof(OverlayProfile.PartySlots), names);
         Assert.DoesNotContain(names, n => n.StartsWith("Party") || n.StartsWith("BoundParty"));

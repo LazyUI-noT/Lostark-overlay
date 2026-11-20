@@ -16,13 +16,16 @@ public static partial class FeatureMap
     [
         new("", "", ["즐겨찾기"]),
         new("", "", ["기능 맵"]),
-        new("게임 설정", Game, ["인게임 설정", "화면 인식 설정", "내 오버레이"]),   // 화면·인식's two sections are tabs (rail-split.plan.md, user 2026-11-17)
-        new("전투 오버레이", Skill, ["직업 인식", "스킬창", "아덴 게이지", "버프 줄", "단심", "암수"]),
+        new("게임 설정", Game, ["인게임 설정", "화면 인식 설정"]),   // 화면·인식's two sections are tabs (rail-split.plan.md, user 2026-11-17)
+        new("전투 오버레이", Skill, ["직업 인식", "내 오버레이", "스킬창", "아덴 게이지", "버프 줄", "단심", "암수"]),   // 내 오버레이 is the canvas of these five windows (preview-images.plan.md 1, user 2026-11-20)
         new("레이드", Raid, ["레이드", "DPS 미터기"]),   // DPS 미터기 beside 레이드 (user, 2026-11-10)
         new("전투기록", Record, ["타임라인", "원정대"]),
         new("파티", Party, ["파티 공유"]),
         new("앱", "", ["키·단축키", "시스템 성능", "로아 API", "경고", "테마·업데이트"]),   // 시스템 성능: user, 2026-11-11
     ];
+
+    /// <summary>Rail areas drawn indented: the windows 내 오버레이 shows on its canvas.</summary>
+    public static IReadOnlySet<string> RailIndented { get; } = new HashSet<string> { "스킬창", "아덴 게이지", "버프 줄", "단심", "암수" };
 
     /// <summary>A rail tab's second line, smaller and dimmer under its name.</summary>
     public static IReadOnlyDictionary<string, string> RailSubtitles { get; } = new Dictionary<string, string>

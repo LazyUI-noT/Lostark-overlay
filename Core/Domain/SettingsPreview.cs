@@ -23,6 +23,11 @@ public static class SettingsPreview
         _ => [],
     };
 
+    /// <summary>다른 오버레이 표시 (preview-images.plan.md §3): the profile's other windows shown now (표시 on, as the canvas draws
+    /// them, so not the 미터기), drawn dimmed beside the page's own.</summary>
+    public static IReadOnlyList<OverlayPart> Others(IReadOnlyCollection<OverlayPart> page, Func<OverlayPart, bool> isOn) =>
+        [.. Enum.GetValues<OverlayPart>().Where(p => p != OverlayPart.Meter && !page.Contains(p) && isOn(p))];
+
     /// <summary>True when the page is wide enough for the form, a gap and the preview side by side (NaN and negative: false).</summary>
     public static bool Beside(double pageWidth) => pageWidth >= FormWidth + Gap + PreviewWidth;
 

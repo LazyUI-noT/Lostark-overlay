@@ -350,6 +350,119 @@ public class ClassProfilesTests
         Assert.Equal((1.0, 1.0), (a.Width, a.Height));
     }
 
+    // ── 칸 맞춤 arrangements (slot-layout.plan.md §2) ───────────────────────────────
+
+    const string JoinedSlots = "s0,1|r2,3,4,5/6,7,8,9|s10,11";   // 각성기 and 초각스 in one stack
+
+    [Fact]
+    public void Your_boxes_carry_your_arrangements_and_close_gaps()
+    {
+        var s = new Settings { Overlay = { CloseGaps = false, SlotOrder = JoinedSlots, BarOrder = "0,1,2,3,4", DockOrder = "bba,glv" } };
+
+        var a = ClassProfiles.Mine(s);
+
+        Assert.False(a.CloseGaps);
+        Assert.Equal(JoinedSlots, a.SlotOrder);
+        Assert.Equal("0,1,2,3,4", a.BarOrder);
+        Assert.Equal("bba,glv", a.DockOrder);
+    }
+
+    [Fact]
+    public void A_members_arrangement_and_close_gaps_are_theirs_while_receiving_layouts()
+    {
+        var s = new Settings { Party = { ReceiveLayout = true } };
+        var look = new Look(new Dictionary<SlotGroup, string>(), CloseGaps: false, SlotOrder: JoinedSlots, BarOrder: "0,1,2,3,4", DockOrder: "bba,glv");
+
+        var a = ClassProfiles.Member(s, Bard, Role.서포터, look);
+
+        Assert.False(a.CloseGaps);
+        Assert.Equal(JoinedSlots, a.SlotOrder);
+        Assert.Equal("0,1,2,3,4", a.BarOrder);
+        Assert.Equal("bba,glv", a.DockOrder);
+    }
+
+    [Fact]
+    public void Without_receiving_layouts_a_member_takes_your_close_gaps_and_the_default_order()
+    {
+        var s = new Settings { Overlay = { CloseGaps = false, SlotOrder = JoinedSlots } };
+        var look = new Look(new Dictionary<SlotGroup, string>(), CloseGaps: true, SlotOrder: JoinedSlots, DockOrder: "bba,glv");
+
+        var a = ClassProfiles.Member(s, Bard, Role.서포터, look);
+
+        Assert.False(a.CloseGaps);
+        Assert.Null(a.SlotOrder);
+        Assert.Null(a.BarOrder);
+        Assert.Null(a.DockOrder);
+    }
+
+    [Fact]
+    public void Receiving_layouts_before_a_member_sends_a_look_keeps_your_close_gaps_and_the_default_order()
+    {
+        var s = new Settings { Overlay = { CloseGaps = false }, Party = { ReceiveLayout = true } };
+
+        var a = ClassProfiles.Member(s, Bard, Role.서포터, null);
+
+        Assert.False(a.CloseGaps);
+        Assert.Null(a.SlotOrder);
+    }
+
+    [Fact]
+    public void Box_looks_carry_the_arrangements_from_one_profile_to_another()
+    {
+        var from = new OverlaySettings { CloseGaps = false, SlotOrder = JoinedSlots, BarOrder = "0,1,2,3,4", DockOrder = "bba,glv", FreePlacement = true };
+        var to = new OverlaySettings();
+
+        BoxLooks.Of(from).To(to);
+
+        Assert.Equal((false, JoinedSlots, "0,1,2,3,4", "bba,glv", (bool?)true), (to.CloseGaps, to.SlotOrder, to.BarOrder, to.DockOrder, to.FreePlacement));
+    }
+
+    // ── 배치: 칸 맞춤 / 자유 배치 (slot-layout.plan.md §5) ─────────────────────────────
+
+    [Fact]
+    public void An_old_saved_layout_starts_in_free_placement_and_nothing_moves()
+    {
+        var s = WithCharacter();
+        ClassProfiles.Edit(s, Warlord).Mine.Layout = new() { [Part.일반1] = new(0, 0, 10, 10) };
+
+        Assert.True(ClassProfiles.IsFree(s));
+        Assert.NotNull(ClassProfiles.Mine(s).Layout);
+    }
+
+    [Fact]
+    public void Without_a_saved_layout_the_default_is_slot_fit()
+    {
+        var s = WithCharacter();
+
+        Assert.False(ClassProfiles.IsFree(s));
+        Assert.Null(ClassProfiles.Mine(s).Layout);
+    }
+
+    [Fact]
+    public void Slot_fit_keeps_the_free_cells_for_switching_back()
+    {
+        var s = WithCharacter();
+        var cells = ClassProfiles.Edit(s, Warlord).Mine.Layout = new() { [Part.일반1] = new(0, 0, 10, 10) };
+
+        s.Overlay.FreePlacement = false;
+        Assert.False(ClassProfiles.IsFree(s));
+        Assert.Null(ClassProfiles.Mine(s).Layout);
+        Assert.Same(cells, ClassProfiles.Of(s, Warlord).Mine.Layout);
+
+        s.Overlay.FreePlacement = true;
+        Assert.Same(cells, ClassProfiles.Mine(s).Layout);
+    }
+
+    [Fact]
+    public void Free_placement_without_cells_yet_draws_the_slots_until_a_box_moves()
+    {
+        var s = WithCharacter();
+        s.Overlay.FreePlacement = true;
+
+        Assert.True(ClassProfiles.IsFree(s));
+        Assert.Null(ClassProfiles.Mine(s).Layout);
+    }
+
     // ── copying, the gold frame ─────────────────────────────────────────────────────
 
     [Fact]

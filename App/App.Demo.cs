@@ -112,6 +112,13 @@ public partial class App
             mine.Layout = cells;
             mine.HideOnCooldown.Add(SlotGroup.일반스킬);
         }
+        // 빈 칸 줄이기 screenshots (slot-layout.plan.md §1): --hide=일반1,일반7 turns those boxes' 표시 off, --hide-buff=공증 a bar's,
+        // --close-gaps=off the switch.
+        foreach (var id in (Flag("hide") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (Enum.TryParse(id, out SlotId slot)) ClassProfiles.Edit(settings, ClassProfiles.Template).Mine.HiddenSlots.Add(slot);
+        foreach (var id in (Flag("hide-buff") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (Enum.TryParse(id, out BuffKind kind)) settings.Buffs.Edit(kind).Visible = false;
+        if (Flag("close-gaps") == "off") settings.Overlay.CloseGaps = false;
         settings.Characters["워로드 · 고독한기사"] = new CharacterSettings
         {
             ClassFamily = "워리어", Class = "워로드", Subclass = "고독한기사",
@@ -218,7 +225,12 @@ public partial class App
         if (args.Contains("--resources")) _settingsWindow.DemoResources();
         if (args.Contains("--map-hover-test")) _settingsWindow.DemoHoverTest();
         if (Flag("tab") is { } tab) _settingsWindow.ShowTab(tab);
-        if (args.Contains("--hide-off")) _settingsWindow.DemoHideOff();   // 내 오버레이's 꺼진 창 off
+        if (args.Contains("--preview-others") || args.Contains("--preview-move") || Flag("preview-zoom") is not null)   // the page preview's switches, for shot.ps1
+            _settingsWindow.DemoPreview(args.Contains("--preview-others"),
+                double.TryParse(Flag("preview-zoom"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var zoom) ? zoom : null,
+                args.Contains("--preview-move"));
+        if (args.Contains("--hide-off")) _settingsWindow.DemoHideOff();
+        if (Flag("arrange") is { } arrange) Dispatcher.BeginInvoke(() => _settingsWindow.DemoArrange(arrange), DispatcherPriority.ApplicationIdle);   // 내 오버레이: a block held mid-drag (or dropped)   // 내 오버레이's 꺼진 창 off
         if (Flag("record-view") is { } view) _settingsWindow.DemoOpenRecord(view == "compare", view == "run");   // with --records: open | compare | run (a fight joined from its files)
         if (Version.TryParse(Flag("update-to"), out var offered))   // the update button as with that release found
             _settingsWindow.SetUpdate(new Release(offered, $"v{offered}", "", ""));

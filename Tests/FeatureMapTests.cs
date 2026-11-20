@@ -17,7 +17,7 @@ public class FeatureMapTests
 
     [Fact]
     public void The_battle_overlay_group_holds_the_five_parts_in_order() =>
-        Assert.Equal(["직업 인식", "스킬창", "아덴 게이지", "버프 줄", "단심", "암수"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
+        Assert.Equal(["직업 인식", "내 오버레이", "스킬창", "아덴 게이지", "버프 줄", "단심", "암수"], FeatureMap.Rail[Group("전투 오버레이")].Areas);
 
     [Fact]
     public void The_raid_group_holds_the_meter_between_the_overlay_and_the_records()
@@ -93,7 +93,7 @@ public class FeatureMapTests
 
     [Fact]
     public void The_screens_tab_leaves_the_rail_and_the_game_group_keeps_the_rest() =>
-        Assert.Equal(["인게임 설정", "화면 인식 설정", "내 오버레이"], FeatureMap.Rail[Group("게임 설정")].Areas);
+        Assert.Equal(["인게임 설정", "화면 인식 설정"], FeatureMap.Rail[Group("게임 설정")].Areas);
 
     [Fact]
     public void Rail_seen_rows_move_to_the_new_names_once_and_keep_other_keys()

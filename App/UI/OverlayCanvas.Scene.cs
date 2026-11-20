@@ -25,7 +25,7 @@ public sealed partial class OverlayCanvas
     /// <summary>Zooms the scene to the box round every window shown, plus <see cref="SceneMargin"/> (EditorView.Around).</summary>
     void FitScene(IReadOnlyCollection<OverlayRenderer> all)
     {
-        var shown = all.Where(r => r.Visibility == Visibility.Visible && r.DesiredSize.Width > 0).ToList();
+        var shown = all.Where(r => r.Visibility == Visibility.Visible && r.DesiredSize.Width > 0 && !Dimmed(r)).ToList();
         // A page's preview fits round the windows that are on: 레이드's 줄 수 창 (top) and an off 디버프 창 (bottom) zoomed out to specks.
         if (Only is not null && IsOn is { } isOn && shown.Where(r => WindowOn(r) || r == _mine && isOn(OverlayPart.Gauge)).ToList() is { Count: > 0 } on)
             shown = on;
@@ -85,18 +85,24 @@ public sealed partial class OverlayCanvas
 
     void OnSceneDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton != MouseButton.Left) return;
-        if (ClickPlays && e.OriginalSource is not OverlayRenderer)   // the backdrop: every window moves on, even one drawing nothing now (암수)
+        if (e.ChangedButton != MouseButton.Left || PreviewDown(e)) return;   // at actual size: played on release, unless dragged
+        e.Handled = SceneClick(e.OriginalSource, e.GetPosition(this));
+    }
+
+    /// <summary>A click on <paramref name="source"/> at <paramref name="at"/> (this canvas's px); true when it was used.</summary>
+    bool SceneClick(object source, Point at)
+    {
+        if (ClickPlays && source is not OverlayRenderer)   // the backdrop: every window moves on, even one drawing nothing now (암수)
         {
             Focus();
             StepAll();
-            e.Handled = true;
-            return;
+            return true;
         }
-        if (e.OriginalSource is not OverlayRenderer r) return;
-        if (ClickPlays) { Focus(); PlayClick(r, e.GetPosition(r)); }
-        else ScenePicked?.Invoke(ScenePart(r, e.GetPosition(r)));
-        e.Handled = true;
+        if (source is not OverlayRenderer r) return false;
+        var inR = TranslatePoint(at, r);
+        if (ClickPlays) { Focus(); PlayClick(r, inR); }
+        else ScenePicked?.Invoke(ScenePart(r, inR));
+        return true;
     }
 
     /// <summary>A box (skill, buff, gauge) acts as if used: ready starts its cooldown, cooling jumps to its end. A looping
@@ -139,6 +145,8 @@ public sealed partial class OverlayCanvas
 
     void OnSceneMove(object sender, MouseEventArgs e)
     {
+        PreviewMove(e);
+        if (_dragging) return;
         var r = e.OriginalSource as OverlayRenderer;
         Cursor = ClickPlays ? (r is null || PlaysOnClick(r) ? Cursors.Hand : null) : r is null ? null : Cursors.Hand;
         SceneHover?.Invoke(r is null ? null : ScenePart(r, e.GetPosition(r)));
@@ -148,7 +156,7 @@ public sealed partial class OverlayCanvas
     public IReadOnlyCollection<OverlayPart>? Only { get; set; }
 
     /// <summary>My window holds the skills, the gauge and the buff bars while they aren't detached (합쳐서 / 따로).</summary>
-    bool InScene(OverlayRenderer r) => Only is not { } only || (r == _mine
+    bool InScene(OverlayRenderer r, IReadOnlyCollection<OverlayPart>? only) => only is null || (r == _mine
         ? only.Contains(OverlayPart.Skills) || only.Contains(OverlayPart.Gauge) && !_s.Apart || only.Contains(OverlayPart.Buffs) && !_s.Buffs.Detached
         : r == _ring ? only.Contains(OverlayPart.Gauge) && !only.Contains(OverlayPart.Skills)   // the 아덴 게이지 page, not 스킬창's
         : only.Contains(WindowPart(r)));
@@ -156,7 +164,12 @@ public sealed partial class OverlayCanvas
     /// <summary>Every window shown (the buffs' own window only while detached), before they are measured.</summary>
     void SceneVisibility(IEnumerable<OverlayRenderer> all)
     {
-        foreach (var r in all) r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && (r != _gauge || _s.Apart) && (r != _ring || RingShown) && InScene(r));
+        foreach (var r in all)
+        {
+            r.Visibility = Shown((r != _buffs || _s.Buffs.Detached) && (r != _gauge || _s.Apart) && (r != _ring || RingShown)
+                && (InScene(r, Only) || Others is not null && InScene(r, Others)));
+            r.IsHitTestVisible = !Dimmed(r);   // 다른 오버레이 can't be picked or moved here
+        }
     }
 
     /// <summary>Whether the window is on in the real settings; mine is faint only when the skills and the gauge are both off.</summary>
@@ -176,7 +189,7 @@ public sealed partial class OverlayCanvas
         {
             var part = WindowPart(r);
             bool on = WindowOn(r);
-            r.Opacity = on ? 1 : FaintOpacity;
+            r.Opacity = !on ? FaintOpacity : Dimmed(r) ? OthersOpacity : 1;
             if (r.Visibility != Visibility.Visible) continue;
             var (l, t, size) = (Canvas.GetLeft(r), Canvas.GetTop(r), r.DesiredSize);
             double perView = 1 / (_v?.Scale ?? 1);   // view px to screen px at this zoom

@@ -40,13 +40,14 @@ public static class JudgmentTracker
     /// gone ends nothing: the clock does, or 심판 (which replaces it in the row).</summary>
     static JudgmentState Conviction(JudgmentState prev, JudgmentRead read, TimeSpan now)
     {
-        double? timer = read.Conviction && PointLost(read.ConvictionSeconds) is { } sec and >= 0 and <= 3 ? sec : null;
-        var s = prev with { ConvictionSeen = read.Conviction, ConvictionTimer = timer };
-        // Only while 심판 is ready: a 단죄 read beside a running 심판 would restart its 3 s every poll (review, 2026-11-10).
-        if (!read.Conviction || prev.Phase(now) != JudgmentPhase.Ready) return s with { ConvictionPending = null };
         var length = JudgmentState.ConvictionDuration;
         TimeSpan? end = prev.ConvictionAt is { } c && (prev.ConvictionSeen || prev.ConvictionLeft(now) is not null)
             && c + length >= now - Second ? c + length : null;
+        double? timer = read.Conviction ? PointLost(read.ConvictionSeconds, (end - now)?.TotalSeconds, prev.ConvictionTimer) : null;
+        // ConvictionTimer keeps the raw read: PointLost tells a lost-point countdown (0.4, 3, 2) from a held whole 2 by it.
+        var s = prev with { ConvictionSeen = read.Conviction, ConvictionTimer = read.Conviction ? read.ConvictionSeconds : null };
+        // Only while 심판 is ready: a 단죄 read beside a running 심판 would restart its 3 s every poll (review, 2026-11-10).
+        if (!read.Conviction || prev.Phase(now) != JudgmentPhase.Ready) return s with { ConvictionPending = null };
         if (timer is not { } shown) return end is null ? Convicted(s, now + length) : s with { ConvictionPending = null };
         // Still on screen is still running: at least a poll left, so a held end already past doesn't end it (review).
         var lo = now + TimeSpan.FromSeconds(Math.Max(shown, StillOn));
@@ -66,10 +67,32 @@ public static class JudgmentTracker
     static readonly TimeSpan Second = TimeSpan.FromSeconds(1);
     static readonly TimeSpan TenthsSlack = TimeSpan.FromSeconds(0.2);
     const double StillOn = 0.05;
+    const double PollSlack = 0.05;   // a lost-point read may sit this far above the held end (a poll's rounding)
 
-    /// <summary>A whole read 4–9 can't be 단죄's (3 s at most): it is tenths whose "0." the reader lost, as BuffTracker's.</summary>
-    static double? PointLost(double? shown) =>
-        shown is { } v && v > JudgmentState.ConvictionDuration.TotalSeconds && v < 10 && v == Math.Floor(v) ? v / 10 : shown;
+    /// <summary>단죄's read (0–3 s) given <paramref name="left"/>, the held end's seconds (null: none). A whole read 4–9 can't be
+    /// 단죄's: it is tenths whose "0." the reader lost only past the held end, matching it, under it in its last second (a
+    /// countdown only goes down), or one under the last raw read (9 → 8); elsewhere it is a misread (단심 error.mp4: a 2 over a
+    /// bright floor read as 9 and 7, which pulled the end down to 0.9) and is dropped. With nothing held it is dropped too, so
+    /// the sighting starts the whole window (단심error2.mp4: a first 9 started it at 0.9, and each "1" after pushed it back up).
+    /// A whole 1–3 that continues a countdown (<paramref name="before"/>, the last raw read, was tenths or one more: 0.4, 3, 2)
+    /// past the held end or up to two tenths under it as tenths is one too (0.3 read as 3, 0.1 as 1 a poll after the end): it
+    /// only pulls the end down. Otherwise it stays whole: a retrigger's 2, held on the next polls (review).</summary>
+    static double? PointLost(double? shown, double? left, double? before)
+    {
+        if (shown is not { } v || v < 0) return null;
+        if (v < 1 || v != Math.Floor(v)) return v <= JudgmentState.ConvictionDuration.TotalSeconds ? v : null;
+        double tenths = v / 10;
+        if (v <= JudgmentState.ConvictionDuration.TotalSeconds)
+            return Countdown(v, before) && left is { } held && (held <= 0 || tenths <= held + PollSlack) && held - tenths <= TenthsSlack.TotalSeconds
+                ? tenths : v;
+        if (v >= 10 || left is not { } l) return null;
+        return l <= 0 || tenths <= l + PollSlack && (l < 1 || l - tenths <= Agree || before == v + 1) ? tenths : null;
+    }
+
+    /// <summary>A whole <paramref name="v"/> (1–3) after <paramref name="before"/> continues a lost-point countdown: after tenths,
+    /// after a larger whole (a slow poll skips a step: 3, then 1), or a 1 again (a retrigger shows 2, never 1). A 2 or 3 again
+    /// may be a retrigger held on screen.</summary>
+    static bool Countdown(double v, double? before) => before < 1 || before > v || v == 1 && before == 1;
 
     /// <summary>A buff timer dates its start (user, 2026-10-13): "N초" is N to N+1 seconds left (the game rounds down), and the
     /// moment it ticks down from N+1 exactly N+1; a tenths reading is taken as it is. A start that disagrees with it (a missed

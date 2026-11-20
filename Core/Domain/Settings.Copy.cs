@@ -116,7 +116,6 @@ public sealed partial class Settings
         else if (u.ClassKey is null)
         {
             var restored = Read<OverlayProfile>(u.Before)!;
-            restored.Shot = p.Shot;
             Profiles[u.Profile] = p = restored;
         }
         else

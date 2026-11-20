@@ -23,7 +23,11 @@ public partial class SettingsWindow
         var p = Refill(_secApart, "창 구성");
         p.Children.Add(SwitchBadge());
         p.Children.Add(ApartRow());
+        var o = Target.Overlay;   // 편집 중's 스킬칸 look (BoxLooks), one per profile
+        p.Children.Add(Check("빈 칸 줄이기", o.CloseGaps, v => o.CloseGaps = v, Changed, CloseGapsHelp));
     }
+
+    const string CloseGapsHelp = "표시를 끈 칸 자리를 옆 칸이 채우고, 줄이나 열이 다 비면 창을 줄입니다. 버프 막대도 같습니다.";
 
     /// <summary>The switch row, the same on every panel that shows it.</summary>
     UIElement ApartRow() => Defaulted(HelpRow("합쳐서 / 따로", ApartHelp,
@@ -42,15 +46,28 @@ public partial class SettingsWindow
         RefreshInspector();
     }
 
-    /// <summary>A row that only means something under 따로: greyed with <paramref name="why"/> under it on 합쳐서, in the row's
-    /// own card row (one CardStack child, so no divider between them; <see cref="UiBuild.Why"/>, not a between-cards note);
-    /// its value is kept.</summary>
-    UIElement[] ApartOnly(UIElement row, string why) =>
-        _s.Apart ? [row] : [new StackPanel { Children = { Greyed(row), Why(why, true) } }];
+    const string DockDirectionHelp = "자동은 스킬 칸 위나 아래에 붙으면 가로로, 옆에 붙으면 세로로 그립니다. 붙는 쪽은 편집 모드에서 끌어서 바꿉니다.";
 
-    static UIElement Greyed(UIElement row)
+    /// <summary>방향, the same row on the 게이지 and 버프 panels (slot-layout.plan.md §3). 합쳐서: 자동/가로/세로 in the dock
+    /// order (<see cref="DockOrder"/>). 따로: 가로/세로 on the group's own window (<paramref name="get"/>/<paramref name="set"/>).</summary>
+    UIElement DirectionRow(DockGroup group, string apartHelp, Func<Settings, bool> get, Action<Settings, bool> set, Settings? on = null)
     {
-        row.IsEnabled = false;
-        return row;
+        if (_s.Apart)
+        {
+            var combo = EnumCombo([(Direction.Flat, "가로"), (Direction.Upright, "세로")],
+                get(on ?? _s) ? Direction.Upright : Direction.Flat, v => { set(on ?? _s, v == Direction.Upright); Changed(); });
+            if (group == DockGroup.Buffs && ClassProfiles.BuffCells(_s) is not null)
+            {
+                // 자유 배치 with moved bars draws them where they were put; 방향 waits for 칸 맞춤 (the cells are kept).
+                (combo.IsEnabled, combo.ToolTip) = (false, "자유 배치에서 막대를 옮기면 옮긴 자리대로 그립니다. 방향은 칸 맞춤으로 바꾸면 다시 적용됩니다.");
+                ToolTipService.SetShowOnDisabled(combo, true);
+            }
+            return Defaulted(HelpRow("방향", apartHelp, combo), get, set, on);
+        }
+        Direction Of(Settings s) => DockOrder.DirectionOf(DockOrder.Of(s.Overlay.DockOrder), group);
+        void Put(Settings s, Direction v) => s.Overlay.DockOrder = DockOrder.Format(DockOrder.WithDirection(DockOrder.Of(s.Overlay.DockOrder), group, v));
+        string help = group == DockGroup.Gauge ? DockDirectionHelp + " 게이지는 스킬 칸 위나 아래에 붙으면 세로를 골라도 가로로 그립니다." : DockDirectionHelp;
+        return Defaulted(HelpRow("방향", help, EnumCombo([(Direction.Auto, "자동"), (Direction.Flat, "가로"), (Direction.Upright, "세로")],
+            Of(_s), v => { Put(_s, v); Changed(); })), Of, Put);
     }
 }

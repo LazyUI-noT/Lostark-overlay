@@ -101,7 +101,7 @@ public sealed class AmsuSimulationTests
     {
         var data = new TheoryData<int, int>();
         foreach (int size in new[] { 120, 110, 100, 90, 80 })
-            for (int ahead = 0; ahead < Geometry.MaxIcons(size); ahead++) data.Add(size, ahead);
+            for (int ahead = 0; ahead < Geometry.MaxIcons(size, Hud.Hud); ahead++) data.Add(size, ahead);
         return data;
     }
 

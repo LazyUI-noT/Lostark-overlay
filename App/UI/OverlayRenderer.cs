@@ -287,8 +287,9 @@ public sealed partial class OverlayRenderer : FrameworkElement
 
     /// <summary>The buff bars to draw: yours only, while the buff row is read, the ones whose 표시 is on; on the plate,
     /// or in the buffs' own window (<see cref="BuffsOnly"/>) with 버프 막대 따로 두기.</summary>
-    List<BuffKind> ShownBuffs(Snapshot s) => Peer >= 0 || s.Buffs.IsDefaultOrEmpty || Settings.Buffs.Detached != BuffsOnly ? []
-        : [.. BuffOrder.Shown.Where(k => ClassProfiles.BuffShown(Settings, k, Target?.Key))];
+    List<BuffKind> ShownBuffs(Snapshot s, IReadOnlyList<IReadOnlyList<BuffKind>>? arrangement = null) =>
+        Peer >= 0 || s.Buffs.IsDefaultOrEmpty || Settings.Buffs.Detached != BuffsOnly ? []
+        : [.. BuffStack.Order(arrangement ?? [BuffOrder.Shown], k => ClassProfiles.BuffShown(Settings, k, Target?.Key))];
 
     /// <summary>The point the window keeps still on screen when the layout changes (NaN when nothing is laid out): the
     /// top of the fixed grid, so a thicker gauge grows upwards, or where the free layout's cell (0, 0) is drawn, so
@@ -298,8 +299,8 @@ public sealed partial class OverlayRenderer : FrameworkElement
     /// <summary>True when drawn from a free layout; <see cref="Anchor"/> means a different point in each kind.</summary>
     public bool IsFree => _layout?.Free == true;
 
-    /// <summary>The fixed grid's buff bar drawn at 길이 1 (0: none drawn): what an end drag measures 길이 against.</summary>
-    public double BarFull => _layout?.BarFull ?? 0;
+    /// <summary>The fixed grid's buff bar <paramref name="kind"/> drawn at 길이 1 (0: none drawn): what an end drag measures 길이 against.</summary>
+    public double BarFullOf(BuffKind kind) => _layout is { } l ? l.BarFulls.GetValueOrDefault(kind, l.BarFull) : 0;
 
     /// <summary>The parts drawn now (the boxes a dragged one snaps to).</summary>
     public IEnumerable<Part> DrawnParts => _layout is not { } l || GaugeOnly ? []

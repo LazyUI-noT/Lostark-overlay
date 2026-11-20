@@ -326,9 +326,74 @@ public class JudgmentTrackerTests
     public void A_whole_read_past_3_is_tenths_that_lost_their_point(double shown, double at, double left) =>
         Assert.Equal(left, Run((0, Conv(2)), (at, Conv(shown))).ConvictionLeft(At(at))!.Value, 9);
 
+    /// <summary>단심 error.mp4 (HUD 100, buff 100%): over a bright floor the reader takes 단죄's "2초" for 9 or 7, two polls
+    /// in a row at times. Far from the held end that is a misread, not tenths whose "0." was lost: the end stays (it showed
+    /// 0.8 … 0.4, then 2 again).</summary>
+    [Theory]
+    [InlineData(9)]
+    [InlineData(7)]
+    public void A_whole_read_past_3_far_from_the_held_end_is_a_misread(double shown) =>
+        Assert.Equal(2.5, Run((0, Conv(2)), (0.4, Conv(shown)), (0.45, Conv(shown)), (0.5, Conv(shown))).ConvictionLeft(At(0.5))!.Value, 9);
+
     [Fact]
-    public void A_first_read_that_lost_its_point_starts_it_there() =>
-        Assert.Equal(0.7, Run((1, Conv(7))).ConvictionLeft(At(1))!.Value, 9);
+    public void A_whole_read_past_3_past_the_held_end_is_tenths() =>
+        Assert.Equal(0.9, Run((0, Conv(2)), (3.05, Conv(9))).ConvictionLeft(At(3.05))!.Value, 9);
+
+    /// <summary>The same clip, in the last second: "0.3초" read as 3. Matching the held end as tenths, it is one (as 심판's).</summary>
+    [Fact]
+    public void A_whole_read_matching_the_held_end_as_tenths_in_the_last_second_is_one() =>
+        Assert.Equal(0.3, Run((0, Conv(2)), (2.6, Conv(0.4)), (2.7, Conv(3))).ConvictionLeft(At(2.7))!.Value, 9);
+
+    [Fact]
+    public void The_same_whole_read_again_is_whole_and_waits_without_moving_the_end()
+    {
+        var s = Run((0, Conv(2)), (2.6, Conv(0.4)), (2.7, Conv(3)), (2.75, Conv(3)));
+        Assert.Equal((0.25, true), (Math.Round(s.ConvictionLeft(At(2.75))!.Value, 9), s.ConvictionPending is not null));
+    }
+
+    [Fact]
+    public void A_lost_point_countdown_stays_tenths() =>
+        Assert.Equal(0.2, Run((0, Conv(2)), (2.6, Conv(0.4)), (2.7, Conv(3)), (2.8, Conv(2))).ConvictionLeft(At(2.8))!.Value, 9);
+
+    // Review: a retrigger's 2 in the last half second, right after a tenths read, first looks like a lost-point 0.2; a 2 held
+    // on the next polls is whole, and restarts it.
+    [Fact]
+    public void A_retrigger_right_after_a_tenths_read_restarts_it() =>
+        Assert.True(Run((0, Conv(2)), (2.6, Conv(0.4)), (2.75, Conv(2)), (2.85, Conv(2)), (2.95, Conv(2))).ConvictionLeft(At(2.95)) > 2);
+
+    /// <summary>단심error2.mp4: a poll that misses the moment "2초" reads clearly sees 9 first over the bright floor. With nothing
+    /// held that is no 0.9 (it started 단죄 at 0.9, and each "1" after it pushed it back up: 0.8, 0.9, 0.8 …): the full window.</summary>
+    [Fact]
+    public void A_first_read_past_3_starts_the_whole_window_not_tenths() =>
+        Assert.Equal(3, Run((1, Conv(9))).ConvictionLeft(At(1))!.Value, 9);
+
+    [Fact]
+    public void A_misread_first_9_then_whole_1s_counts_down_without_rising()
+    {
+        var reads = new (double, JudgmentRead)[] { (0.1, Conv(9)), (0.25, Conv(9)), (0.4, Conv(9)), (0.55, Conv(1)), (0.7, Conv(1)), (0.85, Conv(1)) };
+        var s = JudgmentState.Ready;
+        double? last = null;
+        foreach (var (t, r) in reads)
+            for (int k = 0; k < 15; k++)
+            {
+                if (k == 0) s = JudgmentTracker.Update(s, r, At(t), hudVisible: true);
+                var label = s.LabelSeconds(At(t + k / 100.0));
+                Assert.False(label > last, $"rose to {label} at {t + k / 100.0}");
+                last = label ?? last;
+            }
+        Assert.Equal(1, s.LabelSeconds(At(0.85)));
+    }
+
+    /// <summary>A first sighting in 단죄's last second that lost its "0." starts the whole window, and the next read counting
+    /// down from it (9 → 8, which a held misread 2 never does) puts it right once a second one agrees, as any jump.</summary>
+    [Fact]
+    public void A_lost_point_countdown_after_a_first_read_puts_it_right() =>
+        Assert.Equal(0.7, Run((1, Conv(9)), (1.1, Conv(8)), (1.2, Conv(7))).ConvictionLeft(At(1.2))!.Value, 9);
+
+    /// <summary>단심error2.mp4: "0.1초" read as 1 a poll after the held end ran out is tenths, not a whole 1 (0 jumped to 0.9).</summary>
+    [Fact]
+    public void A_whole_1_just_past_the_held_end_is_tenths() =>
+        Assert.Equal(0, Run((0, Conv(2)), (2.9, Conv(0.1)), (3.05, Conv(1))).LabelSeconds(At(3.05)));
 
     [Fact]
     public void 단죄_still_seen_past_its_3_s_without_a_timer_doesnt_restart() =>

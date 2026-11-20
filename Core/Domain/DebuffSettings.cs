@@ -15,7 +15,7 @@ public sealed class DebuffSettings : IWindowPlace
     /// <summary>The game's 타겟 UI 버프 표시 (10–17); null = the size's most (<see cref="Vision.Geometry.Shown"/>).</summary>
     public int? BossShown { get; set; }
     /// <summary>The slots read: 감지 개수 within what the row shows.</summary>
-    public int ReadCount => Math.Min(BossCount, Vision.Geometry.Shown(BossIconSize, BossShown));
+    public int ReadCount(double hud) => Math.Min(BossCount, Vision.Geometry.Shown(BossIconSize, BossShown, hud));
     /// <summary>비었을 때 숨기기 (user, 2026-10-13): a box disappears while nothing is on it; the others keep their place.</summary>
     public bool HideWhenEmpty { get; set; }
     public double Left { get; set; } = double.NaN;

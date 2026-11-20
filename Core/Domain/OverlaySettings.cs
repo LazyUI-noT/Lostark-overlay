@@ -38,6 +38,26 @@ public sealed class OverlaySettings : IWindowPlace
 
     public string AwakeningChangedColor { get; set; } = "#FF4D4D";   // red, as in the game
 
+    /// <summary>빈 칸 줄이기 (slot-layout.plan.md §1): in 칸 맞춤 a box turned off in 표시 gives its spot to the others and an
+    /// empty row or column closes up (<see cref="SlotGrid"/>, <see cref="BarRows"/>); off, today's empty spots. Per profile
+    /// (<see cref="BoxLooks"/>).</summary>
+    public bool CloseGaps { get; set; } = true;
+
+    /// <summary>칸 맞춤's arrangements as text (<see cref="SlotArrangement"/>, <see cref="BarArrangement"/>), set by dragging
+    /// blocks; null = the default order. Per profile (<see cref="BoxLooks"/>).</summary>
+    public string? SlotOrder { get; set; }
+    public string? BarOrder { get; set; }
+
+    /// <summary>합쳐서's dock order and 방향 per group as text (<see cref="Domain.DockOrder"/>), set by dragging a group or
+    /// the 방향 row; null = the default (게이지 on top, 버프 under the skills). Per profile (<see cref="BoxLooks"/>).</summary>
+    public string? DockOrder { get; set; }
+
+    /// <summary>배치 (slot-layout.plan.md §5): true = 자유 배치 (each box where it was dragged, the class's saved cells), false =
+    /// 칸 맞춤 (the arrangements above; the saved cells are kept for switching back). Null, as set before the switch: 자유 배치
+    /// for a class with saved cells, so nothing moves on update (<see cref="ClassProfiles.IsFree(Settings, string?)"/>). Per
+    /// profile (<see cref="BoxLooks"/>).</summary>
+    public bool? FreePlacement { get; set; }
+
     /// <summary>While placing boxes: snap to the other boxes (Shift turns it off for a drag), and resize a set of boxes
     /// together (FreeLayout.Linked).</summary>
     public bool LayoutSnap { get; set; } = true;

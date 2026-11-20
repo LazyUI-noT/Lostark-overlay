@@ -17,6 +17,8 @@ public class ProfileEntry
     public WindowPlace Buffs { get; set; } = new();
     /// <summary>Only the bars set; the rest are 1 × 1.</summary>
     public Dictionary<BuffKind, BarSize> BuffBars { get; set; } = [];
+    /// <summary>The 따로 window's 자유 배치 cells (<see cref="BuffSettings.Layout"/>); null in an older file: none.</summary>
+    public Dictionary<Part, Cell>? BuffCells { get; set; }
 
     /// <summary>암수, 단심 (all their settings) and the meter's 버프 적용률 막대 투명도 (profile-looks.plan.md). Null in a file
     /// from before them: <c>SettingsStore.Normalize</c> fills today's.</summary>
@@ -55,7 +57,7 @@ public class ProfileEntry
     /// inside their look (<see cref="Settings.ApplyLookToAll"/> keeps it).</summary>
     internal static readonly IReadOnlyList<string> Places =
     [
-        nameof(Overlay), nameof(BuffsDetached), nameof(BuffsSide), nameof(Buffs), nameof(BuffBars),
+        nameof(Overlay), nameof(BuffsDetached), nameof(BuffsSide), nameof(Buffs), nameof(BuffBars), nameof(BuffCells),
         nameof(MeterPlace), nameof(DebuffPlace), nameof(RaidPlace), nameof(DebuffBoxes), nameof(GaugePlace), nameof(GaugeUpright),
     ];
 
@@ -80,6 +82,7 @@ public class ProfileEntry
         foreach (var look in Enum.GetValues<LookGroup>()) TakeLook(look, s);
         (BuffsDetached, BuffsSide, Buffs) = (s.Buffs.Detached, s.Buffs.Side, WindowPlace.Of(s.Buffs));
         BuffBars = s.Buffs.Indicators.ToDictionary(i => i.Key, i => new BarSize { Thickness = i.Value.Thickness, Length = i.Value.Length });
+        BuffCells = s.Buffs.Layout is { } cells ? new(cells) : null;
         (MeterPlace, DebuffPlace, RaidPlace) = (WindowPlace.Of(s.Meter), WindowPlace.Of(s.Debuffs), WindowPlace.Of(s.Raids));
         DebuffBoxes = CopyBoxes(s.Debuffs.Boxes);
         (GaugePlace, GaugeUpright) = (WindowPlace.Of(s.Gauge), s.Gauge.Upright);
@@ -102,6 +105,7 @@ public class ProfileEntry
         (BuffsDetached, BuffsSide, Buffs) = (from.BuffsDetached, from.BuffsSide, from.Buffs is { } place ? WindowPlace.Of(place) : new());
         BuffBars = (from.BuffBars ?? []).ToDictionary(b => b.Key, b => b.Value is { } size ? new BarSize { Thickness = size.Thickness, Length = size.Length } : new BarSize());
         BuffLook = from.BuffLook is { } look ? look with { Bars = new(look.Bars) } : null;
+        BuffCells = from.BuffCells is { } cells ? new(cells) : null;
     }
 
     /// <summary>The 줄 수 창 is one per profile (user, 2026-11-14): <paramref name="from"/>'s 켜기, 빛날 때만 표시, glow rules, 배경 색
@@ -144,6 +148,7 @@ public class ProfileEntry
         Overlay.To(s.Overlay);
         Buffs.To(s.Buffs);
         (s.Buffs.Detached, s.Buffs.Side) = (BuffsDetached, BuffsSide);
+        s.Buffs.Layout = BuffCells is { } cells ? new(cells) : null;
         foreach (var kind in Enum.GetValues<BuffKind>())
         {
             if (!BuffBars.ContainsKey(kind) && !s.Buffs.Indicators.ContainsKey(kind)) continue;   // stays default

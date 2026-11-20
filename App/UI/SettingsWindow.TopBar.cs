@@ -148,8 +148,9 @@ public partial class SettingsWindow
     {
         _inTestProfile = test;
         _history.Clear();
+        RefreshUndoBars();
         _lastCopy = null;
-        _lastChange = default;
+        Recorder.Separate();
         BuildAll();
         ShowProfileButtons();
         ResetBaseline();

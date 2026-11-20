@@ -11,7 +11,7 @@ public sealed partial class OverlayCanvas
 {
     const double NudgeStep = 1, BigNudgeStep = 10;
 
-    enum Drag { None, Pan, Move, Scale, Box, BoxSize, DebuffSize, BarLength }
+    enum Drag { None, Pan, Move, Scale, Box, BoxSize, DebuffSize, BarLength, Arrange }
     Drag _drag;
     bool _gestureRaised;   // GestureStarted already said for this drag
     Point _from;
@@ -48,6 +48,7 @@ public sealed partial class OverlayCanvas
 
     void OnDown(object sender, MouseButtonEventArgs e)
     {
+        if (_drag == Drag.Arrange) { CancelArrange(); return; }   // another button mid-drag: the drag is off
         Focus();
         ShowHover(null);   // the gold pick takes over; a drag would leave the dashed frame behind
         Note?.Invoke(null);   // a new click: any refusal is over
@@ -93,9 +94,10 @@ public sealed partial class OverlayCanvas
         else if (handle is null && BarEndAt(r, at) is { } bar)   // after the window's own handles, before the window move and the corner grip that would start a free layout
         {
             (_drag, _bar) = (Drag.BarLength, bar);
-            (_startLength, _barFull) = (BarSizes.Length(_s.Buffs.Of(bar.Kind)), r.BarFull);
+            (_startLength, _barFull) = (BarSizes.Shared(_s.Buffs), r.BarFullOf(bar.Kind));   // 칸 맞춤: one 길이 for every bar
         }
-        else if (r != _buffs && MovesBox(r) && r.PartAt(at) is var (part, rect))   // the buff window is the fixed grid; 내 스킬창 moves whole without 칸 따로
+        else if (handle is null && StartArrange(r, at)) _drag = Drag.Arrange;   // 칸 맞춤: a block or bar swaps with, or inserts beside, another
+        else if (MovesBox(r) && r.PartAt(at) is var (part, rect))   // 칸 맞춤: 내 스킬창 and the buff window move whole
         {
             _drag = InGrip(rect, at) ? Drag.BoxSize : Drag.Box;
             StartBoxDrag(r, part, _drag == Drag.BoxSize);
@@ -111,8 +113,8 @@ public sealed partial class OverlayCanvas
     void StartBoxDrag(OverlayRenderer r, Part part, bool resize)
     {
         _part = part;
-        var saved = Boxes(r).Layout;
-        _startCells = new(saved ?? r.CellsAsDrawn());
+        var saved = Cells(r);
+        _startCells = new(saved ?? (r == _buffs ? r.CellsAsDrawn().Where(c => c.Key >= FreeLayout.FirstBuff) : r.CellsAsDrawn()));   // the buff window keeps bars only
         if (saved is not null && !_startCells.ContainsKey(part))
             _startCells[part] = r.CellsAsDrawn()[part];   // a bar the layout predates (낙인): where FreeLayout.CellOf drew it
         var moving = resize && LinkSizes ? FreeLayout.Linked(part).Parts : [part];
@@ -143,6 +145,7 @@ public sealed partial class OverlayCanvas
         var now = e.GetPosition(_world);
         double dx = now.X - _from.X, dy = now.Y - _from.Y;
         if ((dx, dy) == (0, 0)) return;
+        if (_drag == Drag.Arrange) { UpdateArrange(r, e.GetPosition(r)); return; }   // its undo step is taken at the drop
         if (!_gestureRaised) { _gestureRaised = true; GestureStarted?.Invoke(); }
         switch (_drag)
         {
@@ -154,7 +157,7 @@ public sealed partial class OverlayCanvas
                 (sized.Width, sized.Height) = BarSizes.DebuffResized(_startBox, _startDrawn, dx, dy);
                 break;
             case Drag.BarLength:
-                _s.Buffs.Edit(_bar.Kind).Length = _bar.Upright ? BarSizes.LengthDragged(_startLength, _bar.Rect.Height, _barFull, -dy)
+                _s.Buffs.SharedLength = _bar.Upright ? BarSizes.LengthDragged(_startLength, _bar.Rect.Height, _barFull, -dy)
                     : BarSizes.LengthDragged(_startLength, _bar.Rect.Width, _barFull, dx);
                 break;
             case Drag.Scale:
@@ -183,13 +186,14 @@ public sealed partial class OverlayCanvas
             var (fx, fy) = BarSizes.DragFactors(cell, BarSizes.Length(bar), BarSizes.Thickness(bar));
             scale = (scale.X * fx, scale.Y * fy);
         }
-        Boxes(r).Layout = FreeLayout.Drag(_startCells, r.DrawnParts, _part, dx, dy, scale, resize, snap, link: LinkSizes);
+        SetCells(r, FreeLayout.Drag(_startCells, r.DrawnParts, _part, dx, dy, scale, resize, snap, link: LinkSizes));
         Relayout();
         KeepStill(r);
     }
 
     void OnUp()
     {
+        if (_drag == Drag.Arrange) FinishArrange();
         if (_drag == Drag.DebuffSize) Selected?.Invoke(new("Debuff", null, _debuffIndex));   // its sliders show the new size
         ReleaseMouseCapture();
     }
@@ -198,6 +202,7 @@ public sealed partial class OverlayCanvas
     /// instead: ← and ↑ grow it that way, → and ↓ shrink it (<see cref="ResizeByKey"/>); a one-size window as a whole.</summary>
     void OnKey(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _drag == Drag.Arrange) { CancelArrange(); e.Handled = true; return; }
         double step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? BigNudgeStep : NudgeStep;
         (double dx, double dy) = e.Key switch
         {
@@ -214,7 +219,7 @@ public sealed partial class OverlayCanvas
             Changed?.Invoke();
             return;
         }
-        if (_pickedDebuff is null && _picked?.Part is { } part && MovesBox(r) && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_pickedDebuff is null && _picked?.Part is { } part && BoxDraggable(r))
         {
             StartBoxDrag(r, part, resize: false);
             MoveBox(r, dx, dy, resize: false, snap: false);
@@ -242,7 +247,7 @@ public sealed partial class OverlayCanvas
             return;
         }
         if (r.Peer >= 0) return;   // a member's size is its class's
-        if (_picked?.Part is { } part && MovesBox(r) && r != _buffs && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r))
+        if (_picked?.Part is { } part && BoxDraggable(r))
         {
             var sized = LinkSizes ? FreeLayout.Linked(part).Parts : [part];   // linked sizes all grow
             var before = sized.Select(p => (p, OnCanvasRect(r, p))).ToList();
@@ -268,6 +273,11 @@ public sealed partial class OverlayCanvas
 
     /// <summary>The plate is drawn from its top-left box, so a box dragged above or left of the others would push them
     /// down or right; the window moves back by as much, as <see cref="OverlayWindow.Refresh"/> does with its anchor.</summary>
+    /// <summary>A drag, nudge or grip on <paramref name="r"/> works on one box (not the whole window): 내 칸 and the 따로 buff
+    /// window under 자유 배치 (<see cref="MovesBox"/>), never the one-size windows, a received layout or a preview.</summary>
+    bool BoxDraggable(OverlayRenderer r) =>
+        MovesBox(r) && r != _gauge && r != _judgment && r != _amsu && r != _raid && !r.ShowsReceivedLayout && !Previewing(r);
+
     void KeepStill(OverlayRenderer r)
     {
         if (_still is not { } p || OnCanvas(r, p) is not { } at) return;
@@ -285,13 +295,13 @@ public sealed partial class OverlayCanvas
     bool InGrip(Rect box, Point at) => GripSize(box) is var g && at.X >= box.Right - g && at.Y >= box.Bottom - g && box.Contains(at);
 
     /// <summary>The fixed-grid buff bar whose far end (a flat bar's right, an upright bar's top) is at <paramref name="at"/>:
-    /// dragging it sets the bar's 길이, which has no slider. Null in a free layout (its cell's corner sizes the bar), a member's
+    /// dragging it sets the shared 길이 of every bar (BuffSettings.SharedLength), which has no slider. Null in a free layout (its cell's corner sizes the bar), a member's
     /// window, or one drawn from another layout.</summary>
     (BuffKind Kind, Rect Rect, bool Upright)? BarEndAt(OverlayRenderer r, Point at)
     {
-        if (r.Peer >= 0 || r != _buffs && Boxes(r).Layout is not null || r.ShowsReceivedLayout || Previewing(r)) return null;
+        if (r.Peer >= 0 || Free || r.ShowsReceivedLayout || Previewing(r)) return null;
         if (r.PartAt(at) is not var (part, rect) || part < FreeLayout.FirstBuff) return null;
-        bool upright = _s.Buffs.Upright(_s.Apart);
+        bool upright = r.BuffsUpright;
         double g = Math.Min(Grip / (_v?.Scale ?? 1), (upright ? rect.Height : rect.Width) / 2);
         return (upright ? at.Y <= rect.Top + g : at.X >= rect.Right - g) ? ((BuffKind)(part - FreeLayout.FirstBuff), rect, upright) : null;
     }
@@ -299,7 +309,7 @@ public sealed partial class OverlayCanvas
     /// <summary>The pointer is on a box's corner grip that a drag would resize.</summary>
     bool OverGrip(MouseEventArgs e)
     {
-        if (Play.Running || e.OriginalSource is not OverlayRenderer r || r == _buffs || r == _gauge || r == _judgment || r == _amsu || r == _raid || r.ShowsReceivedLayout || Previewing(r) || !MovesBox(r)) return false;   // without 칸 하나씩 a drag there moves 내 스킬창
+        if (Play.Running || e.OriginalSource is not OverlayRenderer r || !BoxDraggable(r)) return false;   // in 칸 맞춤 a drag there moves 내 스킬창
         var at = e.GetPosition(r);
         if (r == _debuffs) return r.DebuffAt(at) is { } i && InGrip(r.DebuffRect(i), at);
         return r.PartAt(at) is var (_, rect) && InGrip(rect, at);

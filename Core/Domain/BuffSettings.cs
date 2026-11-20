@@ -20,7 +20,17 @@ public sealed class BuffSettings : IWindowPlace
     /// <summary>The game's 버프 표시 (10–17); null = the size's most (<see cref="Vision.Geometry.Shown"/>).</summary>
     public int? Shown { get; set; }
     /// <summary>The boxes read: <see cref="Count"/> within what the row shows.</summary>
-    public int ReadCount => Math.Min(Count, Vision.Geometry.Shown(Size, Shown));
+    public int ReadCount(double hud) => Math.Min(Count, Vision.Geometry.Shown(Size, Shown, hud));
+    /// <summary>The buff row's (<see cref="ReadCount"/>, shown) at a HUD, from a copy of the settings now: the engine calls it with its live fit.</summary>
+    public Func<double, (int Count, int Shown)> RowAt()
+    {
+        var (size, shown, count) = (Size, Shown, Count);
+        return hud =>
+        {
+            int row = Vision.Geometry.Shown(size, shown, hud);
+            return (Math.Min(count, row), row);
+        };
+    }
     /// <summary>세로: the bars stand upright side by side instead of lying flat one under another. In the fixed grid they stand
     /// left of the plate, outside it (flat: under the grid, two to a row); in their own window they fill it (flat: one to a
     /// row). A free layout keeps them where they were put.</summary>
@@ -29,6 +39,13 @@ public sealed class BuffSettings : IWindowPlace
     public bool Drain { get; set; } = true;
     /// <summary>비었을 때 숨기기 (user, 2026-10-13): a bar disappears while its buff isn't on; the others keep their place.</summary>
     public bool HideWhenEmpty { get; set; }
+    /// <summary>길이 in 칸 맞춤 (slot-layout.plan.md §4): one share (<see cref="BarSizes.MinLength"/>–1) of the length for every
+    /// bar, on the plate and in the 따로 window. Each bar's own <see cref="BuffIndicator.Length"/> is the 자유 배치 one; both are
+    /// kept, so switching brings each back.</summary>
+    public double SharedLength { get; set; } = 1;
+    /// <summary>The 따로 window's 자유 배치 (slot-layout.plan.md §5): each bar's cell, as <see cref="ClassProfile.Layout"/>; null
+    /// until a bar is moved. Drawn only while 배치 is 자유 배치 (<see cref="ClassProfiles.BuffCells"/>); 칸 맞춤 keeps it.</summary>
+    public Dictionary<Part, Cell>? Layout { get; set; }
     /// <summary>Only the indicators changed from <see cref="Default"/>; read through <see cref="Of"/>.</summary>
     public Dictionary<BuffKind, BuffIndicator> Indicators { get; set; } = [];
 
@@ -66,8 +83,20 @@ public sealed class BuffSettings : IWindowPlace
 
     static BuffIndicator Default(BuffKind kind) => new()
     {
-        Color = kind switch { BuffKind.공증 => "#E8262B", BuffKind.아덴피증 => "#FFE600", BuffKind.초각스피증 => "#1BA8E0", BuffKind.낙인 => "#E6E6E6", _ => "#A04FB0" },
+        Color = kind switch { BuffKind.공증 => "#E8262B", BuffKind.아덴피증 => "#FFE600", BuffKind.초각스피증 => "#1BA8E0", BuffKind.낙인 => "#E6E6E6", _ => DemColor },
     };
+
+    /// <summary>뎀증's default: lavender, apart from 암수's violet (user, 2026-11-20); <see cref="OldDemColor"/> before 0.26.</summary>
+    public const string DemColor = "#C8A8F0", OldDemColor = "#A04FB0";
+
+    /// <summary>A file from before 0.26: 뎀증 still on the old default turns lavender, here and in <paramref name="looks"/>
+    /// (each profile entry's); a colour the user picked stays.</summary>
+    public void MoveDemColor(IEnumerable<BuffLooks?> looks)
+    {
+        if (Indicators.GetValueOrDefault(BuffKind.뎀증) is { Color: OldDemColor } bar) bar.Color = DemColor;
+        foreach (var look in looks)
+            if (look?.Bars.GetValueOrDefault(BuffKind.뎀증) is { Color: OldDemColor } old) look.Bars[BuffKind.뎀증] = old with { Color = DemColor };
+    }
 }
 
 

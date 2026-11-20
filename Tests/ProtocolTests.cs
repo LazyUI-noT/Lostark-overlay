@@ -197,6 +197,120 @@ public class ProtocolTests
     }
 
     [Fact]
+    public void A_look_round_trips_its_arrangement_and_close_gaps()
+    {
+        var slots = SlotArrangement.Format(SlotDrop.Apply(SlotGrid.Default, SlotId.초각스, new SlotTarget(SlotId.각성기, DropSide.Bottom)));
+        var bars = BarArrangement.Format(BarDrop.Apply(BarRows.Default, BuffKind.뎀증, new BarTarget(BuffKind.공증, DropSide.Right)));
+        var look = new Look(new Dictionary<SlotGroup, string>(), CloseGaps: false, SlotOrder: slots, BarOrder: bars);
+
+        Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, look), out _, out _, out var read));
+
+        Assert.False(read.CloseGaps);
+        Assert.Equal(slots, read.SlotOrder);
+        Assert.Equal(bars, read.BarOrder);
+    }
+
+    [Fact]
+    public void A_look_from_before_arrangements_reads_as_the_default_order_with_gaps_closed()
+    {
+        var now = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>()));
+        byte[] old = now[..^4];   // protocol 11: no close-gaps byte, no arrangement or dock strings
+
+        Assert.True(Protocol.TryReadLook(old, out _, out _, out var read));
+
+        Assert.True(read.CloseGaps);
+        Assert.Null(read.SlotOrder);
+        Assert.Null(read.BarOrder);
+    }
+
+    [Fact]
+    public void A_look_round_trips_its_dock_order()
+    {
+        var look = new Look(new Dictionary<SlotGroup, string>(), DockOrder: "bba,glv");
+
+        Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, look), out _, out _, out var read));
+
+        Assert.Equal("bba,glv", read.DockOrder);
+    }
+
+    [Fact]
+    public void A_look_without_a_dock_order_reads_as_the_default_dock()
+    {
+        var now = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>(), BarOrder: "0,1,2,3,4"));
+        byte[] old = now[..^1];   // before docking: no dock text after the bar text
+
+        Assert.True(Protocol.TryReadLook(old, out _, out _, out var read));
+
+        Assert.Equal("0,1,2,3,4", read.BarOrder);
+        Assert.Null(read.DockOrder);
+    }
+
+    [Fact]
+    public void A_look_with_a_broken_dock_order_reads_as_the_default_dock()
+    {
+        var look = new Look(new Dictionary<SlotGroup, string>(), DockOrder: "gta,gba");
+
+        Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, look), out _, out _, out var read));
+
+        Assert.Null(read.DockOrder);
+    }
+
+    [Fact]
+    public void A_look_with_a_broken_arrangement_reads_as_the_default_order()
+    {
+        var look = new Look(new Dictionary<SlotGroup, string>(), SlotOrder: "s1|s1", BarOrder: "9,9");
+
+        Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, look), out _, out _, out var read));
+
+        Assert.Null(read.SlotOrder);
+        Assert.Null(read.BarOrder);
+    }
+
+    [Theory]
+    [InlineData(1)]   // the close-gaps byte alone
+    [InlineData(2)]   // the slot text, no bar text
+    public void A_look_with_a_cut_tail_is_rejected(int kept)
+    {
+        var body = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>()));
+
+        Assert.False(Protocol.TryReadLook(body[..^(4 - kept)], out _, out _, out _));
+        Assert.False(Protocol.TryReadLook([.. body, 0], out _, out _, out _));   // a byte past the tail
+    }
+
+    [Fact]
+    public void A_look_whose_text_length_runs_past_the_body_is_rejected()
+    {
+        var body = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>()));
+        body[^2] = 100;   // the bar text claims 100 bytes
+
+        Assert.False(Protocol.TryReadLook(body, out _, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("s0,1|r2,3,4,5/6,7,8,9|s10,11,0")]                                       // a box twice
+    [InlineData("s0,1|r2,3,4,5/6,7,8,9|s10")]                                            // a box missing
+    [InlineData("s0,1|r2,3,4,5/6,7,8,9|s10,11|s0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15")]  // over MaxText
+    [InlineData("s+0,1|r2,3,4,5/6,7,8,9|s10,11")]                                        // not plain digits
+    public void A_look_with_a_wrong_slot_order_reads_as_the_default_order(string text)
+    {
+        var look = new Look(new Dictionary<SlotGroup, string>(), SlotOrder: text);
+
+        Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, look), out _, out _, out var read));
+
+        Assert.Null(SlotArrangement.Parse(text));
+        Assert.Null(read.SlotOrder);
+    }
+
+    [Fact]
+    public void A_look_with_a_bad_close_gaps_byte_is_rejected()
+    {
+        var body = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>()));
+        body[^4] = 2;
+
+        Assert.False(Protocol.TryReadLook(body, out _, out _, out _));
+    }
+
+    [Fact]
     public void A_look_without_a_layout_reads_as_the_fixed_grid()
     {
         Assert.True(Protocol.TryReadLook(Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string>())), out _, out _, out var read));
@@ -210,7 +324,7 @@ public class ProtocolTests
         var good = Protocol.Look(1, 1, new Look(new Dictionary<SlotGroup, string> { [SlotGroup.일반스킬] = "#010203" },
             1, 1, new Dictionary<Part, Cell> { [Part.일반1] = new(0, 0, 34, 34) }));
         Assert.True(Protocol.TryReadLook(good, out _, out _, out _));
-        Assert.False(Protocol.TryReadLook(good[..^1], out _, out _, out _));             // short
+        Assert.False(Protocol.TryReadLook(good[..^2], out _, out _, out _));             // short (^1 is the dock text, optional)
         Assert.False(Protocol.TryReadLook([.. good, 0], out _, out _, out _));           // trailing byte
         var unknown = (byte[])good.Clone();
         unknown[10] = 200;                                                                // undefined group

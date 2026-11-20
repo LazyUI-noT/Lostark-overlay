@@ -27,8 +27,7 @@ public partial class SettingsWindow
     bool _previewHooked;
     bool? _previewBeside;   // null: not placed
     const string DefaultBackColour = "#202020";
-    readonly ComboBox _previewBack = new() { MinWidth = 120 };   // 게임 화면 / 그림 파일… / 단색
-    readonly Button _previewFile = new() { Content = "다른 그림…", Margin = new(Tokens.Space.Gap, 0, 0, 0), Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
+    readonly ComboBox _previewBack = new() { MinWidth = 120 };   // 게임 화면 / 단색
     Button? _previewPlace;   // 위치 조정, hidden on a page whose windows the 레이아웃 편집기 doesn't hold
     UIElement? _previewColour;   // its colour row, shown for 단색
     string _backColour = DefaultBackColour;   // the last 단색 colour, kept while another 배경화면 is picked
@@ -77,6 +76,7 @@ public partial class SettingsWindow
         _previewDebounce.Tick += (_, _) =>
         {
             _previewDebounce.Stop();
+            if (_preview?.Pressed == true) { _previewDebounce.Start(); return; }   // not under a drag: the new canvas would drop it
             if (_previewPane.Parent is not null && IsVisible) BuildPreview();   // not for a page without one, nor a hidden 설정
         };
         _previewPane.IsVisibleChanged += (_, _) =>   // another page, the canvas page or 설정 hidden: nothing plays unseen
@@ -124,14 +124,16 @@ public partial class SettingsWindow
         preview.Play.Auto = () => PreviewPlayer.Gauge(copy, _chars, PreviewTarget);
         preview.SetTarget(PreviewTarget);   // 편집 중's 직업각인: its boxes and gauge, and the 기력·충격 창 only for a class with a ring
         System.Windows.Automation.AutomationProperties.SetName(preview, $"{_area.Name} 미리보기");
+        HookPreviewView(preview, copy);
         preview.Loaded += (_, _) =>
         {
             // ponytail: decodes the picture per rebuild (debounced); cache it if rebuilds show up in [perf].
-            ShowPreviewBack(preview);
+            var picture = ShowPreviewBack(preview);
             preview.Relayout();
+            StartPreviewView(preview, picture);
             if (_previewPane.IsVisible) preview.Play.Start();
         };
-        _previewHost.Child = preview;
+        _previewHost.Child = preview;   // the minimap sits beside the controls, never over the picture
     }
 
     /// <summary>A setting changed: the preview redraws once the changes pause.</summary>
@@ -147,21 +149,18 @@ public partial class SettingsWindow
     {
         var place = new Button { Content = "위치 조정", Padding = new(Tokens.Space.Gap, Tokens.Space.Hair, Tokens.Space.Gap, Tokens.Space.Hair) };
         place.Click += (_, _) => { if (EditorPlace() is { } at) GoTo(at); };
-        foreach (var name in new[] { "게임 화면", "그림 파일", "단색" }) _previewBack.Items.Add(name);
+        foreach (var name in new[] { "게임 화면", "단색" }) _previewBack.Items.Add(name);
         _previewBack.SelectionChanged += (_, _) => PreviewBackPicked();
-        _previewFile.Click += (_, _) => PickPreviewPicture();
         var label = Label("배경화면");
         (label.Margin, label.VerticalAlignment) = (new(0, 0, 8, 0), VerticalAlignment.Center);
         System.Windows.Automation.AutomationProperties.SetLabeledBy(_previewBack, label);   // a hand-built row: FormRow would do this
         var back = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         back.Children.Add(label);
         back.Children.Add(_previewBack);
-        back.Children.Add(_previewFile);
-        var row = new DockPanel { Margin = new(0, Tokens.Space.Gap, 0, 0) };
-        DockPanel.SetDock(place, Dock.Left);
-        row.Children.Add(place);
-        row.Children.Add(back);
-        _previewPane.Children.Add(row);
+        place.Margin = new(0, 0, Tokens.Space.Gap, 0);
+        var left = new StackPanel { Orientation = Orientation.Horizontal, Children = { place, UndoBar() } };
+        _previewPane.Children.Add(PreviewViewControls());
+        _previewPane.Children.Add(new StackPanel { Margin = new(0, Tokens.Space.Gap, 0, 0), Children = { left, new Border { Height = Tokens.Space.Gap }, back } });
         _previewPlace = place;
         if (IsColour(_s.PreviewBack)) _backColour = _s.PreviewBack!;
         SyncPreviewBack();
@@ -178,39 +177,28 @@ public partial class SettingsWindow
     }).FirstOrDefault(p => p is not null);
 
     static bool IsColour(string? back) => back is not null && back.StartsWith('#') && UiColor.TryParse(back) is not null;
-    static bool IsPicture(string? back) => back is not null && !back.StartsWith('#') && File.Exists(back);
 
-    /// <summary>The combo, 다른 그림… and the colour row show the saved 배경화면 (also after 되돌리기); a bad colour or a picture
-    /// gone shows as 게임 화면, which is what the preview then draws.</summary>
+    /// <summary>The combo, 다른 그림… and the colour row show the saved 배경화면 (also after 되돌리기); a bad colour
+    /// shows as 게임 화면, which is what the preview then draws.</summary>
     void SyncPreviewBack()
     {
         var back = _s.PreviewBack;
         if (IsColour(back)) _backColour = back!;
         _previewBackSetting = true;
-        _previewBack.SelectedIndex = IsColour(back) ? 2 : IsPicture(back) ? 1 : 0;
+        _previewBack.SelectedIndex = IsColour(back) ? 1 : 0;
         _previewBackSetting = false;
-        _previewFile.Visibility = Shown(_previewBack.SelectedIndex == 1);
-        _previewFile.ToolTip = IsPicture(back) ? back : null;
         // Rebuilt each time so its box shows the colour in use, not the one it was built with.
         int at = _previewColour is null ? _previewPane.Children.Count : _previewPane.Children.IndexOf(_previewColour);
         if (_previewColour is not null) _previewPane.Children.Remove(_previewColour);
         _previewColour = ColorRow(Label("배경 색"), _backColour, c => _s.PreviewBack = _backColour = c, swatch: false);
-        _previewColour.Visibility = Shown(_previewBack.SelectedIndex == 2);
+        _previewColour.Visibility = Shown(_previewBack.SelectedIndex == 1);
         _previewPane.Children.Insert(at, _previewColour);
     }
 
     void PreviewBackPicked()
     {
         if (_previewBackSetting) return;
-        if (_previewBack.SelectedIndex == 1) { PickPreviewPicture(); return; }
-        SetPreviewBack(_previewBack.SelectedIndex == 2 ? _backColour : null);
-    }
-
-    /// <summary>그림 파일 (or 다른 그림…): a picture file; cancelled or unreadable, the old choice stays.</summary>
-    void PickPreviewPicture()
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "그림 파일 (png, jpg, bmp)|*.png;*.jpg;*.jpeg;*.bmp", CheckFileExists = true };
-        SetPreviewBack(dialog.ShowDialog(this) == true && ScreenShots.CanLoad(dialog.FileName) ? dialog.FileName : _s.PreviewBack);
+        SetPreviewBack(_previewBack.SelectedIndex == 1 ? _backColour : null);
     }
 
     void SetPreviewBack(string? back)
@@ -221,21 +209,22 @@ public partial class SettingsWindow
         if (changed) Changed();
     }
 
-    /// <summary>배경화면: one colour, the picked picture (where a screenshot of its shape would lie), else the 배치's saved
-    /// game screen (also for a bad colour or a picture gone, as <see cref="SyncPreviewBack"/> shows).</summary>
-    void ShowPreviewBack(OverlayCanvas preview)
+    /// <summary>배경화면: one colour, else the picture of the image slot the profile shows (also for a bad colour, as
+    /// <see cref="SyncPreviewBack"/> shows); an empty slot shows the sample screen. Returns where the picture lies on screen
+    /// (DIP; null: a saved picture with no area, a backdrop only).</summary>
+    ViewRect? ShowPreviewBack(OverlayCanvas preview)
     {
         var back = _s.PreviewBack;
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(preview);
+        ViewRect? Rect(PixelRect? area, bool saved) => PreviewView.PictureRect(area, saved, dpi.DpiScaleX, dpi.DpiScaleY,
+            SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);   // the canvas's screen (OverlayCanvas._screen)
         if (IsColour(back) && UiColor.TryParse(back!) is { } c)
         {
             preview.ShowColour(c);
-            return;
+            return Rect(null, saved: false);
         }
-        if (IsPicture(back) && OverlayCanvas.Decode(new Uri(back!)) is { } picture)
-        {
-            preview.ShowPicture(picture, ScreenShots.AreaFor(picture.PixelWidth, picture.PixelHeight, GameMonitor()));
-            return;
-        }
-        if (SavedShot() is var (shot, area)) preview.ShowPicture(shot, area);
+        if (SavedShot() is not var (shot, area)) return Rect(null, saved: false);
+        preview.ShowPicture(shot, area);
+        return Rect(area, saved: true);
     }
 }

@@ -142,16 +142,19 @@ public sealed class MineProfile : ClassProfile
 }
 
 /// <summary>What a member sends of their own boxes, once per session and on 업데이트: their colours, box size and free
-/// layout (null = the fixed grid).</summary>
+/// layout (null = the fixed grid), and in 칸 맞춤 their 빈 칸 줄이기 and arrangements (<see cref="SlotArrangement"/>,
+/// <see cref="BarArrangement"/>, <see cref="Domain.DockOrder"/> text; null = the default order).</summary>
 public sealed record Look(IReadOnlyDictionary<SlotGroup, string> Colors, double Width = 1, double Height = 1,
-    IReadOnlyDictionary<Part, Cell>? Layout = null);
+    IReadOnlyDictionary<Part, Cell>? Layout = null, bool CloseGaps = true, string? SlotOrder = null, string? BarOrder = null,
+    string? DockOrder = null);
 
 /// <summary>How one player's boxes are drawn, decided once per layout: what is shown, where, in what colours and at
 /// what box size.</summary>
 public sealed record Appearance(IReadOnlyDictionary<SlotGroup, bool> Groups, IReadOnlySet<SlotId> Hidden, bool Gauge,
     IReadOnlyDictionary<Part, Cell>? Layout, IReadOnlyDictionary<SlotGroup, string> Colors, double Width, double Height,
     IReadOnlyDictionary<SlotId, string>? SlotColors = null, IReadOnlyDictionary<SlotGroup, string>? DimColors = null,
-    IReadOnlyDictionary<SlotId, string>? SlotDimColors = null, MineProfile? Effects = null, CooldownView? CooldownOf = null)
+    IReadOnlyDictionary<SlotId, string>? SlotDimColors = null, MineProfile? Effects = null, CooldownView? CooldownOf = null,
+    bool CloseGaps = true, string? SlotOrder = null, string? BarOrder = null, string? DockOrder = null)
 {
     /// <summary>How the boxes show a cooldown: the class's (yours, or your 나 of a party member's class).</summary>
     public CooldownView Cooldown => CooldownOf ?? Default;
@@ -287,6 +290,16 @@ public static class ClassProfiles
     /// <summary>Your boxes, for the active character's class.</summary>
     public static Appearance Mine(Settings s) => Mine(s, ActiveKey(s));
 
+    /// <summary>배치 = 자유 배치 for your boxes as <paramref name="key"/> draws them: as set, else (set before the switch) when
+    /// the class has saved cells.</summary>
+    public static bool IsFree(Settings s, string? key) => s.Overlay.FreePlacement ?? Of(s, key).Mine.Layout is not null;
+
+    /// <inheritdoc cref="IsFree(Settings, string?)"/>
+    public static bool IsFree(Settings s) => IsFree(s, ActiveKey(s));
+
+    /// <summary>The 따로 buff window's free cells to draw: under the same 배치 as 내 스킬창, else null (the stack).</summary>
+    public static IReadOnlyDictionary<Part, Cell>? BuffCells(Settings s) => IsFree(s) ? s.Buffs.Layout : null;
+
     /// <summary>Your boxes as <paramref name="key"/> (<see cref="ActiveKey"/> or another entry of the 편집 중 list) draws them;
     /// null or <see cref="Template"/> = 기본.</summary>
     public static Appearance Mine(Settings s, string? key)
@@ -296,9 +309,11 @@ public static class ClassProfiles
         // No class known yet: 기본 without the 아덴 slots and the gauge, which only a class gives a meaning.
         IReadOnlySet<SlotId> hidden = classless ? new HashSet<SlotId>(c.Mine.HiddenSlots) { SlotId.아덴1, SlotId.아덴2 } : c.Mine.HiddenSlots;
         bool personal = c.Mine.Color == ColorSource.Personal;
-        return new(c.Mine.Groups, hidden, c.Mine.Gauge && !classless, c.Mine.Layout, MineColors(c.Mine), s.Overlay.Width, s.Overlay.Height,
+        var cells = IsFree(s, key) ? c.Mine.Layout : null;   // 칸 맞춤 keeps the free cells, unused
+        return new(c.Mine.Groups, hidden, c.Mine.Gauge && !classless, cells, MineColors(c.Mine), s.Overlay.Width, s.Overlay.Height,
             personal && !c.Mine.SkillsOneColor ? c.Mine.SlotColors : null,
-            personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine, c.Mine.Cooldown);
+            personal && !c.Mine.AutoDim ? c.Mine.DimColors : null, personal && !c.Mine.AutoDim ? c.Mine.SlotDimColors : null, c.Mine, c.Mine.Cooldown,
+            s.Overlay.CloseGaps, s.Overlay.SlotOrder, s.Overlay.BarOrder, s.Overlay.DockOrder);
     }
 
     /// <summary>What the engine reads: with 스킬창 읽기 on, a slot is skipped when it is neither shown (its group on, the slot
@@ -372,7 +387,11 @@ public static class ClassProfiles
         bool size = s.Party.ReceiveSize && look is not null, cells = s.Party.ReceiveLayout && look?.Layout is { } sent
             && !FreeLayout.Spread(sent);   // skills placed apart: drawn compact, as the class's own party layout
         if (size || cells) (layout, w, h) = Fit(layout, w, h, look!, size, cells, s.Gauge.Thickness);
-        return new(display.Groups, display.HiddenSlots, display.Gauge, layout, colors, w, h, CooldownOf: mine.Cooldown);
+        // 칸 맞춤: their arrangement and 빈 칸 줄이기 come with their layout (파티원 배치 받기), else yours and the default order.
+        var (closeGaps, slotOrder, barOrder, dockOrder) = s.Party.ReceiveLayout && look is not null
+            ? (look.CloseGaps, look.SlotOrder, look.BarOrder, look.DockOrder) : (s.Overlay.CloseGaps, null, null, null);
+        return new(display.Groups, display.HiddenSlots, display.Gauge, layout, colors, w, h, CooldownOf: mine.Cooldown,
+            CloseGaps: closeGaps, SlotOrder: slotOrder, BarOrder: barOrder, DockOrder: dockOrder);
     }
 
     /// <summary>A received size and/or layout, scaled as one so it fills the area your layout takes at your size

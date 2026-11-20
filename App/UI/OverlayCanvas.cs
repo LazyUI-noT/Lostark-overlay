@@ -96,6 +96,7 @@ public sealed partial class OverlayCanvas : Border
         _pick.SetResourceReference(Shape.StrokeProperty, "AccentFillColorDefaultBrush");
         _world.Children.Add(_hover);
         _world.Children.Add(_pick);
+        BuildArrange();
         _world.Children.Add(_grip);
         _world.Children.Add(_gripRight);
         _world.Children.Add(_gripBottom);
@@ -129,6 +130,9 @@ public sealed partial class OverlayCanvas : Border
             MouseMove += OnSceneMove;
             KeyDown += OnSceneKey;
             MouseLeave += (_, _) => SceneHover?.Invoke(null);
+            MouseUp += (_, e) => { if (e.ChangedButton == System.Windows.Input.MouseButton.Left) PreviewUp(play: true); };
+            LostMouseCapture += (_, _) => PreviewUp(play: false);
+            MouseWheel += (_, e) => { if (_pv is null) return; ZoomPreview(e.Delta > 0 ? PreviewView.ZoomStep : 1 / PreviewView.ZoomStep); e.Handled = true; };
             return;
         }
         MouseWheel += (_, e) => { var at = e.GetPosition(this); _v?.ZoomAt(at.X, at.Y, e.Delta > 0 ? ZoomStep : 1 / ZoomStep); ShowView(); ShowPick(); ZoomFaint(); };
@@ -136,7 +140,7 @@ public sealed partial class OverlayCanvas : Border
         MouseMove += OnMove;
         MouseLeave += (_, _) => { ShowHover(null); Cursor = null; };
         MouseUp += (_, _) => OnUp();
-        LostMouseCapture += (_, _) => _drag = Drag.None;   // released, or taken away (Alt+Tab): no drag on hover
+        LostMouseCapture += (_, _) => { if (_drag == Drag.Arrange) EndArrange(); _drag = Drag.None; };   // released, or taken away (Alt+Tab): no drag on hover
         KeyDown += OnKey;
     }
 
@@ -147,10 +151,11 @@ public sealed partial class OverlayCanvas : Border
     public bool ShowOff { get => _showOff; set { _showOff = value; Relayout(); } }
     public bool Snap { get => _live.Overlay.LayoutSnap; set => _live.Overlay.LayoutSnap = value; }
 
-    /// <summary>칸 하나씩: a drag, nudge or Ctrl+arrow on a 내 스킬창 box moves or sizes that box, not the window (<see cref="BoxDragRule"/>; not saved).</summary>
-    public bool BoxesApart { get; set; }
+    /// <summary>배치 = 자유 배치 (slot-layout.plan.md §5): a drag, nudge or Ctrl+arrow on a 내 스킬창 box moves or sizes that box
+    /// (<see cref="BoxDragRule"/>); 칸 맞춤 swaps or inserts blocks instead.</summary>
+    public bool Free => ClassProfiles.IsFree(_s);
 
-    bool MovesBox(OverlayRenderer r) => BoxDragRule.MovesBox(r == _mine, BoxesApart);
+    bool MovesBox(OverlayRenderer r) => BoxDragRule.MovesBox(r == _mine || r == _buffs, Free);
     public bool LinkSizes { get => _live.Overlay.LayoutLinkSizes; set => _live.Overlay.LayoutLinkSizes = value; }
 
     OverlayRenderer Renderer(int peer, bool buffs)
@@ -197,7 +202,12 @@ public sealed partial class OverlayCanvas : Border
     void ShowView()
     {
         if (_v is { } v) _world.RenderTransform = new MatrixTransform(v.Scale, 0, 0, v.Scale, v.OffsetX, v.OffsetY);
+        ViewChanged?.Invoke();
     }
+
+    /// <summary>The view's scale (1 = the game screen at 100%), for the zoom % pinned beside the canvas.</summary>
+    public double Zoom => _v?.Scale ?? 1;
+    public event Action? ViewChanged;
 
     /// <summary>원래 크기: the game screen at 100%, around the middle of the canvas.</summary>
     public void ActualSize()
@@ -274,6 +284,7 @@ public sealed partial class OverlayCanvas : Border
         else if (r == _amsu) (_s.Amsu.Left, _s.Amsu.Top) = (left, top);
         else if (r == _raid) (_s.Raids.Left, _s.Raids.Top) = (left, top);
         else if (r == _ring) (_s.Ring.Left, _s.Ring.Top) = (left, top);
+        else if (r == _meter) (_s.Meter.Left, _s.Meter.Top) = (left, top);   // only the preview's 창 위치 옮기기 drags it
         else if (_s.Party.Together)
         {
             // the stack moves as one: the first window by as much as this one is dragged
@@ -296,7 +307,7 @@ public sealed partial class OverlayCanvas : Border
         _amsu.Visibility = Drawn(_amsu, _showMine);
         _ring.Visibility = Drawn(_ring, _showMine && RingShown);
         foreach (var p in _peers) p.Visibility = Drawn(p, _showParty);
-        OverlayRenderer[] all = _meter is null ? [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, .. _peers] : [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, _meter, .. _peers];
+        var all = All;
         if (_scene) SceneVisibility(all);
         foreach (var r in all)
         {
@@ -310,14 +321,22 @@ public sealed partial class OverlayCanvas : Border
             Canvas.SetLeft(r, l - _screen.Left);
             Canvas.SetTop(r, t + Strip - _screen.Top);
         }
-        if (_scene)
+        if (_scene && !_sceneFitted)   // once (and on a resize): the looks cycling mustn't move the zoom
         {
-            if (!_sceneFitted) FitScene(all);   // once (and on a resize): the looks cycling mustn't move the zoom
+            if (_pv is null) FitScene(all);
+            else
+            {
+                _pv.Resize(ActualWidth, ActualHeight);
+                _sceneFitted = true;
+                ApplyView();
+            }
         }
         ShowFaint(all);
         if ((_pickedDebuff is not null ? _debuffs : _picked?.R) is { Visibility: not Visibility.Visible }) Pick(null, null);   // its window turned off or hidden
         ShowPick();
     }
+
+    OverlayRenderer[] All => _meter is null ? [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, .. _peers] : [_mine, _buffs, _gauge, _debuffs, _judgment, _amsu, _raid, _ring, _meter, .. _peers];
 
     static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 
@@ -393,7 +412,7 @@ public sealed partial class OverlayCanvas : Border
         if (!Outline(_pick, on, rect)) return;
         if (_picked is ({ } sized, null) && Sizing(sized) is { } sizing) { ShowPlateHandles(sized, Whole(sized), WindowSizing.ModeOf(_s, sizing) == SizeMode.Two); return; }
         if (rect is not { } b || on is null || _picked is (_, null)) return;   // a whole window has no box grip
-        if (on == _buffs || on == _gauge || on == _judgment || on == _amsu || on == _raid || on == _ring || on.ShowsReceivedLayout || Previewing(on)) return;
+        if (on == _buffs && !Free || on == _gauge || on == _judgment || on == _amsu || on == _raid || on == _ring || on.ShowsReceivedLayout || Previewing(on)) return;
         double g = GripSize(b);
         (_grip.Width, _grip.Height, _grip.StrokeThickness) = (g, g, 1 / (_v?.Scale ?? 1));
         Canvas.SetLeft(_grip, Canvas.GetLeft(on) + b.Right - g);
@@ -447,10 +466,22 @@ public sealed partial class OverlayCanvas : Border
                 : r.PartAt(at) is var (_, box) ? box : Whole(r);
         }
         Outline(_hover, r, rect);
+        ShowKeyTip(r, e is null || r is null ? default : e.GetPosition(r));
     }
 
     /// <summary>The boxes <paramref name="r"/> draws: yours for the class shown, or a party member's for theirs; 기본's
     /// while that class follows 기본.</summary>
     ClassProfile Boxes(OverlayRenderer r) =>
         ClassProfiles.BoxesShown(_s, r.Peer < 0 ? ClassProfiles.ActiveKey(_s) : r.ClassName, member: r.Peer >= 0);
+
+    /// <summary>The free cells a box drag on <paramref name="r"/> reads and writes: the 따로 buff window's own, else its boxes'.</summary>
+    /// <remarks>Only box drags call these, and those run under <see cref="BoxDraggable"/>, so the buff window's cells are
+    /// written in 자유 배치 only. No clamp: the window refits around its cells and <c>KeepStill</c> keeps the rest in place.</remarks>
+    Dictionary<Part, Cell>? Cells(OverlayRenderer r) => r == _buffs ? _s.Buffs.Layout : Boxes(r).Layout;
+
+    void SetCells(OverlayRenderer r, Dictionary<Part, Cell> cells)
+    {
+        if (r == _buffs) _s.Buffs.Layout = cells;
+        else Boxes(r).Layout = cells;
+    }
 }

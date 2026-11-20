@@ -103,18 +103,17 @@ public class ProfileLooksTests
     }
 
     [Fact]
-    public void A_profile_is_copied_whole_but_the_target_keeps_its_screenshot()
+    public void A_profile_is_copied_whole_with_its_slot_pick()
     {
         var s = Loaded();
-        var shot = new PixelRect(0, 0, 100, 100);
-        s.Profiles[3].Shot = shot;
+        s.Profiles[0].ShotSlot = 2;
         (s.Overlay.Left, s.Amsu.On, s.Meter.BarOpacity) = (42, true, 0.4);
 
         Assert.True(s.CopyProfile(3));
 
         var p = s.Profiles[3];
         Assert.Equal((42.0, true, 0.4), (p.Overlay.Left, p.Amsu!.On, p.MeterBarOpacity));
-        Assert.Equal(shot, p.Shot);
+        Assert.Equal(2, p.ShotSlot);
         s.Amsu.On = false;
         Assert.True(p.Amsu.On);   // a copy, not the same object
         Assert.Equal(0, s.ActiveProfile);
@@ -284,14 +283,12 @@ public class ProfileLooksTests
     {
         var s = Loaded();
         s.Profiles[2].Overlay.Left = 77;
-        s.Profiles[2].Shot = null;
-        var shot = new PixelRect(0, 0, 50, 50);
-        s.Profiles[4].Shot = shot;
+        s.Profiles[2].ShotSlot = 1;
 
         Assert.True(s.CopyProfile(2, 4));
 
         Assert.Equal(77, s.Profiles[4].Overlay.Left);
-        Assert.Equal(shot, s.Profiles[4].Shot);
+        Assert.Equal(1, s.Profiles[4].ShotSlot);
         Assert.Equal(0, s.ActiveProfile);
     }
 

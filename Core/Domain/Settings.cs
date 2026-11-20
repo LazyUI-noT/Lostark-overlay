@@ -109,7 +109,7 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// <summary>Before a file's values are read: what a missing value means in a saved file, where it differs from a new install's.
     /// A file saved before the 레이드 table has no "Raids": its old 모르둠 debuff switch is carried over once (SettingsStore.Normalize).</summary>
     void IJsonOnDeserializing.OnDeserializing() =>
-        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved, SplitMigrated, ShownMigrated) = (UiTheme.DeepTeal, false, false, false, false, true, false, false, false);
+        (Theme, Raids.Migrated, Raids.DebuffsMigrated, RecordKeepMigrated, RecordOverflowKept, HomeworkWithoutKey, CooldownLooksMoved, SplitMigrated, ShownMigrated, DemColorMoved, SlotsMigrated) = (UiTheme.DeepTeal, false, false, false, false, true, false, false, false, false, false);
 
     /// <summary>The global 쿨 진행 표시 & co. (<see cref="OverlaySettings.CooldownStyle"/>) have moved into 기본 and every 개별
     /// class (<see cref="ClassProfileMigration.MoveCooldownViews"/>); false in an older file.</summary>
@@ -117,6 +117,24 @@ public sealed partial class Settings : IJsonOnDeserializing
 
     /// <summary>A saved 보스 감지 개수 of 14 (the old "모두") became 17 once, so it still means all (false in an older file).</summary>
     public bool ShownMigrated { get; set; } = true;
+
+    /// <summary>Each profile's own <see cref="OverlayProfile.Shot"/> became image slot N once (false in an older file).</summary>
+    public bool SlotsMigrated { get; set; } = true;
+
+    /// <summary>The screen area (physical pixels) each of the 5 image slots' picture covers, so it maps onto window spots;
+    /// null = empty, or a picture not of the game's screen (a backdrop only). A file, not a setting: kept out of undo.</summary>
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
+    public PixelRect?[] SlotAreas { get; set; } = new PixelRect?[OverlayProfile.Count];
+
+    /// <summary>The area of the picture the active profile shows (null: none, or a backdrop).</summary>
+    [JsonIgnore]
+    public PixelRect? ShotArea => Profiles[ActiveProfile].ShotSlot is var n && n >= 0 && n < SlotAreas.Length ? SlotAreas[n] : null;
+
+    /// <summary>The profiles (0-based) that show image slot <paramref name="slot"/>.</summary>
+    public int[] ProfilesOnSlot(int slot) => [.. Profiles.Select((p, i) => (p, i)).Where(x => x.p.ShotSlot == slot).Select(x => x.i)];
+
+    /// <summary>뎀증 on the old default colour has turned lavender once (<see cref="BuffSettings.MoveDemColor"/>; false in an older file).</summary>
+    public bool DemColorMoved { get; set; } = true;
 
     /// <summary>숙제 without an API key: kept by installs from before the key gate (a file without this value), not by new ones
     /// (settings-access.plan.md B, user 2026-11-11).</summary>
@@ -189,8 +207,8 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// (set when 설정 is built, so a first run lights nothing).</summary>
     public Dictionary<string, List<string>>? RailSeen { get; set; }
 
-    /// <summary>설정 pages' 미리보기 배경화면: null = the 배치's saved game screen (else the sample screen), "#RRGGBB" = one
-    /// colour, anything else = a picture file the user picked (user, 2026-11-10).</summary>
+    /// <summary>설정 pages' 미리보기 배경화면: null = the picked image slot's game screen (else the sample screen), "#RRGGBB" =
+    /// one colour. A picture file path from before the slots loads as null (user, 2026-11-20).</summary>
     public string? PreviewBack { get; set; }
 
     /// <summary>Skill-bar fit per viewport size, keyed "W×H" (Geometry.ViewportKey).</summary>
@@ -225,7 +243,7 @@ public sealed partial class Settings : IJsonOnDeserializing
     /// The active one's values live in the settings above (so nothing else reads profiles); <see cref="SwitchProfile"/> swaps
     /// them. Replaced on load, not added to.</summary>
     [JsonObjectCreationHandling(JsonObjectCreationHandling.Replace)]
-    public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(_ => new OverlayProfile { Classes = [], GaugeBars = [], Aden = [] })];
+    public List<OverlayProfile> Profiles { get; set; } = [.. Enumerable.Range(0, OverlayProfile.Count).Select(i => new OverlayProfile { ShotSlot = i, Classes = [], GaugeBars = [], Aden = [] })];
     public int ActiveProfile { get; set; }
     /// <summary>Old (0.20–0.22) 모든 위치 프로필에 적용 marks: read once into every profile (<see cref="UnshareLooks"/>), then
     /// written empty, so an older version sees every look per profile too. Replaced on load, not added to.</summary>

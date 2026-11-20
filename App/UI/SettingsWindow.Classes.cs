@@ -76,14 +76,34 @@ public partial class SettingsWindow
     /// <summary>The picked 직업각인 shows icons, but none are saved for it: its boxes are drawn in colour on screen.</summary>
     internal const string NoSavedIconsNote = "이 직업각인의 저장된 아이콘이 없습니다. 그 캐릭터로 접속해 아이콘 다시 읽기를 하세요.";
 
+    bool _editModeOn;
+    System.Windows.Controls.Primitives.ToggleButton? _editModeButton;
+
+    /// <summary>The app's 편집 모드 changed (button, tray or hotkey): the 배치 button shows it.</summary>
+    public void SetEditMode(bool on)
+    {
+        _editModeOn = on;
+        if (_editModeButton is { } b) b.IsChecked = on;
+    }
+
     /// <summary>배치: the 레이아웃 편집기, 편집 모드 and the class's 나 layout.</summary>
     void FillPlace(ClassSettings read, Func<ClassSettings> edit)
     {
         var p = Refill(_secPlace, "배치", "위치, 크기, 칸 배치는 왼쪽 화면에서 끌어서 바꿉니다. 편집 모드를 켜면 게임 안에서 배경판을 끌어 옮기고, 오른쪽 아래 모서리로 전체 크기를 바꿀 수 있습니다.");
-        var mode = new Button { Content = "편집 모드", ToolTip = "게임 화면 위에서 배경판을 끌어 옮깁니다." };
-        mode.Click += (_, _) => EditModeRequested?.Invoke();
+        var mode = new System.Windows.Controls.Primitives.ToggleButton { Content = "편집 모드", IsChecked = _editModeOn, ToolTip = "켜면 게임 화면 위에서 배경판을 끌어 옮깁니다. 다시 누르면 끕니다." };
+        mode.Click += (_, _) => EditModeRequested?.Invoke();   // App flips the mode and answers with SetEditMode, so the button follows the tray and the hotkey
+        _editModeButton = mode;
         p.Children.Add(Wrap(mode));
-        PlacementRow(p, read.Mine, () => edit().Mine, "화면에서 내 칸을 끌어 옮기면 지금 캐릭터의 배치가 바뀝니다. 다른 직업각인의 배치는 그 캐릭터로 접속해 바꿉니다.");
+        // 배치 per profile (slot-layout.plan.md §5); it replaces the canvas's 칸 하나씩 tick. 칸 맞춤 keeps the free cells.
+        p.Children.Add(HelpRow("배치", "칸 맞춤에서는 칸을 끌어 자리를 바꾸거나 끼워 넣습니다. 자유 배치에서는 칸마다 위치와 크기를 따로 정합니다.",
+            EnumCombo([(Placement.Fit, "칸 맞춤"), (Placement.Free, "자유 배치")], ClassProfiles.IsFree(_s) ? Placement.Free : Placement.Fit, v =>
+            {
+                _s.Overlay.FreePlacement = v == Placement.Free;
+                Changed();
+                ShowCanvasShot();   // the note, unless a picture's note shows
+                Dispatcher.BeginInvoke(FillClassSections);   // 칸 배치 says whether the saved cells are in use
+            })));
+        PlacementRow(p, read.Mine, () => edit().Mine, mine: true, "화면에서 내 칸을 끌어 옮기면 지금 캐릭터의 배치가 바뀝니다. 다른 직업각인의 배치는 그 캐릭터로 접속해 바꿉니다.");
     }
 
     void MinePart(Panel p, ClassSettings read, Func<ClassSettings> edit)
@@ -135,7 +155,7 @@ public partial class SettingsWindow
             Check("크기", m.UseMineSize, v => { edit().Members.UseMineSize = v; Refill(); }, Changed),
             copyMine));
         DisplayRows(p, m, () => edit().Members, enabled: !m.UseMineDisplay);
-        PlacementRow(p, m, () => edit().Members, "화면에서 파티원 배경판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
+        PlacementRow(p, m, () => edit().Members, mine: false, "화면에서 파티원 배경판의 칸을 끌어 옮기면 이 클래스의 파티원 배치가 됩니다.");
 
         if (!m.UseMineSize)
         {
@@ -171,13 +191,23 @@ public partial class SettingsWindow
         p.Children.Add(Row(Described("숨길 칸", "자리는 비워 둡니다"), [.. SlotInfo.All.Where(ClassProfiles.AdenSlots.Contains).Select(HideCheck)]));
     }
 
-    void PlacementRow(Panel p, ClassProfile read, Func<ClassProfile> edit, string hint)
+    /// <param name="mine">내 칸: the 배치 switch decides whether the saved cells are drawn (members' cells always are).</param>
+    void PlacementRow(Panel p, ClassProfile read, Func<ClassProfile> edit, bool mine, string hint)
     {
-        bool moved = read.Layout is not null;   // the page refills on a change, so the state is fixed for this button's life
+        // 내 칸 also owns the 따로 buff window's cells (one per profile): moved and reset together.
+        bool moved = read.Layout is not null || mine && _s.Buffs.Layout is not null;   // the page refills on a change, so the state is fixed for this button's life
         var reset = new Button { Content = "칸 배치 기본값으로", IsEnabled = moved, ToolTip = moved ? "처음의 고정된 배치로 되돌립니다." : "이미 기본 배치입니다. 칸을 옮기면 켜집니다." };
         ToolTipService.SetShowOnDisabled(reset, true);   // the reason shows while it is off (system.md "States")
-        reset.Click += (_, _) => { edit().Layout = null; Changed(); Dispatcher.BeginInvoke(FillClassSections); };
-        p.Children.Add(Row(Described("칸 배치", hint), Value(read.Layout is null ? "기본 (고정된 배치)" : "사용자 (옮긴 배치)"), reset));
+        reset.Click += (_, _) =>
+        {
+            if (mine) _s.Overlay.FreePlacement ??= ClassProfiles.IsFree(_s);   // the reset keeps the 배치 it was in
+            edit().Layout = null;
+            if (mine) _s.Buffs.Layout = null;
+            Changed();
+            Dispatcher.BeginInvoke(FillClassSections);
+        };
+        string state = !moved ? "기본 (고정된 배치)" : !mine || ClassProfiles.IsFree(_s) ? "사용자 (옮긴 배치)" : "옮긴 배치 저장됨 (칸 맞춤 중)";
+        p.Children.Add(Row(Described("칸 배치", hint), Value(state), reset));
     }
 
     /// <summary>A colour row per group: the profile's own colour, else <paramref name="fallback"/> (shown while it isn't
@@ -267,3 +297,6 @@ public partial class SettingsWindow
         return new Grid { Margin = new(Tokens.Space.Gap, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Children = { box, hint } };
     }
 }
+
+/// <summary>설정 → 배치: 칸 맞춤 or 자유 배치 (<see cref="GaugeOverlay.Core.Domain.OverlaySettings.FreePlacement"/>).</summary>
+enum Placement { Fit, Free }

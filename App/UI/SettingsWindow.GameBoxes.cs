@@ -55,18 +55,18 @@ public partial class SettingsWindow
     const string BossShownNote = "게임 설정의 타겟 UI 버프 표시와 같게 맞추세요. 보스 줄이 이만큼 차면 밀려난 암수 · 낙인도 끝날 때까지 셉니다.";
 
     /// <summary>The game's 버프 표시 (10–17개): items above what the buff size fits are greyed, as the game greys them.</summary>
-    FrameworkElement BuffShownCombo() => ShownCombo(_s.Buffs.Size, Core.Vision.Geometry.Shown(_s.Buffs.Size, _s.Buffs.Shown),
+    FrameworkElement BuffShownCombo() => ShownCombo(_s.Buffs.Size, Core.Vision.Geometry.Shown(_s.Buffs.Size, _s.Buffs.Shown, _s.HudFor(FitHud?.Invoke(), GameArea?.Invoke())),
         v => _s.Buffs.Shown = v, () => { FillBuffs(); FillFit(); });
 
     /// <summary>The game's 타겟 UI 버프 표시 (10–17개), as <see cref="BuffShownCombo"/> for the boss row.</summary>
-    FrameworkElement BossShownCombo() => ShownCombo(_s.Debuffs.BossIconSize, Core.Vision.Geometry.Shown(_s.Debuffs.BossIconSize, _s.Debuffs.BossShown),
+    FrameworkElement BossShownCombo() => ShownCombo(_s.Debuffs.BossIconSize, Core.Vision.Geometry.Shown(_s.Debuffs.BossIconSize, _s.Debuffs.BossShown, _s.HudFor(FitHud?.Invoke(), GameArea?.Invoke())),
         v => _s.Debuffs.BossShown = v, () => { FillBuffs(); FillAmsu(); FillFit(); });
 
     /// <summary>10개–17개 for a row of <paramref name="size"/>; <paramref name="shown"/> is the effective count. The size's most is
     /// stored as null, so the choice keeps following the size.</summary>
     ComboBox ShownCombo(int size, int shown, Action<int?> set, Action refill)
     {
-        int most = Core.Vision.Geometry.MaxIcons(size);
+        int most = Core.Vision.Geometry.MaxIcons(size, _s.HudFor(FitHud?.Invoke(), GameArea?.Invoke()));
         var c = Combo();
         c.ItemsSource = Enumerable.Range(Core.Vision.Geometry.MinShown, Core.Vision.Geometry.MaxIconsAny - Core.Vision.Geometry.MinShown + 1)
             .Select(n => new ComboBoxItem { Content = $"{n}개", Tag = n, IsEnabled = n <= most }).ToList();

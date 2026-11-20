@@ -132,7 +132,7 @@ public class SettingsStoreClassTests : IDisposable
         var saved = JsonNode.Parse(File.ReadAllText(path))!;
         var old = JsonNode.Parse(File.ReadAllText(Fixture))!;
         // every property 0.22 reads is still where it looks for it (it skips the new ones)
-        Assert.All(((JsonObject)old["Profiles"]![0]!).Select(kv => kv.Key), k => Assert.True(((JsonObject)saved["Profiles"]![0]!).ContainsKey(k), k));
+        Assert.All(((JsonObject)old["Profiles"]![0]!).Select(kv => kv.Key).Where(k => k != "Shot"), k => Assert.True(((JsonObject)saved["Profiles"]![0]!).ContainsKey(k), k));
         Assert.All(((JsonObject)old).Select(kv => kv.Key), k => Assert.True(((JsonObject)saved).ContainsKey(k), k));
         // the live top level is the current class's, with its key
         Assert.Equal(Combat, (string?)saved["PlaceKey"]);

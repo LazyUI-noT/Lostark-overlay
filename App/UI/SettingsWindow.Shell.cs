@@ -163,7 +163,7 @@ public partial class SettingsWindow
                 b.Padding = new(Tokens.Space.Gap, Tokens.Space.Tight, Tokens.Space.Gap, Tokens.Space.Tight);
                 b.Style = RailRow(b.Style);   // the rail is a list: only the picked row is filled
                 // Full width with the group's bar: the areas read as one list, not as buttons of different widths.
-                var label = AreaLabel(b, name, color, RailOrbsFor(name));   // the dots light when something under it is new (RefreshRailOrbs)
+                var label = AreaLabel(b, name, color, RailOrbsFor(name), FeatureMap.RailIndented.Contains(name));   // the dots light when something under it is new (RefreshRailOrbs)
                 (b.Tag, b.Content, b.HorizontalContentAlignment, b.HorizontalAlignment) = (name, label, HorizontalAlignment.Left, HorizontalAlignment.Stretch);
                 System.Windows.Automation.AutomationProperties.SetName(b, name);   // read as the area, not the icon glyph
                 b.Checked += (_, _) => { if (_area != area) Go(name); };
@@ -282,9 +282,10 @@ public partial class SettingsWindow
 
     /// <summary>An area's rail label: the bar in its group's colour (none when neutral), the icon, the name with
     /// <paramref name="marks"/> right after it (on the name's line, so a two-line tab doesn't push them off the rail).</summary>
-    static StackPanel AreaLabel(RadioButton row, string name, Brush? color, IEnumerable<UIElement> marks)
+    static StackPanel AreaLabel(RadioButton row, string name, Brush? color, IEnumerable<UIElement> marks, bool indented = false)
     {
-        var bar = new Border { Width = RailBarWidth, Height = 16, CornerRadius = new(Tokens.Radius.Mark), Margin = new(0, 0, Tokens.Space.Gap, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+        // An indented area (the windows under 내 오버레이) keeps the bar and moves the icon and name right.
+        var bar = new Border { Width = RailBarWidth, Height = 16, CornerRadius = new(Tokens.Radius.Mark), Margin = new(0, 0, indented ? Tokens.Space.Gap + Tokens.Space.Card : Tokens.Space.Gap, 0), Background = color ?? Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
         var icon = new TextBlock
         {
             Text = AreaIcons[name], FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = Tokens.Font.Body,

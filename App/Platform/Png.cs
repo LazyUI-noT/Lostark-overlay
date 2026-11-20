@@ -20,9 +20,17 @@ public static class Png
 
     public static void Save(string path, Image img)
     {
+        using var stream = File.Create(path);
+        stream.Write(Encode(img));
+    }
+
+    /// <summary>The PNG bytes of <paramref name="img"/>; safe off the UI thread.</summary>
+    public static byte[] Encode(Image img)
+    {
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgra32, null, img.Bgra, img.Stride)));
-        using var stream = File.Create(path);
+        using var stream = new MemoryStream();
         encoder.Save(stream);
+        return stream.ToArray();
     }
 }

@@ -38,8 +38,8 @@ public partial class SettingsWindow
             p.Children.Add(Note("이 직업각인은 아덴 게이지를 읽지 않습니다."));
         else if (ShownClass == ActiveOrTemplate && _chars.Gauge is null)
             p.Children.Add(Note("게이지 정의 없음: 이 직업각인의 게이지 파일(Profiles/aden)이 아직 없어서 읽지 않습니다."));
-        foreach (var e in ApartOnly(Defaulted(HelpRow("세로", "막대를 세워 아래에서 위로 채웁니다. 구분선도 가로로 눕습니다.", Check("세로", g.Upright, v => g.Upright = v, Changed)),
-            s => s.Gauge.Upright, (s, v) => s.Gauge.Upright = v, Target), "합쳐서에서는 가로로 그립니다. 따로로 바꾸면 세로로 돌아옵니다.")) p.Children.Add(e);
+        p.Children.Add(DirectionRow(DockGroup.Gauge, "세로는 막대를 세워 아래에서 위로 채우고, 구분선도 가로로 눕힙니다.",
+            s => s.Gauge.Upright, (s, v) => s.Gauge.Upright = v, Target));
         if (_s.Apart) p.Children.Add(Note("길이와 두께: 화면에서 테두리를 끌거나 Ctrl+화살표로 바꿉니다."));
         p.Children.Add(ColorRow(Label("찬 색"), g.Fill, v => g.Fill = v, swatch: false));
         p.Children.Add(ColorRow(Label("빈 색"), g.Empty, v => g.Empty = v, swatch: false));

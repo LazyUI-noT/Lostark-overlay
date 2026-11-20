@@ -12,6 +12,9 @@ reference/
 !.claude/rules/
 !.claude/skills/
 !.claude/glossary.md
+!.claude/settings.json
+!.claude/hooks/
+!.claude/impact/
 .claude/rules/ecc/
 
 # brainstorm mockups and plan-execution scratch
@@ -24,3 +27,4 @@ graphify-out/
 # local editor workspace and images for a forum post
 GaugeOverlay.code-workspace
 inven-post/
+__pycache__/

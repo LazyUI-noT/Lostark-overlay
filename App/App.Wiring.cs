@@ -189,6 +189,7 @@ public partial class App
         if (firstRailRecord && settings.RailSeen is not null) debounce.Changed(Clock.Now());   // saved, and flushed on exit
         _settingsWindow.DetectLive = engine.DetectLive;
         _settingsWindow.WatchFrames = engine.WatchFrames;
+        _settingsWindow.NewShotList = _newShots;
         _settingsWindow.TakeShot = _takeShot;   // after BuildUi: the window doesn't exist before it
         // 읽는 자리's pictures (reading-place.plan.md B): 전분 or 암수 turning ! saves a raid one, encoded off the engine thread.
         var readingShots = new ReadingShotStore(ReadingShots.Dir);
@@ -311,8 +312,12 @@ public partial class App
         };
         string PartyName() => string.IsNullOrWhiteSpace(settings.Party.DisplayName) ? "플레이어" : settings.Party.DisplayName.Trim();
 
-        // Your colours, box size and layout as you see them, for members who receive them.
-        Look MyLook() { var a = ClassProfiles.Mine(settings); return new Look(a.Colors, a.Width, a.Height, a.Layout); }
+        // Your colours, box size, layout, 빈 칸 줄이기 and arrangements as you see them, for members who receive them.
+        Look MyLook()
+        {
+            var a = ClassProfiles.Mine(settings);
+            return new Look(a.Colors, a.Width, a.Height, a.Layout, a.CloseGaps, a.SlotOrder, a.BarOrder, a.DockOrder);
+        }
 
         // 게이지 읽기 예측 (beta) learns per class: a 초각스 of another class than the one set turns the gauge red and
         // predictions off until the class is put right.
@@ -429,14 +434,14 @@ public partial class App
                 wrongClass || settings.ActiveCharacter is not { } active ? null : settings.StackSkillsOf(active),
                 !wrongClass && settings.Judgment.On(settings.ActiveCharacter)
                     ? new JudgmentPlan(settings.Judgment.Source, settings.Judgment.FontSize, settings.Buffs.Size) : null,
-                settings.Buffs.ReadCount, settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
-                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.AnyInRaidOnly, settings.Debuffs.BossCount, settings.Debuffs.BossShown, Geometry.Shown(settings.Buffs.Size, settings.Buffs.Shown),
+                settings.Buffs.ReadCount(settings.HudFor(engine.FitHud, engine.GameAreaKey)), settings.Debuffs.BossIconSize, settings.Raids.Clone(), raidGates, bossNames,
+                settings.Meter.On, new Dictionary<string, PixelRect>(settings.Meter.Panels), settings.Amsu.On, settings.Amsu.Rate, settings.ReadsPerSecond, settings.Debuffs.Raid, settings.AnyInRaidOnly, settings.Debuffs.BossCount, settings.Debuffs.BossShown, Geometry.Shown(settings.Buffs.Size, settings.Buffs.Shown, settings.HudFor(engine.FitHud, engine.GameAreaKey)),
                 HomeworkRead: !(settings.Meter.On && settings.Meter.Record), BossHpEvery: MeterSettings.ClampHpEvery(settings.Meter.HpEvery),
                 Ring: !wrongClass && settings.Ring.On ? characters.Ring : null,
                 OrbPick: !wrongClass && characters.OrbAsked ? OrbHue.For(characters.ActiveClass?.Name) : null,
                 BrandOn: settings.Buffs.Of(BuffKind.낙인).Visible, BuffsRaidOnly: settings.Buffs.AnyInRaidOnly,
                 RingRaidOnly: settings.Ring is { On: true, RaidOnly: true }, JudgmentRaidOnly: settings.JudgmentInRaidOnly,
-                AutoAsAlways: _autoAsAlways));   // the same terms as AnyInRaidOnly, which turns the presence probes on   // only after a read asked for (detection.md)   // 숙제 without a recorded fight reads the bar itself
+                AutoAsAlways: _autoAsAlways, BuffRowAt: settings.Buffs.RowAt()));   // the same terms as AnyInRaidOnly, which turns the presence probes on   // only after a read asked for (detection.md)   // 숙제 without a recorded fight reads the bar itself
             engine.ReadBehind = settings.Screens.ReadBehind;
             ApplyUi();
             Draw();
@@ -1096,6 +1101,26 @@ public partial class App
         _tray.RereadIcons += RereadIcons;
         _settingsWindow.IconRereadRequested += RereadIcons;
         _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.RereadIcons)) Dispatcher.BeginInvoke(RereadIcons); };
+        // 즉시 화면 캡처: the game window at once into 새 캡처, no countdown and no window; the PNG is encoded and written off the UI thread.
+        int capturing = 0;   // one at a time: the engine holds a single screenshot request, shared with 화면 캡처
+        _hotkeys.Pressed += action => { if (action == nameof(HotkeySettings.CaptureNow)) Dispatcher.BeginInvoke(CaptureNow); };
+        async void CaptureNow()
+        {
+            if (_settingsWindow.IsTaking || Interlocked.CompareExchange(ref capturing, 1, 0) != 0) return;
+            if (GameWindow.Find() == 0) { _tray.Notify("즉시 화면 캡처 못 함: 로스트아크 실행 중에만 찍을 수 있습니다.", kind: NoticeKind.Problem); return; }
+            try
+            {
+                var answer = new TaskCompletionSource<(Image?, PixelRect)>(TaskCreationOptions.RunContinuationsAsynchronously);
+                engine.RequestScreenshot(answer);
+                var (picture, area) = await answer.Task.WaitAsync(ShotTimeout);
+                if (picture is null) { _tray.Notify("즉시 화면 캡처 못 함: 게임 창이 보이는 상태에서 다시 누르세요.", kind: NoticeKind.Problem); return; }
+                await Task.Run(() => _newShots.Add(Png.Encode(picture), area));
+                _tray.Notify("즉시 화면 캡처: 새 캡처에 담았습니다.");
+            }
+            catch (TimeoutException) { _tray.Notify("즉시 화면 캡처 못 함: 게임 창이 보이는 상태에서 다시 누르세요.", kind: NoticeKind.Problem); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _tray.Notify("즉시 화면 캡처 못 함: 저장할 수 없습니다.", kind: NoticeKind.Problem); }
+            finally { Volatile.Write(ref capturing, 0); }
+        }
         // 스킬 등록 (설정 and the tray): the ready 일반 slots of the next frame the bar is on screen; nothing within 3 s is no bar.
         DispatcherTimer? skillsWait = null;
         void SkillsResult(string text) { engine.CancelSkills(); skillsWait?.Stop(); skillsWait = null; _settingsWindow.SetSkillsResult(text); _tray.Notify(text); }

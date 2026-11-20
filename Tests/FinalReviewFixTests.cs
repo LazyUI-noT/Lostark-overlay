@@ -31,15 +31,15 @@ public class FinalReviewFixTests
     }
 
     [Fact]
-    public void Undo_keeps_the_screenshot_area_each_profile_has_now()
+    public void Undo_keeps_the_screenshot_area_each_slot_has_now()
     {
         var area = new PixelRect(0, 0, 1920, 1080);
         var live = new Settings();
-        live.Profiles[1].Shot = area;   // taken after the snapshot: a file, no undo step
+        live.SlotAreas[1] = area;   // taken after the snapshot: a file, no undo step
 
         live.CopyFrom(new Settings());
 
-        Assert.Equal(area, live.Profiles[1].Shot);
+        Assert.Equal(area, live.SlotAreas[1]);
     }
 
     [Fact]

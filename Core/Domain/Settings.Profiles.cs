@@ -159,7 +159,6 @@ public sealed partial class Settings
         if (from == to || from < 0 || from >= Profiles.Count || to < 0 || to >= Profiles.Count) return false;
         if (from == ActiveProfile) KeepLive(Profiles[from]);
         var copy = JsonSerializer.Deserialize<OverlayProfile>(JsonSerializer.SerializeToUtf8Bytes(Profiles[from], Data.SettingsStore.Json), Data.SettingsStore.Json)!;
-        copy.Shot = Profiles[to].Shot;
         Profiles[to] = copy;
         if (to == ActiveProfile) PutOn(copy);
         return true;

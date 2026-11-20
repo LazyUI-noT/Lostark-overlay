@@ -166,7 +166,7 @@ public partial class App : Application
         _owned.AddRange([_tray, _hotkeys]);
 
         _settingsWindow.SettingsChanged += changed;
-        _settingsWindow.EditModeRequested += () => SetEditMode(true);
+        _settingsWindow.EditModeRequested += () => SetEditMode(!_overlay.EditMode);
         _settingsWindow.IsVisibleChanged += (_, _) => UpdateVisibility();   // 설정 acts as in front or closed, no 미리보기
         _settingsWindow.CanvasShownChanged += UpdateVisibility;             // the canvas draws the windows: the real ones hide
         foreach (var w in Others.Prepend(_overlay)) w.Closed += (_, _) => _quitting = true;   // they close only when the app quits
@@ -274,6 +274,7 @@ public partial class App : Application
         _changed();
     }
 
+    readonly NewShots _newShots = new(NewShots.DefaultDir);   // 새 캡처 (즉시 화면 캡처)
     string _failedHotkeys = "";   // told once, not on every change
     Func<Task<(Image?, PixelRect)>>? _takeShot;   // 게임 화면 찍기; none in the demo
     static readonly TimeSpan ShotSettle = TimeSpan.FromMilliseconds(150), ShotTimeout = TimeSpan.FromSeconds(5);
@@ -286,6 +287,7 @@ public partial class App : Application
         _overlay.SetEditMode(on);
         foreach (var w in Others) w.SetEditMode(on);
         _tray.SetEditMode(on);
+        _settingsWindow.SetEditMode(on);
         UpdateVisibility();
         // Dragging boxes gave the overlay the foreground, which hides it (the game isn't in front): give it back to the game.
         if (!on) ReturnToGame();

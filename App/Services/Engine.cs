@@ -34,6 +34,8 @@ public sealed partial class Engine : IDisposable
     /// <param name="BossCount">감지 개수 of the boss debuff row (타겟 UI 버프 크기 (보스)): the 암수 walk reads at most this many slots.</param>
     /// <param name="Raids">설정 → 레이드, a copy (RaidSettings.Clone); null reads nothing for it.</param>
     /// <param name="DebuffPick">The raid whose 디버프 창 the tray turned on by hand (DebuffSettings.Raid).</param>
+    /// <param name="BuffRowAt">(<paramref name="BuffCount"/>, <paramref name="BuffShown"/>) at the live fit's HUD (BuffSettings.RowAt): the engine
+    /// changes its fit on its own (resize, 수동 조정, 테스트 모드), so the counts follow it; null uses the two fixed values.</param>
     /// <param name="RaidGates">The gates (Profiles/raids.json) and <paramref name="BossNames"/> their name templates (Profiles/bossnames).</param>
     public sealed record Config(IReadOnlyDictionary<string, Fit> Fits, IReadOnlyCollection<SlotId> AdenSlots, bool Debug, ReadPlan Reads,
         GaugeDef? Gauge = null, IReadOnlyDictionary<SlotId, PixelRect>? AdenRects = null, DarkCue AdenDark = DarkCue.None, GaugeRule? GaugeRule = null,
@@ -45,7 +47,7 @@ public sealed partial class Engine : IDisposable
         AmsuRate AmsuRate = AmsuRate.높음, int ReadsPerSecond = ReadSteps.Default, Raid DebuffPick = Raid.없음, bool PartsInRaidOnly = false,
         int BossCount = Geometry.MaxIconsAny, int? BossShown = null, int BuffShown = int.MaxValue, bool HomeworkRead = false, double BossHpEvery = MeterSettings.DefaultHpEvery,
         RingDefs? Ring = null, (string Below, string Above)? OrbPick = null, bool BrandOn = false, bool BuffsRaidOnly = false,
-        bool RingRaidOnly = false, bool JudgmentRaidOnly = false, bool AutoAsAlways = false)
+        bool RingRaidOnly = false, bool JudgmentRaidOnly = false, bool AutoAsAlways = false, Func<double, (int Count, int Shown)>? BuffRowAt = null)
     {
         /// <summary>직접 입력: the 해상도 and 21:9 given, or the game window's size while no 해상도 is picked; null when off.</summary>
         public (double Hud, ManualScreen Screen)? Manual(PixelRect client) =>
@@ -175,6 +177,9 @@ public sealed partial class Engine : IDisposable
 
     /// <summary>The game area's size key ("W×H", Settings.Fits / Adjusts), null before one is measured; any thread.</summary>
     public string? GameAreaKey => Volatile.Read(ref _areaKey);
+
+    /// <summary>The buff row's (read count, shown) at <paramref name="fit"/>'s HUD, else the config's fixed values.</summary>
+    static (int Count, int Shown) BuffRow(Config c, Fit? fit) => fit is not null && c.BuffRowAt is { } at ? at(fit.Hud) : (c.BuffCount, c.BuffShown);
 
     /// <summary>The HUD of the fit the reads use now (테스트 모드: the video's, kept in memory only); null before one; any thread.</summary>
     public double? FitHud => Volatile.Read(ref _fit)?.Hud;
@@ -457,7 +462,7 @@ public sealed partial class Engine : IDisposable
         foreach (var s in slots) rects.Add(Rect(s, _fit!, config));
         if (wantLabel) rects.Add(Geometry.ToScreen(Geometry.RefAwakeningLabel, _vp, _fit!));
         if (gaugeDef is not null) rects.Add(Geometry.ToScreen(gaugeDef.Ref, _vp, _fit!));
-        if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size, config.BuffCount));
+        if (buffSize is { } size) rects.Add(Geometry.BuffArea(_vp, _fit!, size, BuffRow(config, _fit).Count));
         int debuffAt = rects.Count;
         if (debuffIcons) rects.Add(Geometry.DebuffArea(_vp, _fit!, debuffSize, debuffBoxes));
         else foreach (int box in fastTimers) rects.Add(Geometry.DebuffBoxes(_vp, _fit!, debuffSize)[box].Timer);   // each timer alone, at its box
@@ -552,7 +557,7 @@ public sealed partial class Engine : IDisposable
         }
         else if (_hud.Visible == false) _gaugeFilter.Reset();   // reads from before a loading screen are stale
         if (ringDefs is not null) changed |= ReadRing(ringDefs, images[ringAt], images[ringAt + 1], t);
-        if (buffSize is { } read) changed |= Perf.Run("버프", () => ReadBuffs(images[debuffAt - 1], read, config.BuffCount, config.BuffShown, t));
+        if (buffSize is { } read) changed |= Perf.Run("버프", () => ReadBuffs(images[debuffAt - 1], read, BuffRow(config, _fit).Count, BuffRow(config, _fit).Shown, t));
         if (debuffIcons) changed |= Perf.Run("디버프", () => ReadDebuffs(images[debuffAt], boss ? images[debuffAt + 1] : null, debuffSize, config.BossSize, t, debuffBoxes));
         else if (fastTimers.Count > 0) changed |= Perf.Run("디버프 (시간)", () => ReadDebuffTimers(images, debuffAt, fastTimers, debuffSize, t));
         if (judging)

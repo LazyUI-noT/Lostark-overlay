@@ -165,19 +165,6 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal("", back.Updates.Notified);
     }
 
-    [Fact]
-    public void A_broken_screenshot_area_loads_as_none()
-    {
-        var store = new SettingsStore(FilePath);
-        var s = new Settings();
-        s.Profiles[0].Shot = new PixelRect(0, 0, -1, 10);
-        s.Profiles[1].Shot = new PixelRect(0, 0, 1920, 1080);
-        store.Save(s);
-        var back = store.Load(out _);
-        Assert.Null(back.Profiles[0].Shot);
-        Assert.Equal(new PixelRect(0, 0, 1920, 1080), back.Profiles[1].Shot);
-    }
-
     /// <summary>크기 직접 입력: off by default, kept across restarts, and a size the game doesn't offer (a hand-edited one, or
     /// one the old 70–130 slider saved) becomes the nearest of its five.</summary>
     [Theory]
@@ -661,8 +648,25 @@ public sealed class SettingsStoreTests : IDisposable
 
         var s = new SettingsStore(FilePath).Load(out _);
         Assert.Equal(120, s.Buffs.Size);
-        Assert.Equal(["#E8262B", "#FFE600", "#1BA8E0", "#A04FB0", "#E6E6E6"], Enum.GetValues<BuffKind>().Select(k => s.Buffs.Of(k).Color));
+        Assert.Equal(["#E8262B", "#FFE600", "#1BA8E0", "#C8A8F0", "#E6E6E6"], Enum.GetValues<BuffKind>().Select(k => s.Buffs.Of(k).Color));
         Assert.All(Enum.GetValues<BuffKind>(), k => Assert.True(s.Buffs.Of(k).Visible && s.Buffs.Of(k).ShowLabel));
+    }
+
+    [Fact]
+    public void The_old_default_dem_colour_turns_lavender_once_and_a_picked_one_stays()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, "{ \"Version\": 4, \"FirstRunDone\": true, \"Buffs\": { \"Indicators\": { \"뎀증\": { \"Color\": \"#A04FB0\" }, \"공증\": { \"Color\": \"#A04FB0\" } } } }");
+
+        var s = new SettingsStore(FilePath).Load(out _);
+
+        Assert.Equal("#C8A8F0", s.Buffs.Of(BuffKind.뎀증).Color);
+        Assert.Equal("#A04FB0", s.Buffs.Of(BuffKind.공증).Color);
+        Assert.All(s.Profiles.SelectMany(p => p.Entries()), e => Assert.NotEqual("#A04FB0", e.BuffLook?.Bars.GetValueOrDefault(BuffKind.뎀증)?.Color));
+
+        s.Buffs.Edit(BuffKind.뎀증).Color = "#A04FB0";   // picked after the move: kept
+        new SettingsStore(FilePath).Save(s);
+        Assert.Equal("#A04FB0", new SettingsStore(FilePath).Load(out _).Buffs.Of(BuffKind.뎀증).Color);
     }
 
     [Fact]

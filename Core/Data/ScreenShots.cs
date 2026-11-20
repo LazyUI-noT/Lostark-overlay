@@ -2,7 +2,7 @@ using GaugeOverlay.Core.Domain;
 
 namespace GaugeOverlay.Core.Data;
 
-/// <summary>오버레이 프로필 screenshots: one PNG per profile (<c>screens\1.png</c> … <c>5.png</c> beside settings.json),
+/// <summary>The 5 image slots' pictures: one PNG per slot (<c>screens\1.png</c> … <c>5.png</c> beside settings.json),
 /// taken of the game or loaded from a picture file.</summary>
 public static class ScreenShots
 {
@@ -17,11 +17,11 @@ public static class ScreenShots
 
     static readonly string[] Loadable = [".png", ".jpg", ".jpeg", ".bmp"];
 
-    public static string PathOf(string dir, int profile)
+    public static string PathOf(string dir, int slot)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(profile);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(profile, OverlayProfile.Count);
-        return Path.Combine(dir, $"{profile + 1}.png");
+        ArgumentOutOfRangeException.ThrowIfNegative(slot);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, OverlayProfile.Count);
+        return Path.Combine(dir, $"{slot + 1}.png");
     }
 
     /// <summary>A picture file 불러오기 accepts (by its extension).</summary>
